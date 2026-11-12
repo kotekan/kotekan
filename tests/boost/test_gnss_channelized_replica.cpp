@@ -2,6 +2,7 @@
 
 #include "beidouB2aCode.hpp"           // for b2ap_secondary (baked-CS reference)
 #include "dspPfbPrototype.hpp"         // for Window
+#include "galileoE1Code.hpp"           // for E1C_CS25 (baked-CS reference)
 #include "galileoE5aCode.hpp"          // for e5aq_secondary (baked-CS reference)
 #include "gnssChannelizedDespread.hpp" // for channelized_despread
 #include "gnssChannelizedReplica.hpp"  // for ChannelizedReplicaBank
@@ -561,4 +562,42 @@ BOOST_AUTO_TEST_CASE(gps_l1ca_bit_is_twenty_ca_periods) {
     BOOST_CHECK_LT(
         std::abs(amp(bbit.channels(0, 0, 0.0, 0.0, 20 * H), bbit.channels(1, 0, 0.0, 0.0, 20 * H))),
         0.3);
+}
+
+// Galileo E1-C's shared CS25 baked into one 100 ms BOC(1,1) code, as the per-PRN *_CS codes are:
+// period k of the baked code is the primary times CS25[k]. code_chip indexes the BOC-expanded
+// stream, two half-chips per chip, so a period there is 8184 entries.
+BOOST_AUTO_TEST_CASE(e1c_cs_baked_convention) {
+    const gnss::SignalDescriptor* cs = gnss::signal_by_name("GAL_E1C_CS");
+    BOOST_REQUIRE(cs != nullptr);
+    BOOST_CHECK_EQUAL(cs->code_length, 102300L);
+    BOOST_CHECK_EQUAL(cs->secondary_length, 0);
+    const int L = 2 * 4092; // one primary period, BOC-expanded
+    for (int prn : {5, 26}) {
+        auto bank_cs = make_bank("GAL_E1C_CS", {prn});
+        auto bank_c = make_bank("GAL_E1C", {prn});
+        BOOST_CHECK_EQUAL(bank_c.secondary_length(), 25); // the shared slot's CS25
+        for (int k = 0; k < 25; ++k)
+            for (int i = 0; i < L; i += 247) // 34 probes per primary period
+                BOOST_REQUIRE_EQUAL((int)bank_cs.code_chip(0, (double)k * L + i),
+                                    (int)bank_c.code_chip(0, (double)i)
+                                        * (int)galileo::E1C_CS25[(size_t)k]);
+    }
+}
+
+// SBAS L1 has no secondary; SBAS_L1_SYM tiles two identical C/A periods into one 2 ms code, one
+// 500 sps symbol, so each 1 ms of it is the bare SBAS code.
+BOOST_AUTO_TEST_CASE(sbas_l1_sym_is_two_ca_periods) {
+    const gnss::SignalDescriptor* sym = gnss::signal_by_name("SBAS_L1_SYM");
+    BOOST_REQUIRE(sym != nullptr);
+    BOOST_CHECK_EQUAL(sym->code_length, 2046L);
+    BOOST_CHECK_EQUAL(sym->code_period_s, 2e-3);
+    for (int prn : {131, 135}) {
+        auto bank_sym = make_bank("SBAS_L1_SYM", {prn});
+        auto bank_l1 = make_bank("SBAS_L1", {prn});
+        for (int k = 0; k < 2; ++k)
+            for (int i = 0; i < 1023; i += 31)
+                BOOST_REQUIRE_EQUAL((int)bank_sym.code_chip(0, (double)k * 1023 + i),
+                                    (int)bank_l1.code_chip(0, (double)i));
+    }
 }

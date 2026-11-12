@@ -97,6 +97,8 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         auto a = galileo::generate_e1c_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
     }
+    if (name == "GAL_E1C_CS") // the shared CS25 baked in, as the *_CS codes are per PRN
+        return bake_secondary(galileo::generate_e1c_code(prn), galileo::E1C_CS25);
     if (name == "GAL_E1B") {
         auto a = galileo::generate_e1b_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
@@ -233,7 +235,9 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         return gps::generate_l2cl_code(prn);
     if (name == "GPS_L1CA_BIT") // twenty identical periods, one 20 ms LNAV bit
         return bake_secondary(gps::generate_ca_code(prn), std::vector<int8_t>(20, 1));
-    auto a = gps::generate_ca_code(prn); // default: GPS_L1CA
+    if (name == "SBAS_L1_SYM") // two identical periods, one 2 ms SBAS symbol
+        return bake_secondary(gps::generate_ca_code(prn), std::vector<int8_t>(2, 1));
+    auto a = gps::generate_ca_code(prn); // default: GPS_L1CA and SBAS_L1 (PRN 120..158)
     return std::vector<int8_t>(a.begin(), a.end());
 }
 } // namespace

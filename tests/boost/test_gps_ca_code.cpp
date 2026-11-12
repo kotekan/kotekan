@@ -32,6 +32,40 @@ int first_chips_octal_bits_to_int(const std::array<int8_t, CA_CODE_LENGTH>& code
     return value;
 }
 
+// The C/A code as G1 XOR the G2 sequence delayed by `delay` chips, built from the two LFSRs
+// independently of generate_ca_code: the form the SBAS PRNs are specified in.
+std::array<int8_t, CA_CODE_LENGTH> ca_by_delay(int delay) {
+    std::array<uint8_t, 10> G1, G2;
+    G1.fill(1);
+    G2.fill(1);
+    std::array<uint8_t, CA_CODE_LENGTH> g1, g2;
+    for (int i = 0; i < CA_CODE_LENGTH; ++i) {
+        g1[i] = G1[9];
+        g2[i] = G2[9];
+        const uint8_t fb1 = G1[2] ^ G1[9];
+        const uint8_t fb2 = G2[1] ^ G2[2] ^ G2[5] ^ G2[7] ^ G2[8] ^ G2[9];
+        for (int k = 9; k > 0; --k) {
+            G1[k] = G1[k - 1];
+            G2[k] = G2[k - 1];
+        }
+        G1[0] = fb1;
+        G2[0] = fb2;
+    }
+    std::array<int8_t, CA_CODE_LENGTH> code;
+    for (int i = 0; i < CA_CODE_LENGTH; ++i)
+        code[i] = (g1[i] ^ g2[(i - delay + CA_CODE_LENGTH) % CA_CODE_LENGTH]) ? -1 : +1;
+    return code;
+}
+
+// IS-GPS-200 Table 3-Ia's code delays (chips) for PRN 1..32, and DO-229's for SBAS PRN 120..158.
+const std::vector<int> GPS_DELAY = {5,   6,   7,   8,   17,  18,  139, 140, 141, 251, 252,
+                                    254, 255, 256, 257, 258, 469, 470, 471, 472, 473, 474,
+                                    509, 512, 513, 514, 515, 516, 859, 860, 861, 862};
+const std::vector<int> SBAS_DELAY = {145, 175,  52,  21,  237, 235,  886, 657, 634, 762,
+                                     355, 1012, 176, 603, 130, 359,  595, 68,  386, 797,
+                                     456, 499,  883, 307, 127, 211,  121, 118, 163, 628,
+                                     853, 484,  289, 811, 202, 1021, 463, 568, 904};
+
 } // namespace
 
 // Every C/A code is balanced: its +1 and -1 counts differ by exactly one, whatever the sign
@@ -100,4 +134,43 @@ BOOST_AUTO_TEST_CASE(ca_prn_range_is_checked) {
     BOOST_CHECK_THROW(generate_ca_code(33), std::out_of_range);
     BOOST_CHECK_NO_THROW(generate_ca_code(1));
     BOOST_CHECK_NO_THROW(generate_ca_code(32));
+}
+
+
+// The delay form is the tap table's: IS-GPS-200's delays reproduce PRN 1..32 chip for chip. That
+// pins the delay convention generate_ca_code applies to the SBAS PRNs.
+BOOST_AUTO_TEST_CASE(ca_delay_form_matches_the_taps) {
+    for (int prn = 1; prn <= 32; ++prn)
+        BOOST_CHECK_MESSAGE(ca_by_delay(GPS_DELAY[(size_t)prn - 1]) == generate_ca_code(prn),
+                            "PRN " << prn);
+}
+
+// SBAS PRN 120..158: the delayed-G2 codes, balanced and three-valued against themselves, each
+// other and a GPS code.
+BOOST_AUTO_TEST_CASE(sbas_codes_are_delayed_gold_codes) {
+    for (int prn = 120; prn <= 158; ++prn) {
+        const auto code = generate_ca_code(prn);
+        BOOST_CHECK_MESSAGE(code == ca_by_delay(SBAS_DELAY[(size_t)prn - 120]), "PRN " << prn);
+        int ones = 0;
+        for (int8_t c : code)
+            ones += (c == -1) ? 1 : 0;
+        BOOST_CHECK_MESSAGE(std::abs(2 * ones - CA_CODE_LENGTH) == 1, "PRN " << prn);
+    }
+    const std::vector<std::pair<int, int>> pairs = {{131, 131}, {131, 133}, {133, 135}, {135, 1}};
+    for (const auto& [p, q] : pairs) {
+        const auto cp = generate_ca_code(p);
+        const auto cq = generate_ca_code(q);
+        for (int shift = (p == q) ? 1 : 0; shift < CA_CODE_LENGTH; ++shift) {
+            const int x = periodic_correlation(cp, cq, shift);
+            BOOST_CHECK_MESSAGE(x == -1 || x == -65 || x == 63,
+                                "PRN " << p << "x" << q << " at shift " << shift << " = " << x);
+        }
+    }
+}
+
+BOOST_AUTO_TEST_CASE(sbas_prn_range_is_checked) {
+    BOOST_CHECK_THROW(generate_ca_code(119), std::out_of_range);
+    BOOST_CHECK_THROW(generate_ca_code(159), std::out_of_range);
+    BOOST_CHECK_NO_THROW(generate_ca_code(120));
+    BOOST_CHECK_NO_THROW(generate_ca_code(158));
 }

@@ -49,16 +49,36 @@ constexpr int G2_TAPS[CA_PRN_MAX + 1][2] = {
     {4, 9},  // PRN 32
 };
 
+/**
+ * G2 delays, in chips, for the SBAS PRNs 120..158 (RTCA DO-229, as PocketSDR's sdr_code.py and
+ * GNSS-SDR's gps_sdr_signal_replica.cc transcribe it; they agree on 120..138, the range both
+ * carry): the PRN's G2 output is the G2 stage-10 sequence delayed by this many chips, which is
+ * what the GPS taps above amount to (PRN 1's (2, 6) is a delay of 5). Indexed by
+ * PRN - SBAS_PRN_MIN.
+ */
+constexpr int SBAS_G2_DELAY[SBAS_PRN_MAX - SBAS_PRN_MIN + 1] = {
+    145, 175,  52,  21,  237, 235,  886, 657, 634, 762, // PRN 120-129
+    355, 1012, 176, 603, 130, 359,  595, 68,  386, 797, // PRN 130-139
+    456, 499,  883, 307, 127, 211,  121, 118, 163, 628, // PRN 140-149
+    853, 484,  289, 811, 202, 1021, 463, 568, 904,      // PRN 150-158
+};
+
+bool is_sbas(int prn) {
+    return prn >= SBAS_PRN_MIN && prn <= SBAS_PRN_MAX;
+}
+
 void check_prn(int prn) {
-    if (prn < CA_PRN_MIN || prn > CA_PRN_MAX)
-        throw std::out_of_range("GPS C/A PRN out of range (1..32): " + std::to_string(prn));
+    if ((prn < CA_PRN_MIN || prn > CA_PRN_MAX) && !is_sbas(prn))
+        throw std::out_of_range("C/A PRN out of range (1..32, 120..158): " + std::to_string(prn));
 }
 
 } // namespace
 
 std::array<int8_t, CA_CODE_LENGTH> generate_ca_code(int prn) {
     check_prn(prn);
-    const int a = G2_TAPS[prn][0], b = G2_TAPS[prn][1];
+    const bool sbas = is_sbas(prn);
+    // An SBAS PRN has no taps: its chips are set from the delayed G2 sequence after the loop.
+    const int a = sbas ? 1 : G2_TAPS[prn][0], b = sbas ? 1 : G2_TAPS[prn][1];
 
     // Both LFSRs start all-ones. G[k] is IS-GPS-200 stage k+1, so stage 10 is G[9].
     std::array<uint8_t, 10> G1;
@@ -67,11 +87,14 @@ std::array<int8_t, CA_CODE_LENGTH> generate_ca_code(int prn) {
     G2.fill(1);
 
     std::array<int8_t, CA_CODE_LENGTH> code;
+    std::array<uint8_t, CA_CODE_LENGTH> g1, g2; // stage-10 outputs, for the SBAS delay
 
     for (int i = 0; i < CA_CODE_LENGTH; ++i) {
         const uint8_t g2_phase = G2[a - 1] ^ G2[b - 1];
         const uint8_t chip = G1[9] ^ g2_phase;
         code[i] = chip ? -1 : +1;
+        g1[i] = G1[9];
+        g2[i] = G2[9];
 
         // Feedback from stages 3,10 (G1) and 2,3,6,8,9,10 (G2), shifted in at stage 1.
         const uint8_t fb1 = G1[2] ^ G1[9];
@@ -82,6 +105,11 @@ std::array<int8_t, CA_CODE_LENGTH> generate_ca_code(int prn) {
         }
         G1[0] = fb1;
         G2[0] = fb2;
+    }
+    if (sbas) {
+        const int d = SBAS_G2_DELAY[prn - SBAS_PRN_MIN];
+        for (int i = 0; i < CA_CODE_LENGTH; ++i)
+            code[i] = (g1[i] ^ g2[(i - d + CA_CODE_LENGTH) % CA_CODE_LENGTH]) ? -1 : +1;
     }
     return code;
 }

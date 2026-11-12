@@ -253,6 +253,40 @@ inline constexpr SignalDescriptor SBAS_L5_I_MC = {
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
 };
+/// SBAS L1 (1575.42 MHz) of the WAAS/EGNOS/MSAS/GAGAN GEOs (PRNs 120..158): the C/A code family
+/// (gpsCACode, the SBAS PRNs' G2 delays) at 1.023 Mcps, data only, no secondary. 250 bps
+/// through rate-1/2 FEC to 500 sps: one 2 ms symbol per two code periods.
+inline constexpr SignalDescriptor SBAS_L1 = {
+    "SBAS_L1",
+    1575.42e6,
+    1.023e6,
+    1023,
+    1e-3,
+    Modulation::BPSK,
+    0,
+    0,
+    /*secondary_length=*/0,
+    /*time_multiplexed=*/false,
+    /*tdm_phase=*/0,
+};
+/// SBAS L1 tiled to one 500 sps symbol: two identical C/A periods, one 2046-chip, 2 ms code, as
+/// GPS_L1CA_BIT tiles its LNAV bit. The replica is the bare code's; the period boundary moves to
+/// the symbol edge, placed from absolute time. A 10.49 ms record sums ~5 unknown symbol signs, as
+/// SBAS_L5_I_MC's does, and a one-period slip keeps nearly the same power. The tracker code of
+/// the sbas_l1 chain; the broker pairs it with SBAS_L1 (gnss_broker/signals.py).
+inline constexpr SignalDescriptor SBAS_L1_SYM = {
+    "SBAS_L1_SYM",
+    1575.42e6,
+    1.023e6,
+    2046,
+    2e-3,
+    Modulation::BPSK,
+    0,
+    0,
+    /*secondary_length=*/0,
+    /*time_multiplexed=*/false,
+    /*tdm_phase=*/0,
+};
 /// Galileo E1-C (1575.42 MHz, the GPS L1 carrier), the OS dataless pilot: 4092-chip memory
 /// code at 1.023 Mcps (4 ms). Transmitted CBOC(6,1,1/11) and modelled as BOC(1,1), which loses
 /// ~0.4 dB. Shared CS25 secondary (100 ms). Code: galileoE1Code (ICD Annex C tables).
@@ -266,6 +300,24 @@ inline constexpr SignalDescriptor GAL_E1C = {
     1,
     1, // BOC(1,1)
     /*secondary_length=*/25,
+    /*time_multiplexed=*/false,
+    /*tdm_phase=*/0,
+};
+
+/// Galileo E1-C with the shared CS25 tiled into the code: one 102300-chip, 100 ms BOC(1,1) code,
+/// as GAL_E5A_Q_CS tiles CS100. The CS25 phase follows from Galileo system time and the broker
+/// places it from absolute time. The tracker code of the gal_e1c chain; the broker pairs it with
+/// GAL_E1C (gnss_broker/signals.py).
+inline constexpr SignalDescriptor GAL_E1C_CS = {
+    "GAL_E1C_CS",
+    1575.42e6,
+    1.023e6,
+    102300,
+    100e-3,
+    Modulation::BOC,
+    1,
+    1, // BOC(1,1)
+    /*secondary_length=*/0,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
 };
@@ -808,7 +860,8 @@ inline constexpr const SignalDescriptor* ALL_SIGNALS[] = {
     &BDS_B2B_I,    &GAL_E5B_Q,   &GAL_E5B_I,    &GPS_L1C_D,     &GAL_E6_C,      &GAL_E6_B,
     &BDS_B1I,      &BDS_B3I,     &BDS_B3I_NH,   &BDS_B2I,       &GLO_L3OC_P,    &GLO_L3OC_D,
     &GLO_L2OF,     &GLO_L2OC_P,  &GAL_E6_C_CS,  &GLO_L3OC_P_NH, &GLO_L2OC_P_OC, &SBAS_L5_I,
-    &SBAS_L5_I_MC, &GLO_L2OF_MC, &GW_1202,      &BDS_B1I_NH,    &GPS_L1CA_BIT};
+    &SBAS_L5_I_MC, &GLO_L2OF_MC, &GW_1202,      &BDS_B1I_NH,    &GPS_L1CA_BIT,  &SBAS_L1,
+    &SBAS_L1_SYM,  &GAL_E1C_CS};
 
 /// Look up a descriptor by its @c name (the config string); nullptr if unknown.
 inline const SignalDescriptor* signal_by_name(const std::string& name) {
