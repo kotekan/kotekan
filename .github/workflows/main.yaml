@@ -306,8 +306,8 @@ jobs:
       - uses: actions/checkout@v7
       - run: |
           python3 -m venv ptxenv
-          ptxenv/bin/pip install -q nvidia-cuda-nvcc-cu12==12.9.86
-          bash tools/check_ptx.sh ptxenv/lib/python3.*/site-packages/nvidia/cuda_nvcc/bin/ptxas
+          ptxenv/bin/pip install -q nvidia-cuda-nvcc
+          bash tools/check_ptx.sh ptxenv/lib/python3.*/site-packages/nvidia/cu*/bin/ptxas
 
   # Run the linter as its own top-level job (rather than as a matrix entry
   # inside kotekan-cpu-tests) so the auto-lint-fix job below can run conditioned
