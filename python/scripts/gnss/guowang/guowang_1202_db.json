@@ -1766,34 +1766,35 @@
    "ref_input": 116,
    "drift_ns_s": 4.91,
    "note": "partial copy, 56/64 channels",
-   "last_observed_utc": "2026-11-05T23:01:07Z",
-   "last_checked_utc": "2026-11-05T23:01:07Z",
-   "last_checked_sep_deg": 0.63,
-   "passes_found": 1,
+   "last_observed_utc": "2026-11-12T21:00:59Z",
+   "last_checked_utc": "2026-11-12T21:00:59Z",
+   "last_checked_sep_deg": 2.29,
+   "passes_found": 2,
    "passes_silent": 0,
    "passes": [
-    ["2026-11-05T23:01:07Z", 0.63, true]
+    ["2026-11-05T23:01:07Z", 0.63, true],
+    ["2026-11-12T21:00:59Z", 2.29, true]
    ]
   },
   "DIGUI-101": {
    "status": "transmitting",
    "catnum": 66417,
    "g2_phase": 909,
-   "theta_us": -6.661,
-   "carrier_minus_tle_ppb": -6.0,
-   "measured_utc": "2026-11-05T22:48:07Z",
-   "source": "2026-11-05 beam dump window 26 (gw_reduce, 40264 frames over 81 s)",
-   "sep_deg": 5.51,
+   "theta_us": -5.808,
+   "carrier_minus_tle_ppb": -3.9,
+   "measured_utc": "2026-11-12T20:48:18Z",
+   "source": "2026-11-12 beam dump window 157 (gw_reduce, 77462 frames over 170 s)",
+   "sep_deg": 3.01,
    "ref_input": 116,
-   "drift_ns_s": 5.54,
-   "note": "partial copy, 56/64 channels",
-   "last_observed_utc": "2026-11-05T22:48:07Z",
-   "last_checked_utc": "2026-11-05T22:48:07Z",
-   "last_checked_sep_deg": 5.51,
-   "passes_found": 1,
+   "drift_ns_s": 3.42,
+   "last_observed_utc": "2026-11-12T20:49:03Z",
+   "last_checked_utc": "2026-11-12T20:49:03Z",
+   "last_checked_sep_deg": 2.78,
+   "passes_found": 2,
    "passes_silent": 0,
    "passes": [
-    ["2026-11-05T22:48:07Z", 5.51, true]
+    ["2026-11-05T22:48:07Z", 5.51, true],
+    ["2026-11-12T20:49:03Z", 2.78, true]
    ]
   },
   "DIGUI-102": {
@@ -3905,6 +3906,32 @@
     ["2026-11-04T13:31:39Z", 1.21, true],
     ["2026-11-06T12:25:25Z", 14.59, true],
     ["2026-11-11T11:31:41Z", 3.91, true]
+   ]
+  },
+  "DIGUI-219": {
+   "status": "no_transmission",
+   "catnum": null,
+   "g2_phase": null,
+   "last_observed_utc": null,
+   "last_checked_utc": "2026-11-12T21:09:53Z",
+   "last_checked_sep_deg": 3.65,
+   "passes_found": 0,
+   "passes_silent": 1,
+   "passes": [
+    ["2026-11-12T21:09:53Z", 3.65, false]
+   ]
+  },
+  "DIGUI-221": {
+   "status": "no_transmission",
+   "catnum": null,
+   "g2_phase": null,
+   "last_observed_utc": null,
+   "last_checked_utc": "2026-11-12T21:00:59Z",
+   "last_checked_sep_deg": 0.2,
+   "passes_found": 0,
+   "passes_silent": 1,
+   "passes": [
+    ["2026-11-12T21:00:59Z", 0.2, false]
    ]
   },
   "JISHU-SHIYAN-8A": {
