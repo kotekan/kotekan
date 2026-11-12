@@ -98,7 +98,6 @@ This section maps common CMake options (see :doc:`cmake_options`) to the package
 
 - ``COMPILE_DOCS`` (documentation)
   - Ubuntu packages: ``doxygen``, ``graphviz``, ``python3-sphinx``, ``python3-breathe``, ``python3-sphinx-rtd-theme``
-  - Python: ``sphinx``, ``breathe``, ``sphinx_rtd_theme`` (see below)
 
 Developer Python Packages
 =========================
@@ -112,7 +111,6 @@ For linting, testing, and documentation, install these Python packages (often in
      cmake_format \
      pytest pytest-xdist pytest-timeout \
      pytest-cpp \
-     sphinx sphinx_rtd_theme breathe \
      h5py hdf5plugin bitshuffle \
      numpy \
      requests tabulate \
