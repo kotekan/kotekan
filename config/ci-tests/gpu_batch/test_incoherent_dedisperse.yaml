@@ -1,0 +1,16 @@
+---
+# Standalone test of the incoherent-beam dedispersion kernels (see testIncoherentDedisperse.cpp)
+
+type: config
+log_level: INFO
+
+cpu_affinity: [0]
+
+# Required by the default telescope setup (the stage itself reads no config).
+num_polarizations: 2
+num_dishes: 512
+
+test_incoherent_dedisperse:
+    kotekan_stage: testIncoherentDedisperse
+    join_timeout: 60
+log_config_usage: fatal_error

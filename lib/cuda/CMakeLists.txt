@@ -28,6 +28,8 @@ add_library(
     upchannelizeReference.cpp
     cudaHFB1Accumulate.cpp
     cudaHFB1Accumulate.cu
+    cudaIncoherentDedisperse.cu
+    testIncoherentDedisperse.cpp
     cudaMemsetInt.cu
     chordMVPSetup.cpp
     cudaPLMaskAccumulator.cpp
