@@ -34,6 +34,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import shlex
 import sys
 import textwrap
@@ -232,7 +233,6 @@ N2_PROJECT_SOLVE_EVERY = 4
 GPU_VARS = {}
 
 
-
 def check_science_band(cfg, base):
     """The node file's science_band must be the telescope's: every comb index the generator writes
     (gpu_of_channel) counts from min_freq_id, and kotekan labels the frame's channels from
@@ -255,6 +255,24 @@ def check_science_band(cfg, base):
         raise SystemExit(
             f"num_local_freq {nlf} x 16 combs != {hi - lo + 1} channels of the science band"
         )
+
+
+def bind_gnss_buffers_numa(out):
+    """Put each GNSS buffer (gnss<g>_*) on its GPU's NUMA node, that of host_voltage_buffer_<g>.
+    Buffers default to node 0, where GPU 1's GNSS copy-outs land beside both NIC ports and the
+    first port's DPDK workers, which then cannot keep up and drop packets at the distributor."""
+    for name, buf in out.items():
+        m = re.match(r"gnss(\d)_", name)
+        if (
+            not m
+            or not isinstance(buf, dict)
+            or "kotekan_buffer" not in buf
+            or "numa_node" in buf
+        ):
+            continue
+        hv = out.get("host_voltage_buffer_" + m.group(1)) or {}
+        buf["numa_node"] = int(hv.get("numa_node", int(m.group(1))))
+
 
 def gpu_of_channel(cfg, node, freq_id):
     """Which of the node's two GPUs (0/1) holds this freq_id, and its index in that comb."""
@@ -4076,7 +4094,9 @@ def main():
     out = copy.deepcopy(base)
     # Only a node config indexes the F-engine's combs; the aggregator, gather and archiver run on
     # their own (captured) base, whose telescope block is not the nodes'.
-    if not (args.aggregator_instance or args.gather_instance or args.cube_archive_instance):
+    if not (
+        args.aggregator_instance or args.gather_instance or args.cube_archive_instance
+    ):
         check_science_band(cfg, base)
 
     # --frame0-nano: start without chive's timing service. CHORDTelescope needs a GPS time at
@@ -4750,6 +4770,7 @@ def main():
             "# Edit config/chord_gnss_node.yaml and regenerate instead of hand-editing here.",
         ]
     )
+    bind_gnss_buffers_numa(out)
     text = (
         "\n".join(hdr)
         + "\n"
