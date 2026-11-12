@@ -195,11 +195,16 @@ void BeamformingPhaseUpdate::main_thread() {
         // Lock gain and metadata setting from updating while phase is set and generated
         {
             std::lock_guard<std::mutex> lock(beam_lock);
+
             // Set the metadata in the input frame to match what pointings we are
             // using at the time the phases are generated
-            if (_beam_offset == 0) // Only update the metadata from one thread
-                // TODO: on the "in" buffer, check this...
-                in_meta->set_beam_coord(_beam_coord);
+            if (_beam_offset == 0) { // Only update the metadata from one thread
+                out_buf->allocate_new_metadata_object(out_frame_id);
+                auto out_meta = get_chord_metadata(out_buf, out_frame_id);
+                out_meta->set_from_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
+                out_meta->set_coarse_freq(coarse_freq);
+                out_meta->set_beam_coord(_beam_coord);
+            }
 
             compute_phases(out_frame, gps_time, frequencies_in_frame, _beam_offset, gains_frame);
 
