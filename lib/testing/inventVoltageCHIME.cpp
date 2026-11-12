@@ -38,6 +38,28 @@
     return state;
 }
 
+static std::uint64_t splitmix64(std::uint64_t x) {
+    x += 0x9e3779b97f4a7c15ULL;
+    x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+    return x ^ (x >> 31);
+}
+
+/**
+ * @brief Invent CHIME voltages, one buffer per frequency, and optionally the lost samples.
+ *
+ * @conf lost_samples       List of buffers. Optional. One buffer per group of 4 frequencies,
+ *                          with one byte per time sample, 1 if lost, as dpdkCore writes them.
+ *                          A group's frame is marked full after the voltages of its 4
+ *                          frequencies are written, so that `zeroSamples` can then zero the
+ *                          lost samples.
+ * @conf lost_sample_rate   Double. Default 0. Probability that a packet of a group is lost,
+ *                          from a hash of `lost_sample_seed`, the packet and the group. A
+ *                          packet holds 2 time samples, as from the ICEboards.
+ * @conf lost_sample_seed   Int. Default 0.
+ * @conf lost_sample_boxes  List of [begin, end) FPGA sample ranges that are lost in every group.
+ *                          Default empty.
+ */
 class inventVoltageCHIME : public kotekan::Stage {
     const int num_dishes = config.get<int>(unique_name, "num_dishes");
     const int num_polarizations = config.get<int>(unique_name, "num_polarizations");
@@ -53,7 +75,53 @@ class inventVoltageCHIME : public kotekan::Stage {
     const int out_frame_first = config.get_default<int>(unique_name, "out_frame_first", 10);
     const int out_frame_every = config.get_default<int>(unique_name, "out_frame_every", 10);
 
+    const double lost_sample_rate =
+        config.get_default<double>(unique_name, "lost_sample_rate", 0.0);
+    const std::uint64_t lost_sample_seed =
+        config.get_default<std::uint64_t>(unique_name, "lost_sample_seed", 0);
+    const std::vector<std::vector<std::int64_t>> lost_sample_boxes =
+        config.get_default<std::vector<std::vector<std::int64_t>>>(unique_name, "lost_sample_boxes",
+                                                                   {});
+
     std::vector<Buffer*> buffers;
+    std::vector<Buffer*> lost_samples_buffers;
+
+    // Whether sample `seq` of frequency group `group` is lost
+    bool lost(const std::int64_t seq, const int group) const {
+        for (const auto& box : lost_sample_boxes)
+            if (seq >= box.at(0) && seq < box.at(1))
+                return true;
+        // Compare the top 53 bits of the hash of the packet with the rate
+        const std::uint64_t hash =
+            splitmix64(lost_sample_seed ^ splitmix64(std::uint64_t(seq / 2) * 4 + group));
+        return double(hash >> 11) * 0x1.0p-53 < lost_sample_rate;
+    }
+
+    // Write and mark full the lost samples of group `group` for frame `frame_index`
+    bool write_lost_samples(const int group, const int frame_index) {
+        Buffer* const buffer = lost_samples_buffers.at(group);
+        const int frame_id = frame_index % buffer->num_frames;
+        std::uint8_t* const frame = buffer->wait_for_empty_frame(unique_name, frame_id);
+        if (!frame)
+            return false;
+        const std::int64_t frame_seq = std::int64_t(frame_index) * num_times;
+
+        buffer->allocate_new_metadata_object(frame_id);
+        const auto& meta = get_chord_metadata(buffer->get_metadata(frame_id));
+        meta->set_fpga_seq_num(frame_seq);
+        meta->set_from_frame_desc(buffer->get_frame_desc<kotekan::GenericNDArray>());
+        meta->set_time_downsampling_fpga(1);
+        meta->set_coarse_freq(std::vector<int>(frequency_channels.begin() + 4 * group,
+                                               frequency_channels.begin() + 4 * group + 4));
+        meta->set_freq_upchan_factor(std::vector<int>(4, 1));
+        meta->set_freq_upchan_index(std::vector<int>(4, 0));
+
+        for (int time = 0; time < num_times; ++time)
+            frame[time] = lost(frame_seq + time, group);
+
+        buffer->mark_frame_full(unique_name, frame_id);
+        return true;
+    }
 
 public:
     inventVoltageCHIME(kotekan::Config& config, const std::string& unique_name,
@@ -76,6 +144,21 @@ public:
                     "E", {1, num_times, num_polarizations * num_dishes}, {"F", "T", "E"},
                     {1, 1, 1}));
         }
+
+        if (config.exists(unique_name, "lost_samples")) {
+            lost_samples_buffers = get_buffer_array("lost_samples");
+            if (4 * int(lost_samples_buffers.size()) != num_frequencies)
+                FATAL_ERROR("`lost_samples` lists {:d} buffers for {:d} frequencies",
+                            lost_samples_buffers.size(), num_frequencies);
+            for (Buffer* const buffer : lost_samples_buffers)
+                buffer->register_producer(unique_name);
+        }
+        // `zeroSamples` zeroes lost samples in place, which a reused frame would keep
+        if (reuse_frames && (lost_sample_rate > 0 || !lost_sample_boxes.empty()))
+            FATAL_ERROR("Lost samples require `reuse_frames: false`");
+        for (const auto& box : lost_sample_boxes)
+            if (box.size() != 2)
+                FATAL_ERROR("`lost_sample_boxes` entries must be [begin, end)");
     }
 
     virtual ~inventVoltageCHIME() {}
@@ -155,6 +238,9 @@ public:
                 meta->set_coarse_freq(coarse_freq);
                 meta->set_freq_upchan_factor(freq_upchan_factor);
                 meta->set_freq_upchan_index(freq_upchan_index);
+                // `zeroSamples` adds the samples it zeroes
+                if (!lost_samples_buffers.empty())
+                    meta->set_lost_timesamples(0);
 
                 // Fill buffer
                 DEBUG("[{:s}/{:d}] Filling buffer...", buffer->buffer_name, frame_index);
@@ -201,6 +287,11 @@ public:
                 // Mark buffer as full
                 DEBUG("[{:s}/{:d}] Marking buffer as full...", buffer->buffer_name, frame_index);
                 buffer->mark_frame_full(unique_name, frame_id);
+
+                // The voltages of a group of 4 frequencies are written
+                if (!lost_samples_buffers.empty() && frequency % 4 == 3)
+                    if (!write_lost_samples(frequency / 4, frame_index))
+                        return;
             } // for buffer
         } // for frame
     }

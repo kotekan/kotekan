@@ -43,6 +43,7 @@ Welcome to Kotekan's documentation!
    dev/dev_gate_specs
    dev/dev_stage_tutorial
    dev/dev_unit_tests
+   dev/dev_integration_tests
    dev/dev_actions
    dev/dev_config_tracker
    dev/dev_pilotproxy_testing

@@ -1,0 +1,158 @@
+# -*-yaml-*-
+
+# Integration test input
+#
+# Set by the telescope config (CHIME):
+#     voltage_buffers
+#                   one voltage buffer per frequency (default: host_voltage_buffer)
+#     lost_samples_buffers
+#                   lost samples buffers, one per 4 frequencies, instead of the PL mask
+#                   (default: none, inventPLMask fills host_pl_mask_buffer)
+#     bf_mask_orders
+#                   bufferBadInputs input and output order (default: CHORDBeamformer)
+#     bad_inputs_defined
+#                   the telescope config defines /updatable_config/bad_inputs (default: false)
+#
+# Jinja variables:
+#     first_fpga_seq_num
+#                   FPGA sequence number of the first sample (default: 0), used by all generators
+#     gps_frame0_nano
+#                   the UNIX time of FPGA sample 0 in ns (default: 2026-01-01T00:00:00Z); without
+#                   it the telescope takes the system time at startup, and fringe stopping
+#                   differs from run to run
+#     input_kind    inventVoltage input kind (default: random)
+#     box_begin, box_end
+#                   for input_kind `box`: FPGA samples with a constant voltage
+#     sources, noise_rms, seed, noise_period_frames, active_inputs
+#                   for input_kind `sky`, see lib/testing/testSkySignal.hpp
+#     pl_box_begin, pl_box_end
+#                   lost FPGA samples (default: none)
+#     loss_rate, loss_seed, loss_boxes
+#                   random packet loss and lost FPGA sample ranges (default: none), see
+#                   testPacketLoss in lib/testing/testSkySignal.hpp
+#     lost_voltage  the voltage of the samples lost by loss_rate and loss_boxes: keep, zero or
+#                   nodata (-8-8i) (default: keep)
+#     bf_source     the bad feed masks: invent (inventBFMask) or rest (bufferBadInputs, from POSTs
+#                   to /updatable_config/bad_inputs) (default: invent)
+#     bf_mode, bf_manual_bad_feeds
+#                   inventBFMask mode (default: all_good)
+#     bf_mask_lifetime_frames
+#                   bad feed mask lifetime for RFI, BB and FRB1, in frames (default: 24)
+#     bf_change_frames, bf_random_count, bf_seed
+#                   random bad feeds on top of bf_mode, changing every bf_change_frames frames
+#                   (default: 0, none), see testBadFeeds in lib/testing/testSkySignal.hpp
+#     bad_voltage   the voltage of the bad feeds of bf_change_frames and of Missing dishes: keep,
+#                   random, or random_valid (random without -8) (default: keep)
+
+{% set input_kind = input_kind | default('random') %}
+{% set voltage_buffers = voltage_buffers | default(['host_voltage_buffer']) %}
+{% set bf_mask_orders = bf_mask_orders | default(['CHORDBeamformer', 'CHORDBeamformer']) %}
+
+first_fpga_seq_num: {{ first_fpga_seq_num | default(0) }}
+
+gps_time:
+    frame0_nano: {{ gps_frame0_nano | default(1767225600000000000) }}
+
+# Packet loss, the same for the PL mask and the voltages
+loss_rate: {{ loss_rate | default(0) }}
+loss_seed: {{ loss_seed | default(1) }}
+loss_boxes: {{ loss_boxes | default([]) | tojson }}
+
+# Bad feeds, the same for the bad feed masks and the voltages
+bad_feed_change_in_samples: {{ bf_change_frames | default(0) }} * num_times
+bad_feed_count: {{ bf_random_count | default([3, 5]) | tojson }}
+bad_feed_seed: {{ bf_seed | default(1) }}
+
+################################################################################
+
+# Stages
+
+generate_voltage:
+    kotekan_stage: inventVoltage
+    voltage: {{ voltage_buffers[0] if voltage_buffers | length == 1 else voltage_buffers | tojson }}
+{% if lost_samples_buffers is defined %}
+    lost_samples: {{ lost_samples_buffers | tojson }}
+{% endif %}
+    input_kind: {{ input_kind }}
+    lost_voltage: {{ lost_voltage | default('keep') }}
+    bad_voltage: {{ bad_voltage | default('keep') }}
+{% if input_kind == 'box' %}
+    box_begin: {{ box_begin }}
+    box_end: {{ box_end }}
+    reuse_frames: false
+{% elif input_kind == 'sky' %}
+    sources: {{ sources | default([]) | tojson }}
+    noise_rms: {{ noise_rms | default(0) }}
+    seed: {{ seed | default(1) }}
+    noise_period_frames: {{ noise_period_frames | default(4) }}
+{% if active_inputs is defined %}
+    active_inputs: {{ active_inputs | tojson }}
+{% endif %}
+{% else %}
+    reuse_frames: true
+{% endif %}
+
+{% if lost_samples_buffers is defined %}
+# Zero the lost samples, as config/fengine/include/invent_voltage_chime.j2. inventVoltage marks the
+# lost samples full after the voltages, as dpdk does.
+zero_samples:
+{% for buf in voltage_buffers %}
+    zero_{{ loop.index0 }}:
+        kotekan_stage: zeroSamples
+        lost_samples_buf: {{ lost_samples_buffers[loop.index0 // 4] }}
+        out_buf: {{ buf }}
+{% endfor %}
+{% endif %}
+
+{% if lost_samples_buffers is not defined %}
+generate_pl_mask:
+    kotekan_stage: inventPLMask
+    pl_mask: host_pl_mask_buffer
+    box_begin: {{ pl_box_begin | default(0) }}
+    box_end: {{ pl_box_end | default(0) }}
+{% endif %}
+
+{% if bf_source | default('invent') == 'rest' %}
+# The bad feed masks from POSTs to /updatable_config/bad_inputs, as in config/chord/pathfinder.j2
+{% if not bad_inputs_defined | default(false) %}
+updatable_config:
+    bad_inputs:
+        kotekan_update_endpoint: json
+        bad_inputs: []
+        start_time: 0.
+        update_id: "initial"
+{% endif %}
+
+set_bf_mask:
+    num_elements: num_polarizations * num_dishes
+    input_order: {{ bf_mask_orders[0] }}
+    output_order: {{ bf_mask_orders[1] }}
+    # Both streams switch at the beamformer stream's frame boundaries
+    bf_mask_update_alignment_in_samples: {{ bf_mask_lifetime_frames | default(24) }} * num_times
+    for_beamformers:
+        kotekan_stage: bufferBadInputs
+        updatable_config:
+            bad_inputs: /updatable_config/bad_inputs
+        metadata_source: {{ voltage_buffers[0] }}
+        out_buf: host_bf_mask_buffer
+    # The same mask for N2Accumulate, one frame per correlation frame
+    for_n2:
+        kotekan_stage: bufferBadInputs
+        updatable_config:
+            bad_inputs: /updatable_config/bad_inputs
+        metadata_source: {{ voltage_buffers[0] }}
+        out_buf: host_n2_bf_mask_buffer
+        bf_mask_lifetime_in_samples: n2k_samples_per_data_set
+{% else %}
+generate_bf_mask:
+    mode: {{ bf_mode | default('all_good') }}
+    manual_bad_feeds: {{ bf_manual_bad_feeds | default([]) }}
+    for_beamformers:
+        kotekan_stage: inventBFMask
+        bf_mask: host_bf_mask_buffer
+    # The same mask for N2Accumulate, one frame per correlation frame
+    for_n2:
+        kotekan_stage: inventBFMask
+        bf_mask: host_n2_bf_mask_buffer
+        bf_mask_lifetime_in_samples: n2k_samples_per_data_set
+{% endif %}
