@@ -245,7 +245,8 @@ Monitoring
   then cover the DTV rejections as well.
 * ``dtv_powers`` holds the pilot and reference powers of every block, so a
   moved pilot or a new line near a reference bin can be seen there even when
-  the mask does not fire. Either one requires a recalibration.
+  the mask does not fire. Either one requires a recalibration. On CHORD it is
+  sent only in calibration mode.
 * In calibration mode, ``config/chord/dtv.j2`` also sends ``dtv_fine_powers`` to
   the recv node, on port 11037. PilotProxy calibrates a bundle from these files,
   so a detect-only run replaces baseband captures for calibration. The output has
