@@ -686,9 +686,11 @@ def test_chime_detector_is_diagnostic_in_each_numa_domain():
         detector = stage["commands"][0]
         assert detector["receiver_channel_id_namespace"] == "chime_freq_id"
         assert detector["voltage_name"] == "xposed_voltage"
+        assert detector["bf_mask_name"] == "bf_mask"
         assert stage["in_buffers"]["host_xposed_voltage_ringbuffer"].endswith(
             f"_n{numa}"
         )
+        assert stage["in_buffers"]["host_bf_mask_ringbuffer"].endswith(f"_n{numa}")
         assert all(
             row["kotekan_stage"] == "rawFileWrite"
             and row["file_name"].endswith(f"_n{numa}")
@@ -697,11 +699,33 @@ def test_chime_detector_is_diagnostic_in_each_numa_domain():
         added = set(domain) - set(base[f"numa_{numa}"])
         assert added == {
             f"host_dtv_mask_buffer_n{numa}",
-            f"host_dtv_powers_buffer_n{numa}",
-            f"host_dtv_fine_support_buffer_n{numa}",
             "run_dtv_detector",
             "write_dtv",
         }
+        assert list(domain["write_dtv"]) == ["mask"]
+
+
+def test_chime_calibration_mode_writes_every_product():
+    env = Environment(loader=FileSystemLoader(str(ROOT / "config/chime")))
+    template = env.get_template("chime_upgrade_2numa.j2")
+    cfg = yaml.safe_load(
+        template.render(
+            dtv_enabled=True, dtv_write_enabled=True, dtv_calibration_mode=True
+        )
+    )
+    for numa in (0, 1):
+        domain = cfg[f"numa_{numa}"]
+        assert sorted(domain["write_dtv"]) == [
+            "fine_powers",
+            "fine_support",
+            "mask",
+            "powers",
+        ]
+        row = domain["write_dtv"]["fine_powers"]
+        assert row["kotekan_stage"] == "hdf5FileWrite"
+        assert row["file_name"] == f"dtv_fine_powers_n{numa}"
+        detector = domain["run_dtv_detector"]["commands"][0]
+        assert detector["dtv_fine_powers_rows"] == "num_freq_gpu_buf"
 
 
 @pytest.mark.parametrize("reject_finite", [False, True])

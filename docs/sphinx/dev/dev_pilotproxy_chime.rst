@@ -16,9 +16,12 @@ with the default ``chord_freq_id`` setting.
 ``config/chime/dtv.j2`` is an optional diagnostic template for the packed
 ``xposed_voltage`` ring. ``chime_upgrade_2numa.j2`` includes it in each NUMA domain
 when ``dtv_enabled`` is set, and ``dtv_runtime_bundle_dir`` and ``dtv_output_dir``
-name the bundle and the output directory. It writes the mask, power, and
-fine-support products, and no visibility or count consumer is routed through the
-detector.
+name the bundle and the output directory. No visibility or count consumer is
+routed through the detector.
+The detector drops the inputs flagged by ``bufferBadInputs``.
+It writes only the mask unless ``dtv_calibration_mode`` is set, which also writes
+the powers, fine support, and fine powers (HDF5, about 2.3 MB/s per NUMA domain)
+for calibration and debugging.
 
 ``DtvRfiMask`` accepts 8192- and 16384-sample blocks, and its RFImask has the
 shape ``[num_times/1024, F, 128]``. Both the visibility and count consumers
