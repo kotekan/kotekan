@@ -154,27 +154,6 @@ std::string normalize_base_dir(const std::string& dir) {
 }
 } // namespace
 
-/// Generate an acquisition base directory path: base_dir/acq_YYYYMMDD_HHMMSS_NNNNNNNNN
-static std::string get_acq_base_dir_path(const std::string& base_dir) {
-    // Strip trailing slashes
-    std::string dir = base_dir;
-    while (dir.size() > 1 && dir.back() == '/')
-        dir.pop_back();
-
-    auto now = std::chrono::system_clock::now();
-    auto time_t_now = std::chrono::system_clock::to_time_t(now);
-    auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count()
-              % 1'000'000'000LL;
-
-    std::tm tm_buf{};
-    gmtime_r(&time_t_now, &tm_buf);
-
-    std::ostringstream oss;
-    oss << dir << "/acq_" << std::put_time(&tm_buf, "%Y%m%d_%H%M%S") << "_" << std::setfill('0')
-        << std::setw(9) << ns;
-    return oss.str();
-}
-
 // Monotonic time in seconds
 inline double mono_time_s() {
     using clock = std::chrono::steady_clock;
@@ -1252,7 +1231,8 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
           [](const kotekan::Stage& stage) {
               return const_cast<kotekan::Stage&>(stage).main_thread();
           }),
-    _base_dir(get_acq_base_dir_path(config.get<std::string>(unique_name, "base_dir"))),
+    _base_dir(hdf5::acq_dir_path(config.get<std::string>(unique_name, "base_dir"),
+                                 std::chrono::system_clock::now())),
     _baseband_gain_file(config.get_default<std::string>(unique_name, "baseband_gain_file", "")),
     _baseband_gain_update_idx(config.get_default<int>(unique_name, "baseband_gain_update_idx", -1)),
     _num_file_t(config.get<std::uint64_t>(unique_name, "num_file_t")),

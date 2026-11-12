@@ -4,7 +4,9 @@
 
 #include "fmt.hpp" // for format, format_string
 
+#include <chrono>    // for system_clock, duration_cast, nanoseconds
 #include <cstdint>   // for uint8_t, int64_t, int16_t, int32_t, int8_t, uint16_t, uint32_t
+#include <ctime>     // for gmtime_r, tm
 #include <iomanip>   // for operator<<, setfill, setw
 #include <sstream>   // for basic_ostream, operator<<, basic_ostringstream
 #include <stdexcept> // for runtime_error
@@ -53,6 +55,26 @@ HighFive::DataType chord2hdf5(const kotekan::DataType type) {
             throw std::runtime_error(
                 fmt::format("chord2hdf5 given unknown DataType value: {:d} ", (int64_t)type));
     }
+}
+
+std::string acq_dir_path(const std::string& base_dir,
+                         const std::chrono::system_clock::time_point t) {
+    std::string dir = base_dir;
+    while (dir.size() > 1 && dir.back() == '/')
+        dir.pop_back();
+
+    const auto time_t_t = std::chrono::system_clock::to_time_t(t);
+    const auto ns =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(t.time_since_epoch()).count()
+        % 1'000'000'000LL;
+
+    std::tm tm_buf{};
+    gmtime_r(&time_t_t, &tm_buf);
+
+    std::ostringstream oss;
+    oss << dir << "/acq_" << std::put_time(&tm_buf, "%Y%m%d_%H%M%S") << "_" << std::setfill('0')
+        << std::setw(9) << ns;
+    return oss.str();
 }
 
 std::string file_path_prefix(const std::string& dir, const std::string& file_name,
