@@ -10,7 +10,7 @@ stage and its configuration on the telescope are described in
 
 The tests need Kotekan built with ``USE_CUDA=ON`` and ``WITH_TESTS=ON``, and a
 CUDA device that supports the vendored detector core. The CI harness creates a
-temporary virtual environment with pinned dependencies, exports both receiver
+temporary virtual environment with its dependencies, exports both receiver
 bundles, and removes its generated files on exit:
 
 .. code-block:: sh

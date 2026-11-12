@@ -215,7 +215,7 @@ CMD ["/bin/bash"]
 FROM cpu AS intel
 
 # Add the Intel oneAPI apt repository and install the DPC++/C++
-# compilers (icx/icpx), pinned to a specific oneAPI release.
+# compilers (icx/icpx).
 # The gdb-oneapi debugger (~530 MB) is forced in by a hard package
 # dependency but is not needed for CI builds, so remove it in the
 # same layer to keep the image smaller.
@@ -224,7 +224,7 @@ RUN wget -qO /usr/share/keyrings/oneapi-archive-keyring.asc \
     echo "deb [signed-by=/usr/share/keyrings/oneapi-archive-keyring.asc] https://apt.repos.intel.com/oneapi all main" \
         > /etc/apt/sources.list.d/oneAPI.list && \
     apt-get update && \
-    apt-get install -y --no-install-recommends intel-oneapi-compiler-dpcpp-cpp-2026.1 && \
+    apt-get install -y --no-install-recommends intel-oneapi-compiler-dpcpp-cpp && \
     apt-get clean && apt-get autoclean && rm -rf /var/lib/apt/lists/* && \
     rm -rf /opt/intel/oneapi/debugger
 
