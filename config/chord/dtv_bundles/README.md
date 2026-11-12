@@ -5,3 +5,4 @@ Each directory is a PilotProxy runtime bundle, named `<purpose>-<first 8 digits 
 | Bundle | Channels | Use |
 |---|---|---|
 | `pathfinder-commissioning-b8026807` | 18, 24, 29 | Detect-only runs, never with `dtv_apply_mask` |
+| `pathfinder-commissioning-e2e90219` | 18, 24, 29, control 37 | The same words, and records channel 37 for the next calibration. Detect-only runs, never with `dtv_apply_mask` |
