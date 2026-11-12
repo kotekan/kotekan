@@ -55,18 +55,18 @@ void FloatPhaseUpdate::compute_phases(uint8_t* out_frame_int, const timespec& gp
     // Calculating the hour angle and phases for all frequencies in a frame for each pointing.
     for (uint32_t b = beam_offset; b < (_num_local_beams + beam_offset); b++) {
         // Special case for forming a beam at the telescope zenith, e.g. only apply gains, no phases.  
-	    if (_beam_coord.scaling[b] == 1) { 
+        if (_beam_coord.scaling[b] == 1) {
             for (uint32_t i = 0; i < _num_elements * _num_local_freq * 2; ++i) {
                 out_frame[b * _num_elements * _num_local_freq * 2 + i] = gains_frame[b * _num_elements * _num_local_freq * 2 + i];
             }
             continue;
         }
-        double hour_angle  = LSA - _beam_coord.ra[b];
+        double hour_angle  = LSA - _beam_coord.right_ascension[b];
 
-        double alt = sin(_beam_coord.dec[b] * D2R) * sin(_inst_lat * D2R)
-                     + cos(_beam_coord.dec[b] * D2R) * cos(_inst_lat * D2R) * cos(hour_angle * D2R);
+        double alt = sin(_beam_coord.declination[b] * D2R) * sin(_inst_lat * D2R)
+                     + cos(_beam_coord.declination[b] * D2R) * cos(_inst_lat * D2R) * cos(hour_angle * D2R);
         alt = asin(std::clamp(alt, -1.0, 1.0));
-        double az = (sin(_beam_coord.dec[b] * D2R) - sin(alt) * sin(_inst_lat * D2R))
+        double az = (sin(_beam_coord.declination[b] * D2R) - sin(alt) * sin(_inst_lat * D2R))
                     / (cos(alt) * cos(_inst_lat * D2R));
         az = acos(std::clamp(az, -1.0, 1.0));
         if (sin(hour_angle * D2R) >= 0) {
@@ -81,16 +81,16 @@ void FloatPhaseUpdate::compute_phases(uint8_t* out_frame_int, const timespec& gp
                 double dist_x = feed_locations[j].first;
                 double dist_y = feed_locations[j].second;
 
-		        projection_angle = 90 * D2R - atan2(dist_y, dist_x);
+                projection_angle = 90 * D2R - atan2(dist_y, dist_x);
                 offset_distance = sqrt(pow(dist_y, 2) + pow(dist_x, 2));
                 effective_angle = projection_angle - az;
 
-		        double delay_real = cos(TAU * cos(effective_angle) * cos(alt) * offset_distance
+                double delay_real = cos(TAU * cos(effective_angle) * cos(alt) * offset_distance
                                        * frequencies_in_frame[i] * one_over_c);
                 double delay_imag = -sin(TAU * cos(effective_angle) * cos(-alt) * offset_distance
                                         * frequencies_in_frame[i] * one_over_c);
 
-		        // Looping over 2 polarisations.
+                // Looping over 2 polarisations.
                 // Make sure that the gains are in accordance with the feed locations and frequencies.
                 for (int p = 0; p < 2; p++) {
                     uint elem_id = p * _num_elements / 2 + j;
