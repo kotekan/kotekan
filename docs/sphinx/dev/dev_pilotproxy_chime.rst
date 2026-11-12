@@ -19,8 +19,9 @@ when ``dtv_enabled`` is set, and ``dtv_runtime_bundle_dir`` and ``dtv_output_dir
 name the bundle and the output directory. It writes the mask, power, and
 fine-support products, and no visibility or count consumer is routed through the
 detector.
-``dtv_record_fine_powers`` adds the fine powers as HDF5 for calibration, and
-``dtv_bad_feed_mask`` drops the flagged inputs.
+The detector drops the inputs flagged by ``bufferBadInputs``.
+``dtv_record_fine_powers`` is the calibration mode: it also writes the fine powers
+as HDF5, about 2.3 MB/s per NUMA domain.
 
 ``DtvRfiMask`` accepts 8192- and 16384-sample blocks, and its RFImask has the
 shape ``[num_times/1024, F, 128]``. Both the visibility and count consumers

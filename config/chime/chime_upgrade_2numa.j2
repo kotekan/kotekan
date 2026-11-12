@@ -431,7 +431,7 @@ numa_{{ numa }}:
 
     main_pool{{ numa_sfx }}:
         kotekan_metadata_pool: chordMetadata
-        num_metadata_objects: {{ 33 if dtv_enabled|default(false) else 30 }} * host_buffer_depth + 5 * baseband_buffer_depth
+        num_metadata_objects: {{ (34 if dtv_record_fine_powers|default(false) else 33) if dtv_enabled|default(false) else 30 }} * host_buffer_depth + 5 * baseband_buffer_depth
 
     # Baseband metadata pool
     baseband_pool{{ numa_sfx }}:

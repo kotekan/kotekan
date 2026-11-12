@@ -657,9 +657,11 @@ def test_chime_detector_is_diagnostic_in_each_numa_domain():
         detector = stage["commands"][0]
         assert detector["receiver_channel_id_namespace"] == "chime_freq_id"
         assert detector["voltage_name"] == "xposed_voltage"
+        assert detector["bf_mask_name"] == "bf_mask"
         assert stage["in_buffers"]["host_xposed_voltage_ringbuffer"].endswith(
             f"_n{numa}"
         )
+        assert stage["in_buffers"]["host_bf_mask_ringbuffer"].endswith(f"_n{numa}")
         assert all(
             row["kotekan_stage"] == "rawFileWrite"
             and row["file_name"].endswith(f"_n{numa}")
