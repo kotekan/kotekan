@@ -26,9 +26,11 @@
 #         GNSS_EOP_MIN_H       hours of baked EOP table required ahead of now (default 12)
 #         GNSS_SKIP_PREFLIGHT  1 skips the EOP-table, F-engine controller and interface checks
 #         GNSS_SKIP_IFACE      1 skips the interface check only
+#         GNSS_AS_USER         1 runs the unit as the invoking user, in that user's systemd
+#                              manager, with no sudo (see below)
 #
 # Needs an interactive sudo on the target, so it uses `ssh -t` and prompts per node (`status`
-# needs neither).
+# and GNSS_AS_USER=1 need neither).
 set -u
 # shellcheck source=kotekan_src.sh
 . "$(dirname "${BASH_SOURCE[0]}")/kotekan_src.sh"
@@ -58,6 +60,18 @@ fi
 # chains and come up green. Empty is fine here: only the start path needs a config, and
 # `down`/`status` must work for a node the manifest does not list. preflight() refuses it.
 CFG=${GNSS_CFG:-}
+# GNSS_AS_USER=1: kotekan runs as the invoking user, in `systemd-run --user`, with no sudo. The
+# NIC's vfio group devices and /dev/hugepages belong to the kotekan group (the site's ansible,
+# roles/kotekan), so the user must be in it, and so must the user's systemd manager, which keeps
+# the groups it started with: the start checks the groups a user unit gets. `loginctl
+# enable-linger`, which polkit allows for one's own user, keeps that manager and the unit alive
+# past the ssh session. A root unit (the default mode) holds the NIC, the hugepages and the log
+# file, so stop it with sudo first; the start refuses while it runs or while the log is root's.
+if [ "${GNSS_AS_USER:-0}" = 1 ]; then
+    SUDO=; SCTL="systemctl --user"; RUN="systemd-run --user"
+else
+    SUDO=sudo; SCTL=systemctl; RUN="sudo systemd-run"
+fi
 LOG=${GNSS_LOG:-/tmp/gnss_node.log}
 # GNSS_ENV becomes systemd-run --setenv flags on the transient unit, so it lasts for this start
 # (and the unit's own on-failure restarts) and a plain node_up drops it. Entries are restricted to
@@ -242,12 +256,21 @@ print("%s:%s%s" % (c["host"], c["port"], c.get("timing_endpoint", "/get-frame0-t
 # installed and the line is not already there.
 NR_CONF=/etc/needrestart/conf.d/gnss-node.conf
 NR_LINE='$nrconf{override_rc}{qr(^gnss-node\.service$)} = 0;'
-REMOTE_UP="mkdir -p /tmp/gnss/beamdump /tmp/gnss/trackbeam /tmp/gnss/dtv /tmp/gnss/lanedump /tmp/gnss/viscap && sudo systemctl reset-failed gnss-node 2>/dev/null || true; \
-      { [ -d $(dirname $NR_CONF) ] && ! grep -qxF '$NR_LINE' $NR_CONF 2>/dev/null \
-        && echo '$NR_LINE' | sudo tee $NR_CONF >/dev/null; true; }; \
-      { [ -f '$LOG' ] && sudo mv -f '$LOG' '$LOG.1'; true; }; \
+if [ -n "$SUDO" ]; then
+    MODE_UP="{ [ -d $(dirname $NR_CONF) ] && ! grep -qxF '$NR_LINE' $NR_CONF 2>/dev/null \
+        && echo '$NR_LINE' | sudo tee $NR_CONF >/dev/null; true; }"
+else
+    # needrestart restarts system services only, so a user unit needs no override.
+    MODE_UP="{ ! systemctl is-active -q gnss-node || { echo \"node_up: the root gnss-node unit is running: sudo systemctl stop gnss-node first\"; exit 2; }; } \
+      && { [ ! -e '$LOG' ] || [ -O '$LOG' ] || { echo \"node_up: $LOG is not this user's: sudo rm -f $LOG $LOG.1\"; exit 2; }; } \
+      && { loginctl show-user \$(id -un) -p Linger | grep -q =yes || loginctl enable-linger; } \
+      && { systemd-run --user --wait --pipe -q id -nG | grep -qw kotekan || { echo \"node_up: a user unit here lacks the kotekan group (vfio, hugepages)\"; exit 2; }; }"
+fi
+REMOTE_UP="mkdir -p /tmp/gnss/beamdump /tmp/gnss/trackbeam /tmp/gnss/dtv /tmp/gnss/lanedump /tmp/gnss/viscap && $SUDO $SCTL reset-failed gnss-node 2>/dev/null || true; \
+      $MODE_UP; \
+      { [ -f '$LOG' ] && $SUDO mv -f '$LOG' '$LOG.1'; true; }; \
       test -r '$CFG' || { echo \"node_up: config unreadable\"; exit 2; }; \
-      sudo systemd-run --unit=gnss-node \
+      $RUN --unit=gnss-node \
         --working-directory=$K \
         --property=Restart=on-failure --property=RestartSec=20 \
         --property=StartLimitIntervalSec=0 \
@@ -272,13 +295,13 @@ REMOTE_UP="mkdir -p /tmp/gnss/beamdump /tmp/gnss/trackbeam /tmp/gnss/dtv /tmp/gn
 # active/activating; a unit waiting out RestartSec after a failure reads "activating", so
 # that wait continues while systemd restarts it.
 REMOTE_START_VERIFY="for attempt in 1 2 3; do \
-      sudo systemctl stop gnss-node 2>/dev/null || true; sleep 1; \
+      $SUDO $SCTL stop gnss-node 2>/dev/null || true; sleep 1; \
       $REMOTE_UP || { echo \"node_up: systemd-run failed on attempt \$attempt -- retrying\"; continue; }; \
       ok=0; \
       for i in \$(seq 1 100); do \
         if curl -sf -m 2 -o /dev/null http://localhost:12048/telescope/time0_ns 2>/dev/null; \
           then ok=1; break; fi; \
-        systemctl is-active gnss-node 2>/dev/null | grep -qE '^activ' || break; \
+        $SCTL is-active gnss-node 2>/dev/null | grep -qE '^activ' || break; \
         sleep 2; \
       done; \
       if [ \$ok = 1 ]; then echo \"node_up: up on attempt \$attempt\"; exit 0; fi; \
@@ -292,11 +315,11 @@ case "$ACT" in
     # `systemctl is-active` exits non-zero for a stopped unit, so a bare `|| echo unreachable`
     # would report every reachable-but-stopped node as unreachable. Capture instead of chaining.
     printf "%-6s " "$N"
-    S=$(ssh -o BatchMode=yes -o ConnectTimeout=5 "$N" systemctl is-active gnss-node 2>/dev/null)
+    S=$(ssh -o BatchMode=yes -o ConnectTimeout=5 "$N" $SCTL is-active gnss-node 2>/dev/null)
     echo "${S:-unreachable}"
     ;;
   down)
-    ssh -t "$N" "sudo systemctl stop gnss-node"
+    ssh -t "$N" "$SUDO $SCTL stop gnss-node"
     echo "note: the unit is transient -- it is now gone. Use '$0 $N' to bring it back."
     ;;
   up)
