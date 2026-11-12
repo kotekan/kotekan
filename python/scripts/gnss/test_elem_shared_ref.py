@@ -10,6 +10,10 @@ reference keeps the pinned instances' phase, and an instance off that phase is l
 
 A posted reference carries the zeros the instance's generated config holds, so a re-post does
 not put an input the generator took out back at full weight.
+
+A band that has assemblers and no entry in the reference (a new chain) is one whose instances
+each hold their own pin. The watch takes its first reference from the fleet consensus once the
+band has gone without one for MIN_RUN_S, unless the band is held.
 """
 import argparse
 import contextlib
@@ -104,7 +108,10 @@ class TestBandConsensus(unittest.TestCase):
         for i, a in enumerate((0, 50, 100, 150, 200, 250)):
             for chain in ("gps_l5", "sbas_l5"):
                 g = np.concatenate(
-                    [model(self.rng, self.shape[0], a), model(self.rng, self.shape[1], -a)]
+                    [
+                        model(self.rng, self.shape[0], a),
+                        model(self.rng, self.shape[1], -a),
+                    ]
                 )
                 res[(NODES[i // 2], "gnss%d_%s_n2assemble" % (i % 2, chain))] = {
                     "shared_warm": True,
@@ -113,7 +120,9 @@ class TestBandConsensus(unittest.TestCase):
                 }
         e = esr.band_consensus(res, "l5", esr.EXCLUDE_DEG, esr.MIN_SIM)
         self.assertEqual(e["n"], [12, 12])
-        self.assertEqual(esr.inst_name("cx27", "gnss1_sbas_l5_n2assemble"), "cx27/1:sbas")
+        self.assertEqual(
+            esr.inst_name("cx27", "gnss1_sbas_l5_n2assemble"), "cx27/1:sbas"
+        )
         self.assertEqual(esr.inst_name("cx27", "gnss1_gps_l5_n2assemble"), "cx27/1")
 
     def test_a_model_of_another_shape_is_left_out(self):
@@ -270,6 +279,122 @@ class TestPostZeros(unittest.TestCase):
         ok, _ = esr.post_note("cx51", "gnss0_n2assemble", self.REF, "live", "test")
         self.assertTrue(ok)
         self.assertEqual(self.node.posts[0][1]["ref"][1], [0.0, 0.0])
+
+
+class TestWatchFirstTake(unittest.TestCase):
+    """watch on a fleet whose reference has no entry for one of its bands."""
+
+    def setUp(self):
+        self.rng = np.random.default_rng(1112)
+        self.shape = (true_shape(self.rng), true_shape(self.rng))
+        self.d = tempfile.mkdtemp()
+        for n in NODES:
+            with open(os.path.join(self.d, "chord_gnss_%s_multi.yaml" % n), "w") as fh:
+                fh.write("gnss0_gps_l1ca_n2assemble:\n  elem_positions_epoch: E\n")
+        self.snap = os.path.join(self.d, "ref.json")
+        flat = [[1.0, 0.0]] * (2 * N_HALF)
+        with open(self.snap, "w") as fh:
+            json.dump(
+                {
+                    "epoch": "E",
+                    "taken_utc": "2026-01-01T00:00:00Z",
+                    "bands": {"l5": {"ref": flat}},
+                },
+                fh,
+            )
+        self.out = os.path.join(self.d, "elem_ref")
+        self.real = (esr.GEN, esr.urllib.request.urlopen, esr.poll)
+        esr.GEN = os.path.join(self.d, "chord_gnss_%s_multi.yaml")
+        self.node = esr.urllib.request.urlopen = FakeNode()
+        self.set_fleet(n_noise=0)
+
+    def tearDown(self):
+        esr.GEN, esr.urllib.request.urlopen, esr.poll = self.real
+        shutil.rmtree(self.d)
+
+    def set_fleet(self, n_noise):
+        """Ten gps_l1ca assemblers at scattered global phases; n_noise of them learned nothing."""
+        halves = [
+            (model(self.rng, self.shape[0], a), model(self.rng, self.shape[1], -a))
+            for a in range(0, 360, 36)
+        ]
+        for i in range(n_noise):
+            halves[i] = (noise_model(self.rng), noise_model(self.rng))
+        res = poll(halves, band="gps_l1ca")
+        esr.poll = lambda: res
+
+    def watch(self, act=True, hold=""):
+        a = argparse.Namespace(
+            file=self.snap, dir=self.out, mode="live", act=act, hold=hold
+        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            esr.watch(a)
+        with open(os.path.join(self.out, "current.json")) as fh:
+            return json.load(fh)
+
+    def age(self):
+        """Move the band's no-reference timer past MIN_RUN_S."""
+        path = os.path.join(self.out, "state.json")
+        with open(path) as fh:
+            st = json.load(fh)
+        st["stale"]["l1ca"] -= esr.MIN_RUN_S + 1.0
+        with open(path, "w") as fh:
+            json.dump(st, fh)
+
+    def auto(self):
+        try:
+            with open(os.path.join(self.out, "auto_ref.json")) as fh:
+                return json.load(fh)
+        except OSError:
+            return None
+
+    def test_first_reference_is_taken_after_min_run(self):
+        cur = self.watch()
+        self.assertEqual((self.node.posts, self.auto()), ([], None))
+        self.assertEqual(cur["alerts"], [])
+        self.age()
+        cur = self.watch()
+        self.assertEqual(len(self.node.posts), 10)
+        self.assertEqual({body["mode"] for _url, body in self.node.posts}, {"live"})
+        auto = self.auto()
+        self.assertEqual(sorted(auto["bands"]), ["l1ca", "l5"])
+        self.assertIn("l1ca", auto["auto"])
+        self.assertTrue(
+            any("taken from the fleet consensus" in n for n in cur["acted"])
+        )
+        for pol, f in enumerate(ref_halves(auto["bands"]["l1ca"])):
+            self.assertGreater(abs(np.vdot(self.shape[pol], f)), 0.99)
+        # the band is in the reference now: the next pass takes nothing
+        del self.node.posts[:]
+        self.watch()
+        self.assertEqual(self.node.posts, [])
+
+    def test_held_band_is_reported_and_left(self):
+        cur = self.watch(hold="1202,l1ca")
+        self.assertEqual((self.node.posts, self.auto()), ([], None))
+        self.assertEqual(
+            cur["alerts"], ["l1ca: 10 assemblers and no reference (held, not taken)"]
+        )
+        with open(os.path.join(self.out, "state.json")) as fh:
+            self.assertNotIn("l1ca", json.load(fh)["stale"])
+
+    def test_without_act_it_is_reported(self):
+        self.watch(act=False)
+        self.age()
+        cur = self.watch(act=False)
+        self.assertEqual((self.node.posts, self.auto()), ([], None))
+        self.assertEqual(len(cur["alerts"]), 1)
+        self.assertIn("no reference for", cur["alerts"][0])
+        self.assertIn("take a snapshot", cur["alerts"][0])
+
+    def test_no_consensus_is_no_reference(self):
+        self.set_fleet(n_noise=5)  # 5 of 10 agree; two thirds are needed
+        self.watch()
+        self.age()
+        cur = self.watch()
+        self.assertEqual((self.node.posts, self.auto()), ([], None))
+        self.assertEqual(len(cur["alerts"]), 1)
+        self.assertIn("the fleet has no consensus", cur["alerts"][0])
 
 
 class TestActMode(unittest.TestCase):

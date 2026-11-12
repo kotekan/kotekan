@@ -34,6 +34,9 @@
                         agree on a consensus, writes it to DIR/auto_ref.json and POSTs it (at most
                         every RETAKE_EVERY_S). That file is the reference in use until FILE is
                         newer, and ALERT says so until it is committed.
+                      - takes a first reference the same way for a band that has assemblers and
+                        no entry in the reference (a new chain: its instances each hold their own
+                        pin until then). --hold names bands to report and leave alone.
                       Without --act nothing is changed. A watch in live mode leaves an instance in
                       shape mode there: shape pins like live.
 
@@ -495,37 +498,63 @@ def watch(a):
 
     # A band whose reference describes at most half of its models (the F-engine's gains
     # changed) is re-taken from the fleet consensus, if two thirds of the fleet agree on one.
+    # A band with assemblers and no reference (a new chain) gets its first one the same way.
     stale, retook = set(), False
-    for band, entry in sorted(snap["bands"].items()):
-        F = np.array([complex(x, y) for x, y in entry["ref"]])
-        sims = {0: [], 1: []}
-        for (node, stage), d in res.items():
-            if band_of(stage) != band or "error" in d or d.get("shared_frozen"):
+    hold = set(filter(None, (getattr(a, "hold", "") or "").split(",")))
+    polled = {band_of(stage) for (_node, stage), d in res.items() if "error" not in d}
+    for band in sorted(set(snap["bands"]) | polled):
+        entry = snap["bands"].get(band)
+        models = [
+            d
+            for (_node, stage), d in res.items()
+            if band_of(stage) == band
+            and "error" not in d
+            and not d.get("shared_frozen")
+        ]
+        if entry is None:
+            if band in hold:
+                lines.append(
+                    "%s: %d assemblers and no reference (held, not taken)"
+                    % (band, len(models))
+                )
                 continue
-            for pol, o in enumerate(instance_offsets(d, F) or []):
-                if o is not None:
-                    sims[pol].append(o[1])
-        if not any(
-            len(v) >= 4 and 2 * sum(x < MIN_SIM for x in v) >= len(v)
-            for v in sims.values()
-        ):
-            state["stale"].pop(band, None)
-            continue
-        stale.add(band)
-        dur = now - state["stale"].setdefault(band, now)
-        what = "%s: the reference describes %s halves for %.0f min" % (
-            band,
-            "/".join(
-                "%d of %d" % (sum(x >= MIN_SIM for x in v), len(v))
+            verb, n_inst = "taken", len(models)
+            stale.add(band)
+            dur = now - state["stale"].setdefault(band, now)
+            what = "%s: %d assemblers and no reference for %.0f min" % (
+                band,
+                n_inst,
+                dur / 60.0,
+            )
+        else:
+            F = np.array([complex(x, y) for x, y in entry["ref"]])
+            sims = {0: [], 1: []}
+            for d in models:
+                for pol, o in enumerate(instance_offsets(d, F) or []):
+                    if o is not None:
+                        sims[pol].append(o[1])
+            if not any(
+                len(v) >= 4 and 2 * sum(x < MIN_SIM for x in v) >= len(v)
                 for v in sims.values()
-            ),
-            dur / 60.0,
-        )
+            ):
+                state["stale"].pop(band, None)
+                continue
+            verb, n_inst = "re-taken", max(len(v) for v in sims.values())
+            stale.add(band)
+            dur = now - state["stale"].setdefault(band, now)
+            what = "%s: the reference describes %s halves for %.0f min" % (
+                band,
+                "/".join(
+                    "%d of %d" % (sum(x >= MIN_SIM for x in v), len(v))
+                    for v in sims.values()
+                ),
+                dur / 60.0,
+            )
         if dur < MIN_RUN_S:
             continue
         try:
             new = band_consensus(res, band, 30.0, MIN_SIM)
-            need = max(4, math.ceil(2 * max(len(v) for v in sims.values()) / 3))
+            need = max(4, math.ceil(2 * n_inst / 3))
             if min(new["n"]) < need or min(new["sim_median"]) < 0.8:
                 raise ValueError(
                     "n %s of the %d needed, sim median %s"
@@ -536,7 +565,7 @@ def watch(a):
             continue
         if not a.act:
             lines.append(
-                "%s; the fleet agrees on a new one (R %s, n %s): take a snapshot"
+                "%s; the fleet agrees on one (R %s, n %s): take a snapshot"
                 % (what, new["R"], new["n"])
             )
             continue
@@ -555,13 +584,13 @@ def watch(a):
         active, retook = auto_path, True
         state["retaken"][band] = now
         notes.append(
-            "%s; re-taken from the fleet consensus (R %s, n %s)"
-            % (what, new["R"], new["n"])
+            "%s; %s from the fleet consensus (R %s, n %s)"
+            % (what, verb, new["R"], new["n"])
         )
         for (node, stage), d in sorted(res.items()):
             if band_of(stage) == band and "error" not in d:
                 mode = act_mode(a, d.get("fleet_ref"))
-                ok, note = post_note(node, stage, new["ref"], mode, "re-taken")
+                ok, note = post_note(node, stage, new["ref"], mode, verb)
                 (notes if ok else lines).append(note)
                 state["acted"]["%s %s" % (inst_name(node, stage), band)] = now
     if active == auto_path:
@@ -715,6 +744,12 @@ def main():
     w.add_argument("dir")
     w.add_argument("--mode", choices=("off", "live"), default="live")
     w.add_argument("--act", action="store_true")
+    w.add_argument(
+        "--hold",
+        default="",
+        help="comma list of bands that have no reference and are to stay that way: "
+        "reported in ALERT, never taken",
+    )
     a = ap.parse_args()
     {
         "snapshot": snapshot,

@@ -1242,7 +1242,8 @@ def elem_shared_ref_keys(args, band, steer, n_elem, bad=()):
     entry = snap["bands"].get(band)
     if entry is None:
         print(
-            "note: %s has no '%s' entry: that band keeps its own pin"
+            "note: %s has no '%s' entry: that band's assemblers start on their own pins "
+            "(elem_ref_cron.sh takes its first reference)"
             % (args.elem_shared_ref, band),
             file=sys.stderr,
         )

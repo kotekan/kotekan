@@ -48,7 +48,7 @@ whole table.
 |---|---|---|---|---|
 | gnss | hourly :17 | `scripts/gnss/site/eop_cron.sh` | pushes choco's EOP table to every running node whose live table ends earlier; since 10-11 it also regenerates the on-disk node configs when their table ends earlier than the staged one and `gen_fleet --check` still passes (#173), so a relaunch never starts on a table that has ended | `/var/tmp/gnss-logs/eop_cron.log` |
 | gnss | every 5 min | `scripts/gnss/site/bad_inputs_cron.py` | pushes bffs's bad-input list to the running nodes when it changes (choco skips ours: maintenance mode) | `/var/tmp/gnss-logs/bad_inputs_cron.log` |
-| gnss | every 5 min | `scripts/gnss/site/elem_ref_cron.sh` | #154 safety net: every assembler's shared element model against the fleet reference. With `ELEM_REF_ACT=1` (set in the crontab) it re-posts the reference to an instance that lost it or is pinned off it, and re-takes a band's reference from the fleet consensus when it no longer describes the models | `fixtures/obs/elem_ref/{ALERT,current.json,watch.log,auto_ref.json}` |
+| gnss | every 5 min | `scripts/gnss/site/elem_ref_cron.sh` | #154 safety net: every assembler's shared element model against the fleet reference. With `ELEM_REF_ACT=1` (set in the crontab) it re-posts the reference to an instance that lost it or is pinned off it, re-takes a band's reference from the fleet consensus when it no longer describes the models, and takes a first one for a band that has none (a new chain; `ELEM_REF_HOLD` names bands to leave without) | `fixtures/obs/elem_ref/{ALERT,current.json,watch.log,auto_ref.json}` |
 | gnss | hourly :23 | `logrotate -s /var/tmp/gnss-logs/.logrotate.state scripts/gnss/site/logrotate.conf` | rotates the service logs daily or past 4 GB (copytruncate, 10 gzipped generations; #172) | `/var/tmp/gnss-logs/logrotate.log` |
 | gnss | every 6 h, :41 (`41 */6 * * *`) | `scripts/gnss/site/tle_refresh.py` | re-fetches each Celestrak TLE cache `~/.cache/kotekan_gps/tle_<GROUP>.txt` older than 3 days and replaces it atomically; a failed fetch, or one that is not whole checksummed TLE sets, keeps the stale copy. The broker's TLE fallbacks (the almanac without BRDC, the signal-capability gate without the IGS registry) read whatever copy is there and never refresh it at start, which keeps replays deterministic | `/var/tmp/gnss-logs/tle_refresh.log` (one line per run) |
 | gnss | every 10 min | `/home/kvand/gnss/venv/bin/python scripts/gnss/site/gw_ephem_table.py --hours 3 --sep-deg 118 --el-min 0` | writes the GuoWang TLE table `/var/tmp/gnss-guowang/gw_ephem.json` (every pass above the horizon of the satellites in `guowang_1202_db.json`, atomic; KV 11-03: track to the horizon) that the gw_1202 chain reads as its orbits (`gw-table`), and every DIGUI satellite's passes within 10 deg, plus `~/.cache/guowang/hidden_digui.tle`'s when present (`transits`), that every chain adds to its transit sky (`gw-transits`); ~5 s, ~80 MB, ~0.5 MB | `/var/tmp/gnss-logs/gw_ephem_table.log` |
@@ -206,6 +206,11 @@ The reference carries the F-engine's gains. When they change, it stops describin
 (similarity < 0.5), every node falls back to its own pin, and nothing heals (10-08). The cron re-takes
 such a band into `fixtures/obs/elem_ref/auto_ref.json` and posts it; ALERT then says to copy that file
 into `config/`, point `elem-shared-ref` at it and regenerate.
+A new chain's band has no entry in the reference, so its instances each start on their own pin. A
+chain with one channel per GPU (L2C, L1 C/A) reads its code phase as the phase slope across GPUs,
+so those pins are a code offset that changes at every restart (11-12: L1 C/A +20, -273 and -8 m
+against L5 in three hours). The cron takes the band's first reference once it has gone 15 min
+without one and two thirds of its instances agree; a restarted node is re-posted on the next pass.
 
 **After any long node outage, restart the broker once the nodes are back, re-base or not.** An
 F-engine outage usually forces this on its own: the new frame0 trips the broker's 3-strike relaunch.

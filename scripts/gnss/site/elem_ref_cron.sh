@@ -11,7 +11,11 @@
 # ELEM_REF_ACT=1 lets it act (elem_shared_ref.py watch --act): re-post the reference to an
 # instance that lost it or is pinned off it, and re-take a band's reference from the fleet
 # consensus when the reference no longer describes the models (new F-engine gains), into
-# $OBS/elem_ref/auto_ref.json until that file is committed. Unset, it only reports.
+# $OBS/elem_ref/auto_ref.json until that file is committed. A band that has assemblers and no
+# reference (a new chain) gets its first one the same way. Unset, it only reports.
+#
+# ELEM_REF_HOLD: bands that have no reference and are to stay without one (ALERT lists them,
+# nothing is taken). Default: GLONASS L2 FDMA and the GuoWang chain, which have never had one.
 set -u
 # shellcheck source=kotekan_src.sh
 . "$(dirname "${BASH_SOURCE[0]}")/kotekan_src.sh"
@@ -27,7 +31,8 @@ flock -n 9 || exit 0
 [ -f "$REF" ] || { echo "$(date -u +%FT%TZ) no reference file $REF" >> "$D/watch.log"; exit 0; }
 ACT=()
 [ "${ELEM_REF_ACT:-0}" = "1" ] && ACT=(--act)
-nice -n 19 "$PY" "$K/python/scripts/gnss/elem_shared_ref.py" watch "$REF" "$D" --mode "${MODE:-live}" "${ACT[@]}" \
+nice -n 19 "$PY" "$K/python/scripts/gnss/elem_shared_ref.py" watch "$REF" "$D" --mode "${MODE:-live}" \
+    --hold "${ELEM_REF_HOLD-l2of,1202}" "${ACT[@]}" \
     >> "$D/watch.log" 2>&1
 # keep the log bounded (~a week of 5-min passes)
 tail -n 20000 "$D/watch.log" > "$D/.watch.log.tmp" && mv -f "$D/.watch.log.tmp" "$D/watch.log"
