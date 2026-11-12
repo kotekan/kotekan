@@ -4,7 +4,16 @@
 #
 # Run a CHIME test
 #
+# The pipeline is that of config/chime_upgrade_frb.j2, plus the BB and HFB beamformers, with input
+# from files and output to files. See include/fengine_chime.j2.
+#
+# Jinja variables:
+#     frb_gain_directory
+#                   the directory of the FRB gain files (default: none, use the default gains)
+#
 ################################################################################
+
+{% set base_dir = 'data/fengine_chime' %}
 
 ---
 log_level: debug
@@ -17,7 +26,7 @@ run_buffer_status:
 join_timeout: 600
 
 input_dir: data/fengine_chime_init
-base_dir: data/fengine_chime
+base_dir: {{ base_dir }}
 prefix_hostname: false
 prefix_host_rank: true
 
