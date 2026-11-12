@@ -670,24 +670,28 @@ def test_chime_detector_is_diagnostic_in_each_numa_domain():
         added = set(domain) - set(base[f"numa_{numa}"])
         assert added == {
             f"host_dtv_mask_buffer_n{numa}",
-            f"host_dtv_powers_buffer_n{numa}",
-            f"host_dtv_fine_support_buffer_n{numa}",
             "run_dtv_detector",
             "write_dtv",
         }
+        assert list(domain["write_dtv"]) == ["mask"]
 
 
-def test_chime_records_fine_powers_on_request():
+def test_chime_calibration_mode_writes_every_product():
     env = Environment(loader=FileSystemLoader(str(ROOT / "config/chime")))
     template = env.get_template("chime_upgrade_2numa.j2")
     cfg = yaml.safe_load(
         template.render(
-            dtv_enabled=True, dtv_write_enabled=True, dtv_record_fine_powers=True
+            dtv_enabled=True, dtv_write_enabled=True, dtv_calibration_mode=True
         )
     )
     for numa in (0, 1):
         domain = cfg[f"numa_{numa}"]
-        assert f"host_dtv_fine_powers_buffer_n{numa}" in domain
+        assert sorted(domain["write_dtv"]) == [
+            "fine_powers",
+            "fine_support",
+            "mask",
+            "powers",
+        ]
         row = domain["write_dtv"]["fine_powers"]
         assert row["kotekan_stage"] == "hdf5FileWrite"
         assert row["file_name"] == f"dtv_fine_powers_n{numa}"
