@@ -21,6 +21,10 @@ conclusive pass, with its history:
   separation in deg, found]. The list only grows, so the library survives the deletion of the
   reduce logs; the git history of the file is the time record.
 
+renamed maps old names to current ones: on 2026-11-12 the 28 satellites known by working names
+(DIGUI-H24/H54/H84-n, DIGUI-A82) took their catalogue names, published only in the OMM formats
+(scripts/gnss/site/gw_published_tle.py). Passes and proposals under an old name count for the new.
+
 no_sky lists periods whose windows carry no sky signal (analog chains off, ...): their windows
 count for nothing. An open period (end null) excludes everything after its start.
 
@@ -212,6 +216,17 @@ def update(db, passes, proposals, catnums, silent_max_sep=SILENT_MAX_SEP_DEG):
     """Fold conclusive passes and code proposals into db (in place); returns the change list."""
     sats = db["satellites"]
     changes = []
+    # passes and proposals filed under an old name (db["renamed"]) count for the new one
+    ren = db.get("renamed", {})
+    if ren:
+        merged = {}
+        for name, ps in passes.items():
+            merged.setdefault(ren.get(name, name), {}).update(ps)
+        passes = merged
+        merged = {}
+        for name, ps in proposals.items():
+            merged.setdefault(ren.get(name, name), []).extend(ps)
+        proposals = merged
     names = set(sats) | set(passes) | {n for n, ps in proposals.items() if ps}
     for name in sorted(names, key=sat_key):
         old = sats.get(name)

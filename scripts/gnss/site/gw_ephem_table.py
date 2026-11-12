@@ -8,12 +8,13 @@ comes within --sep-deg of the dish boresight, their ITRS position and velocity o
 grid. gnss_ephemeris.load_gw_table reads the file and interpolates (cubic Hermite: a 10 s step
 is good to well under a metre), so predict_all, seeding, the PRN map and the element steering
 see GuoWang satellites as constellation W, PRN = G2' phase + 1. The satellites in --extra-tle
-(the inferred uncatalogued ones) are tabled with the catalogued ones. Some satellites share a G2'
-phase; where their segments overlap, the satellite closer to the boresight keeps the time
+(the published objects the TLE group lacks, gw_published_tle.py) are tabled with the others.
+Some satellites share a G2' phase; where their segments overlap, the satellite closer to the boresight keeps the time
 (one_per_prn), so the broker sees one satellite per PRN at a time.
 
 The file also carries the passes within --transit-deg of the boresight of every DIGUI satellite,
-code known or not, and of the satellites in --extra-tle ("transits", keyed by catalogue number).
+code known or not, and of the --extra-tle satellites in the database ("transits", keyed by
+catalogue number); the others, below the shell or test satellites, are not known to transmit.
 Every broker chain adds them to its transit sky (sky.transit_sky): a GuoWang satellite in the
 beam rails the shared quantiser like any other bright satellite.
 
@@ -59,8 +60,8 @@ import guowang_passes as gp  # noqa: E402
 
 SCHEMA = "chord-gnss-gw-ephem/0"
 DEFAULT_OUT = "/var/tmp/gnss-guowang/gw_ephem.json"
-# TLEs of the inferred uncatalogued GuoWang satellites, tabled with the catalogued ones when present.
-HIDDEN_TLE = os.path.join(gp.CACHE_DIR, "hidden_digui.tle")
+# TLEs of the published objects the TLE group lacks (gw_published_tle.py), tabled when present.
+EXTRA_TLE = os.path.join(gp.CACHE_DIR, "published_hulianwang.tle")
 
 
 def short_name(name):
@@ -500,9 +501,9 @@ def main(argv=None):
     ap.add_argument("--transit-step-s", type=float, default=30.0, help="transit grid")
     ap.add_argument(
         "--extra-tle",
-        default=HIDDEN_TLE if os.path.exists(HIDDEN_TLE) else None,
+        default=EXTRA_TLE if os.path.exists(EXTRA_TLE) else None,
         help="more GuoWang TLEs, tabled and in the transits (default: %s if present)"
-        % HIDDEN_TLE,
+        % EXTRA_TLE,
     )
     ap.add_argument(
         "--tle", help="TLE file (default: the newest cached hulianwang group)"
@@ -615,7 +616,7 @@ def main(argv=None):
         except Exception as e:
             print("sweep order: assign.json not written (%s)" % e)
     tr = transits(
-        sats + extra,
+        sats + [s for s in extra if short_name(s.name) in db],
         ts,
         now - 600.0,
         now + a.hours * 3600.0,
