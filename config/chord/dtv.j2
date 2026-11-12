@@ -2,6 +2,8 @@
   dtv.j2, included by pathfinder.j2. The detector always runs, and needs the bundle.
   dtv_apply_mask and dtv_write_enabled set the starting values of /dtv_mask_enabled
   (apply the DTV mask to N2) and /dtv_write_enabled (send the products to the recv node).
+  Only the mask is sent unless dtv_calibration_mode is set, which also sends the powers,
+  fine support and fine powers. recv.j2 must be rendered with the same dtv_calibration_mode.
   The detector zeroes the inputs flagged by bufferBadInputs, the RFI antennas too.
   Disable /rfi_first_stage_enabled for a DTV-only first-stage mask.
   Profiles bind by receiver_channel_id against each NUMA half's coarse_freq.
@@ -22,11 +24,13 @@
     ("fine_support", "int32", "num_local_freq, 2", '"F", "S"', "1, 1", 11035),
     ("fine_powers", "uint64", "2, 3, 256", '"F", "W", "B"', "1, 1, 1", 11037),
 ] %}
+{% set dtv_sent = dtv_products if dtv_calibration_mode|default(false) else dtv_products[:1] %}
 {% for n in numa_halves %}
 {% for product, value_type, extents, dimnames, dimscalings, port in dtv_products %}
 {% for suffix, rows, depth in [("", 1, "host_side_buffer_depth"),
                                ("_concat", dtv_blocks_per_frame, "buffer_depth"),
-                               ("_send", dtv_blocks_per_frame, "buffer_depth")] %}
+                               ("_send", dtv_blocks_per_frame, "buffer_depth")]
+   if (suffix == "" and product == "fine_support") or product in dtv_sent|map(attribute=0) %}
 host_dtv_{{ product }}{{ suffix }}_buffer{{ n.sfx }}:
     kotekan_buffer: ndarray
     num_frames: {{ depth }}
@@ -69,9 +73,11 @@ run_dtv_detector:
             host_bf_mask_ringbuffer: host_bf_mask_ringbuffer{{ n.sfx }}
         out_buffers:
             host_dtv_mask: host_dtv_mask_buffer{{ n.sfx }}
-            host_dtv_powers: host_dtv_powers_buffer{{ n.sfx }}
             host_dtv_fine_support: host_dtv_fine_support_buffer{{ n.sfx }}
+{% if dtv_calibration_mode|default(false) %}
+            host_dtv_powers: host_dtv_powers_buffer{{ n.sfx }}
             host_dtv_fine_powers: host_dtv_fine_powers_buffer{{ n.sfx }}
+{% endif %}
         commands:
         - name: cudaPilotProxyDetector
           num_frequencies: num_local_freq
@@ -80,8 +86,10 @@ run_dtv_detector:
           dtv_mask_name: dtv_mask
           dtv_powers_name: dtv_powers
           dtv_fine_support_name: dtv_fine_support
+{% if dtv_calibration_mode|default(false) %}
           dtv_fine_powers_name: dtv_fine_powers
           dtv_fine_powers_rows: 2
+{% endif %}
           pilot_profiles_path: {{ dtv_runtime_bundle_dir }}/pilot_profiles.json
           weights_path: {{ dtv_runtime_bundle_dir }}/weights.bin
           bf_mask_name: bf_mask
@@ -90,21 +98,23 @@ run_dtv_detector:
           gpu_mem: dtv_mask_buffer
           out_buf: host_dtv_mask
         - name: cudaOutputData
+          gpu_mem: dtv_fine_support_buffer
+          out_buf: host_dtv_fine_support
+{% if dtv_calibration_mode|default(false) %}
+        - name: cudaOutputData
           gpu_mem: dtv_powers_buffer
           out_buf: host_dtv_powers
         - name: cudaOutputData
-          gpu_mem: dtv_fine_support_buffer
-          out_buf: host_dtv_fine_support
-        - name: cudaOutputData
           gpu_mem: dtv_fine_powers_buffer
           out_buf: host_dtv_fine_powers
+{% endif %}
 {% endfor %}
 
 # Blocks missing from a window are rows of 0xFF bytes: -1 masks and fine support,
 # the largest uint64 powers.
 concat_dtv:
 {% for n in numa_halves %}
-{% for p in dtv_products %}
+{% for p in dtv_sent %}
     {{ p[0] }}_{{ n.id }}:
         kotekan_stage: NDArrayTimeConcat
         cpu_affinity: {{ n.other_cpus }}
@@ -116,7 +126,7 @@ concat_dtv:
 # Turning writes off and on again takes effect at the next whole frame.
 switch_dtv_write:
 {% for n in numa_halves %}
-{% for p in dtv_products %}
+{% for p in dtv_sent %}
     {{ p[0] }}_{{ n.id }}:
         kotekan_stage: bufferSwitch
         cpu_affinity: {{ n.other_cpus }}
@@ -129,7 +139,7 @@ switch_dtv_write:
 
 send_dtv:
 {% for n in numa_halves %}
-{% for p in dtv_products %}
+{% for p in dtv_sent %}
     {{ p[0] }}_{{ n.id }}:
         kotekan_stage: bufferSend
         cpu_affinity: {{ n.other_cpus }}
