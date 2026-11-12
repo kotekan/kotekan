@@ -6,13 +6,12 @@ channels:
     - default
 
 dependencies:
-    - python=3.12
     - pip
     - cmake
     - doxygen
     - sphinx
     - sphinx_rtd_theme
-    - breathe
+    - breathe>=4.35
   # Feature libraries
     - pkg-config
     - gdal
