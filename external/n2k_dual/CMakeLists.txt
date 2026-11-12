@@ -8,10 +8,12 @@ project(n2k_dual)
 # A/B split of that total.
 #
 # * 128_8, 256_8, 512_8: unit and regression tests (small NF for build and test speed)
-# * 256_384: 128 antennas + 128 synthetic lanes, one pass per chain
-# * 512_384: 128 antennas + 384 synthetic lanes shared by every chain on the GPU
+# * 256_NF: 128 antennas + 128 synthetic lanes, one pass per chain
+# * 512_NF: 128 antennas + 384 synthetic lanes shared by every chain on the GPU
+# for NF = 384 (the 300-1500 MHz science band) and 464 (150-1600 MHz), the frequencies per GPU
 set(KERNELFILES dual_kernel_128_8.cu dual_kernel_256_8.cu dual_kernel_512_8.cu
-                dual_kernel_256_384.cu dual_kernel_512_384.cu)
+                dual_kernel_256_384.cu dual_kernel_512_384.cu
+                dual_kernel_256_464.cu dual_kernel_512_464.cu)
 
 set(CUFILES src_lib/DualCorrelator.cu src_lib/kernel_table.cu src_lib/precompute_offsets.cu)
 
