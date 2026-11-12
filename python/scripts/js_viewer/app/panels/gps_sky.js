@@ -6,7 +6,8 @@
 // The dot's stroke carries the constellation colour (from the server's legend); an active
 // dot's fill is the search-SNR ramp (red-orange at the acquire floor -> green when strong), so
 // identity and signal strength read independently. The legend chips (bottom-left) toggle each
-// constellation, shared with the table.
+// constellation, shared with the table. An arrowhead beside each moving dot shows its heading,
+// from its own recent positions; hovering a dot draws its path over +-1 h (/gps_track).
 
 import {chain_color} from "./gps_feed.js";
 
@@ -28,6 +29,13 @@ function project(az_deg, el_deg) {
     const rr = R * (90 - el_deg) / 90;   // 0 at zenith, R at the horizon
     return {x: CX + rr * Math.sin(az), y: CY - rr * Math.cos(az)};
 }
+
+// Heading arrows: the direction from a satellite's position ARROW_LAG_S ago (at least
+// ARROW_MIN_S ago) to now, in plot coordinates; none below ARROW_MIN_MOVE viewBox units, so
+// the SBAS GEOs, which stand still, get none.
+const HIST_S = 180, ARROW_LAG_S = 60, ARROW_MIN_S = 20, ARROW_MIN_MOVE = 0.05;
+const HOVER_R = 3;          // viewBox units from a dot that count as hovering it
+const TRACK_TTL_MS = 60000; // re-fetch a hovered path after this
 
 // SNR -> colour ramp (red-orange at the acquire floor, green when strong).
 export function snr_color(snr) {
@@ -54,10 +62,22 @@ export class GpsSkyPanel {
         box[0].appendChild(s);
         this._svg = s;
         this._draw_static();
+        this._track_layer = svg("g", {});   // the hovered satellite's path, under the dots
+        s.appendChild(this._track_layer);
         this._sat_layer = svg("g", {});   // sats redrawn each tick on top
         s.appendChild(this._sat_layer);
         this._legend_layer = svg("g", {});
         s.appendChild(this._legend_layer);
+
+        this._hist = new Map();     // id -> [{t, az, el}], the last HIST_S of positions
+        this._drawn = [];           // [{id, tag, prn, x, y}] from the last render, for hover
+        this._hover = null;         // id of the satellite under the pointer
+        this._tracks = new Map();   // id -> {t, pts} from /gps_track (pts null: no path)
+        this._last = null;          // the last feed update, to redraw on hover
+        // The dots are rebuilt every tick, so hover is a hit test on the whole plot rather
+        // than per-dot mouse events, which a rebuilt dot would miss.
+        s.addEventListener("mousemove", e => this._on_move(e));
+        s.addEventListener("mouseleave", () => this._set_hover(null));
 
         this.feed.on(d => this._render(d));
     }
@@ -90,15 +110,21 @@ export class GpsSkyPanel {
         }
     }
 
-    _render({sats, vis, chains}) {
+    _render(d) {
+        const {sats, vis, chains} = d;
+        this._last = d;
+        const now = Date.now() / 1000;
         const layer = this._sat_layer;
         while (layer.firstChild) layer.removeChild(layer.firstChild);
+        this._drawn = [];
         for (const r of sats) {
-            if (!vis[r.tag]) continue;
             if (r.az == null || r.el == null) continue;   // no orbit fix -> table only
+            this._record(r, now);
+            if (!vis[r.tag]) continue;
             if (r.el < 0) continue;   // below the horizon (e.g. a noise probe) -> off the plot
             const cc = chain_color(r.tag);
             const {x, y} = project(r.az, r.el);
+            this._drawn.push({id: r.id, tag: r.tag, prn: r.prn, x, y});
             // Small symbols so dense constellations do not overlap: active 1.6..2.5 by |A|,
             // idle 1.25. Colour by search SNR, else by sig: a chain with no search stage leaves
             // snr null on a strong satellite.
@@ -115,13 +141,130 @@ export class GpsSkyPanel {
                 + (r.sig ? `  sig ${r.sig.toFixed(0)}σ` : "");
             dot.appendChild(tip);
             layer.appendChild(dot);
+            const u = this._heading(r.id, x, y, now);
+            if (u) {
+                // A small arrowhead just outside the dot, pointing along the motion.
+                const tip_d = rad + 1.5, base_d = rad + 0.4, w = 0.7;
+                const bx = x + u.x * base_d, by = y + u.y * base_d;
+                const pts = [[x + u.x * tip_d, y + u.y * tip_d],
+                             [bx - u.y * w, by + u.x * w], [bx + u.y * w, by - u.x * w]];
+                layer.appendChild(svg("polygon", {
+                    points: pts.map(p => p[0].toFixed(2) + "," + p[1].toFixed(2)).join(" "),
+                    fill: r.active ? cc : cc + "66"}));
+            }
             const lab = svg("text", {x: x + rad + 0.5, y: y + 0.8,
                 "font-size": 2.2,
                 fill: r.active ? "#e8edf2" : "#8a929b"});
             lab.textContent = r.id;
             layer.appendChild(lab);
         }
+        for (const [id, h] of this._hist)
+            if (now - h[h.length - 1].t > HIST_S) this._hist.delete(id);
+        this._draw_track(vis);
         this._draw_legend(vis, chains);
+    }
+
+    // Keep the last HIST_S of each satellite's positions; a repeat of the last one is dropped.
+    _record(r, now) {
+        let h = this._hist.get(r.id);
+        if (!h) this._hist.set(r.id, h = []);
+        const last = h[h.length - 1];
+        if (last && last.az === r.az && last.el === r.el) return;
+        h.push({t: now, az: r.az, el: r.el});
+        while (now - h[0].t > HIST_S) h.shift();
+    }
+
+    // Unit direction of motion on the plot, from the position ARROW_LAG_S ago (or the oldest
+    // one, if at least ARROW_MIN_S old) to (x, y); null while there is too little history or
+    // the satellite has not moved.
+    _heading(id, x, y, now) {
+        const h = this._hist.get(id);
+        if (!h) return null;
+        let ref = null;
+        for (const e of h) {
+            if (now - e.t < ARROW_MIN_S) break;
+            ref = e;
+            if (now - e.t <= ARROW_LAG_S) break;
+        }
+        if (!ref) return null;
+        const p = project(ref.az, ref.el);
+        const dx = x - p.x, dy = y - p.y, d = Math.hypot(dx, dy);
+        return d < ARROW_MIN_MOVE ? null : {x: dx / d, y: dy / d};
+    }
+
+    _on_move(e) {
+        const ctm = this._svg.getScreenCTM();
+        if (!ctm) return;
+        const pt = this._svg.createSVGPoint();
+        pt.x = e.clientX;
+        pt.y = e.clientY;
+        const p = pt.matrixTransform(ctm.inverse());
+        let best = null, bd = HOVER_R;
+        for (const d of this._drawn) {
+            const dd = Math.hypot(d.x - p.x, d.y - p.y);
+            if (dd < bd) { bd = dd; best = d; }
+        }
+        this._set_hover(best);
+    }
+
+    _set_hover(d) {
+        const id = d ? d.id : null;
+        if (id === this._hover) return;
+        this._hover = id;
+        if (d) this._fetch_track(d);
+        if (this._last) this._draw_track(this._last.vis);
+    }
+
+    _fetch_track(d) {
+        const c = this._tracks.get(d.id);
+        if (c && (c.pending || Date.now() - c.t < TRACK_TTL_MS)) return;
+        this._tracks.set(d.id, {t: Date.now(), pts: c ? c.pts : null, pending: true});
+        fetch(`/gps_track?tag=${encodeURIComponent(d.tag)}&prn=${d.prn}`)
+            .then(r => r.ok ? r.json() : null).catch(() => null)
+            .then(j => {
+                this._tracks.set(d.id, {t: Date.now(), pts: j && j.ok ? j.points : null,
+                                        pending: false});
+                if (this._hover === d.id && this._last) this._draw_track(this._last.vis);
+            });
+    }
+
+    // The hovered satellite's path over +-1 h (/gps_track): the past dashed, the future solid
+    // with a tick every 10 min, both cut at the horizon.
+    _draw_track(vis) {
+        const layer = this._track_layer;
+        while (layer.firstChild) layer.removeChild(layer.firstChild);
+        const d = this._drawn.find(x => x.id === this._hover);
+        const c = d ? this._tracks.get(d.id) : null;
+        if (!d || !vis[d.tag] || !c || !c.pts) return;
+        const cc = chain_color(d.tag);
+        let run = [];
+        const flush = future => {
+            if (run.length > 1)
+                layer.appendChild(svg("polyline", {
+                    points: run.map(p => p.x.toFixed(2) + "," + p.y.toFixed(2)).join(" "),
+                    fill: "none", stroke: cc, "stroke-width": 0.45,
+                    "stroke-dasharray": future ? "none" : "0.8 0.6",
+                    opacity: future ? 0.9 : 0.55}));
+            run = [];
+        };
+        let future = false;
+        for (const [dt, az, el] of c.pts) {
+            if (!future && dt >= 0) {
+                // The dt = 0 point ends the past run and starts the future one.
+                const p = el >= 0 ? project(az, el) : null;
+                if (p) run.push(p);
+                flush(false);
+                future = true;
+                if (p) run.push(p);
+                continue;
+            }
+            if (el < 0) { flush(future); continue; }
+            const p = project(az, el);
+            run.push(p);
+            if (future && dt > 0 && dt % 10 === 0)
+                layer.appendChild(svg("circle", {cx: p.x, cy: p.y, r: 0.35, fill: cc}));
+        }
+        flush(future);
     }
 
     // Clickable constellation chips, bottom-left corner of the sky square.

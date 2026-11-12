@@ -33,6 +33,7 @@ this server before kotekan starts streaming.
 import argparse
 import json
 import logging
+import math
 import os
 import select
 import signal
@@ -1003,6 +1004,7 @@ class GpsSkyResource(resource.Resource):
         # time they were computed (they are kept 1 h).
         self._glo_capable = None
         self._glo_capable_t = None
+        self._gw_tle = (None, {})  # (TLE path, {index: EarthSatellite}), see _gw_sats
         self._last_compute = None  # monotonic s of last attempt
         self._refreshing = False
 
@@ -1193,7 +1195,27 @@ class GpsSkyResource(resource.Resource):
         (default: all configured). The whole-sky fallback when the broker's sky is unavailable,
         and the only source for GLONASS. Every group is loaded on the first call and kept
         fresh per _TLE_RETRY_S / _TLE_RELOAD_S."""
-        from gps_beamtrack import DEFAULT_TLE_URL, load_gps_satellites, predict_skypos
+        from gps_beamtrack import predict_skypos
+
+        self._load_tle()
+        cap_R = self._glonass_capable_set()
+        sats = []
+        for tag, by_prn in self._sats.items():
+            if want is not None and tag not in want:
+                continue
+            pos = predict_skypos(self.lat, self.lon, self.alt, _sats=by_prn)
+            sats += [
+                {"prn": p, "const": tag, "az": round(az, 2), "el": round(el, 2)}
+                for p, (az, el) in sorted(pos.items())
+                if el >= self.mask_deg
+                and not (tag == "R" and cap_R is not None and p not in cap_R)
+            ]
+        return sats
+
+    def _load_tle(self):
+        """Load every configured TLE group on the first call and keep it fresh per
+        _TLE_RETRY_S / _TLE_RELOAD_S."""
+        from gps_beamtrack import DEFAULT_TLE_URL, load_gps_satellites
 
         now = time.monotonic()
         for tag, url in self.CONSTELLATIONS:
@@ -1208,19 +1230,89 @@ class GpsSkyResource(resource.Resource):
                 )
             except Exception as e:
                 log_.warning("gps_sky: %s TLEs unavailable: %s", tag, e)
-        cap_R = self._glonass_capable_set()
-        sats = []
-        for tag, by_prn in self._sats.items():
-            if want is not None and tag not in want:
-                continue
-            pos = predict_skypos(self.lat, self.lon, self.alt, _sats=by_prn)
-            sats += [
-                {"prn": p, "const": tag, "az": round(az, 2), "el": round(el, 2)}
-                for p, (az, el) in sorted(pos.items())
-                if el >= self.mask_deg
-                and not (tag == "R" and cap_R is not None and p not in cap_R)
+
+    # A TLE satellite stands in for a broker-sky satellite on the hover path only within this
+    # angle of the broker's position for it now.
+    TRACK_MATCH_DEG = 3.0
+    # The table gw_ephem_table.py writes (its DEFAULT_OUT; the broker's gw-table), which names
+    # the TLE file the broker's GuoWang sky was propagated from, and the hidden DIGUI TLEs it
+    # adds (guowang_passes.CACHE_DIR).
+    GW_TABLE = "/var/tmp/gnss-guowang/gw_ephem.json"
+    GW_HIDDEN_TLE = os.path.expanduser("~/.cache/guowang/hidden_digui.tle")
+
+    def _gw_sats(self):
+        """{index: EarthSatellite} for every GuoWang TLE behind the broker's W sky, reloaded
+        when the table names a new file."""
+        from skyfield.api import load
+
+        with open(self.GW_TABLE) as f:
+            path = json.load(f)["tle"]
+        if self._gw_tle[0] != path:
+            sats = load.tle_file(path, reload=False)
+            if os.path.exists(self.GW_HIDDEN_TLE):
+                sats += load.tle_file(self.GW_HIDDEN_TLE, reload=False)
+            self._gw_tle = (path, dict(enumerate(sats)))
+        return self._gw_tle[1]
+
+    def track(self, tag, prn):
+        """The hover path of one satellite: {"ok", "points": [[dt_min, az, el], ...]} over
+        +-1 h every 2 min (GuoWang, LEO: +-15 min every 30 s), from TLE + skyfield.
+
+        GLONASS is placed from TLE already, so its own TLE is used. Elsewhere TLE titles carry
+        identity errors (BeiDou worst) and GuoWang PRNs are shared codes, while the broker's
+        position does not mistake the satellite, so the path is the TLE satellite nearest that
+        position now, and none is drawn beyond TRACK_MATCH_DEG. The SBAS GEOs stand still: no
+        path."""
+        from gps_beamtrack import predict_skypos, predict_track
+
+        span_s, step_s = 3600.0, 120.0
+        if tag == "W":
+            by_prn = self._gw_sats()
+            span_s, step_s = 900.0, 30.0
+        else:
+            by_prn = self._sats.get(tag) or {}
+        if tag == "R":
+            sat, match = by_prn.get(prn), 0.0
+        else:
+            now = [
+                s
+                for s in self._cache.get("sats", [])
+                if s.get("const") == tag and s.get("prn") == prn
             ]
-        return sats
+            if not now or not by_prn:
+                return {
+                    "ok": False,
+                    "error": "no position or no TLE for %s%d" % (tag, prn),
+                }
+            az0, el0 = math.radians(now[0]["az"]), math.radians(now[0]["el"])
+            match, sat = 180.0, None
+            for p, (az, el) in predict_skypos(
+                self.lat, self.lon, self.alt, _sats=by_prn
+            ).items():
+                az, el = math.radians(az), math.radians(el)
+                c = math.sin(el) * math.sin(el0) + math.cos(el) * math.cos(
+                    el0
+                ) * math.cos(az - az0)
+                sep = math.degrees(math.acos(max(-1.0, min(1.0, c))))
+                if sep < match:
+                    match, sat = sep, by_prn[p]
+            if match > self.TRACK_MATCH_DEG:
+                return {
+                    "ok": False,
+                    "error": "no TLE within %.1f deg of %s%d" % (match, tag, prn),
+                }
+        if sat is None:
+            return {"ok": False, "error": "no TLE for %s%d" % (tag, prn)}
+        pts = predict_track(
+            self.lat, self.lon, self.alt, sat, span_s=span_s, step_s=step_s
+        )
+        return {
+            "ok": True,
+            "match_deg": round(match, 2),
+            "points": [
+                [round(d / 60.0, 1), round(a, 2), round(e, 2)] for d, a, e in pts
+            ],
+        }
 
     def _kick_refresh(self):
         if self._refreshing:
@@ -1256,6 +1348,58 @@ class GpsSkyResource(resource.Resource):
         if self._cache.get("error"):
             out["error"] = self._cache["error"]
         return json.dumps(out).encode("utf-8")
+
+
+class GpsTrackResource(resource.Resource):
+    """``GET /gps_track?tag=E&prn=5`` -> GpsSkyResource.track(tag, prn): one satellite's path
+    over +-1 h, fetched by the sky plot on hover. Computed in a worker thread and cached per
+    satellite for TRACK_CACHE_S."""
+
+    isLeaf = True
+    TRACK_CACHE_S = 60.0
+
+    def __init__(self, sky):
+        resource.Resource.__init__(self)
+        self._sky = sky
+        self._cache = {}  # (tag, prn) -> (monotonic s, reply bytes)
+
+    def render_GET(self, request):
+        request.responseHeaders.setRawHeaders("Content-Type", [b"application/json"])
+        try:
+            tag = request.args[b"tag"][0].decode()
+            prn = int(request.args[b"prn"][0])
+        except (KeyError, IndexError, ValueError, UnicodeDecodeError):
+            request.setResponseCode(400)
+            return json.dumps({"ok": False, "error": "need tag and prn"}).encode(
+                "utf-8"
+            )
+        key = (tag, prn)
+        hit = self._cache.get(key)
+        if hit is not None and time.monotonic() - hit[0] < self.TRACK_CACHE_S:
+            return hit[1]
+
+        def done(res):
+            body = json.dumps(res).encode("utf-8")
+            self._cache[key] = (time.monotonic(), body)
+            return body
+
+        def err(failure):
+            log_.warning(
+                "gps_track %s%d failed: %s", tag, prn, failure.getErrorMessage()
+            )
+            return json.dumps({"ok": False, "error": failure.getErrorMessage()}).encode(
+                "utf-8"
+            )
+
+        def reply(body):
+            if not request.finished and not request._disconnected:
+                request.write(body)
+                request.finish()
+
+        threads.deferToThread(self._sky.track, tag, prn).addCallbacks(
+            done, err
+        ).addCallback(reply)
+        return server.NOT_DONE_YET
 
 
 def _pvt_measurements(globs, max_age_s, t_now, smooth_s=90.0):
@@ -1695,17 +1839,16 @@ def main():
             }
             - {None}
         )
-        root.putChild(
-            b"gps_sky",
-            GpsSkyResource(
-                args.lat,
-                args.lon,
-                args.alt,
-                args.gps_mask_deg,
-                glonass_sigids=_glo_sigids,
-                broker=(args.kotekan_host, args.kotekan_rest_port),
-            ),
+        sky = GpsSkyResource(
+            args.lat,
+            args.lon,
+            args.alt,
+            args.gps_mask_deg,
+            glonass_sigids=_glo_sigids,
+            broker=(args.kotekan_host, args.kotekan_rest_port),
         )
+        root.putChild(b"gps_sky", sky)
+        root.putChild(b"gps_track", GpsTrackResource(sky))
         root.putChild(
             b"decode_health",
             DecodeHealthResource(

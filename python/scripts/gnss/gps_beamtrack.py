@@ -407,3 +407,21 @@ def predict_skypos(
         alt_, az_, _ = (sat - observer).at(t0).altaz()
         out[int(prn)] = (float(az_.degrees), float(alt_.degrees))
     return out
+
+
+def predict_track(lat, lon, alt_m, sat, t_utc=None, span_s=3600.0, step_s=120.0):
+    """[(dt_s, az_deg, el_deg)] for one EarthSatellite from t_utc - span_s to t_utc + span_s
+    every step_s, with predict_skypos's geometry: the path the viewer draws on hover."""
+    from skyfield.api import load, wgs84
+
+    ts = load.timescale()
+    observer = wgs84.latlon(lat, lon, elevation_m=alt_m)
+    if t_utc is None:
+        t_utc = datetime.now(tz=timezone.utc)
+    dts = np.arange(-span_s, span_s + step_s / 2, step_s)
+    t = ts.from_datetimes([t_utc + timedelta(seconds=float(d)) for d in dts])
+    alt_, az_, _ = (sat - observer).at(t).altaz()
+    return [
+        (float(d), float(a), float(e))
+        for d, a, e in zip(dts, az_.degrees, alt_.degrees)
+    ]
