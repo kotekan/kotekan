@@ -4065,7 +4065,10 @@ def main():
         with open(args.base) as fh:
             base = json.load(fh) if args.base.endswith(".json") else yaml.safe_load(fh)
     out = copy.deepcopy(base)
-    check_science_band(cfg, base)
+    # Only a node config indexes the F-engine's combs; the aggregator, gather and archiver run on
+    # their own (captured) base, whose telescope block is not the nodes'.
+    if not (args.aggregator_instance or args.gather_instance or args.cube_archive_instance):
+        check_science_band(cfg, base)
 
     # --frame0-nano: start without chive's timing service. CHORDTelescope needs a GPS time at
     # startup, which makes chive:54321 a startup dependency of every node (running nodes do not
