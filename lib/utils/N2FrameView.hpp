@@ -85,6 +85,8 @@ public:
     uint64_t& n_pl_fpga_ticks;
     /// FPGA ticks during which first-stage (GPU) RFI excision was enabled
     uint64_t& n_rfi_first_stage_enabled_fpga_ticks;
+    /// FPGA ticks during which the DTV mask was applied
+    uint64_t& n_dtv_mask_enabled_fpga_ticks;
 
     /// Whether second stage RFI excision was applied to this frame
     bool& rfi_frame_excision_enabled;

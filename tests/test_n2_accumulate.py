@@ -186,6 +186,8 @@ def setup(request, accum_setup):
     # prod_config and accum_setup are shared between params, so set or clear both
     config.pop("rfi_first_stage_enabled", None)
     accum_setup.pop("rfi_first_stage_enabled_updatable_config", None)
+    config.pop("dtv_mask_enabled", None)
+    accum_setup.pop("dtv_mask_enabled_updatable_config", None)
     if "first_stage_off_frame" in request.param:
         frame_len = config["samples_per_data_set"]
         off_seq = (
@@ -200,6 +202,11 @@ def setup(request, accum_setup):
             "rfi_first_stage_enabled_updatable_config"
         ] = "/rfi_first_stage_enabled"
         request.param["first_stage_off_seq"] = off_seq
+        # The DTV mask switches on at the same time
+        config["dtv_mask_enabled"] = dict(
+            config["rfi_first_stage_enabled"], enabled=True
+        )
+        accum_setup["dtv_mask_enabled_updatable_config"] = "/dtv_mask_enabled"
 
     request.param["rng"] = np.random.default_rng(seed=_TEST_SEED)
 
@@ -1364,6 +1371,29 @@ def test_first_stage_enabled(accum_data, accum_list, setup):
             frame_starts = sub_seqs - sub_seqs % frame_len
             expected = sub_len * np.count_nonzero(frame_starts < off_seq)
         assert frame.metadata.n_rfi_first_stage_enabled_fpga_ticks == expected
+
+
+def test_dtv_mask_enabled(accum_data, accum_list, setup):
+
+    if setup["fail"]:
+        return
+
+    config = setup["config"]
+    frame_len = config["samples_per_data_set"]
+    sub_len = config["sub_integration_ntime"]
+    on_seq = setup.get("first_stage_off_seq")
+
+    for idx, frame in enumerate(accum_data):
+        accum = accum_list[idx // config["num_local_freq"]]
+        # Without the endpoint the count is zero
+        expected = 0
+        if on_seq is not None:
+            sub_seqs = (
+                config["first_frame_index"] * frame_len + sub_len * accum["sub_idx"]
+            )
+            frame_starts = sub_seqs - sub_seqs % frame_len
+            expected = sub_len * np.count_nonzero(frame_starts >= on_seq)
+        assert frame.metadata.n_dtv_mask_enabled_fpga_ticks == expected
 
 
 def test_vis(accum_data, expected_accum, accum_list, setup):

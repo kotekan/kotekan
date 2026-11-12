@@ -196,6 +196,115 @@ def pipeline(tmp_path, runtime):
     return Pipeline(tmp_path, runtime)
 
 
+def add_output(pipeline, product, frame_size):
+    """Add an optional detector output and a raw writer for it."""
+    config = pipeline.config
+    name = f"dtv_{product}"
+    config[f"host_{name}_buffer"] = copy.deepcopy(config["host_dtv_powers_buffer"])
+    config[f"host_{name}_buffer"]["frame_size"] = frame_size
+    gpu = config["run_dtv_detector"]["gpu_0"]
+    gpu["out_buffers"][f"host_{name}"] = f"host_{name}_buffer"
+    pipeline.detector[f"{name}_name"] = name
+    gpu["commands"].append(
+        dict(
+            name="cudaOutputData",
+            cuda_stream=4,
+            gpu_mem=f"{name}_buffer",
+            out_buf=f"host_{name}",
+        )
+    )
+    config[f"dump_{name}"] = copy.deepcopy(config["dump_dtv_mask"])
+    config[f"dump_{name}"].update(in_buf=f"host_{name}_buffer", file_name=name)
+
+
+def bound_indices(pipeline):
+    ids = pipeline.generator["manual_freq_ids"]
+    bound = {p["receiver_channel_id"] for p in pipeline.bundle["profiles"]}
+    return [f for f, freq in enumerate(ids) if freq in bound]
+
+
+def test_fine_powers_hold_only_the_bound_rows(pipeline):
+    pipeline.calibrate()
+    num_freq = len(pipeline.generator["manual_freq_ids"])
+    bound = bound_indices(pipeline)
+    rows = len(bound) + 1
+    add_output(pipeline, "fine_powers", rows * 3 * 256 * 8)
+    pipeline.detector["dtv_fine_powers_rows"] = rows
+    code, output = pipeline.run()
+    assert code == 0, output[-12000:]
+    pipeline.verify()
+    out = pipeline.directory / "out"
+    fine = reference.read_raw_frames(
+        str(out / "dtv_fine_powers_*.raw"), rows * 3 * 256 * 8
+    )
+    powers = reference.read_raw_frames(str(out / "dtv_powers_*.raw"), num_freq * 3 * 8)
+    assert len(fine) == len(powers) > 0
+    for got_fine, got_powers in zip(fine, powers):
+        got = got_fine.payload.view("<u8").reshape(rows, 3, 256)
+        want = got_powers.payload.view("<u8").reshape(num_freq, 3)
+        # bound channel i is in row i, in local frequency order
+        np.testing.assert_array_equal(
+            got[: len(bound)].sum(axis=2, dtype=np.uint64), want[bound]
+        )
+        assert not got[len(bound) :].any()
+
+
+def test_too_few_fine_power_rows_stop_the_run(pipeline):
+    pipeline.calibrate()
+    rows = len(bound_indices(pipeline)) - 1
+    assert rows >= 1
+    add_output(pipeline, "fine_powers", rows * 3 * 256 * 8)
+    pipeline.detector["dtv_fine_powers_rows"] = rows
+    code, output = pipeline.run()
+    assert code != 0
+    assert "more than dtv_fine_powers_rows" in output, output[-12000:]
+
+
+def test_control_channel_is_recorded_and_never_masked(pipeline):
+    pipeline.calibrate()
+    profiles = pipeline.bundle["profiles"]
+    for profile in profiles:
+        profile["fine_calibration"]["cfar_multiplier_q16"] = 1
+    profiles[0]["fine_calibration"]["status"] = "control"
+    profiles[0]["physical_channel"] = 37
+    ids = pipeline.generator["manual_freq_ids"]
+    num_freq = len(ids)
+    add_output(pipeline, "fine_support", num_freq * 2 * 4)
+    code, output = pipeline.run()
+    assert code == 0, output[-12000:]
+    out = pipeline.directory / "out"
+    masks = reference.read_raw_frames(str(out / "dtv_mask_*.raw"), num_freq)
+    powers = reference.read_raw_frames(str(out / "dtv_powers_*.raw"), num_freq * 24)
+    supports = reference.read_raw_frames(
+        str(out / "dtv_fine_support_*.raw"), num_freq * 8
+    )
+    mask = np.array([frame.payload.view("i1") for frame in masks])
+    power = np.array([frame.payload.view("<u8") for frame in powers])
+    power = power.reshape(len(powers), num_freq, 3)
+    support = np.array([frame.payload.view("<i4") for frame in supports])
+    support = support.reshape(len(supports), num_freq, 2)
+    control = ids.index(profiles[0]["receiver_channel_id"])
+    others = [
+        ids.index(p["receiver_channel_id"])
+        for p in profiles[1:]
+        if p["receiver_channel_id"] in ids
+    ]
+    assert power[:, control].any()
+    assert not mask[:, control].any()
+    # DtvRfiMask clears a frequency with support (0, n), so the control row has none
+    assert (support[:, control] == -1).all()
+    assert (support[:, others, 0] >= 0).all()
+    assert mask[:, others].any()
+
+
+def test_only_channel_37_can_be_the_control(pipeline):
+    pipeline.calibrate()
+    pipeline.bundle["profiles"][0]["fine_calibration"]["status"] = "control"
+    code, output = pipeline.run()
+    assert code != 0
+    assert "only physical channel 37 can have status control" in output, output[-12000:]
+
+
 def test_independent_detectors_share_gpu(pipeline):
     pipeline.calibrate()
     other_dir = pipeline.directory / "other"
