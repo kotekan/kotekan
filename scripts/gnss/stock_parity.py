@@ -109,16 +109,21 @@ def template():
     return kotekan_src.src("config", "chord", "pathfinder.j2")
 
 
+# The variables of the stock render: gen_chord_gnss_config.STOCK_RENDER_VARS (production runs without
+# the PilotProxy DTV detector that pathfinder.j2 otherwise renders). Keep the two equal.
+STOCK_RENDER_VARS = {"dtv_enabled": False}
+
+
 def render_stock(path=None):
-    """The template (default template()) rendered stock, exactly as kotekan does (see
-    kotekan/kotekan.cpp)."""
+    """The template (default template()) rendered stock as kotekan does (see kotekan/kotekan.cpp),
+    with STOCK_RENDER_VARS."""
     import jinja2
 
     d, f = os.path.split(os.path.abspath(path or template()))
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(d), autoescape=jinja2.select_autoescape()
     )
-    return yaml.safe_load(env.get_template(f).render({}))
+    return yaml.safe_load(env.get_template(f).render(STOCK_RENDER_VARS))
 
 
 def load(src):
