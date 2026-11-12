@@ -97,7 +97,7 @@ This section maps common CMake options (see :doc:`cmake_options`) to the package
   - Ubuntu packages: ``libboost-test-dev`` (plus typical Boost dependencies)
 
 - ``COMPILE_DOCS`` (documentation)
-  - Ubuntu packages: ``doxygen``, ``graphviz``
+  - Ubuntu packages: ``doxygen``, ``graphviz``, ``python3-sphinx``, ``python3-breathe``, ``python3-sphinx-rtd-theme``
   - Python: ``sphinx``, ``breathe``, ``sphinx_rtd_theme`` (see below)
 
 Developer Python Packages
@@ -112,7 +112,7 @@ For linting, testing, and documentation, install these Python packages (often in
      cmake_format \
      pytest pytest-xdist pytest-timeout \
      pytest-cpp \
-     sphinx==6.2.* sphinx_rtd_theme==2.0.* breathe==4.35.* \
+     sphinx sphinx_rtd_theme breathe \
      h5py hdf5plugin bitshuffle \
      numpy \
      requests tabulate \
@@ -181,12 +181,11 @@ Documentation:
 
 * Sphinx::
 
-    sudo apt-get install python-sphinx
-    sudo pip install sphinx_rtd_theme
+    sudo apt-get install python3-sphinx python3-sphinx-rtd-theme
 
 * Breathe::
 
-    sudo pip install breathe
+    sudo apt-get install python3-breathe
 
 Building documentation
 ----------------------
