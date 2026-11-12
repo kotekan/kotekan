@@ -53,6 +53,8 @@
  * @param time_reverse_windows Reverse each K-sample window to match the
  *                          runtime bundle's weight coordinates
  *                          (true for CHORD runtime bundles).
+ * @param stream_good       Device bad feed mask [num_streams], 1 for a good input, or
+ *                          null to keep every input. A bad input is packed as zero.
  * @param stream            CUDA stream to launch on.
  */
 void launch_pilotproxy_pack(std::int8_t* packed_out, const std::uint8_t* voltage_ring,
@@ -60,7 +62,8 @@ void launch_pilotproxy_pack(std::int8_t* packed_out, const std::uint8_t* voltage
                             std::ptrdiff_t num_frequencies, int freq_index,
                             std::ptrdiff_t num_time_samples, std::ptrdiff_t ringbuf_size_t,
                             std::ptrdiff_t ringbuf_pos_t, int detector_window_samples,
-                            bool time_reverse_windows, cudaStream_t stream);
+                            bool time_reverse_windows, const std::int8_t* stream_good,
+                            cudaStream_t stream);
 
 /**
  * @brief CPU reference for @c launch_pilotproxy_pack (same arguments without
@@ -73,6 +76,6 @@ void cpu_pilotproxy_pack(std::int8_t* packed_out, const std::uint8_t* voltage_ri
                          std::ptrdiff_t num_frequencies, int freq_index,
                          std::ptrdiff_t num_time_samples, std::ptrdiff_t ringbuf_size_t,
                          std::ptrdiff_t ringbuf_pos_t, int detector_window_samples,
-                         bool time_reverse_windows);
+                         bool time_reverse_windows, const std::int8_t* stream_good);
 
 #endif // CUDA_PILOTPROXY_PACKER_HPP

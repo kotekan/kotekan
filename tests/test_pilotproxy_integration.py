@@ -196,6 +196,115 @@ def pipeline(tmp_path, runtime):
     return Pipeline(tmp_path, runtime)
 
 
+def add_output(pipeline, product, frame_size):
+    """Add an optional detector output and a raw writer for it."""
+    config = pipeline.config
+    name = f"dtv_{product}"
+    config[f"host_{name}_buffer"] = copy.deepcopy(config["host_dtv_powers_buffer"])
+    config[f"host_{name}_buffer"]["frame_size"] = frame_size
+    gpu = config["run_dtv_detector"]["gpu_0"]
+    gpu["out_buffers"][f"host_{name}"] = f"host_{name}_buffer"
+    pipeline.detector[f"{name}_name"] = name
+    gpu["commands"].append(
+        dict(
+            name="cudaOutputData",
+            cuda_stream=4,
+            gpu_mem=f"{name}_buffer",
+            out_buf=f"host_{name}",
+        )
+    )
+    config[f"dump_{name}"] = copy.deepcopy(config["dump_dtv_mask"])
+    config[f"dump_{name}"].update(in_buf=f"host_{name}_buffer", file_name=name)
+
+
+def bound_indices(pipeline):
+    ids = pipeline.generator["manual_freq_ids"]
+    bound = {p["receiver_channel_id"] for p in pipeline.bundle["profiles"]}
+    return [f for f, freq in enumerate(ids) if freq in bound]
+
+
+def test_fine_powers_hold_only_the_bound_rows(pipeline):
+    pipeline.calibrate()
+    num_freq = len(pipeline.generator["manual_freq_ids"])
+    bound = bound_indices(pipeline)
+    rows = len(bound) + 1
+    add_output(pipeline, "fine_powers", rows * 3 * 256 * 8)
+    pipeline.detector["dtv_fine_powers_rows"] = rows
+    code, output = pipeline.run()
+    assert code == 0, output[-12000:]
+    pipeline.verify()
+    out = pipeline.directory / "out"
+    fine = reference.read_raw_frames(
+        str(out / "dtv_fine_powers_*.raw"), rows * 3 * 256 * 8
+    )
+    powers = reference.read_raw_frames(str(out / "dtv_powers_*.raw"), num_freq * 3 * 8)
+    assert len(fine) == len(powers) > 0
+    for got_fine, got_powers in zip(fine, powers):
+        got = got_fine.payload.view("<u8").reshape(rows, 3, 256)
+        want = got_powers.payload.view("<u8").reshape(num_freq, 3)
+        # bound channel i is in row i, in local frequency order
+        np.testing.assert_array_equal(
+            got[: len(bound)].sum(axis=2, dtype=np.uint64), want[bound]
+        )
+        assert not got[len(bound) :].any()
+
+
+def test_too_few_fine_power_rows_stop_the_run(pipeline):
+    pipeline.calibrate()
+    rows = len(bound_indices(pipeline)) - 1
+    assert rows >= 1
+    add_output(pipeline, "fine_powers", rows * 3 * 256 * 8)
+    pipeline.detector["dtv_fine_powers_rows"] = rows
+    code, output = pipeline.run()
+    assert code != 0
+    assert "more than dtv_fine_powers_rows" in output, output[-12000:]
+
+
+def test_control_channel_is_recorded_and_never_masked(pipeline):
+    pipeline.calibrate()
+    profiles = pipeline.bundle["profiles"]
+    for profile in profiles:
+        profile["fine_calibration"]["cfar_multiplier_q16"] = 1
+    profiles[0]["fine_calibration"]["status"] = "control"
+    profiles[0]["physical_channel"] = 37
+    ids = pipeline.generator["manual_freq_ids"]
+    num_freq = len(ids)
+    add_output(pipeline, "fine_support", num_freq * 2 * 4)
+    code, output = pipeline.run()
+    assert code == 0, output[-12000:]
+    out = pipeline.directory / "out"
+    masks = reference.read_raw_frames(str(out / "dtv_mask_*.raw"), num_freq)
+    powers = reference.read_raw_frames(str(out / "dtv_powers_*.raw"), num_freq * 24)
+    supports = reference.read_raw_frames(
+        str(out / "dtv_fine_support_*.raw"), num_freq * 8
+    )
+    mask = np.array([frame.payload.view("i1") for frame in masks])
+    power = np.array([frame.payload.view("<u8") for frame in powers])
+    power = power.reshape(len(powers), num_freq, 3)
+    support = np.array([frame.payload.view("<i4") for frame in supports])
+    support = support.reshape(len(supports), num_freq, 2)
+    control = ids.index(profiles[0]["receiver_channel_id"])
+    others = [
+        ids.index(p["receiver_channel_id"])
+        for p in profiles[1:]
+        if p["receiver_channel_id"] in ids
+    ]
+    assert power[:, control].any()
+    assert not mask[:, control].any()
+    # DtvRfiMask clears a frequency with support (0, n), so the control row has none
+    assert (support[:, control] == -1).all()
+    assert (support[:, others, 0] >= 0).all()
+    assert mask[:, others].any()
+
+
+def test_only_channel_37_can_be_the_control(pipeline):
+    pipeline.calibrate()
+    pipeline.bundle["profiles"][0]["fine_calibration"]["status"] = "control"
+    code, output = pipeline.run()
+    assert code != 0
+    assert "only physical channel 37 can have status control" in output, output[-12000:]
+
+
 def test_independent_detectors_share_gpu(pipeline):
     pipeline.calibrate()
     other_dir = pipeline.directory / "other"
@@ -291,6 +400,101 @@ def test_detector_blocks_cross_input_frame_boundaries(pipeline, num_times):
         pipeline.config[f"dump_dtv_{product}"]["exit_after_n_files"] = blocks
     code, output = pipeline.run()
     assert code == 0, output[-12000:]
+    pipeline.verify()
+
+
+@pytest.mark.parametrize("lifetime_blocks", [1, 2, 4])
+def test_bad_feed_mask_zeroes_flagged_inputs(pipeline, lifetime_blocks):
+    pipeline.calibrate()
+    config = pipeline.config
+    num_dishes = config["num_dishes"]
+    lifetime = lifetime_blocks * pipeline.block_samples
+    downsample = pipeline.generator["meta_time_downsample_factor"]
+    # both streams must start at the same sequence number
+    pipeline.generator["first_frame_index"] = 16
+    config["bf_mask_lifetime_in_samples"] = lifetime
+    config["host_bf_mask_buffer"] = {
+        "kotekan_buffer": "ndarray",
+        "num_frames": "buffer_depth",
+        "value_type": "int8",
+        "extents": [1, "num_polarizations", "num_dishes"],
+        "quantity_name": "bf_mask",
+        "dimnames": ["Tbf", "P", "D"],
+        "dimscalings": ["bf_mask_lifetime_in_samples", 1, 1],
+        "metadata_pool": "main_pool",
+    }
+    config["host_bf_mask_ringbuffer"] = {
+        "kotekan_buffer": "ring",
+        "ring_buffer_size": "buffer_depth * num_polarizations * num_dishes",
+        "metadata_pool": "main_pool",
+    }
+    # elements alternate between all good and all bad, so a stale element shows in the powers
+    config["gen_bf_mask"] = {
+        "kotekan_stage": "testDataGen",
+        "out_buf": "host_bf_mask_buffer",
+        "type": "const8",
+        "values": [1, 0],
+        "wait": False,
+        "samples_per_data_set": lifetime * downsample,
+        "first_frame_index": 16 // lifetime_blocks,
+        "num_frames": config["num_gen_frames"] // lifetime_blocks,
+        "name": "bf_mask",
+        "array_shape": [1, 2, num_dishes],
+        "dim_name": ["Tbf", "P", "D"],
+        "dim_scaling": [lifetime, 1, 1],
+        "manual_freq_ids": pipeline.generator["manual_freq_ids"],
+        "meta_time_downsample_factor": downsample,
+    }
+    config["dump_bf_mask"] = dict(
+        config["dump_voltage"], in_buf="host_bf_mask_buffer", file_name="bf_mask"
+    )
+    del config["dump_bf_mask"]["exit_after_n_files"]
+    config["run_send_bf_mask"] = {
+        "gpu_0": {
+            "kotekan_stage": "cudaProcess",
+            "gpu_id": 0,
+            "in_buffers": {"host_bf_mask_buffer_in": "host_bf_mask_buffer"},
+            "out_buffers": {"host_bf_mask_ringbuffer": "host_bf_mask_ringbuffer"},
+            "commands": [
+                {
+                    "name": "cudaCopyToRingbuffer",
+                    "input_size": "num_polarizations * num_dishes",
+                    "ring_buffer_size": "buffer_depth * input_size",
+                    "in_buf": "host_bf_mask_buffer_in",
+                    "signal_buf": "host_bf_mask_ringbuffer",
+                    "gpu_mem_output": "bf_mask_buffer",
+                }
+            ],
+        }
+    }
+    stage = config["run_dtv_detector"]["gpu_0"]
+    stage["in_buffers"]["host_bf_mask_ringbuffer"] = "host_bf_mask_ringbuffer"
+    pipeline.detector["bf_mask_name"] = "bf_mask"
+    code, output = pipeline.run()
+    assert code == 0, output[-12000:]
+
+    masks = reference.read_raw_frames(
+        str(pipeline.directory / "out/bf_mask_*.raw"), 2 * num_dishes
+    )
+    assert len(masks) == config["num_gen_frames"] // lifetime_blocks
+    assert len({frame.payload.tobytes() for frame in masks}) > 1
+
+    # the stage must match a reference that sees the flagged inputs as zero
+    paths = sorted((pipeline.directory / "out").glob("voltage_*.raw"))
+    for block, path in enumerate(paths):
+        with path.open("rb") as stream:
+            metadata_size = struct.unpack("<I", stream.read(4))[0]
+        data = np.memmap(
+            path,
+            dtype=np.uint8,
+            mode="r+",
+            offset=metadata_size + 4,
+            shape=(pipeline.block_samples, 4, 2 * num_dishes),
+        )
+        bad = masks[block // lifetime_blocks].payload.view(np.int8) == 0
+        data[:, :, bad] = 0x88
+        data.flush()
+        del data
     pipeline.verify()
 
 

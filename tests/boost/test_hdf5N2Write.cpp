@@ -93,6 +93,8 @@ static void fill_n2_frame_with_abs_freq(Buffer* buf, int frame_id, size_t num_in
     // Distinct per (f, t): nodes can switch excision and fringestopping at different times
     meta->n_rfi_first_stage_enabled_fpga_ticks =
         std::min<uint64_t>(10 * f_index + t_index, frame_length_ticks);
+    meta->n_dtv_mask_enabled_fpga_ticks =
+        std::min<uint64_t>(20 * f_index + t_index, frame_length_ticks);
     meta->rfi_frame_excision_enabled = (f_index + t_index) % 2 == 1;
     meta->fringestop_enabled = f_index % 2 == 1;
     meta->rfi_frame_excision_num = 1 + (f_index + t_index) % MAX_NUM_RFI_THRESHOLDS;
@@ -341,6 +343,16 @@ static void validate_dataset_content(File& file, size_t num_input, size_t num_ev
                     BOOST_CHECK_CLOSE_FRACTION(frac_out[fi][t][k], expected / 1000.0f, 1e-6f);
                 }
             }
+    }
+
+    // DTV mask fraction, every (freq, time)
+    {
+        std::vector<std::vector<float>> out;
+        file.getDataSet("/frac_dtv_mask_enabled").read(out);
+        BOOST_REQUIRE_GE(out.size(), nfreq);
+        for (size_t fi = 0; fi < nfreq; ++fi)
+            for (size_t t = 0; t < file_nt; ++t)
+                BOOST_CHECK_CLOSE_FRACTION(out[fi][t], float(20 * fi + t) / 100.0f, 1e-6f);
     }
 
     // per-time arrays shape exists

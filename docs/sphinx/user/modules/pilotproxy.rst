@@ -15,6 +15,9 @@ presence or absence of the pilot is decided once per 8192-sample block
 (41.94304 ms, one n2k integration).
 
 The tests are described in :ref:`dev_pilotproxy_testing`.
+To calibrate, test, and deploy a bundle on a telescope, see
+``docs/RUNNING_THE_DETECTOR.md`` in the
+`PilotProxy repository <https://github.com/WVURAIL/pilotproxy>`_.
 
 
 Components
@@ -29,9 +32,10 @@ Components
     rejects the block), ``dtv_powers`` (``uint64[1, F, 3]``, the target and the
     two reference frame powers, each the sum of the 256 fine powers of that
     term), and optionally ``dtv_fine_support`` (``int32[1, F, 2]``, described
-    below). Frequencies without a pilot get zero masks and powers. The
-    detector sums every input in the ring, even the inputs that the correlator
-    flags as bad.
+    below) and ``dtv_fine_powers`` (``uint64[1, R, 3, 256]``, the fine powers
+    behind each decision). Frequencies without a bound profile get zero masks and powers. The
+    detector sums every input in the ring, unless ``bf_mask_name`` names the bad
+    feed mask ring, and a flagged input is then packed as zero.
     The leading ``T`` axis holds one block, scaled by its FPGA sequence period,
     so ``hdf5FileWrite`` can concatenate blocks with ``frames_per_file``.
 
@@ -126,34 +130,50 @@ pilot is given only in the bundle. The two lists must not overlap, and every
 listed ID must be on the node, so the lists are set for each node.
 
 
-Pathfinder recording
---------------------
+Pathfinder
+----------
 
-``config/chord/pathfinder.j2`` uses the same ``dtv_enabled``, ``dtv_apply_mask``
-and ``dtv_runtime_bundle_dir`` switches, but adds the detector unless
-``dtv_enabled`` is false. A node without the bundle needs ``dtv_enabled: false``.
+``config/chord/pathfinder.j2`` always runs the detector and ``DtvRfiMask``, so
+every node needs the bundle (``dtv_runtime_bundle_dir``, as above). n2k always
+reads ``dtv_RFImask``, so it waits for the detector even while the mask is
+off. Two switches can be changed at runtime, and their config values set the
+state at startup (both default to false):
 
-Each X-engine half packs 1024 blocks (about 43 seconds) of masks, powers and
-fine support into one frame with ``NDArrayTimeConcat``, and sends the frames
-to the recv node. ``config/chord/recv.j2`` writes each frame to its own file
-under ``/mnt/cs00/data/dtv``, named ``dtv_<product>.<number>.h5``. The numbers
+``dtv_apply_mask``, endpoint ``/dtv_mask_enabled``
+    Apply the DTV mask to the visibilities. While off, ``DtvRfiMask`` copies
+    the SK mask unchanged. ``N2Accumulate`` records the fraction of each bin
+    that the mask was on, which ``hdf5N2Write`` writes as
+    ``frac_dtv_mask_enabled``.
+
+``dtv_write_enabled``, endpoint ``/dtv_write_enabled``
+    Send the detector products to the recv node.
+
+The detector reads the bad feed mask ring of ``bufferBadInputs``, and a flagged
+input is packed as zero. ``bufferBadInputs`` also flags every element outside
+the main array, which on CHORD are the Missing dishes and the 16 RFI antennas,
+so the detector also drops the RFI antennas, which probably see DTV most
+strongly. ``dtv_powers`` and ``dtv_fine_powers`` fall as inputs are flagged, so
+a bundle calibrated from recorded files needs a steady input count.
+
+Each X-engine half packs 1024 blocks (about 43 seconds) of masks, powers, fine
+support and fine powers into one frame with ``NDArrayTimeConcat``, and sends
+the frames to the recv node. ``config/chord/recv.j2`` writes each frame to its
+own file under ``/mnt/cs00/data/dtv``, named ``dtv_<product>.<number>.h5``. The numbers
 follow arrival order, so a file's ``coarse_freq`` attribute identifies the
 half, and its ``fpga_seq_num`` attribute gives the start of the window. The
 windows are aligned in ``fpga_seq_num``, so the halves' files cover the same
 time spans. A block missing from a window is a row of ``0xFF`` bytes: ``-1``
-for the mask and fine support, and the largest ``uint64`` for the powers.
+for the mask and fine support, and the largest ``uint64`` for the powers and
+fine powers.
 
-Detection and recording both start off, so the visibilities do not change
-until the detector is turned on. POST
-``{"enabled": true, "valid_at_time_ns": 0}`` to ``/dtv_detector_enabled`` to
-start detection at the next block. POST ``{"enabled": true}`` to
-``/dtv_write_enabled`` on the X-engine nodes to start sending. Set ``enabled``
-to false to stop. Both changes to ``/dtv_write_enabled`` apply to whole
-frames. A nonzero ``valid_at_time_ns`` applies the detector change at the first
-block starting at or after that instrument time. A restart returns both
-switches to off. A POST sent before the stages have started returns 200 but has
-no effect, so the detector log line ``PilotProxy detector on`` confirms the
-change.
+POST ``{"enabled": true, "valid_at_time_ns": 0}`` to ``/dtv_mask_enabled`` to
+apply the mask from the next frame, and ``false`` to stop. A nonzero
+``valid_at_time_ns`` applies the change at the first frame starting at or after
+that instrument time, in ``DtvRfiMask`` and in the recorded fraction. POST
+``{"enabled": true}`` or ``{"enabled": false}`` to ``/dtv_write_enabled`` to
+start or stop sending; the change applies to whole frames. A restart returns
+both to their configured values. The ``DtvRfiMask`` log line ``DTV mask on``
+or ``off`` confirms a mask change.
 
 
 GPU streams
@@ -223,3 +243,13 @@ Monitoring
 * ``dtv_powers`` holds the pilot and reference powers of every block, so a
   moved pilot or a new line near a reference bin can be seen there even when
   the mask does not fire. Either one requires a recalibration.
+* ``config/chord/dtv.j2`` also sends ``dtv_fine_powers`` to the recv node, on
+  port 11037. PilotProxy calibrates a bundle from these files, so a detect-only
+  run replaces baseband captures for calibration. The output has
+  ``dtv_fine_powers_rows`` rows (R, 2 on the Pathfinder), with bound channel i
+  in row i and its ``coarse_freq`` in the metadata (-1 for an unused row). A
+  node that binds more than R channels stops at its first frame.
+* A bundle profile with the status ``control`` (channel 37, which has no DTV) is
+  decided and recorded like a pilot, and its mask stays zero. Its fine support
+  stays ``(-1, -1)``, so ``DtvRfiMask`` never clears it. Only channel 37 can
+  have this status. Calibration uses it to set the noise floor.
