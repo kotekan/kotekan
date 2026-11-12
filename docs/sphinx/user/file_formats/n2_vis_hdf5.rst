@@ -188,8 +188,9 @@ h5py reads them natively as ``complex64``.
 
 **Sentinels.**
 Quantities that no upstream stage populated hold sentinel values rather than
-physical ones: ``erms`` = -1 or -FLT_MAX, ``gain`` = -1+0j,
-``radiometer_chi2`` = -1, and ``eval`` / ``evec`` = 0 when no eigensolver ran.
+physical ones: ``erms`` = -1 or -FLT_MAX, ``gain`` = -1+0j when no gains
+buffer is wired into the accumulator, ``radiometer_chi2`` = -1, and
+``eval`` / ``evec`` = 0 when no eigensolver ran.
 Which of these are real in a given acquisition depends on the deployed
 pipeline. ``flags`` is not among them: 1.0 is a good element and 0.0 a bad
 one, so a pipeline with no flagging stage reports every element as good
@@ -501,9 +502,11 @@ uncompressed.
    * - ``gain``
      - (:math:`N_f`, :math:`N_e`, :math:`N_t`)
      - complex64
-     - Complex gain applied to each input. Sentinel -1+0j when no gain
-       application was recorded (the F-engine digital gains are in
-       ``/digital_gains`` instead).
+     - Complex calibration gain of each input in force when the integration
+       was written, as posted to the X-engine (bufferGains) and recorded by
+       the accumulator. Recorded only: ``vis`` is not calibrated. Sentinel
+       -1+0j when no gains buffer is wired into the accumulator (the
+       F-engine digital gains are in ``/digital_gains`` instead).
    * - ``flags``
      - (:math:`N_f`, :math:`N_e`, :math:`N_t`)
      - float32

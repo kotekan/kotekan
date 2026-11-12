@@ -639,6 +639,50 @@ def bad_feed_mask_data(setup):
     return bufs
 
 
+def expected_gain(freq_id, num_el):
+    """The gains the gains_data frame holds at `freq_id`: (freq_id + 1) + 1j * element."""
+    return (freq_id + 1) + 1j * np.arange(num_el)
+
+
+@pytest.fixture(scope="module")
+def gains_data(setup):
+    """
+    Generate one input gains frame in a ChordBuffer.
+
+    As produced by bufferGains, a frame is one posted update, [F, P, D, C]
+    float32; N2Accumulate records the newest one it has taken in its output
+    frames. One frame keeps the record the same in every bin.
+
+    Returns
+    -------
+    List of one ChordBuffer containing the gains frame.
+    """
+
+    config = setup["config"]
+    num_freq = config["num_local_freq"]
+    num_el = config["num_elements"]
+
+    bufs = make_zeroed_chord_buffer(
+        "gain",
+        np.float32,
+        "float32",
+        (num_freq, config["num_polarizations"], config["num_dishes"], 2),
+        ("F", "P", "D", "C"),
+        (1, 1, 1, 1),
+        0,
+        0,
+        1,
+        freq_ids=np.arange(num_freq, dtype=np.int32),
+    )
+
+    gain = bufs[0].data.reshape(num_freq, num_el, 2)
+    for f in range(num_freq):
+        gain[f, :, 0] = expected_gain(f, num_el).real
+        gain[f, :, 1] = expected_gain(f, num_el).imag
+
+    return bufs
+
+
 @pytest.fixture(scope="module")
 def accum_data(
     tmpdir_factory,
@@ -650,6 +694,7 @@ def accum_data(
     plcount_data,
     rfiframemask_data,
     bad_feed_mask_data,
+    gains_data,
     accum_list,
 ):
     """
@@ -675,6 +720,8 @@ def accum_data(
         input RFIFrameMask
     bad_feed_mask_data : fixture
         input bad feed mask
+    gains_data : fixture
+        input gains
     accum_list : fixture
         List of expected output accumulation frame metadata. Used only to set the number of expected output frames.
 
@@ -700,6 +747,8 @@ def accum_data(
     rfiframemask_buffer.write()
     bad_feed_mask_buffer = runner.ReadChordBuffer(str(tmpdir), bad_feed_mask_data)
     bad_feed_mask_buffer.write()
+    gains_buffer = runner.ReadChordBuffer(str(tmpdir), gains_data)
+    gains_buffer.write()
 
     # Make the output buffer we'll read from
     dump_buffer = runner.DumpN2Buffer(
@@ -738,6 +787,7 @@ def accum_data(
             "in_plcounts_buf": plcount_buffer,
             "in_rfiframemask_buf": rfiframemask_buffer,
             "in_bad_feed_mask_buf": bad_feed_mask_buffer,
+            "in_gains_buf": gains_buffer,
         },
         dump_buffer,
         config,
@@ -1212,6 +1262,10 @@ def test_structure(accum_data, accum_list, setup):
 
         assert frame.gain.shape == (num_el,)
         assert frame.gain.dtype == np.complex64
+        # The gains in force when the bin was written, from the gains buffer
+        np.testing.assert_array_equal(
+            frame.gain, expected_gain(frame.metadata.freq_id, num_el)
+        )
 
         assert frame.mask.shape == (num_el,)
         assert frame.mask.dtype == np.uint8

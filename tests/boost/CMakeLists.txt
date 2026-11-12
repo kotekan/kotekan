@@ -434,6 +434,33 @@ endif()
 target_include_directories(test_bufferBadInputs PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
                                                         ${KOTEKAN_SOURCE_DIR}/lib/utils)
 
+# test_bufferGains - tests for bufferGains stage
+add_executable(test_bufferGains test_bufferGains.cpp)
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    target_link_libraries(
+        test_bufferGains
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,-all_load
+                kotekan_metadata)
+else()
+    target_link_libraries(
+        test_bufferGains
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,--whole-archive
+                kotekan_metadata
+                -Wl,--no-whole-archive)
+endif()
+target_include_directories(test_bufferGains PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
+                                                    ${KOTEKAN_SOURCE_DIR}/lib/utils)
+
 # test_bufferRecv - tests for bufferRecv stage
 add_executable(test_bufferRecv test_bufferRecv.cpp)
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")

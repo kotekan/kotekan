@@ -152,6 +152,14 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  * all good.
  *         @buffer_format   NDArray int8 [1, num_polarizations, num_dishes]
  *         @buffer_metadata chordMetadata
+ * @buffer  in_gains_buf  Optional per-input complex gains, as produced by bufferGains: one
+ * frame per posted update, elements in the input order. Waited for once, then polled without
+ * blocking at every correlation frame; the newest frame taken is recorded in the output frames'
+ * `gain` field when a bin is written. The gains are recorded, not applied to the visibilities.
+ * Without this input `gain` holds the sentinel -1+0j.
+ *         @buffer_format   NDArray float32 [num_freq_per_n2k_frame, num_polarizations,
+ *                          num_dishes, 2]
+ *         @buffer_metadata chordMetadata, with the correlation frames' coarse_freq
  * @buffer  out_buf         The accumulated and tagged data.
  *      @buffer_format N2Buffer. layout=FullUpperTri, num_ev=0
  *      @buffer_metadata N2Metadata
@@ -282,6 +290,7 @@ private:
     Buffer* in_plcounts_buf;      /// Buffer containing input plcounts
     Buffer* in_rfiframemask_buf;  /// Buffer containing input rfiframemask
     Buffer* in_bad_feed_mask_buf; /// Optional buffer containing the bad feed mask; may be null
+    Buffer* in_gains_buf;         /// Optional buffer containing the gains to record; may be null
     Buffer* out_buf;              /// Output for the main vis dataset only
 
     // Parameters saved from the config files
@@ -363,6 +372,8 @@ private:
     std::vector<uint8_t> _accum_bad_feed_mask;
     /// AND a bad feed mask frame (@c _num_elements bytes, input order) into @c _accum_bad_feed_mask
     void fold_bad_feed_mask_into_accum(const uint8_t* bad_feed_mask);
+    /// The newest gains frame taken from @c in_gains_buf, [freq][element], output order
+    std::vector<N2::cfloat> _gains;
     int64_t _vis_samples_in_out_frame;
     /// FPGA ticks of the current bin during which first-stage RFI excision was enabled
     uint64_t _n_rfi_first_stage_enabled_ticks;
