@@ -31,13 +31,13 @@ endif()
 add_subdirectory(metadata)
 target_link_libraries(kotekan_libs INTERFACE kotekan_metadata)
 
-if(OPENCL_FOUND
+if(OpenCL_FOUND
    OR CUDAToolkit_FOUND
    OR HIP_FOUND)
     add_subdirectory(gpu)
 endif()
 
-if(OPENCL_FOUND)
+if(OpenCL_FOUND)
     add_subdirectory(opencl)
     target_link_libraries(kotekan_libs INTERFACE kotekan_opencl)
 endif()
@@ -52,7 +52,7 @@ if(HIP_FOUND)
     target_link_libraries(kotekan_libs INTERFACE kotekan_hip)
 endif()
 
-if(OPENCL_FOUND
+if(OpenCL_FOUND
    OR CUDAToolkit_FOUND
    OR HIP_FOUND)
     target_link_libraries(kotekan_libs INTERFACE kotekan_gpu)
