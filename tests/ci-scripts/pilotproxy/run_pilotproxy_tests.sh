@@ -15,7 +15,7 @@ export PYTHONNOUSERSITE=1
 export PYTHONDONTWRITEBYTECODE=1
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 export PIP_REQUIRE_VIRTUALENV=true
-"$PYTHON" -m pip --python "$WORK/venv" install --no-deps -r "$SRC/tests/ci-scripts/pilotproxy/requirements.txt"
+"$PYTHON" -m pip --python "$WORK/venv" install -r "$SRC/tests/ci-scripts/pilotproxy/requirements.txt"
 python3 - "$SRC/external/pilotproxy" <<'PY'
 import hashlib
 import json
