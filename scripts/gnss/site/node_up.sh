@@ -28,6 +28,8 @@
 #         GNSS_SKIP_IFACE      1 skips the interface check only
 #         GNSS_AS_USER         1 runs the unit as the invoking user, in that user's systemd
 #                              manager, with no sudo (see below)
+#         GNSS_NODE_USER       the account the root-started unit runs kotekan as (default
+#                              kotekan, as the stock kotekan.service; root for the old way)
 #
 # Needs an interactive sudo on the target, so it uses `ssh -t` and prompts per node (`status`
 # and GNSS_AS_USER=1 need neither).
@@ -65,12 +67,26 @@ CFG=${GNSS_CFG:-}
 # roles/kotekan), so the user must be in it, and so must the user's systemd manager, which keeps
 # the groups it started with: the start checks the groups a user unit gets. `loginctl
 # enable-linger`, which polkit allows for one's own user, keeps that manager and the unit alive
-# past the ssh session. A root unit (the default mode) holds the NIC, the hugepages and the log
-# file, so stop it with sudo first; the start refuses while it runs or while the log is root's.
+# past the ssh session. A system unit (the default mode) holds the NIC, the hugepages and the
+# log file, so stop it with sudo first; the start refuses while it runs or while the log is root's.
+#
+# The default mode starts the unit with sudo and runs kotekan as GNSS_NODE_USER (default kotekan,
+# the account the stock kotekan.service runs as, which owns the vfio group devices and
+# /dev/hugepages): User=kotekan, LimitMEMLOCK=infinity for the vfio DMA mappings and pinned host
+# memory, and a runtime directory for the DPDK EAL (non-root, it keeps its files under
+# $XDG_RUNTIME_DIR). GNSS_NODE_USER=root runs it as root, as before 11-12.
+NODE_USER=${GNSS_NODE_USER:-kotekan}
+case "$NODE_USER" in
+    *[!a-z0-9_-]*) echo "FAILED: GNSS_NODE_USER must be an account name" >&2; exit 1 ;;
+esac
 if [ "${GNSS_AS_USER:-0}" = 1 ]; then
-    SUDO=; SCTL="systemctl --user"; RUN="systemd-run --user"
+    SUDO=; SCTL="systemctl --user"; RUN="systemd-run --user"; AS_PROPS=""
 else
-    SUDO=sudo; SCTL=systemctl; RUN="sudo systemd-run"
+    SUDO=sudo; SCTL=systemctl; RUN="sudo systemd-run"; AS_PROPS=""
+    if [ "$NODE_USER" != root ]; then
+        AS_PROPS=" --uid=$NODE_USER --gid=$NODE_USER --property=LimitMEMLOCK=infinity \
+        --property=RuntimeDirectory=gnss-node --setenv=XDG_RUNTIME_DIR=/run/gnss-node"
+    fi
 fi
 LOG=${GNSS_LOG:-/tmp/gnss_node.log}
 # GNSS_ENV becomes systemd-run --setenv flags on the transient unit, so it lasts for this start
@@ -241,11 +257,11 @@ print("%s:%s%s" % (c["host"], c["port"], c.get("timing_endpoint", "/get-frame0-t
 }
 
 # The mkdir makes /tmp/gnss, the configs' record_dir, on node-local disk (not the NFS home),
-# and each rawFileWrite sink's directory under it, AS THE USER: kotekan runs as root and would
-# make them root-owned, and then nobody but root could retire the dumps. A user-owned
-# directory lets the pull loops (beam dump, track beam, DTV, lane dump, vis capture) unlink
-# the root-owned files they have copied. /tmp is wiped at boot (tmpfiles.d), so every start
-# re-makes them.
+# and each rawFileWrite sink's directory under it, AS THE USER: kotekan (as root or as the
+# kotekan account) would make them its own, and then nobody else could retire the dumps. A
+# user-owned directory lets the pull loops (beam dump, track beam, DTV, lane dump, vis capture)
+# unlink the files kotekan wrote once they have copied them. /tmp is wiped at boot
+# (tmpfiles.d), so every start re-makes them.
 # A stopped or failed transient unit can stay loaded, and systemd-run then refuses the name
 # ("Unit gnss-node.service was already loaded or has a fragment file"); reset-failed clears it
 # and is harmless when there is nothing to clear, hence the `|| true`. An unreadable config ends
@@ -272,11 +288,25 @@ print("%s:%s%s" % (c["host"], c["port"], c.get("timing_endpoint", "/get-frame0-t
 # and the restart drops every REST-set state. The override below exempts this unit, so an
 # upgraded library is picked up at the next planned restart. Written only if needrestart is
 # installed and the line is not already there.
+#
+# Run as kotekan, kotekan must be able to write the dump directories and to take the hugepages.
+# The directories are made by the user (above) and opened to every account; the pull loops can
+# still remove what kotekan writes there, since they own the directory. A root run leaves its
+# DPDK hugepage files (rtemap_*, root's, mode 0600) in /dev/hugepages, which is sticky: a
+# non-root EAL can neither reuse nor remove them, and fails to map its memory. They are removed
+# as root once no root kotekan runs, which is what the EAL does itself with unused ones.
 NR_CONF=/etc/needrestart/conf.d/gnss-node.conf
 NR_LINE='$nrconf{override_rc}{qr(^gnss-node\.service$)} = 0;'
+DUMP_DIRS="/tmp/gnss/beamdump /tmp/gnss/trackbeam /tmp/gnss/dtv /tmp/gnss/lanedump /tmp/gnss/viscap"
 if [ -n "$SUDO" ]; then
     MODE_UP="{ [ -d $(dirname $NR_CONF) ] && ! grep -qxF '$NR_LINE' $NR_CONF 2>/dev/null \
         && echo '$NR_LINE' | sudo tee $NR_CONF >/dev/null; true; }"
+    if [ "$NODE_USER" != root ]; then
+        MODE_UP="$MODE_UP && { chmod a+rwx $DUMP_DIRS \
+            || { echo \"node_up: cannot open the dump directories to $NODE_USER\"; exit 2; }; } \
+          && { pgrep -u root -x kotekan >/dev/null \
+               || sudo find /dev/hugepages -maxdepth 1 -type f -user root -name 'rtemap_*' -delete; true; }"
+    fi
 else
     # needrestart restarts system services only, so a user unit needs no override.
     MODE_UP="{ ! systemctl is-active -q gnss-node || { echo \"node_up: the root gnss-node unit is running: sudo systemctl stop gnss-node first\"; exit 2; }; } \
@@ -284,7 +314,7 @@ else
       && { loginctl show-user \$(id -un) -p Linger | grep -q =yes || loginctl enable-linger; } \
       && { systemd-run --user --wait --pipe -q id -nG | grep -qw kotekan || { echo \"node_up: a user unit here lacks the kotekan group (vfio, hugepages)\"; exit 2; }; }"
 fi
-REMOTE_UP="mkdir -p /tmp/gnss/beamdump /tmp/gnss/trackbeam /tmp/gnss/dtv /tmp/gnss/lanedump /tmp/gnss/viscap && $SUDO $SCTL reset-failed gnss-node 2>/dev/null || true; \
+REMOTE_UP="mkdir -p $DUMP_DIRS && $SUDO $SCTL reset-failed gnss-node 2>/dev/null || true; \
       $MODE_UP; \
       { [ -f '$LOG' ] && $SUDO mv -f '$LOG' '$LOG.1'; true; }; \
       test -r '$CFG' || { echo \"node_up: config unreadable\"; exit 2; }; \
@@ -292,7 +322,7 @@ REMOTE_UP="mkdir -p /tmp/gnss/beamdump /tmp/gnss/trackbeam /tmp/gnss/dtv /tmp/gn
         --working-directory=$K \
         --property=Restart=on-failure --property=RestartSec=20 \
         --property=StartLimitIntervalSec=0 \
-        --property=LimitCORE=infinity$SETENV \
+        --property=LimitCORE=infinity$AS_PROPS$SETENV \
         --property=StandardOutput=append:$LOG \
         --property=StandardError=inherit \
         '$BIN' --config '$CFG' --bind-address 0.0.0.0:12048"

@@ -300,14 +300,15 @@ exec bash -c "$*" < /dev/null
 
 def node_up_stubs(d):
     """ssh runs the remote string here; sudo runs only what node_up needs, and systemd-run
-    fails; systemctl and curl fail; mkdir and sleep do nothing."""
+    fails; systemctl and curl fail; mkdir and sleep do nothing; chmod and sudo find are logged
+    to $SUDO_LOG and do nothing; pgrep finds no process."""
     bindir = os.path.join(d, "bin")
     stub(bindir, "ssh", SSH_STUB)
     stub(
         bindir,
         "sudo",
         'case "$1" in\n'
-        '  systemd-run) echo "$*" >> "$SUDO_LOG"; exit 1 ;;\n'
+        '  systemd-run|find) echo "$*" >> "$SUDO_LOG"; [ "$1" = find ]; exit ;;\n'
         "  tee) cat > /dev/null ;;\n"
         '  systemctl|mv) exec "$@" ;;\n'
         "  *) exit 1 ;;\n"
@@ -316,6 +317,8 @@ def node_up_stubs(d):
     stub(bindir, "systemctl", "exit 1\n")
     stub(bindir, "curl", "exit 7\n")
     stub(bindir, "mkdir", "exit 0\n")
+    stub(bindir, "chmod", 'echo "chmod $*" >> "$SUDO_LOG"\n')
+    stub(bindir, "pgrep", "exit 1\n")
     stub(bindir, "sleep", "exit 0\n")
     return bindir + ":" + os.environ["PATH"]
 
@@ -352,6 +355,34 @@ def test_node_up_systemd_run_failure_retries():
             rc == 1 and "FAILED after 3 attempts" in out,
             "and ends as a failed start after three (rc %d)" % rc,
         )
+        log = open(sudo_log).read()
+        runs = [ln for ln in log.splitlines() if ln.startswith("systemd-run")]
+        check(
+            runs
+            and all(
+                "--uid=kotekan --gid=kotekan --property=LimitMEMLOCK=infinity" in ln
+                and "--setenv=XDG_RUNTIME_DIR=/run/gnss-node" in ln
+                for ln in runs
+            )
+            and "chmod a+rwx /tmp/gnss/beamdump" in log
+            and "find /dev/hugepages -maxdepth 1 -type f -user root -name rtemap_* -delete"
+            in log,
+            "by default kotekan runs as the kotekan account, the dump directories are opened "
+            "to it and root's hugepage files are removed",
+        )
+        open(sudo_log, "w").close()
+        rc, out = run(
+            ["bash", os.path.join(HERE, "node_up.sh"), "cxtest", "up"],
+            dict(env, GNSS_NODE_USER="root"),
+        )
+        log = open(sudo_log).read()
+        check(
+            log.count("systemd-run") == 3
+            and "--uid=" not in log
+            and "chmod" not in log
+            and "find" not in log,
+            "GNSS_NODE_USER=root starts it as root and touches neither (rc %d)" % rc,
+        )
         # The node's log path and the config are one file here, so the remote side moves the
         # config away (to $LOG.1) before its readability test: that test must stay fatal.
         open(cfg, "w").write("x: 1\n")
@@ -359,7 +390,9 @@ def test_node_up_systemd_run_failure_retries():
         env["GNSS_LOG"] = cfg
         rc, out = run(["bash", os.path.join(HERE, "node_up.sh"), "cxtest", "up"], env)
         check(
-            rc == 2 and "config unreadable" in out and open(sudo_log).read() == "",
+            rc == 2
+            and "config unreadable" in out
+            and "systemd-run" not in open(sudo_log).read(),
             "an unreadable config on the node still exits 2 before any systemd-run (rc %d)"
             % rc,
         )
