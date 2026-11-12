@@ -1,0 +1,5 @@
+# Formatting-only commits, skipped by git blame.
+# Use with: git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# style: reformat Python with black 24.2.0
+b5801a0e43f6fc1f7c7727b605301bf9182aa511
