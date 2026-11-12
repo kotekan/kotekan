@@ -16,16 +16,6 @@ using kotekan::Stage;
 
 STAGE_CONSTRUCTOR(BeamformingPhaseUpdate) {
 
-    // Register on buffers
-    in_buf = get_buffer("in_buf");
-    in_buf->register_consumer(unique_name);
-    out_buf = get_buffer("out_buf");
-    out_buf->register_producer(unique_name);
-    if (config.exists(unique_name.c_str(), "gains_buf")) {
-        gains_buf = get_buffer("gains_buf");
-        gains_buf->register_consumer(unique_name);
-    }
-
     _num_elements = config.get<uint32_t>(unique_name, "num_elements");
     _num_beams = config.get<uint32_t>(unique_name, "num_beams");
     _beam_offset = config.get_default<uint32_t>(unique_name, "beam_offset", 0);
@@ -40,11 +30,44 @@ STAGE_CONSTRUCTOR(BeamformingPhaseUpdate) {
 
     _num_local_freq = config.get<double>(unique_name, "num_local_freq");
 
+    _phase_lifetime_in_samples = config.get<int64_t>(unique_name, "phase_lifetime_in_samples");
+
     frequencies_in_frame.resize(_num_local_freq);
 
     // Get feed locations.
     feed_locations =
         config.get<std::vector<std::pair<double, double>>>(unique_name, "feed_positions");
+    if (feed_locations.size() != Telescope::instance().get_grid_size_x() * Telescope::instance().get_grid_size_y()) {
+      FATAL_ERROR("Unepected number of feed_positions that does not match telescope dish count. Expected {:d} but got {:d}.",
+                  Telescope::instance().get_grid_size_x() * Telescope::instance().get_grid_size_y(),
+                  feed_locations.size());
+    }
+
+    // Register on buffers
+    in_buf = get_buffer("in_buf");
+    in_buf->register_consumer(unique_name);
+    // we do not really care what is in the "in" (metadata) buffers, since we
+    // only want the metadata, no there is no require_frame_desc here
+    out_buf = get_buffer("out_buf");
+    out_buf->register_producer(unique_name);
+    out_buf->ensure_frame_desc(
+        kotekan::GenericNDArray::describe(
+            kotekan::float32, "A",
+            {1, _num_local_freq, 2 /* num_polarizations */,
+             _num_beams, ptrdiff_t(Telescope::instance().get_grid_size_x() * Telescope::instance().get_grid_size_y()), 2 /* complex comps */},
+             {"Tbb", "F", "P", "B", "D", "C"},
+             { _phase_lifetime_in_samples, 1, 1, 1, 1, 1}));
+    if (config.exists(unique_name.c_str(), "gains_buf")) {
+        gains_buf = get_buffer("gains_buf");
+        gains_buf->register_consumer(unique_name);
+        gains_buf->require_frame_desc(
+          kotekan::GenericNDArray::describe(
+              kotekan::float16, "A",
+              {1, _num_local_freq, 2 /* num_polarizations */,
+               ptrdiff_t(Telescope::instance().get_grid_size_x()), ptrdiff_t(Telescope::instance().get_grid_size_y()), 2 /* complex comps */},
+               {"TW", "Fbar", "P", "dishN", "dishM", "C"},
+               { _phase_lifetime_in_samples, 1, 1, 1, 1, 1}));
+    }
 
     // Listen for DUT1 (UT1 - UTC) offset.
     std::string DUT1 =

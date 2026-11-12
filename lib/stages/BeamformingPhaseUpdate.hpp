@@ -86,6 +86,9 @@ protected:
     /// Number of frequencies in a frame
     uint32_t _num_local_freq;
 
+    /// Period of time to use the compute phases
+    int64_t _phase_lifetime_in_samples;
+
     /// List of frequencies in the current frame
     std::vector<float> frequencies_in_frame;
 
