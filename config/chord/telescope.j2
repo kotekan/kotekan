@@ -10,8 +10,10 @@ telescope:
     sampling_rate_MHz: 3200.0
     fft_length: 16384
     nyquist_zone: 1
-    min_science_freq_MHz: 300
-    max_science_freq_MHz: 1500
+    # F-engine bins 768 to 8191. The band is 128 streams of 58 bins, so its width is a
+    # multiple of 25 MHz and both edges must be bin centres (multiples of 0.1953125 MHz).
+    min_science_freq_MHz: 150
+    max_science_freq_MHz: 1599.8046875
 
     origin_itrs_lat_deg: 49.32075144444
     origin_itrs_lon_deg: -119.62081125

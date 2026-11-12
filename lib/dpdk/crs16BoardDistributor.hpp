@@ -35,6 +35,11 @@ public:
         non_crs_packets_total_metric.labels(port_label).set(non_crs_packets);
         invalid_stream_id_packets_total_metric.labels(port_label).set(invalid_stream_id_packets);
         ring_full_dropped_packets_total_metric.labels(port_label).set(ring_full_dropped_packets);
+        for (size_t i = 0; i < worker_ring_ids.size(); ++i) {
+            ring_max_fill_metric.labels({std::to_string(port), std::to_string(worker_ring_ids[i])})
+                .set(ring_max_fill[i]);
+            ring_max_fill[i] = 0;
+        }
     }
 
     /// This is a distributor: it takes ownership of the mbuf.
@@ -62,6 +67,8 @@ protected:
     uint64_t invalid_stream_id_packets = 0;
     /// Dropped CRS packets that arrived while the destination worker ring was full.
     uint64_t ring_full_dropped_packets = 0;
+    /// Most slots in use in each worker ring since the last update_stats().
+    std::vector<uint32_t> ring_max_fill;
 
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& packets_total_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>&
@@ -71,6 +78,7 @@ protected:
         invalid_stream_id_packets_total_metric;
     kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>&
         ring_full_dropped_packets_total_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& ring_max_fill_metric;
 };
 
 inline crs16BoardDistributor::crs16BoardDistributor(kotekan::Config& config,
@@ -89,7 +97,9 @@ inline crs16BoardDistributor::crs16BoardDistributor(kotekan::Config& config,
     invalid_stream_id_packets_total_metric(kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_dpdk_distributor_invalid_stream_id_packets_total", unique_name, {"port"})),
     ring_full_dropped_packets_total_metric(kotekan::prometheus::Metrics::instance().add_gauge(
-        "kotekan_dpdk_distributor_ring_full_dropped_packets_total", unique_name, {"port"})) {
+        "kotekan_dpdk_distributor_ring_full_dropped_packets_total", unique_name, {"port"})),
+    ring_max_fill_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_dpdk_distributor_ring_max_fill", unique_name, {"port", "ring"})) {
 
     worker_ring_ids = config.get<std::vector<uint32_t>>(unique_name, "worker_rings");
 
@@ -102,6 +112,8 @@ inline crs16BoardDistributor::crs16BoardDistributor(kotekan::Config& config,
         throw std::runtime_error(fmt::format(
             fmt("The crs16BoardDistributor handler must have an even number of worker rings.")));
     }
+
+    ring_max_fill.assign(worker_ring_ids.size(), 0);
 
     num_crs_boards = config.get<uint32_t>(unique_name, "num_crs_boards");
 
@@ -158,14 +170,18 @@ inline int crs16BoardDistributor::handle_packet(struct rte_mbuf* mbuf) {
     }
 
     // Put the packet into the worker ring
-    int err = rte_ring_enqueue(worker_rings[worker_ring_ids[ring_index]], mbuf);
-    if (err != 0) {
+    struct rte_ring* ring = worker_rings[worker_ring_ids[ring_index]];
+    unsigned int free_slots;
+    if (rte_ring_enqueue_burst(ring, (void**)&mbuf, 1, &free_slots) == 0) {
         // Failed to enqueue packet into worker ring, dropping packet
         ring_full_dropped_packets++;
         rte_pktmbuf_free(mbuf);
     } else {
         total_packets++;
     }
+    uint32_t fill = rte_ring_get_capacity(ring) - free_slots;
+    if (fill > ring_max_fill[ring_index])
+        ring_max_fill[ring_index] = fill;
 
     return 0;
 }

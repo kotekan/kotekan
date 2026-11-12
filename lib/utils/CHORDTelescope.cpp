@@ -661,9 +661,9 @@ freq_id_t CHORDTelescope::to_freq_id(stream_t stream_id, uint32_t index) const {
     return min_science_freq_id() + index * 128 + stream_id.id;
 }
 
-// Currently hard coded in the F-engine packet format.
+// The F-engine divides the science band between its 128 streams.
 size_t CHORDTelescope::num_freq_per_stream() const {
-    return 48;
+    return num_science_freqs() / 128;
 }
 
 ElementOrder CHORDTelescope::fiducial_element_order() const {
