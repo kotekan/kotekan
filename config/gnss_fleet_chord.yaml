@@ -96,10 +96,10 @@ common:
     # MUOS), which the SK flagger would otherwise excise, leaving nothing to judge the
     # subtraction by (docs/CHORD_DTV_SUBTRACTION_20261102.md, #226).
     # + the upper L-band on the 150-1600 MHz band, 7982-8144 (1559.0-1590.6 MHz): BeiDou B1I's
-    # lobe, 7982-8003, GPS L1 C/A's, 8061-8071, and L1 C/A's lane transfer over GPS L1's P(Y)
-    # and M-code main lobes, 1560.1-1590.8 MHz, as L2C's on L2. Iridium (1616-1626 MHz) aliases
-    # onto 1573.5-1584 MHz at ~-10 dB, over L1 C/A's lobe: excised, those channels would
-    # despread to zero.
+    # lobe, 7982-8003, GPS L1 C/A's and SBAS L1's, 8061-8071, Galileo E1-C's, 8056-8077, and
+    # L1 C/A's lane transfer over GPS L1's P(Y) and M-code main lobes, 1560.1-1590.8 MHz, as
+    # L2C's on L2. Iridium (1616-1626 MHz) aliases onto 1573.5-1584 MHz at ~-10 dB, over the
+    # L1 lobes: excised, those channels would despread to zero.
     rfi-excision-exempt-freq-ids: "5939-6626,7982-8144,2714-2744,2898-2928,2499-2529,2560-2590,\
       2929-2959,2991-3020,3052-3082,1844-1944"
     # Bright-satellite projection in each record assembler: off | shadow | live. live projects
@@ -143,7 +143,7 @@ common:
     n2-project-live-freq-ids: "5939-6626,7982-8144"
     n2-project-stations: "0-6,8-127"
     # The eigen path's channels; read only with n2-project-source lanes+residual.
-    n2-project-eigen-channels: "5971-6076,6102-6338,6361-6401,6442-6573,7982-8003,8061-8071"
+    n2-project-eigen-channels: "5971-6076,6102-6338,6361-6401,6442-6573,7982-8003,8056-8077"
     # #190 on every projecting node (canary cx51 10-20..10-24): the tracked satellites' lane
     # directions. On 10-24 the eigen path alone removed <= 0.6 dB in the lobes while the lanes
     # removed ~80-87 % of the satellite power over the continuum (cx51). Up to 40 lanes per
@@ -527,6 +527,14 @@ common:
         # none on 8-12, summed coherently across the fleet as L2C's. Every PRN: all 32 slots,
         # as gps_l5's. Seeded from the broker's model.
         - GPS_L1CA_BIT:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32
+
+        # 1575.42 MHz: Galileo E1-C, the OS pilot, with the shared CS25 tiled into one 100 ms
+        # code (GAL_E1C_CS), BOC(1,1). Its lobe, both BOC main lobes, is 22 channels (exempt
+        # above): one or two on every comb. E5a's list, the same rays at a fourth carrier.
+        - GAL_E1C_CS:2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,18,19,21,22,23,24,25,26,27,28,29,30,31,32,33,34,36
+        # SBAS L1 on the C/A code family, two periods tiled into one 2 ms symbol (SBAS_L1_SYM):
+        # SBAS L5's GEOs and probes, on L1 C/A's eleven channels. Model-primary, as SBAS L5.
+        - SBAS_L1_SYM:131,133,135,121,123,136
 
 nodes:
     # THE FLEET LIST: every host that runs the GNSS branch, and nothing else names one.

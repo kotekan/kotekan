@@ -119,6 +119,10 @@ class TestGalileo(unittest.TestCase):
         from_fnav = group_delay_s(_e(a, b, fnav=True), "gal_e1")
         from_inav = group_delay_s(_e(a, b, fnav=False), "gal_e1") - (a - b)
         self.assertAlmostEqual(from_fnav, from_inav, places=15)
+        # The gal_e1c chain is E1: -BGD of its record's clock.
+        self.assertAlmostEqual(
+            group_delay_s(_e(a, b, fnav=True), "gal_e1c"), -a, places=15
+        )
 
     def test_e5a_agrees_across_record_types(self):
         """Same identity for the signal we actually track. Reaching E5a from an I/NAV

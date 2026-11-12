@@ -339,7 +339,13 @@ def dll_spacing_chips(name):
     sets are the whole main lobe, nulls included (22 freq_ids at 2.046 Mcps, 11 at 1.023), so
     the fleet's coherent sum is the band-limited chip triangle every comb chain closes on, not
     L2C's flat Dirichlet: |R| 0.56 of the peak at 0.5 chip, the first null at 1.17 chips. They
-    take 0.5, listed so the broker side's dll-spacing has an entry to match.
+    take 0.5, listed so the broker side's dll-spacing has an entry to match. SBAS L1 is L1 C/A's
+    geometry on the same eleven channels and takes the same.
+
+    Galileo E1-C is BOC(1,1) at 1.023 Mcps, GLONASS L2OC's correlation without the TDM: on its
+    22-channel lobe, every node's, the sum crosses zero at +-0.33 chip and bottoms at -0.5 at
+    +-0.5, and code phases stay in the 1.023 Mcps component chips (the bank expands the BOC). It
+    takes 0.2, L2OC's 0.4 in that chain's 2.046 Mcps chips, and L2OC's slower fast loop.
 
     Must match the broker chain's dll-spacing (config/gnss_chains_chord.yaml): the C++ fleet
     loop takes its law's spacing from the arming payload while the taps come from here, so
@@ -351,6 +357,8 @@ def dll_spacing_chips(name):
         "GLO_L2OF_MC": 0.33,
         "BDS_B1I_NH": 0.5,
         "GPS_L1CA_BIT": 0.5,
+        "SBAS_L1_SYM": 0.5,
+        "GAL_E1C_CS": 0.2,
     }.get(name, 0.5)
 
 
@@ -368,6 +376,7 @@ _TELEM_ROWS = {
     "gal_e5a": 20,
     "gal_e5b": 20,
     "gal_e6": 20,
+    "gal_e1c": 20,
     "bds_b2a": 24,
     "bds_b2b": 24,
     "bds_b3i": 24,

@@ -74,7 +74,12 @@ _CHAINS = {
     # only component (data, no pilot), under the 2 ms Manchester pair; RINEX S records give their
     # state vectors (#190 coverage).
     "sbas_l5": ("SBAS_L5_I", "SBAS_L5_I_MC", None),
-    "gal_e1c": ("GAL_E1C", None, None),
+    # SBAS L1: the same GEOs on the C/A code family, data only, 500 sps. The tracker code tiles
+    # two periods into one 2 ms symbol, as SBAS_L5_I_MC's pair does on L5.
+    "sbas_l1": ("SBAS_L1", "SBAS_L1_SYM", None),
+    # E1-C is the dataless OS pilot under the shared CS25; the tracker code bakes it into one
+    # 100 ms code, as the E5a-Q CS100, and the model places it from absolute time.
+    "gal_e1c": ("GAL_E1C", "GAL_E1C_CS", None),
     "gal_e5a": ("GAL_E5A_Q", "GAL_E5A_Q_CS", None),
     "gal_e5b": ("GAL_E5B_Q", "GAL_E5B_Q_CS", None),
     "gal_e6": ("GAL_E6_C", "GAL_E6_C_CS", None),

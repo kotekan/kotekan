@@ -1636,6 +1636,36 @@ def test_gps_l1ca_lobe():
     )
 
 
+def test_gal_e1c_lobe():
+    """Galileo E1-C: both BOC(1,1) main lobes, 22 channels, one or two on every comb, the BOC
+    chain's DLL spacing, and wire rows within the gather's buffer."""
+    from chord_band_plan import chain_covering_channels, signal_table
+
+    cov = chain_covering_channels(_upper_band(), signal_table()["GAL_E1C_CS"], 5e3)
+    check(cov == list(range(8056, 8078)), "the lobe is 8056-8077 (%s)" % cov)
+    check(
+        sorted({f % 16 for f in cov}) == list(range(16)),
+        "every comb holds a channel (%s)" % sorted(f % 16 for f in cov),
+    )
+    check(
+        g.dll_spacing_chips("GAL_E1C_CS") == 0.2,
+        "E1-C takes 0.2, L2OC's 0.4 in its chips",
+    )
+    check(
+        g.telem_rows("gal_e1c") <= g.telem_rows_max(),
+        "E1-C's wire rows fit the gather's buffer",
+    )
+
+
+def test_sbas_l1_lobe():
+    """SBAS L1: L1 C/A's eleven channels and DLL spacing."""
+    from chord_band_plan import chain_covering_channels, signal_table
+
+    cov = chain_covering_channels(_upper_band(), signal_table()["SBAS_L1_SYM"], 5e3)
+    check(cov == list(range(8061, 8072)), "the lobe is 8061-8071 (%s)" % cov)
+    check(g.dll_spacing_chips("SBAS_L1_SYM") == 0.5, "SBAS L1 takes L1 C/A's 0.5")
+
+
 def main():
     # The generator reads relative paths from the cwd and _rel() resolves every argv token
     # against it, so the in-process calls run from the repo root, as gen_fleet and run_gen do.

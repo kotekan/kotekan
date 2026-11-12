@@ -97,6 +97,7 @@ CHAIN_SYS = {
     "gal_e5a": "E",
     "gal_e5b": "E",
     "gal_e6": "E",
+    "gal_e1c": "E",
     "bds_b2a": "C",
     "bds_b2b": "C",
     "bds_b3i": "C",

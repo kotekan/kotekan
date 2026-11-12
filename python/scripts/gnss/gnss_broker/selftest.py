@@ -227,7 +227,7 @@ check(
 # Cross-checks the values signals.py derives from gnssSignal.hpp against independently
 # written ones: carrier, chip rate, primary length, and the long code's segment count and
 # repeat period (L5 NH20 20 x 1 ms; E5a and B2a 100 x 1 ms; L2C CL 75 x 20 ms = 1.5 s;
-# B1I NH20 and the L1 C/A LNAV bit 20 x 1 ms).
+# B1I NH20 and the L1 C/A LNAV bit 20 x 1 ms; E1-C CS25 25 x 4 ms; the SBAS L1 symbol 2 x 1 ms).
 for key, want in (
     ("gps_l5", (1176.45e6, 10.23e6, 10230, 20, 0.02)),
     ("gal_e5a", (1176.45e6, 10.23e6, 10230, 100, 0.1)),
@@ -235,6 +235,8 @@ for key, want in (
     ("gps_l2c", (1227.6e6, 511.5e3, 10230, 75, 1.5)),
     ("bds_b1i", (1561.098e6, 2.046e6, 2046, 20, 0.02)),
     ("gps_l1ca", (1575.42e6, 1.023e6, 1023, 20, 0.02)),
+    ("gal_e1c", (1575.42e6, 1.023e6, 4092, 25, 0.1)),
+    ("sbas_l1", (1575.42e6, 1.023e6, 1023, 2, 0.002)),
 ):
     s = signals.get(key)
     got = (

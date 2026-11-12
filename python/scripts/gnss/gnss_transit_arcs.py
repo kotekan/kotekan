@@ -83,6 +83,7 @@ CHAINS = [
     "glo_l2oc",
     "bds_b1i",
     "gps_l1ca",
+    "gal_e1c",
 ]
 SYS_OF = {c: gtc.SYSOF[c.split("_")[0]] for c in CHAINS}
 CN0_MIN, MIN_ARC_S, MAX_GAP_S, STEP_M, MAX_NOISE = 25.0, 300.0, 30.0, 0.05, 0.5
@@ -1179,6 +1180,7 @@ def main():
                     "glo_l2oc",
                     "bds_b1i",
                     "gps_l1ca",
+                    "gal_e1c",
                 )
             ],
         )

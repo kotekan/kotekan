@@ -950,3 +950,62 @@ chains:
     # No phase-slope fit: one channel per instance.
         spectrum-endpoints: null
         dll-combiners: fleet
+
+  # -- 1575.42 MHz: gal_e1c --
+  # Galileo E1-C, the OS dataless pilot beside E1-B, on every Galileo satellite: a fourth carrier
+  # for the rays gal_e5a, gal_e5b and gal_e6 track, and with gal_e5a Galileo's widest TEC lever
+  # (E5a x E1 0.129 m/TECU against E5a x E6's 0.045). Transmitted CBOC(6,1,1/11) and despread as
+  # BOC(1,1); the trackers despread the shared CS25 tiled into one 100 ms code (GAL_E1C_CS),
+  # placed from absolute time, as E5a-Q's CS100. Its lobe, both BOC main lobes, is 22 channels
+  # on gps_l1ca's shoulder of the analog low-pass, under the same Iridium alias. Model-primary
+  # with no detectors, seeded from BRDC and gps_l5's clock; E1 owes the BGD of its record's
+  # clock (gnss_ephemeris.group_delay_s). Every Galileo satellite carries E1, so no
+  # signal-capability.
+    gal_e1c:
+        signal: gal_e1c
+        presence-admit-displaced: true
+        seed-phase-transport: true
+        dr-clock-adopt: true
+        joint-consume: clk,rate
+    # Not in the joint state yet, as gps_l1ca: the Galileo rows take no rate from this band.
+        rrate-state: false
+        rrate-kcoh-feed: 0
+    # E/L tap offset in 1.023 Mcps chips. On the 22-channel BOC(1,1) sum, which crosses zero at
+    # +-0.33 chip and bottoms at -0.5 at +-0.5, 0.2 is glo_l2oc's 0.4 in its 2.046 Mcps chips,
+    # and its 1.8x the trim law's slope takes glo_l2oc's slower fast loop. Must match the node
+    # taps (config/gen_chord_gnss_config.py dll_spacing_chips).
+        dll-spacing: 0.2
+        fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+        fleet-trim-bandwidth: 1.4
+        fleet-trim-readback: 1
+        trackers: fleet
+        combiner: fleet
+    # No phase-slope fit: an instance's two channels are 16 ids apart, as on bds_b1i.
+        spectrum-endpoints: null
+        dll-combiners: fleet
+
+  # -- 1575.42 MHz: sbas_l1 --
+  # SBAS L1, sbas_l5's GEOs on the C/A code family (the SBAS PRNs' G2 delays, gpsCACode): data
+  # only, 250 bps through rate-1/2 FEC to 500 sps, so a record sums ~5 unknown symbol signs as
+  # on sbas_l5. The trackers despread two C/A periods tiled into one 2 ms symbol (SBAS_L1_SYM),
+  # placed from absolute time. gps_l1ca's eleven channels. Model-primary like sbas_l5, with its
+  # fixed PRN list and probes (prn-reconfig read).
+    sbas_l1:
+        signal: sbas_l1
+        prn-reconfig: read
+        presence-admit-displaced: true
+        seed-phase-transport: true
+        dr-clock-adopt: true
+        joint-consume: clk,rate
+        rrate-state: false
+        rrate-kcoh-feed: 0
+    # E/L tap offset in 1.023 Mcps chips, as gps_l1ca on the same eleven channels.
+        dll-spacing: 0.5
+        fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+        fleet-trim-bandwidth: 2.5
+        fleet-trim-readback: 1
+        trackers: fleet
+        combiner: fleet
+    # No phase-slope fit: one channel per instance.
+        spectrum-endpoints: null
+        dll-combiners: fleet

@@ -54,6 +54,7 @@ FREQ = {
     "glo_l2oc": 1248.06e6,
     "bds_b1i": 1561.098e6,
     "gps_l1ca": 1575.42e6,
+    "gal_e1c": 1575.42e6,
 }
 SYSOF = {"gps": "G", "gal": "E", "bds": "C", "glo": "R"}
 # Default pairs: the widest frequency lever each constellation has, so the m/TECU factor is
@@ -62,9 +63,9 @@ SYSOF = {"gps": "G", "gal": "E", "bds": "C", "glo": "R"}
 # own receiver constant, which the per-arc mean removes. GLONASS's pair is L3OC x L2OC
 # (0.0202, the K slots only): pass --pair glo_l3oc:glo_l2oc. It joins the defaults once both
 # chains' observables cover the days asked for, since a missing band file is fatal here.
-# BeiDou's and GPS's widest levers are B2a x B1I (0.126 m/TECU) and L5 x L1 C/A (0.129), on
-# the 150-1600 MHz band: pass --pair bds_b2a:bds_b1i or gps_l5:gps_l1ca until they join the
-# defaults on the same terms.
+# The widest levers, B2a x B1I (0.126 m/TECU), L5 x L1 C/A and E5a x E1 (0.129), are on the
+# 150-1600 MHz band: pass --pair bds_b2a:bds_b1i, gps_l5:gps_l1ca or gal_e5a:gal_e1c until they
+# join the defaults on the same terms.
 DEFAULT_PAIRS = ["gal_e5a:gal_e6", "bds_b2a:bds_b3i", "gps_l5:gps_l2c"]
 
 

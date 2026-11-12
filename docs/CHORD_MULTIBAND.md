@@ -76,7 +76,11 @@ Three consequences:
    dB down at ~1550 MHz), with Iridium (1616-1626 MHz) aliased onto 1573.5-1584 MHz at
    ~-10 dB. The chains are `bds_b1i` (BDS_B1I_NH, B1I's NH20 baked in as B3I's) and
    `gps_l1ca` (GPS_L1CA_BIT, twenty C/A periods tiled into one 20 ms LNAV bit), with the
-   widest TEC levers the receiver has: B2a x B1I 0.126 m/TECU, L5 x L1 C/A 0.129.
+   widest TEC levers the receiver has: B2a x B1I 0.126 m/TECU, L5 x L1 C/A 0.129. Two more
+   share the L1 carrier: `gal_e1c` (GAL_E1C_CS, the E1-C pilot with its CS25 baked into one
+   100 ms BOC(1,1) code; both BOC main lobes, 8056-8077, 22 channels on every GPU; E5a x E1
+   0.129 m/TECU) and `sbas_l1` (SBAS_L1_SYM, two C/A periods tiled into one 2 ms symbol on the
+   SBAS PRNs' G2 delays; L1 C/A's eleven channels).
 
 Comb-sharing bonuses for later phases: the L3OC comb overlaps the E5b comb over
 6128..6207, and the E6 comb overlaps B3I's over 6521..6547 -- a widened tap serves both
