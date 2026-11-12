@@ -60,14 +60,15 @@ signals:
     max_doppler_hz: 5000.0
 
 science_band:
-    # freq_id = min_science_freq_id + index*128 + stream_id, index 0..47, stream_id 0..127
-    # (CHORDTelescope::to_freq_id), so the science band is 48*128 = 6144 channels.
-    min_freq_id: 1536           # 300.000 MHz
-    max_freq_id: 7679           # 1499.805 MHz
+    # freq_id = min_science_freq_id + index*128 + stream_id, index 0..57, stream_id 0..127
+    # (CHORDTelescope::to_freq_id), so the science band is 58*128 = 7424 channels. It must match
+    # config/chord/telescope.j2 (min/max_science_freq_MHz), which the F-engine's bins set.
+    min_freq_id: 768            # 150.000 MHz
+    max_freq_id: 8191           # 1599.805 MHz
 
 nodes:
     # A node holds two stride-16 combs of science-band freq_ids, one per GPU (gpu_offsets_mod16,
-    # GPU0 first), 768 channels; the sixteen combs tile the band. Which comb reaches which NIC
+    # GPU0 first), 928 channels; the sixteen combs tile the band. Which comb reaches which NIC
     # port is a site wiring fact (the second is not always the first + 8), so it is READ, not
     # typed: `python3 config/gnss_fleet.py combs` reads every host's combs from its frames (the
     # freq_id of each GPU's n2_buffer, on a stock node as on ours) and compares them with this

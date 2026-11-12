@@ -32,6 +32,7 @@ import datetime
 import glob
 import hashlib
 import json
+import math
 import os
 import shlex
 import sys
@@ -230,6 +231,30 @@ N2_PROJECT_SOLVE_EVERY = 4
 # Per-GPU chain vars, filled by build_n2dual_branch; merge_n2dual_gpu reads the sink core.
 GPU_VARS = {}
 
+
+
+def check_science_band(cfg, base):
+    """The node file's science_band must be the telescope's: every comb index the generator writes
+    (gpu_of_channel) counts from min_freq_id, and kotekan labels the frame's channels from
+    min/max_science_freq_MHz. A mismatch moves every chain onto other channels with no error, and
+    the broker's COMB MISMATCH cannot see it when the shift is a multiple of 16."""
+    tel = base.get("telescope") or {}
+    if "min_science_freq_MHz" not in tel or "max_science_freq_MHz" not in tel:
+        return
+    df = float(tel["sampling_rate_MHz"]) / int(tel["fft_length"])
+    lo = int(round(float(tel["min_science_freq_MHz"]) / df))
+    hi = int(math.floor(float(tel["max_science_freq_MHz"]) / df + 1e-9))
+    sb = cfg["science_band"]
+    if (sb["min_freq_id"], sb["max_freq_id"]) != (lo, hi):
+        raise SystemExit(
+            f"science_band {sb['min_freq_id']}..{sb['max_freq_id']} in {NODE_FILE} does not match "
+            f"the base config's telescope band {lo}..{hi} (min/max_science_freq_MHz)"
+        )
+    nlf = base.get("num_local_freq")
+    if nlf is not None and int(nlf) * 16 != hi - lo + 1:
+        raise SystemExit(
+            f"num_local_freq {nlf} x 16 combs != {hi - lo + 1} channels of the science band"
+        )
 
 def gpu_of_channel(cfg, node, freq_id):
     """Which of the node's two GPUs (0/1) holds this freq_id, and its index in that comb."""
@@ -4040,6 +4065,7 @@ def main():
         with open(args.base) as fh:
             base = json.load(fh) if args.base.endswith(".json") else yaml.safe_load(fh)
     out = copy.deepcopy(base)
+    check_science_band(cfg, base)
 
     # --frame0-nano: start without chive's timing service. CHORDTelescope needs a GPS time at
     # startup, which makes chive:54321 a startup dependency of every node (running nodes do not
