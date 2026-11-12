@@ -5,7 +5,7 @@
 #include "Stage.hpp"  // for Stage
 #include "Telescope.hpp"
 #include "bufferContainer.hpp" // for bufferContainer
-#include "chimeMetadata.hpp"
+#include "chordMetadata.hpp"
 
 #include <stdint.h> // for int32_t
 
@@ -59,7 +59,7 @@ public:
 
 protected:
     /// Save the beam scaling values to one of the scaling arrays
-    void copy_scaling(const beamCoord& beam_coord, float* scaling);
+    void copy_scaling(const chordMetadata::beamCoord& beam_coord, float* scaling);
 
     /// The baseband buffer which will provide the time and frequency data
     struct Buffer* in_buf = nullptr;
@@ -93,7 +93,7 @@ protected:
     std::vector<std::pair<double, double>> feed_locations;
 
     /// Beam pointing coordinates
-    struct beamCoord _beam_coord;
+    chordMetadata::beamCoord _beam_coord;
 
     /// mutex lock prevent beam_coord to be read while it is being updated.
     std::mutex beam_lock;

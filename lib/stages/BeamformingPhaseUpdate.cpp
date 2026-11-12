@@ -2,10 +2,11 @@
 
 #include "Config.hpp"       // for Config
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE, StageMakerTemplate
-#include "buffer.h"         // for mark_frame_empty, register_consumer, wait_for_full_frame
-#include "chimeMetadata.hpp"
+#include "buffer.hpp"       // for mark_frame_empty, register_consumer, wait_for_full_frame
+#include "chordMetadata.hpp"
 #include "configUpdater.hpp"  // for configUpdater
 #include "kotekanLogging.hpp" // for DEBUG
+#include "visUtil.hpp"        // for frameID
 #include "util.h"             // for hex_dump
 
 
@@ -17,12 +18,12 @@ STAGE_CONSTRUCTOR(BeamformingPhaseUpdate) {
 
     // Register on buffers
     in_buf = get_buffer("in_buf");
-    register_consumer(in_buf, unique_name.c_str());
+    in_buf->register_consumer(unique_name);
     out_buf = get_buffer("out_buf");
-    register_producer(out_buf, unique_name.c_str());
+    out_buf->register_producer(unique_name);
     if (config.exists(unique_name.c_str(), "gains_buf")) {
         gains_buf = get_buffer("gains_buf");
-        register_consumer(gains_buf, unique_name.c_str());
+        gains_buf->register_consumer(unique_name);
     }
 
     _num_elements = config.get<uint32_t>(unique_name, "num_elements");
@@ -68,14 +69,14 @@ bool BeamformingPhaseUpdate::tracking_update_callback(nlohmann::json& json, cons
     {
         std::lock_guard<std::mutex> lock(beam_lock);
         try {
-            _beam_coord.ra[beam_id] = json.at("ra").get<float>();
+            _beam_coord.right_ascension[beam_id] = json.at("ra").get<float>();
         } catch (std::exception const& e) {
             WARN("[TRACKING] Pointing update failed to read RA from beam: {:d}. {:s}", beam_id,
                  e.what());
             return false;
         }
         try {
-            _beam_coord.dec[beam_id] = json.at("dec").get<float>();
+            _beam_coord.declination[beam_id] = json.at("dec").get<float>();
         } catch (std::exception const& e) {
             WARN("[TRACKING] Pointing update failed to read DEC from beam: {:d}. {:s}", beam_id,
                  e.what());
@@ -89,7 +90,7 @@ bool BeamformingPhaseUpdate::tracking_update_callback(nlohmann::json& json, cons
             return false;
         }
         INFO("[tracking] Updated Beam={:d} RA={:.2f} Dec={:.2f} Scl={:d}", beam_id,
-             _beam_coord.ra[beam_id], _beam_coord.dec[beam_id], _beam_coord.scaling[beam_id]);
+             _beam_coord.right_ascension[beam_id], _beam_coord.declination[beam_id], _beam_coord.scaling[beam_id]);
     }
     return true;
 }
@@ -108,7 +109,7 @@ bool BeamformingPhaseUpdate::update_DUT1(nlohmann::json& json) {
 
 BeamformingPhaseUpdate::~BeamformingPhaseUpdate() {}
 
-void BeamformingPhaseUpdate::copy_scaling(const beamCoord& beam_coord, float* scaling) {
+void BeamformingPhaseUpdate::copy_scaling(const chordMetadata::beamCoord& beam_coord, float* scaling) {
     for (uint32_t i = 0; i < _num_beams; ++i) {
         // In the case that we set scaling to one, we don't want to add the extra factor of
         // 0.5 to the scaling factor, since in the case of scaling == 1, we want no scaling at all.
@@ -136,10 +137,10 @@ void BeamformingPhaseUpdate::main_thread() {
 
     while (!stop_thread) {
 
-        uint8_t* in_frame = wait_for_full_frame(in_buf, unique_name.c_str(), in_frame_id);
+        uint8_t* in_frame = in_buf->wait_for_full_frame(unique_name, in_frame_id);
         if (in_frame == nullptr)
             break;
-        uint8_t* out_frame = wait_for_empty_frame(out_buf, unique_name.c_str(), out_frame_id);
+        uint8_t* out_frame = out_buf->wait_for_empty_frame(unique_name, out_frame_id);
         if (out_frame == nullptr)
             break;
 
@@ -148,7 +149,7 @@ void BeamformingPhaseUpdate::main_thread() {
         // If we have a gains buffer we check for new gains
         if (gains_buf != nullptr) {
             if (first_time) {
-                gains_frame = wait_for_full_frame(gains_buf, unique_name.c_str(), gains_frame_current_id);
+                gains_frame = gains_buf->wait_for_full_frame(unique_name, gains_frame_current_id);
                 // We always get the first frame at startup, so start looking for updates at +1
                 gains_frame_next_id++;
                 if (gains_frame == nullptr)
@@ -158,7 +159,7 @@ void BeamformingPhaseUpdate::main_thread() {
                 auto timeout = double_to_ts(0);
                 // Check if there is a new frame of gains in buffer, if so use it,
                 // if not continute using the existing frame.
-                auto status = wait_for_full_frame_timeout(gains_buf, unique_name.c_str(),
+                auto status = gains_buf->wait_for_full_frame_timeout(unique_name,
                                                           gains_frame_next_id, timeout);
                 if (status == -1) {
                     break;
@@ -166,12 +167,12 @@ void BeamformingPhaseUpdate::main_thread() {
                 // There is a new frame of gains so switch to using it.
                 if (status == 0) {
                     // Release the current frame we are using.
-                    mark_frame_empty(gains_buf, unique_name.c_str(), gains_frame_current_id++);
+                    gains_buf->mark_frame_empty(unique_name, gains_frame_current_id++);
                     // The current frame should now be the same as the next frame we will get below.
                     assert(gains_frame_current_id == gains_frame_next_id);
                     // Update to the new frame.
                     gains_frame =
-                        wait_for_full_frame(gains_buf, unique_name.c_str(), gains_frame_next_id++);
+                        gains_buf->wait_for_full_frame(unique_name, gains_frame_next_id++);
                     // In case we exit between the timeout wait, and the wait to get the frame pointer.
                     if (gains_frame == nullptr)
                         break;
@@ -179,13 +180,16 @@ void BeamformingPhaseUpdate::main_thread() {
             }
         }
 
+        const auto in_meta = get_chord_metadata(in_buf, in_frame_id);
+
         // Get time
-        timespec gps_time = get_gps_time(in_buf, in_frame_id);
+        timespec gps_time = in_meta->get_gps_time();
 
         // Get frequencies
+        const auto coarse_freq = in_meta->get_coarse_freq();
         for (uint32_t i = 0; i < _num_local_freq; ++i) {
-            freq_id_t freq_bin = Telescope::instance().to_freq_id(in_buf, in_frame_id, i);
-            frequencies_in_frame[i] = Telescope::instance().to_freq(freq_bin);
+            freq_id_t freq_bin = coarse_freq.at(i);
+            frequencies_in_frame[i] = Telescope::instance().to_freq_MHz(freq_bin);
         }
 
         // Lock gain and metadata setting from updating while phase is set and generated
@@ -193,16 +197,17 @@ void BeamformingPhaseUpdate::main_thread() {
             std::lock_guard<std::mutex> lock(beam_lock);
             // Set the metadata in the input frame to match what pointings we are
             // using at the time the phases are generated
-	        if (_beam_offset == 0) // Only update the metadata from one thread
-                set_beam_coord(in_buf, in_frame_id, _beam_coord);
+            if (_beam_offset == 0) // Only update the metadata from one thread
+                // TODO: on the "in" buffer, check this...
+                in_meta->set_beam_coord(_beam_coord);
 
             compute_phases(out_frame, gps_time, frequencies_in_frame, _beam_offset, gains_frame);
 
             if (_beam_offset == 0) // Only update the scaling from one thread
-	            copy_scaling(_beam_coord, scaling_frame);
+                copy_scaling(_beam_coord, scaling_frame);
         }
 
-        mark_frame_empty(in_buf, unique_name.c_str(), in_frame_id++);
-        mark_frame_full(out_buf, unique_name.c_str(), out_frame_id++);
+        in_buf->mark_frame_empty(unique_name, in_frame_id++);
+        out_buf->mark_frame_full(unique_name, out_frame_id++);
     }
 }
