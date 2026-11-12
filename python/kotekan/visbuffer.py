@@ -1,5 +1,6 @@
 """Read a visBuffer dump into python.
 """
+
 import ctypes
 import os
 import io

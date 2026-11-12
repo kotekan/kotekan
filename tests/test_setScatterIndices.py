@@ -7,6 +7,7 @@ require_frame_desc actually rejects a structurally-wrong declaration (a
 transposed shape that has the same byte size) -- the property the
 order-sensitive fengine conversions rely on.
 """
+
 import pytest
 import numpy as np
 import h5py
