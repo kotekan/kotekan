@@ -2728,10 +2728,19 @@ def build_gather_instance(cfg, args, port):
     return out
 
 
+# The template variables the stock render sets. pathfinder.j2 has rendered the PilotProxy DTV detector
+# unless dtv_enabled is false since chord 9a6a995a1, and the detector loads its runtime bundle
+# (data/pilotproxy_bundle, relative to the working directory) at construction, FATAL if absent, even
+# while detection is off. Production runs without it (no DTV stages in a stock node's /config,
+# 2026-11-12), and the GNSS nodes have no bundle.
+STOCK_RENDER_VARS = {"dtv_enabled": False}
+
+
 def render_stock_template(path):
     """A kotekan .j2 config rendered as kotekan renders it (kotekan/kotekan.cpp): jinja2 with a
     FileSystemLoader on the template's own directory and select_autoescape(), then
-    yaml.safe_load. No template variables, so this is the stock render.
+    yaml.safe_load, with STOCK_RENDER_VARS only: the variables that make the render what production
+    actually runs.
 
     A render rather than a config captured from a running node: a capture goes stale silently as
     production changes (boards, dish table, RFI settings), while a render of production's own
@@ -2744,7 +2753,7 @@ def render_stock_template(path):
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(d), autoescape=jinja2.select_autoescape()
     )
-    return yaml.safe_load(env.get_template(f).render({}))
+    return yaml.safe_load(env.get_template(f).render(STOCK_RENDER_VARS))
 
 
 def choco_bad_inputs(timeout=20.0):
