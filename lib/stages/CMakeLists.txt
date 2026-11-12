@@ -149,9 +149,7 @@ if(ASDF_CXX_FOUND)
 endif()
 
 if(GDAL_FOUND)
-    target_include_directories(kotekan_stages PRIVATE ${GDAL_INCLUDE_DIRS})
-    target_link_options(kotekan_stages PUBLIC ${GDAL_LDFLAGS})
-    target_link_libraries(kotekan_stages PUBLIC ${GDAL_LIBRARIES})
+    target_link_libraries(kotekan_stages PUBLIC GDAL::GDAL)
 endif()
 
 if(HDF5_FOUND
