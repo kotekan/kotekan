@@ -69,7 +69,6 @@ pulsarNetworkProcess::~pulsarNetworkProcess() {
 void pulsarNetworkProcess::main_thread() {
     // parsing the host name
 
-    int my_node_id;
     std::vector<std::string> link_ip =
         config.get<std::vector<std::string>>(unique_name, "pulsar_node_ips");
     int number_of_pulsar_links = link_ip.size();
