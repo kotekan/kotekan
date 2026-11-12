@@ -347,6 +347,18 @@ def test_roundtrip(tmpdir_factory, case_name, single_file):
     _replay(tmpdir, case, single_file)
 
 
+def test_acq_dir_keeps_each_run(tmpdir_factory):
+    """With acq_dir, a second run writes a new directory instead of overwriting the first."""
+    case = CASES["int8_random"]
+    tmpdir = tmpdir_factory.mktemp("hdf5_acq_dir")
+    for _ in range(2):
+        _siphon(tmpdir, case, False, write_extra=dict(acq_dir=True))
+    runs = sorted(glob.glob(os.path.join(str(tmpdir), "acq_*")))
+    assert len(runs) == 2
+    for run in runs:
+        _check_files(run, case, False)
+
+
 def test_singlefile_missing_input_is_fatal(tmpdir_factory):
     case = CASES["int8_random"]
     tmpdir = tmpdir_factory.mktemp("hdf5_roundtrip_missing")

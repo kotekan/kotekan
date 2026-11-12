@@ -27,9 +27,10 @@
 #include <array>                                 // for array
 #include <atomic>                                // for __atomic_base, atomic
 #include <cassert>                               // for assert
+#include <chrono>                                // for system_clock
 #include <cstddef>                               // for size_t
 #include <cstdint>                               // for int64_t, uint8_t, uint32_t
-#include <errno.h>                               // for errno, EEXIST, EISDIR
+#include <filesystem>                            // for create_directories
 #include <functional>                            // for function
 #include <gsl-lite.hpp>                          // for span
 #include <highfive/H5DataSet.hpp>                // for DataSet, AnnotateTraits::createAttribute
@@ -44,14 +45,15 @@
 #include <iomanip>                               // for operator<<, setfill, setw
 #include <memory>                                // for allocator, shared_ptr, __shared_ptr_access
 #include <sstream>                               // for basic_ostream, operator<<, basic_ostrin...
-#include <string.h>                              // for strerror
 #include <string>                                // for basic_string, char_traits, string, oper...
-#include <sys/stat.h>                            // for mkdir
 #include <vector>                                // for vector
 
 
 using namespace hdf5;
 using namespace HighFive;
+
+// Names the acq_dir directory, once per Kotekan instance.
+const auto kotekan_start_time = std::chrono::system_clock::now();
 
 /**
  * @class hdf5FileWrite
@@ -63,6 +65,9 @@ using namespace HighFive;
  *     @buffer_metadata chord or N2
  *
  * @conf base_dir  String. Directory to write into.
+ * @conf acq_dir   Bool. Default: false. Write into "<base_dir>/acq_YYYYMMDD_HHMMSS_NNNNNNNNN",
+ *       named for the time Kotekan started, so a restart does not overwrite the previous run.
+ *       Every hdf5FileWrite with the same base_dir in one instance shares the directory.
  * @conf file_name String. Base filename to write.
  * @conf prefix_hostname  Bool. Prepend hostname to output file names. Default:
  *       true.
@@ -104,7 +109,10 @@ using namespace HighFive;
  **/
 class hdf5FileWrite : public kotekan::Stage {
 
-    const std::string base_dir = config.get<std::string>(unique_name, "base_dir");
+    const bool acq_dir = config.get_default<bool>(unique_name, "acq_dir", false);
+    const std::string base_dir =
+        acq_dir ? acq_dir_path(config.get<std::string>(unique_name, "base_dir"), kotekan_start_time)
+                : config.get<std::string>(unique_name, "base_dir");
     const std::string file_name = config.get<std::string>(unique_name, "file_name");
     const bool prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
     const bool prefix_host_rank = config.get_default<bool>(unique_name, "prefix_host_rank", false);
@@ -199,13 +207,10 @@ public:
         const std::string full_path = buf.str();
 
         // Create directory if necessary
-        int ierr = mkdir(base_dir.c_str(), 0777);
-        if (ierr) {
-            if (errno != EEXIST && errno != EISDIR) {
-                const char* const msg = strerror(errno);
-                FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", base_dir.c_str(), msg);
-            }
-        }
+        std::error_code ec;
+        std::filesystem::create_directories(base_dir, ec);
+        if (ec)
+            FATAL_ERROR("Could not create directory \"{:s}\":\n{:s}", base_dir, ec.message());
 
         // Create HDF5 file
         FileAccessProps fapl;
