@@ -32,6 +32,10 @@ set(KERNELFILES
     kernel_128_256.cu
     kernel_128_336.cu
     kernel_128_384.cu
+    kernel_128_416.cu
+    kernel_128_448.cu
+    kernel_128_464.cu
+    kernel_128_480.cu
     kernel_128_512.cu
     kernel_128_1024.cu
     kernel_128_2048.cu

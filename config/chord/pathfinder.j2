@@ -191,10 +191,9 @@ network_input_buffers:
 
 # Main voltage buffer after transpose.
 # Produced by TransposeBasebandArray: int4x2_swapped_withoffset "E"
-# [timesamples_per_frame, NUM_LOCAL_FREQ, 2, NUM_ELEMENTS/2] = [samples_per_data_set, 384, 2, 64].
-# The stage uses compile-time macros NUM_LOCAL_FREQ=384, NUM_ELEMENTS=128 (it fatally checks the
-# config num_local_freq/num_elements equal them); this config sets num_local_freq=384,
-# num_elements=128, so the static extents below are valid. These live outside the
+# [timesamples_per_frame, num_local_freq, 2, NUM_ELEMENTS/2] = [samples_per_data_set, 384, 2, 64].
+# The stage fixes NUM_ELEMENTS=128 at compile time (it fatally checks the config num_elements
+# equals it) and takes num_local_freq from the config. These live outside the
 # network_input_buffers group: that group's frame_size is for the dpdk buffers, while
 # ndarray buffers derive their size from the descriptor.
 {% for n in numa_halves %}
