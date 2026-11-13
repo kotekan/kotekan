@@ -32,6 +32,7 @@ CPU_NEED = re.compile(
       | .*\.md$                     #   markdown anywhere
     )
     | ^lib/cuda/upchannelizeReference\.  # compiled into a CPU boost test
+    | ^lib/cuda/gnssTileSelection\.hpp   # included by a CPU boost test
     """,
     re.VERBOSE,
 )
@@ -136,6 +137,7 @@ SELF_TEST_CASES = [
     (["lib/core/Stage.cpp"], True, True, False),  # GPU_ROOTS
     (["lib/cuda/cudaCommand.cpp"], False, True, False),
     (["lib/cuda/upchannelizeReference.cpp"], True, True, False),
+    (["lib/cuda/gnssTileSelection.hpp"], True, True, False),
     (["lib/cuda/generated/Upchannelizer_chord_U16_K4.ptx"], False, True, True),
     (["config/ci-tests/gpu_batch/verify_cuda_upchan.j2"], False, True, False),
     (["config/ci-tests/cpu_batch/new.yaml"], True, False, False),

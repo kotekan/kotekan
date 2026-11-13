@@ -8,12 +8,12 @@
 #include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
 #include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
 #include "div.hpp"                 // for div_noremainder
+#include "gnssTileSelection.hpp"   // for build_tile_selection
 #include "gpuCommand.hpp"          // for gpuCommandType
 #include "kotekanLogging.hpp"      // for DEBUG, INFO
 
 #include "fmt.hpp" // for compile_string_to_view
 
-#include <algorithm>          // for find (a gather's channels in the comb)
 #include <array>              // for array
 #include <cassert>            // for assert
 #include <chordMetadata.hpp>  // for chordMetadata
@@ -43,65 +43,6 @@ static std::vector<int> live_tile_columns(Config& config, const std::string& uni
                                  + std::to_string(num_live_elements) + " needs "
                                  + std::to_string((num_live_elements + 15) / 16));
     return cols;
-}
-
-// One gather: the tiles of `chans` (a subset of the comb) for the synth rows holding lanes
-// [lane_base, lane_base + n_lanes). Several chains can share one correlator pass: each gather
-// holds only its own chain's rows, so its buffer has the layout a one-chain correlator with
-// num_synth = n_lanes would produce. The order is the tile list in the hpp, and
-// GnssN2RecordAssemble recomputes it.
-static std::vector<int2> build_tile_selection(const std::vector<std::int32_t>& comb,
-                                              const std::vector<std::int32_t>& chans,
-                                              int num_elements, const std::vector<int>& live_cols,
-                                              int lane_base, int n_lanes, bool gather_aa,
-                                              bool gather_bb) {
-    std::vector<int2> sel;
-    const int na16 = num_elements / 16;
-    const int row_lo = na16 + lane_base / 16;
-    const int row_hi = na16 + (lane_base + n_lanes) / 16;
-    for (size_t ci = 0; ci < chans.size(); ci++) {
-        // The kernel's freq map writes slice k for comb[k], so the gather indexes by k, not
-        // by the channel number.
-        const auto it = std::find(comb.begin(), comb.end(), chans[ci]);
-        if (it == comb.end())
-            throw std::runtime_error("cudaCorrelatorDual: a gather asks for local channel "
-                                     + std::to_string(chans[ci])
-                                     + ", which is not in gnss_local_channels");
-        const std::int32_t f = (std::int32_t)(it - comb.begin());
-        // Mixed (synth row x live antenna column) first. GnssN2RecordAssemble reads the tile
-        // of row ihi and list position slot at mix_k = (ihi - row_lo)*n_live_cols + slot. The
-        // slot is the position in live_cols, not the column, so the gather order defines the
-        // record's element axis and the consumer needs no knowledge of which columns are live.
-        // Blocks appended after this one do not move the mixed tiles.
-        for (int ihi = row_lo; ihi < row_hi; ihi++)
-            for (size_t k = 0; k < live_cols.size(); k++)
-                sel.push_back({f, 512 * (ihi * (ihi + 1) / 2 + live_cols[k])});
-        // The tile count is one contract stated in three places: here, GnssN2RecordAssemble's
-        // _n_tile (mixed only), and config/gen_chord_gnss_config.py's n2_tiles_per_chan, which
-        // sizes the tiles buffer. A mismatch is fatal: GnssN2RecordAssemble checks the frame
-        // size at startup, and gpuDeviceInterface's size check catches this side when
-        // cudaOutputData first copies the buffer out.
-        //
-        // AA (antenna x antenna, the live N^2) next, only on request: the lower triangle over
-        // positions in live_cols, row-major with k2 <= k1, so the (k1, k2) tile sits at
-        // k1*(k1+1)/2 + k2 in this block. These are the triangle's tiles only if live_cols is
-        // ascending. The kernel writes the AA block only when BLOCK_MASK_AA is in its mask; the
-        // constructor adds it iff a gather wants AA.
-        if (gather_aa)
-            for (size_t k1 = 0; k1 < live_cols.size(); k1++)
-                for (size_t k2 = 0; k2 <= k1; k2++)
-                    sel.push_back(
-                        {f, 512 * (live_cols[k1] * (live_cols[k1] + 1) / 2 + live_cols[k2])});
-        // BB (synth x synth) last, only on request: the lower triangle over this gather's synth
-        // tile rows, (ihi - row_lo, jhi - row_lo) at k1*(k1+1)/2 + k2 in this block. The kernel
-        // computes it regardless; only the visibility capture reads it (36 tiles per channel
-        // at 128 lanes).
-        if (gather_bb)
-            for (int ihi = row_lo; ihi < row_hi; ihi++)
-                for (int jhi = row_lo; jhi <= ihi; jhi++)
-                    sel.push_back({f, 512 * (ihi * (ihi + 1) / 2 + jhi)});
-    }
-    return sel;
 }
 
 // Does any gather want the AA block? Needed before the kernel wrapper is built, since it sets
@@ -195,8 +136,8 @@ cudaCorrelatorDual::cudaCorrelatorDual(Config& config, const std::string& unique
         Gather g;
         g.name = tiles_name;
         g.n_chan = (int)chans.size();
-        g.sel = build_tile_selection(_gnss_local_channels, chans, _num_elements, _live_tile_cols,
-                                     lane_base, n_lanes, aa, bb);
+        g.sel = build_tile_selection<int2>(_gnss_local_channels, chans, _num_elements,
+                                           _live_tile_cols, lane_base, n_lanes, aa, bb);
         const int tiles_per_chan = g.n_chan > 0 ? (int)g.sel.size() / g.n_chan : 0;
         const std::array<std::ptrdiff_t, 6> lengths{
             num_subintegrations, g.n_chan, tiles_per_chan, 16, 16, 2};

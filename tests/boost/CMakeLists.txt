@@ -223,6 +223,13 @@ target_include_directories(test_cuda_stream_assignment PRIVATE ${KOTEKAN_SOURCE_
 target_link_libraries(test_cuda_stream_assignment PRIVATE pthread libexternal kotekan_libs
                                                           kotekan_utils kotekan_core)
 
+# cudaCorrelatorDual's tile-selection lists against a per-half row table. gnssTileSelection.hpp is
+# header-only and needs no CUDA, so this runs in the CPU-only builds.
+add_executable(test_gnss_tile_selection test_gnss_tile_selection.cpp)
+target_include_directories(test_gnss_tile_selection PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/cuda)
+target_link_libraries(test_gnss_tile_selection PRIVATE libexternal kotekan_libs kotekan_utils
+                                                       kotekan_core)
+
 # test_gpu_memory_claims - the one-owner-per-region rule for named GPU memory: the policy function
 # AND its wiring in gpuDeviceInterface (owner scopes, thread attribution, arrays, views, the
 # declared-share exemption). lib/gpu is built only when a GPU backend is found and the CI boost jobs
