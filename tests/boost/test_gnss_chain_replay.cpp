@@ -211,11 +211,14 @@ std::vector<ChainSpec> synthetic_chains(const Sky& sky) {
     std::vector<int> a_prns;
     for (int p = 1; p <= 32; ++p)
         a_prns.push_back(p);
-    return {
+    std::vector<ChainSpec> c = {
         synth_chain("gnss0_syn_a", a_prns, {5985, 6001, 6017, 6033}, {5953, 5969}, 0.0, 32, sky),
         synth_chain("gnss0_syn_b", {2, 5, 7, 8, 11, 13}, {6385}, {}, 0.0, 6, sky),
         synth_chain("gnss0_syn_c", {3, 4, 7, 6, 9, 10, 12, 14, 15, 17, 18, 20, 21, 24},
                     {6033, 6200}, {}, 40920.0, 14, sky)};
+    for (size_t i = 0; i < c.size(); ++i)
+        c[i].idx = (int)i;
+    return c;
 }
 
 /// The chains of the GNSS_REPLAY_CONFIG file (scripts/gnss/replay_extract.py).
@@ -226,10 +229,12 @@ std::vector<ChainSpec> config_chains(const std::string& path) {
     const json j = json::parse(in);
     const int spd = j.at("root").at("samples_per_data_set").get<int>();
     std::vector<ChainSpec> out;
-    for (const auto& c : j.at("chains"))
+    for (const auto& c : j.at("chains")) {
         out.push_back(spec_from_blocks(c.at("pre").get<std::string>(), c.at("gpu").get<int>(),
                                        c.at("adapter"), c.at("assemble"), c.at("combine"),
                                        c.at("telem"), spd));
+        out.back().idx = (int)out.size() - 1;
+    }
     return out;
 }
 
@@ -1049,12 +1054,12 @@ bool board_ok(const Digests& d, const std::vector<ChainSpec>& cs, const Scenario
     return true;
 }
 
-/// Lanes of one PRN on one freq_id from two chains are two entries, one per owner.
-bool shared_lanes_distinct(const Digests& d, const std::vector<ChainSpec>& cs, int cp,
-                           std::string* why) {
+/// The (freq_id, PRN) lanes two chains both publish, as two entries, one per owner.
+std::set<std::pair<int, int>> shared_lanes(const Digests& d, const std::vector<ChainSpec>& cs,
+                                           int cp) {
     const json rows = d.live.value("board@" + std::to_string(cp), json::array());
     const Scenario sc = base_scenario();
-    int pairs = 0;
+    std::set<std::pair<int, int>> out;
     for (size_t i = 0; i < cs.size(); ++i)
         for (size_t j = i + 1; j < cs.size(); ++j)
             for (int f : cs[i].channel_ids) {
@@ -1075,11 +1080,10 @@ bool shared_lanes_distinct(const Digests& d, const std::vector<ChainSpec>& cs, i
                             hj = hj || r[2] == oj;
                         }
                     if (hi && hj)
-                        ++pairs;
+                        out.insert({f, prn});
                 }
             }
-    *why = fmt::format("{:d} (freq_id, PRN) lanes published by two chains as two entries", pairs);
-    return pairs >= 1;
+    return out;
 }
 
 /// The REST paths the stages register under this config (GnssGpuRecordAssemble's constructor and
@@ -1186,8 +1190,17 @@ BOOST_AUTO_TEST_CASE(live) {
     for (int cp : {sc.checkpoints[sc.checkpoints.size() - 2], sc.checkpoints.back()}) {
         BOOST_CHECK_MESSAGE(board_ok(d, chains(), sc, cp, &why), why);
         BOOST_TEST_MESSAGE(why);
-        BOOST_CHECK_MESSAGE(shared_lanes_distinct(d, chains(), cp, &why), why);
-        BOOST_TEST_MESSAGE(why);
+        const std::set<std::pair<int, int>> sh = shared_lanes(d, chains(), cp);
+        BOOST_CHECK_MESSAGE(!sh.empty(), "board@" << cp << ": no lane published by two chains");
+        BOOST_TEST_MESSAGE(fmt::format(
+            "board@{:d}: {:d} (freq_id, PRN) lanes published by two chains as two entries", cp,
+            sh.size()));
+        // A and C share freq_id 6033 and PRN 6 (synthetic_chains).
+        if (!std::getenv("GNSS_REPLAY_CONFIG"))
+            BOOST_CHECK_MESSAGE(sh.count({6033, 6}) == 1,
+                                "board@" << cp
+                                         << ": (6033, PRN 6) is not one entry each from A "
+                                            "and C");
     }
 }
 

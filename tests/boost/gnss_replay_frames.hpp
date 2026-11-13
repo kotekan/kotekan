@@ -26,6 +26,7 @@ namespace gnss_replay {
 /// One chain: its numbers and its four stage blocks (adapter, assembler, combiner, telemetry).
 struct ChainSpec {
     std::string pre; ///< e.g. "gnss0_syn_a"; the stages are "/" + pre + "_n2assemble" etc.
+    int idx = 0;     ///< position in the chain list, by which the scenario names chains
     int gpu, n_prn, n_chan, n_live, num_elements, num_synth, lanes_per_slot, hops_per_record, n_rec,
         fft_len;
     double sample_rate;
@@ -95,11 +96,11 @@ inline int prn_at(const ChainSpec& s, const Scenario& sc, int frame, int slot) {
 }
 
 /// Does @p slot despread record @p rec of @p frame? Planted PRNs, every fourth slot from 2
-/// (unplanted, noise only) and slots 0 and dark_r0_slot run; dark_r0_slot is dark at record 0
-/// of dark_r0_frame, so later records of that frame shift the job numbering.
+/// (unplanted, noise only) and slots 0 and dark_r0_slot run; chain B's dark_r0_slot is dark at
+/// record 0 of dark_r0_frame, so later records of that frame shift the job numbering.
 inline bool runs(const ChainSpec& s, const Scenario& sc, const Sky& sky, int frame, int rec,
                  int slot) {
-    if (frame == sc.dark_r0_frame && rec == 0 && slot == sc.dark_r0_slot)
+    if (s.idx == 1 && frame == sc.dark_r0_frame && rec == 0 && slot == sc.dark_r0_slot)
         return false;
     return slot == 0 || slot == sc.dark_r0_slot || slot % 4 == 2
            || sky.planted.count(prn_at(s, sc, frame, slot)) > 0;
