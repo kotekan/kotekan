@@ -2314,23 +2314,23 @@
   },
   "DIGUI-127": {
    "status": "transmitting",
-   "status_basis": "track beam: PRN 1293 with DIGUI-127 Doppler, 432 CRC-valid seconds 11-12 21:07 to 11-13 00:59; code-mate DIGUI-121 below the horizon (2026-11-12T21:07:21Z)",
    "catnum": 67067,
    "g2_phase": 1292,
-   "theta_us": -15.092,
-   "carrier_minus_tle_ppb": -2.9,
-   "measured_utc": "2026-11-05T05:24:46Z",
-   "source": "2026-11-05 beam dump window 122 (gw_reduce, 39257 frames over 79 s)",
-   "sep_deg": 5.04,
+   "theta_us": -11.165,
+   "carrier_minus_tle_ppb": -2.0,
+   "measured_utc": "2026-11-13T02:51:25Z",
+   "source": "2026-11-13 beam dump window 171 (gw_reduce, 39674 frames over 79 s)",
+   "sep_deg": 1.67,
    "ref_input": 116,
-   "drift_ns_s": 2.9,
-   "last_observed_utc": "2026-11-05T05:24:49Z",
-   "last_checked_utc": "2026-11-05T05:24:49Z",
-   "last_checked_sep_deg": 5.01,
-   "passes_found": 1,
+   "drift_ns_s": 2.05,
+   "last_observed_utc": "2026-11-13T02:51:29Z",
+   "last_checked_utc": "2026-11-13T02:51:29Z",
+   "last_checked_sep_deg": 1.24,
+   "passes_found": 2,
    "passes_silent": 0,
    "passes": [
-    ["2026-11-05T05:24:49Z", 5.01, true]
+    ["2026-11-05T05:24:49Z", 5.01, true],
+    ["2026-11-13T02:51:29Z", 1.24, true]
    ]
   },
   "DIGUI-128": {
