@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""The whole band from one recv1 N2 file: per channel (300-1500 MHz, 6145), the top eigenvalues of the
+"""The whole band from one recv1 N2 file: per channel, the top eigenvalues of the
 input-whitened covariance averaged over the file's bins, in noise units (the mean of eigenvalues 20..m-8, m the
 inputs kept in every bin), and the share of the file's bins in which the channel was flagged. A bin with every
 input flagged (a recv1 start or gap) is left out.
 
-    vis_spectrum.py FILE.h5 --out spec.npz [--block 128]
+    vis_spectrum.py FILE.h5 --out spec.npz [--block 128] [--mhz LO HI]
+
+--mhz reads only the channels in [LO, HI] MHz; the others stay NaN.
 """
 import argparse
 import time
 
 import h5py
 import numpy as np
-
-K0 = 1536  # freq_id of channel index 0 (300 MHz)
 
 
 def main():
@@ -22,18 +22,22 @@ def main():
     ap.add_argument("h5")
     ap.add_argument("--out", required=True)
     ap.add_argument("--block", type=int, default=128)
+    ap.add_argument("--mhz", type=float, nargs=2, default=(0.0, 1e4))
     a = ap.parse_args()
     t0 = time.time()
     with h5py.File(a.h5, "r") as f:
         prod = f["index_map/prod"][:]
         ia, ib = prod["input_a"].astype(int), prod["input_b"].astype(int)
         nf = f["vis"].shape[0]
+        k0 = round(f["index_map/freq"][0]["centre"] / 0.1953125)  # freq_id of index 0
         tins = f["bin_t_inst_ns"][:]
         lam = np.full((nf, 3), np.nan, np.float32)
         kept = np.zeros(nf, np.int16)
         flagged = np.zeros(nf, np.float32)
-        for c0 in range(0, nf, a.block):
-            c1 = min(nf, c0 + a.block)
+        c_lo = min(nf, max(0, int(np.ceil(a.mhz[0] / 0.1953125)) - k0))
+        c_hi = min(nf, max(0, int(np.floor(a.mhz[1] / 0.1953125)) - k0 + 1))
+        for c0 in range(c_lo, c_hi, a.block):
+            c1 = min(c_hi, c0 + a.block)
             vis = f["vis"][c0:c1]  # [C, 8256, nb]
             flg = f["flags"][c0:c1] > 0  # [C, 128, nb]
             for c in range(c1 - c0):
@@ -62,8 +66,8 @@ def main():
             )
     np.savez(
         a.out,
-        fid=np.arange(nf) + K0,
-        mhz=300.0 + np.arange(nf) * 0.1953125,
+        fid=np.arange(nf) + k0,
+        mhz=(np.arange(nf) + k0) * 0.1953125,
         lam=lam,
         kept=kept,
         flagged=flagged,

@@ -39,7 +39,8 @@ def one_file(path):
                 r = np.where(ok, x / np.sqrt(np.where(ok, pa * pb, 1.0)), np.nan)
                 R[k, :, c0:c1] = r.T
         t = f["bin_t_inst_ns"][:]
-    return dict(path=path, t=t, R=R, secs=time.time() - t0)
+        k0 = round(f["index_map/freq"][0]["centre"] / 0.1953125)  # freq_id of index 0
+    return dict(path=path, t=t, R=R, k0=k0, secs=time.time() - t0)
 
 
 def main():
@@ -83,8 +84,8 @@ def main():
         t_inst_ns=t[o],
         R=R,
         pairs=np.array(PAIRS),
-        fid=np.arange(nf) + 1536,
-        mhz=300.0 + np.arange(nf) * 0.1953125,
+        fid=np.arange(nf) + out[0]["k0"],
+        mhz=(np.arange(nf) + out[0]["k0"]) * 0.1953125,
     )
     print("saved %s: %d bins x %d channels" % (a.out, R.shape[1], nf))
 

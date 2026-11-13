@@ -2,8 +2,8 @@
 """Per 10 s bin, for selected 16-channel chunks of the recv1 subset N2 files: the input-whitened
 covariance's eigenvalues in noise units, the Tau A template excess, and a few long-baseline visibilities.
 
-Channel index k in the files is 300 MHz + k x 0.1953125 MHz, so freq_id = k + 1536 and the files' 16-channel
-chunks start on freq_ids that are multiples of 16. Whitening: R_ik = V_ik / sqrt(V_ii V_kk) over the inputs
+Channel index k in a file is freq_id k + k0, k0 from the file's first channel (1536 up to 11-11, then 768); the
+files' 16-channel chunks start on freq_ids that are multiples of 16. Whitening: R_ik = V_ik / sqrt(V_ii V_kk) over the inputs
 the file's flags keep. Noise n = mean of eigenvalues 20..m-8 (m kept inputs). Template (dtv_modes.py
 predict_p2): the projector onto the top-2 eigenvectors of the CLEAN chunks' channels, carried to each channel by
 the per-input phase slope across adjacent clean channels (the channel itself excluded); excess =
@@ -67,7 +67,6 @@ CLEAN, CLEANED, UNCLEANED = (
     SETS["atsc2430"][k] for k in ("clean", "cleaned", "uncleaned")
 )
 CHUNKS = sorted(CLEAN + CLEANED + UNCLEANED)
-K0 = 1536
 PARTS = None
 
 
@@ -94,9 +93,10 @@ def one_file(path):
         pol = f["index_map/pol"][:]
         tins = f["bin_t_inst_ns"][:]
         nb = len(tins)
+        k0 = round(f["index_map/freq"][0]["centre"] / 0.1953125)
         fids, vis, flg = [], [], []
         for c0 in CHUNKS:
-            k = c0 - K0
+            k = c0 - k0
             vis.append(f["vis"][k : k + 16])  # [16, 8256, nb]
             flg.append(f["flags"][k : k + 16])  # [16, 128, nb]
             fids += list(range(c0, c0 + 16))

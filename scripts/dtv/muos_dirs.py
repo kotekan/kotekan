@@ -20,7 +20,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import dtv_steer as D  # noqa: E402
 
 FIDS = np.arange(1844, 1945)
-K0 = 1536
 
 
 def one(path):
@@ -29,7 +28,8 @@ def one(path):
     with h5py.File(path, "r") as f:
         prod = f["index_map/prod"][:]
         ia, ib = prod["input_a"].astype(int), prod["input_b"].astype(int)
-        i0, i1 = FIDS[0] - K0, FIDS[-1] - K0 + 1
+        k0 = round(f["index_map/freq"][0]["centre"] / 0.1953125)  # freq_id of index 0
+        i0, i1 = FIDS[0] - k0, FIDS[-1] - k0 + 1
         vis = f["vis"][i0:i1]
         flg = f["flags"][i0:i1] > 0
         t = f["bin_t_inst_ns"][:]
