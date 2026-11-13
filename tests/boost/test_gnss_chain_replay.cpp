@@ -627,6 +627,10 @@ std::string short_hostname() {
 }
 
 int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::string& out_path) {
+    // Boost.Test's handlers would report a crash from inside the child and carry on; the parent
+    // reports the signal instead.
+    for (int sig : {SIGSEGV, SIGBUS, SIGFPE, SIGILL, SIGABRT, SIGALRM})
+        std::signal(sig, SIG_DFL);
     std::signal(SIGTERM, on_sigterm);
     alarm(300);
     if (sc.cpu >= 0) {
