@@ -30,8 +30,7 @@ GnssN2RecordAssemble::GnssN2RecordAssemble(Config& config, const std::string& un
 
     _num_elements = config.get<int>(unique_name, "num_elements");
     _num_synth = config.get_default<int>(unique_name, "num_synth", 128);
-    _lanes_per_slot =
-        config.get_default<int>(unique_name, "lanes_per_slot", gnss_gpu::LANES_FULL);
+    _lanes_per_slot = config.get_default<int>(unique_name, "lanes_per_slot", gnss_gpu::LANES_FULL);
     _n_live = config.get<int>(unique_name, "n_live_elements");
     _n_gnss_chan = config.get<int>(unique_name, "n_gnss_channels");
     _n_prn = config.get<int>(unique_name, "n_prn");
@@ -115,7 +114,16 @@ void GnssN2RecordAssemble::main_thread() {
                         "carry the same lanes_per_slot",
                         gnss_gpu::lanes_per_slot_of(ihdr->lanes_per_slot), _lanes_per_slot);
 
-        std::memset(out, 0, _out_buf->frame_size);
+        // Only the header, the window starts and PrnCtl are zeroed: the frame is sized for
+        // MAX_REC records, and nothing reads a row past n_jobs. Every row below n_jobs is written
+        // whole, for every channel and element, which needs the frame to have this stage's shape.
+        if (ihdr->n_prn != _n_prn || ihdr->n_chan != _n_gnss_chan
+            || ihdr->n_rec != _n_hops_frame / _hops_per_record || ihdr->n_rec > gnss_gpu::MAX_REC)
+            FATAL_ERROR("GnssN2RecordAssemble: the control block is {:d} PRN x {:d} chan x {:d} "
+                        "records, this stage {:d} x {:d} x {:d} (at most {:d} records)",
+                        ihdr->n_prn, ihdr->n_chan, ihdr->n_rec, _n_prn, _n_gnss_chan,
+                        _n_hops_frame / _hops_per_record, gnss_gpu::MAX_REC);
+        std::memset(out, 0, gnss_gpu::off_corr(_n_prn));
         auto* ohdr = (gnss_gpu::FrameHdr*)out;
         auto* owin = (int64_t*)(out + gnss_gpu::off_winstart());
         auto* octl = (gnss_gpu::PrnCtl*)(out + gnss_gpu::off_prnctl());
@@ -142,7 +150,8 @@ void GnssN2RecordAssemble::main_thread() {
                 gnss_gpu::PrnCtl& oc = octl[(size_t)r * _n_prn + p];
                 // Copy the PRN before the run check: a dark slot would otherwise ship 0 ("not
                 // stamped"), and the assembler must learn that a slot changed satellite while
-                // dark, since that is when it drops the old satellite's element cal.
+                // dark, since that is when it drops the old satellite's element cal. Only the PRN
+                // is copied, so a dark slot keeps run = 0 from the memset above.
                 oc.prn = in0.prn;
                 if (!in0.run)
                     continue;
