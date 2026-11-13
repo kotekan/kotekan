@@ -1329,6 +1329,43 @@ def test_chain_names_and_lane_transfer():
         )
 
 
+def test_combiner_out_buf():
+    """--no-combiner-out-buf drops each chain's n2cmb_buf and n2sink and the combiner's out_buf,
+    and changes nothing else; --combiner-out-buf is the default."""
+    if kotekan_src.SRC is None:
+        print("  [SKIP] node config: no kotekan tree to render the base from")
+        return
+    exc, on = _lane_transfer_node()
+    exc_on, on2 = _lane_transfer_node(flags=["--combiner-out-buf"])
+    exc_off, off = _lane_transfer_node(flags=["--no-combiner-out-buf"])
+    check(
+        exc is None and exc_on is None and exc_off is None,
+        "the node configs generate (%s, %s, %s)" % (exc, exc_on, exc_off),
+    )
+    if None in (on, on2, off):
+        return
+    check(on == on2, "--combiner-out-buf is the default")
+    pres = [k[: -len("n2combine")] for k in on if k.endswith("_n2combine")]
+    check(len(pres) == 6, "6 combiners (%d)" % len(pres))
+    check(
+        all(
+            on[p + "n2combine"]["out_buf"] == p + "n2cmb_buf"
+            and on[p + "n2sink"]
+            == {"kotekan_stage": "dropAllFrames", "in_buf": p + "n2cmb_buf"}
+            for p in pres
+        ),
+        "default: every combiner writes <chain>n2cmb_buf, which <chain>n2sink drains",
+    )
+    trimmed = copy.deepcopy(on)
+    for p in pres:
+        del trimmed[p + "n2cmb_buf"], trimmed[p + "n2sink"]
+        del trimmed[p + "n2combine"]["out_buf"]
+    check(
+        off == trimmed,
+        "--no-combiner-out-buf: the default less every n2cmb_buf, n2sink and combiner out_buf",
+    )
+
+
 def test_upper_l_band_node():
     """On the node table's 150-1600 MHz band cx51 (combs 7 and 13) builds bds_b1i and gps_l1ca
     on both GPUs with the taps 0.5 chip out, and gps_l1ca's lanes transfer to the other live

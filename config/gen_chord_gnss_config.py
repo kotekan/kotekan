@@ -1297,8 +1297,8 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
 
     Consumes the GPU voltage ring that production's run_send_voltage feeds. The extended
     triangle stays on the GPU (production's run_n2k computes the science N^2); the gathered
-    GNSS tiles come to the host for the assemblers, and the combined records end in a
-    dropAllFrames.
+    GNSS tiles come to the host for the assemblers, and the combined records, with
+    --combiner-out-buf, end in a dropAllFrames.
     """
     sig = cfg["signals"]
     arr = cfg["array"]
@@ -1582,19 +1582,12 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
         },
         # The chain's combiner: integrates the records into amplitudes and loop observables and
         # serves them over REST (/<pre>n2combine/get_status, /get_records).
-        f"{pre}n2cmb_buf": {
-            "kotekan_buffer": "standard",
-            "metadata_pool": "gnss_pool",
-            "num_frames": BUFFER_DEPTH,
-            "frame_size": f"{n_prn} * {record_floats} * sizeof_float32",
-        },
         f"{pre}n2combine": {
             "kotekan_stage": "GnssCoherentCombiner",
             # One record stream per combiner (the stage accepts exactly one): the broker
             # combines across GPUs and nodes, and merging the two GPUs here would only reduce
             # the instance count its fleet combine works with.
             "in_bufs": [n2rec_buf],
-            "out_buf": f"{pre}n2cmb_buf",
             "n_prn": n_prn,
             "n_elements": n_live,
             # EMA time constant and deep window, records
@@ -1616,8 +1609,21 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             "record_export": FLEET_TRIM_TAPS_WINDOWS * TELEM_RECORDS_PER_FRAME,
             "cpu_affinity": [V["cores"]["combine"]],
         },
-        f"{pre}n2sink": {"kotekan_stage": "dropAllFrames", "in_buf": f"{pre}n2cmb_buf"},
     }
+    # The combined records in a buffer, for an n2dump: nothing else reads them, so a
+    # dropAllFrames drains it. Without one the combiner keeps each emit for its REST replies.
+    if args.combiner_out_buf:
+        blocks[f"{pre}n2cmb_buf"] = {
+            "kotekan_buffer": "standard",
+            "metadata_pool": "gnss_pool",
+            "num_frames": BUFFER_DEPTH,
+            "frame_size": f"{n_prn} * {record_floats} * sizeof_float32",
+        }
+        blocks[f"{pre}n2combine"]["out_buf"] = f"{pre}n2cmb_buf"
+        blocks[f"{pre}n2sink"] = {
+            "kotekan_stage": "dropAllFrames",
+            "in_buf": f"{pre}n2cmb_buf",
+        }
 
     # -- The telemetry leg to the gather ------------------------------------------------------
     #
@@ -3630,6 +3636,16 @@ def main():
         "record instead of gnss_waveform + gnss_pack44; lib/cuda/cudaGnssPsiSynth.hpp). "
         "Requires --epl-from-prompt. The replica carries +1.1%% more energy than the "
         "80-chip gather, so every absolute SNR gate steps at the cutover.",
+    )
+    ap.add_argument(
+        "--combiner-out-buf",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="give each chain's GnssCoherentCombiner an out_buf (<chain>n2cmb_buf, drained by "
+        "a dropAllFrames, <chain>n2sink) holding its combined records, for an n2dump "
+        "(default %(default)s). Nothing else reads them: the broker reads the combiner's "
+        "REST replies. --no-combiner-out-buf needs a kotekan whose combiner takes no "
+        "out_buf.",
     )
     ap.add_argument(
         "--n2-project",
