@@ -41,8 +41,8 @@
                       shape mode there: shape pins like live.
 
 Instances are read from config/generated/chord_gnss_<node>_multi.yaml (port 12048). Band names:
-the band of the assembler's chain (gnss_fleet.stage_chain: gps_l5 -> l5, gal_e5a -> e5a, ...),
-so GPS and SBAS L5 share one.
+the shared-ref-band of the assembler's chain in the chains table (config/gnss_fleet_chord.yaml
+chains:), the band the generator copies into it, so GPS and SBAS L5 share l5.
 """
 import argparse
 import concurrent.futures
@@ -61,6 +61,7 @@ K = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..")
 )
 sys.path.insert(0, os.path.join(K, "config"))
+import gnss_chain_table  # noqa: E402
 import gnss_fleet  # noqa: E402
 
 GEN = os.path.join(K, "config", "generated", "chord_gnss_%s_multi.yaml")
@@ -94,8 +95,23 @@ def endpoints():
     return out
 
 
+_BANDS = {}  # chain key -> shared-ref-band, filled by band_of's first call
+
+
 def band_of(stage):
-    return (gnss_fleet.stage_chain(stage, "n2assemble") or "").partition("_")[2]
+    """The reference band of an assembler: its chain's row's shared-ref-band, as the generator
+    reads it. "" for a name that is no chain's assembler."""
+    chain = gnss_fleet.stage_chain(stage, "n2assemble")
+    if chain is None:
+        return ""
+    if not _BANDS:
+        _BANDS.update({r.key: r.shared_ref_band for r in gnss_chain_table.load()})
+    if chain not in _BANDS:
+        sys.exit(
+            "%s: chain %s has no row in the chains table (config/gnss_fleet_chord.yaml "
+            "chains:)" % (stage, chain)
+        )
+    return _BANDS[chain]
 
 
 def inst_name(node, stage):

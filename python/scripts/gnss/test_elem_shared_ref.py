@@ -212,6 +212,26 @@ class TestBandOf(unittest.TestCase):
         ):
             self.assertEqual(esr.band_of(stage), band, stage)
 
+    def test_the_band_is_the_chains_row(self):
+        """The band comes from the chain's row in the chains table, the one the generator copies
+        into the assembler, not from the chain key; a chain without a row is refused."""
+        rows = [
+            r._replace(shared_ref_band="l1ca") if r.key == "sbas_l1" else r
+            for r in esr.gnss_chain_table.load()
+        ]
+        saved = dict(esr._BANDS)
+        esr._BANDS.clear()
+        esr._BANDS.update({r.key: r.shared_ref_band for r in rows})
+        try:
+            self.assertEqual(esr.band_of("gnss0_sbas_l1_n2assemble"), "l1ca")
+            del esr._BANDS["gal_e5a"]
+            with self.assertRaises(SystemExit) as e:
+                esr.band_of("gnss0_gal_e5a_n2assemble")
+            self.assertIn("gal_e5a has no row", str(e.exception))
+        finally:
+            esr._BANDS.clear()
+            esr._BANDS.update(saved)
+
 
 class FakeNode:
     """urllib.request.urlopen for set_elem_sum_shared_ref: records (url, body) per POST."""
