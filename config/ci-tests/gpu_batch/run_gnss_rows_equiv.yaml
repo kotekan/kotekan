@@ -6,7 +6,8 @@
 # Written by scripts/gnss/gpu_rows_equiv.py config from a node config's gnss0_n2dual block: 3 rows
 # (gps_l5, gal_e5a, glo_l2oc), their cudaGnssInject commands and cudaCorrelatorDual gathers
 # verbatim, except that the comb (326 327 328 329 330 331 351 352) is renumbered to local channels
-# 0..7, so the voltage carries only the comb. Each row's tiles and control block and the synth
+# 0..7, so the voltage carries only the comb. The half runs on the root's cores, not on the node's
+# cpu_affinity [44] (run --half-cores pins it). Each row's tiles and control block and the synth
 # array are copied out and written to /tmp by rawFileWrite, one frame per file. With no seeds
 # every slot is dark, so this standalone run checks only that the half builds and runs;
 # gpu_rows_equiv.py run seeds it and digests each row.

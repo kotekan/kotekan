@@ -25,18 +25,25 @@ and --frames digest frames; and digests each row (chain) of each frame: its synt
 channels x lanes [synth_lane_base, +num_synth)), its tiles, and its control block up to its last
 energy row (the rows beyond n_jobs are never written and hold whatever the GPU memory held). The
 seeds are re-posted every 20 s (their TTL is 60 s) and trim_ttl_s is raised to 1e6, so neither
-expires. A digest frame must be warm, or the run exits 1: every slot that runs at all runs in
-every record of it and of the frame before, the data form of cudaGnssInject's psi_dark_hop0 == -1
-(a state field, not on REST; the log lines it gates are reported too). --lever ROW moves one seed
-of that row. --dop-rate, --leo-slots/--leo-rate and --reseed-at/--reseed-jump make the Psi
-coverage scenario; every run reports its dark slots per frame, over the slots that run at all (or,
-with --live-from, that ran in a control run). --scale-r0 adds the check that a slot dark at record
-0 and running in a later record dequantises, by GnssN2RecordAssemble's rule, to the replica energy
-the pack reduced from its float synthesis (P lane); the run exits 2 while it fails.
+expires. The injects run with psi_sync_build, so the Psi tables a record uses do not depend on the
+builder's timing; --async-build runs the builder as a node does (the Psi coverage and cost
+baselines), and then only the warm frames of seeds with a constant Doppler reproduce. A digest
+frame must be warm, or the run exits 1: every slot that runs at all runs in every record of it and
+of the frame before, the data form of cudaGnssInject's psi_dark_hop0 == -1 (a state field, not on
+REST; the log lines it gates are reported too). --lever ROW moves one seed of that row. --dop-rate,
+--leo-slots/--leo-rate and --reseed-at/--reseed-jump make the Psi coverage scenario; every run
+reports its dark slots per frame, over the slots that run at all (or, with --live-from, that ran
+in a control run). --scale-r0 adds the check that a slot running in a record after record 0
+dequantises, by GnssN2RecordAssemble's rule (scale_r0 restates it, so it changes with it), to the
+replica energy the pack reduced from its float synthesis (P lane), both for a slot dark at record
+0 and for one whose position among the running slots moved since record 0; the run exits 2 while
+either fails. digests.json records the run's arguments and the half's cpu_affinity.
 
-compare reports which (row, kind) digests differ between two runs over the digest frames that are
-warm in both (--all-frames: every digested frame); --only ROW requires exactly that row's digests
-to differ.
+compare reports which (row, kind) digests differ between two runs over their digest frames
+(--all-frames: every digested frame). It fails unless both runs have the same rows and frames,
+every digest frame is warm, and neither run's digests depend on the builder's timing (an
+--async-build run whose seeds ramp or reseed, or any --async-build run under --all-frames); --only
+ROW requires exactly that row's digests to differ.
 """
 import argparse
 import copy
@@ -279,10 +286,11 @@ def make_config(x, chains, n_frames=8, node_channels=False):
 CONFIG_TEXT = (
     "Written by scripts/gnss/gpu_rows_equiv.py config from a node config's {half} block: {n} rows "
     "({chains}), their cudaGnssInject commands and cudaCorrelatorDual gathers verbatim, {chan}. "
-    "Each row's tiles and control block and the synth array are copied out and written to /tmp "
-    "by rawFileWrite, one frame per file. With no seeds every slot is dark, so this standalone "
-    "run checks only that the half builds and runs; gpu_rows_equiv.py run seeds it and digests "
-    "each row."
+    "The half runs on the root's cores, not on the node's cpu_affinity {affinity} (run "
+    "--half-cores pins it). Each row's tiles and control block and the synth array are copied "
+    "out and written to /tmp by rawFileWrite, one frame per file. With no seeds every slot is "
+    "dark, so this standalone run checks only that the half builds and runs; gpu_rows_equiv.py "
+    "run seeds it and digests each row."
 )
 RENUMBERED = (
     "except that the comb ({comb}) is renumbered to local channels 0..{nm1}, so the voltage "
@@ -317,6 +325,7 @@ def write_config(x, chains, out, n_frames, node_channels):
         chains=", ".join(chain_of(r, half) for r in rows),
         n=len(rows),
         chan=chan,
+        affinity=x[half].get("cpu_affinity", "(none)"),
     )
     rule = "#" * 42
     head = "\n".join(
@@ -538,6 +547,8 @@ def run(a):
         cfg[half]["cpu_affinity"] = a.half_cores
     for r in rows:
         r.cmd["trim_ttl_s"] = 1.0e6
+        if not a.async_build:
+            r.cmd["psi_sync_build"] = True
         if a.psi_refresh_hz:
             r.cmd["psi_refresh_hz"] = a.psi_refresh_hz
     run_cfg = os.path.join(a.outdir, "run.yaml")
@@ -654,7 +665,7 @@ def run(a):
                 if time.time() - t0 > a.frame_timeout + n * 0.2:
                     raise SystemExit(f"only {done} of {n} frames written")
                 if time.time() - post_seeds.last > 20:
-                    post_seeds(done)
+                    post_seeds(max(0, done - n_pre))
                     post_seeds.last = time.time()
                 time.sleep(0.1)
 
@@ -752,6 +763,12 @@ def run(a):
 
     out = {
         "config": os.path.abspath(a.config),
+        "args": vars(a),
+        "half_cpu_affinity": cfg[half].get("cpu_affinity", cfg["cpu_affinity"]),
+        "psi_sync_build": not a.async_build,
+        "seeds_ramp": bool(
+            a.dop_rate or (a.leo_slots and a.leo_rate) or a.reseed_at is not None
+        ),
         "rows": [r.name for r in rows],
         "maps": maps,
         "prn_map_refused": refused,
@@ -828,8 +845,8 @@ def psi_log(path):
 
 def summarize_r0(r0, tol):
     """Per kind: cases, failures beyond @p tol, the worst error and examples. The verdict is
-    the gate's: every dark_r0 case within tol, with controls, all within tol, to show the
-    tolerance holds."""
+    the gate's: every dark_r0 and shifted case within tol, with controls, all within tol, to show
+    the tolerance holds."""
     out = {"tolerance": tol}
     for kind in ("dark_r0", "shifted", "control"):
         v = [t for t in r0 if t[2] == kind]
@@ -863,28 +880,52 @@ def summarize_r0(r0, tol):
         }
     if not out["control"]["n"] or out["control"]["n_failing"]:
         out["verdict"] = "controls fail"
-    elif not out["dark_r0"]["n"]:
+    elif not out["dark_r0"]["n"] + out["shifted"]["n"]:
         out["verdict"] = "no cases"
+    elif out["dark_r0"]["n_failing"] or out["shifted"]["n_failing"]:
+        out["verdict"] = "fail"
     else:
-        out["verdict"] = "fail" if out["dark_r0"]["n_failing"] else "pass"
+        out["verdict"] = "pass"
     return out
 
 
 # ---- compare ----
 
 
+def digested(run, all_frames):
+    """A run's digest frames by hop0, or with @p all_frames every frame it digested."""
+    return {
+        f["hop0"]: f
+        for f in run["frames"]
+        if f["window"] or all_frames and "ctl" in next(iter(f["rows"].values()))
+    }
+
+
 def compare(a):
     A = json.load(open(a.a))
     B = json.load(open(a.b))
-    fa = {
-        f["hop0"]: f for f in A["frames"] if a.all_frames or f["window"] and f["warm"]
-    }
-    fb = {
-        f["hop0"]: f for f in B["frames"] if a.all_frames or f["window"] and f["warm"]
-    }
-    hops = sorted(
-        h for h in set(fa) & set(fb) if "ctl" in next(iter(fa[h]["rows"].values()))
-    )
+    fa = digested(A, a.all_frames)
+    fb = digested(B, a.all_frames)
+    refused = []
+    if A["rows"] != B["rows"]:
+        refused.append(f"the runs' rows differ: {A['rows']} and {B['rows']}")
+    if set(fa) != set(fb):
+        refused.append(f"frames in one run only: hop0 {sorted(set(fa) ^ set(fb))}")
+    for path, R, f in ((a.a, A, fa), (a.b, B, fb)):
+        cold = [x["index"] for x in f.values() if not x["warm"]]
+        if cold and not a.all_frames:
+            refused.append(f"{path}: digest frames not warm: {cold}")
+        if "psi_sync_build" not in R:
+            refused.append(f"{path}: no psi_sync_build record (an older run)")
+        elif not R["psi_sync_build"] and (a.all_frames or R["seeds_ramp"]):
+            refused.append(
+                f"{path}: --async-build with "
+                + ("warm-up frames" if a.all_frames else "ramped or reseeded seeds")
+                + ": its digests depend on the Psi builder's timing"
+            )
+    if a.only and a.only not in A["rows"]:
+        refused.append(f"no row {a.only}")
+    hops = sorted(set(fa) & set(fb))
     diff = {}
     n = 0
     for h in hops:
@@ -902,9 +943,10 @@ def compare(a):
         "digests_compared": n,
         "differing": {r: {k: len(v) for k, v in d.items()} for r, d in diff.items()},
         "identical_rows": [r for r in rows if r not in diff],
+        "refused": refused,
     }
-    ok = not diff
-    if a.only:
+    ok = not diff and not refused
+    if a.only and not refused and hops:
         kinds = [
             k for k in ("synth", "tiles", "ctl") if k in fa[hops[0]]["rows"][a.only]
         ]
@@ -979,6 +1021,12 @@ def main():
         "lobe here) are the ones left out of the dark counts, instead of this run's own",
     )
     p.add_argument("--psi-refresh-hz", type=float)
+    p.add_argument(
+        "--async-build",
+        action="store_true",
+        help="no psi_sync_build: the Psi builder runs as on a node, so digests of ramped or "
+        "reseeded seeds, and of warm-up frames, depend on its timing",
+    )
     p.add_argument("--scale-r0", action="store_true", help="run the [scale-r0] check")
     p.add_argument("--r0-tol", type=float, default=0.1)
     p.add_argument("--no-synth", action="store_true", help="no synth copy-out")
