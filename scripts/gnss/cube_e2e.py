@@ -94,7 +94,9 @@ CUBE_GPU = 1
 CHAIN = "cube_e2e/gate"
 
 # gnss_gpu layout (gnssGpuChain.hpp), restated only to write frames; the assembler is the reader.
-HDR_FMT = "<iiiiqdiiq"  # n_rec n_prn n_chan n_jobs seq0 utc0 n_rows_spec _pad0 _pad1
+HDR_FMT = (
+    "<iiiiqdiiq"  # n_rec n_prn n_chan n_jobs seq0 utc0 n_rows_spec lanes_per_slot _pad1
+)
 assert struct.calcsize(HDR_FMT) == 48
 PRNCTL_FMT = (
     "<BBHiffddQddddd8f"  # run reanchored prn job0 fcar_report n_owned cp_seed f_nco
