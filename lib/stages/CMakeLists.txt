@@ -183,6 +183,7 @@ if(FFTW_FOUND)
                 gnss/GnssChannelizedSearch.cpp
                 gnss/GnssChordVoltageTap.cpp
                 gnss/GnssN2RecordAssemble.cpp
+                gnss/GnssGpuRecordAssemble.cpp
                 gnss/GnssChordDequantize.cpp
                 gnss/GnssChanAlignMerge.cpp
                 gnss/GnssN2Project.cpp
@@ -287,8 +288,6 @@ endif()
 # -> kotekan_cuda (kernel only).
 if(USE_CUDA)
     target_sources(kotekan_stages PRIVATE gnss/GnssCudaDespread.cpp)
-    # Host record assembler for the GPU tracking commands.
-    target_sources(kotekan_stages PRIVATE gnss/GnssGpuRecordAssemble.cpp)
     # The device-resident acquisition search; it needs cuFFT.
     target_sources(kotekan_stages PRIVATE gnss/GnssCudaAcquire.cpp)
     target_link_libraries(kotekan_stages PRIVATE kotekan_cuda CUDA::cufft)
