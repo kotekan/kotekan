@@ -6,7 +6,7 @@
 // gather kernel writes out[t][k] for selection entry k (cudaGnssN2Gather.cu), so with Tc outermost
 // a row's slice of the list is its slice of every sub-integration. Every row's slice must equal
 // the list its own gather builds today, every entry must belong to a row, and a table with one
-// row's fg_offset or lane_base off by one tile must fail.
+// row's fg_offset off by one channel or its lane_base off by one tile (16 lanes) must fail.
 //
 // The per-chain gathers are read through Config with cudaCorrelatorDual's keys and defaults.
 // GNSS_ROWS_CONFIG=<json> (scripts/gnss/gpu_rows_equiv.py extract) takes them from a node
@@ -154,6 +154,12 @@ std::vector<std::string> compare(const Geometry& g, const std::vector<Row>& toda
     return fail;
 }
 
+boost::test_tools::assertion_result rows_config_set(boost::unit_test::test_unit_id) {
+    boost::test_tools::assertion_result r(std::getenv("GNSS_ROWS_CONFIG") != nullptr);
+    r.message() << "GNSS_ROWS_CONFIG not set";
+    return r;
+}
+
 std::string join(const std::vector<std::string>& v) {
     std::string s;
     for (const std::string& x : v)
@@ -161,7 +167,8 @@ std::string join(const std::vector<std::string>& v) {
     return s;
 }
 
-/// The table matches; each one-tile shift of one row's fg_offset or lane_base fails.
+/// The table matches; shifting one row's fg_offset by one channel or its lane_base by one tile
+/// fails.
 void check_rows(const json& cfg) {
     kotekan::Config config;
     config.update_config(cfg);
@@ -185,12 +192,12 @@ void check_rows(const json& cfg) {
                 else
                     table[i].lane_base += 16 * step;
                 const std::vector<std::string> f = compare(g, today, table);
-                BOOST_CHECK_MESSAGE(!f.empty(), "row " << today[i].name << " " << field << " "
-                                                       << (step > 0 ? "+" : "-")
-                                                       << "1 tile passed the comparison");
+                const std::string what = "row " + today[i].name + " " + field + " "
+                                         + (step > 0 ? "+" : "-")
+                                         + (std::string(field) == "fg_offset" ? "1" : "16");
+                BOOST_CHECK_MESSAGE(!f.empty(), what << " passed the comparison");
                 if (i == 1)
-                    BOOST_TEST_MESSAGE("row " << today[i].name << " " << field << " "
-                                              << (step > 0 ? "+" : "-") << "1 tile: " << join(f));
+                    BOOST_TEST_MESSAGE(what << ": " << join(f));
             }
 }
 
@@ -215,12 +222,8 @@ BOOST_AUTO_TEST_CASE(builtin_rows) {
     check_rows(cfg);
 }
 
-BOOST_AUTO_TEST_CASE(production_rows) {
+BOOST_AUTO_TEST_CASE(production_rows, *boost::unit_test::precondition(rows_config_set)) {
     const char* path = std::getenv("GNSS_ROWS_CONFIG");
-    if (path == nullptr) {
-        BOOST_TEST_MESSAGE("GNSS_ROWS_CONFIG not set: production rows skipped");
-        return;
-    }
     std::ifstream in(path);
     BOOST_REQUIRE_MESSAGE(in, "cannot read " << path);
     check_rows(json::parse(in));
