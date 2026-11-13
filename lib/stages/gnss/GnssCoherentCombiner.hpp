@@ -16,6 +16,7 @@
 #include "restServer.hpp"        // for connectionInstance
 
 #include <array>   // for array (record export entries)
+#include <atomic>  // for atomic
 #include <complex> // for complex
 #include <cstdint> // for int8_t
 #include <mutex>   // for mutex
@@ -77,8 +78,9 @@
  *
  * @buffer in_bufs A list of one buffer: the node's records (gnssRecord.hpp tracker layout: a
  *                 RECORD_FLOATS header plus n_elements element blocks per PRN).
- * @buffer out_buf Combined records (gnssRecord.hpp combiner layout: 3 = |A|_incoh,
- *                 4,5 = <A>, 6 = |<A>|_coh, 7 = n_chan, 8 = deep |A|, 9-10 = UTC).
+ * @buffer out_buf Optional. Combined records (gnssRecord.hpp combiner layout: 3 = |A|_incoh,
+ *                 4,5 = <A>, 6 = |<A>|_coh, 7 = n_chan, 8 = deep |A|, 9-10 = UTC). Without it
+ *                 each emit is written to a member record, which only the REST snapshot reads.
  *
  * @author Keith Vanderlinde
  */
@@ -89,6 +91,17 @@ public:
     void main_thread() override;
 
     static constexpr int RECORD_UTC_SLOT = gnss::RECORD_UTC_SLOT;
+
+    /// Input records folded in, each with the emit it completed; a test reads it to wait for
+    /// the stage to go idle.
+    uint64_t records_done() const {
+        return _records_done.load();
+    }
+    /// The last emit's records when there is no out_buf (n_prn x record stride floats). Stable
+    /// only while the stage waits for input.
+    const std::vector<float>& scratch() const {
+        return _scratch;
+    }
 
 private:
     /// REST get_status: the last emit's per-PRN snapshot (amplitudes, deep detection, DLL
@@ -157,8 +170,11 @@ private:
                             const std::vector<double>& utc, double* sigma_phi_out = nullptr) const;
 
     Buffer* in_buf;
-    Buffer* out_buf;
+    Buffer* out_buf; ///< nullptr when the config has no out_buf
     int _n_prn;
+    /// The emit's records when there is no out_buf.
+    std::vector<float> _scratch;
+    std::atomic<uint64_t> _records_done{0};
 
     int _n_elements = 0; ///< per-antenna blocks per PRN record (config n_elements)
     int _rec_stride = gnss::RECORD_FLOATS;  ///< floats per PRN record, = record_stride(_n_elements)

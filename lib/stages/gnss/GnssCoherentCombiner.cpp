@@ -11,6 +11,7 @@
 #include <algorithm>  // for max
 #include <cmath>      // for hypot, sqrt
 #include <functional> // for bind
+#include <optional>   // for optional
 #include <string>     // for string
 
 using kotekan::bufferContainer;
@@ -42,8 +43,9 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     }
     in_buf = in_bufs[0];
     in_buf->register_consumer(unique_name);
-    out_buf = get_buffer("out_buf");
-    out_buf->register_producer(unique_name);
+    out_buf = config.exists(unique_name, "out_buf") ? get_buffer("out_buf") : nullptr;
+    if (out_buf)
+        out_buf->register_producer(unique_name);
 
     _n_elements = config.get<int>(unique_name, "n_elements");
     if (_n_elements < 1) {
@@ -67,13 +69,15 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
                         (size_t)in_buf->frame_size, _n_prn, _rec_stride, need, _rec_stride);
             return;
         }
-        if ((size_t)out_buf->frame_size < need) {
+        if (out_buf && (size_t)out_buf->frame_size < need) {
             FATAL_ERROR("GnssCoherentCombiner: out_buf frame {:d} B < {:d} PRN x {:d} floats "
                         "({:d} B). Bump 'record_floats' in the config to {:d}.",
                         (size_t)out_buf->frame_size, _n_prn, _rec_stride, need, _rec_stride);
             return;
         }
     }
+    if (!out_buf)
+        _scratch.assign((size_t)_n_prn * _rec_stride, 0.0f);
 
     _integration_length =
         std::max(1, config.get_default<int>(unique_name, "integration_length", 1));
@@ -219,7 +223,9 @@ void GnssCoherentCombiner::main_thread() {
         std::bind(&GnssCoherentCombiner::get_elements_callback, this, _1));
 
     frameID in_id(in_buf);
-    frameID out_id(out_buf);
+    std::optional<frameID> out_id;
+    if (out_buf)
+        out_id.emplace(out_buf);
 
     // Per-PRN integration accumulators: exponential moving averages (alpha =
     // 1/_integration_length), bias-corrected at emit by dividing by (1 - (1-alpha)^n_roll) so
@@ -257,6 +263,7 @@ void GnssCoherentCombiner::main_thread() {
     const double alpha = 1.0 / (double)_integration_length; // EMA weight
 
     while (!stop_thread) {
+        _records_done.store((uint64_t)n_roll);
         float* in = (float*)in_buf->wait_for_full_frame(unique_name, in_id);
         if (in == nullptr)
             break;
@@ -469,9 +476,12 @@ void GnssCoherentCombiner::main_thread() {
             continue; // EMA keeps integrating; emit only every _emit_every records
         since_emit = 0;
 
-        float* out = (float*)out_buf->wait_for_empty_frame(unique_name, out_id);
-        if (out == nullptr)
-            break;
+        float* out = _scratch.data();
+        if (out_buf) {
+            out = (float*)out_buf->wait_for_empty_frame(unique_name, *out_id);
+            if (out == nullptr)
+                break;
+        }
         // Again after the blocking wait: downstream backpressure is not this stage's cost.
         const double _t_emit0 = current_time();
         // The EMA is already a mean, so just undo the warm-up bias (1-(1-alpha)^n_roll) -> a
@@ -1104,7 +1114,8 @@ void GnssCoherentCombiner::main_thread() {
                 _m_last_emit_prns->set((double)active); // emit cost scales with this, not n_prn
             }
         }
-        out_buf->mark_frame_full(unique_name, out_id++);
+        if (out_buf)
+            out_buf->mark_frame_full(unique_name, (*out_id)++);
     }
 }
 

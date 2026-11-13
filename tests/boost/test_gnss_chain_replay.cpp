@@ -12,7 +12,7 @@
 // golden (GNSS_REPLAY_BLESS=1 writes it), and GNSS_REPLAY_DUMP=<dir> writes the endpoints and the
 // stage configs. A replay takes seconds in a Test build, so by default only the baseline and the
 // zero-amplitude control run; GNSS_REPLAY_FULL=1 adds the determinism, mutation and prefill
-// controls.
+// controls and a run whose combiners have no out_buf.
 
 #include "Config.hpp"                // for Config
 #include "GnssChanMetadata.hpp"      // for GnssChanMetadata, get_gnss_chan_metadata
@@ -304,7 +304,10 @@ json build_config(const std::vector<ChainSpec>& cs, const Scenario& sc,
         as["out_buf"] = buf_name(s, "n2rec_buf");
         as["cube_buf"] = buf_name(s, "cube_buf");
         cb["in_bufs"] = {buf_name(s, "n2rec_buf")};
-        cb["out_buf"] = buf_name(s, "n2cmb_buf");
+        if (sc.combiner_out_buf)
+            cb["out_buf"] = buf_name(s, "n2cmb_buf");
+        else
+            cb.erase("out_buf");
         tp["in_buf"] = buf_name(s, "n2rec_buf");
         tp["out_buf"] = buf_name(s, "telem_buf");
         for (json* b : {&ad, &as, &cb, &tp})
@@ -347,6 +350,7 @@ struct ChainRun {
     const Scenario* sc = nullptr;
     std::unique_ptr<Buffer> ctl, tiles, buf[N_KIND];
     std::vector<std::unique_ptr<kotekan::Stage>> stages;
+    GnssCoherentCombiner* cmb = nullptr;
     std::vector<uint64_t> hashes[N_KIND];
     std::atomic<int> count[N_KIND];
     std::thread cap[N_KIND];
@@ -473,8 +477,23 @@ bool quiescent(ChainRun& R, int k) {
     return R.ctl->is_frame_empty(0) && R.tiles->is_frame_empty(0) && R.buf[EPL]->is_frame_empty(0)
            && R.buf[REC]->get_num_full_frames() == 0 && R.buf[CUBE]->get_num_full_frames() == 0
            && R.count[EPL].load() == k + 1 && R.count[REC].load() == n_rec * (k + 1)
-           && R.count[TELEM].load() == k + 1
-           && R.count[CMB].load() == n_rec * (k + 1) / R.emit_every;
+           && R.count[TELEM].load() == k + 1 && R.cmb->records_done() == (uint64_t)n_rec * (k + 1)
+           && (!R.sc->combiner_out_buf || R.count[CMB].load() == n_rec * (k + 1) / R.emit_every);
+}
+
+/// Without out_buf, digests the combiner's emit of frame @p k, if it made one, from its scratch,
+/// which holds only the last emit.
+void capture_scratch(ChainRun& R, int k) {
+    const int want = R.s->n_rec * (k + 1) / R.emit_every;
+    const int n = R.count[CMB].load();
+    if (want == n)
+        return;
+    if (want > n + 1)
+        child_fail(78, fmt::format("{:s}: {:d} combiner emits in frame {:d}; the scratch holds one",
+                                   R.s->pre, want - n, k));
+    const std::vector<float>& f = R.cmb->scratch();
+    R.hashes[CMB].push_back(fnv1a64(f.data(), f.size() * sizeof(float)));
+    R.count[CMB].store(want);
 }
 
 void wait_quiescent(ChainRun& R, int k) {
@@ -482,9 +501,10 @@ void wait_quiescent(ChainRun& R, int k) {
     while (!quiescent(R, k)) {
         if (std::chrono::steady_clock::now() - t0 > std::chrono::seconds(30))
             child_fail(71, fmt::format("{:s} not quiescent 30 s after frame {:d}: epl {:d} rec "
-                                       "{:d} cmb {:d} telem {:d}",
+                                       "{:d} combined {:d} cmb {:d} telem {:d}",
                                        R.s->pre, k, R.count[EPL].load(), R.count[REC].load(),
-                                       R.count[CMB].load(), R.count[TELEM].load()));
+                                       R.cmb->records_done(), R.count[CMB].load(),
+                                       R.count[TELEM].load()));
         std::this_thread::sleep_for(std::chrono::microseconds(200));
     }
 }
@@ -709,7 +729,8 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
             new GnssN2RecordAssemble(config, "/" + s.pre + "_n2assemble_tiles", bc));
         R->stages.emplace_back(
             new GnssGpuRecordAssemble(config, assembler_name(s, R->idx, sc), bc));
-        R->stages.emplace_back(new GnssCoherentCombiner(config, "/" + s.pre + "_n2combine", bc));
+        R->cmb = new GnssCoherentCombiner(config, "/" + s.pre + "_n2combine", bc);
+        R->stages.emplace_back(R->cmb);
         R->stages.emplace_back(new GnssTelemPack(config, "/" + s.pre + "_telem_pack", bc));
     }
     // One band-power pass before any frame: chan_noise_norm weights from the first record.
@@ -730,7 +751,8 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
         for (auto& st : R->stages)
             st->start();
         for (int k = 0; k < N_KIND; ++k)
-            R->cap[k] = std::thread(capture, R.get(), k);
+            if (k != CMB || sc.combiner_out_buf)
+                R->cap[k] = std::thread(capture, R.get(), k);
     }
 
     Digests d;
@@ -756,6 +778,8 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
             R->ctl->mark_frame_full("feeder", 0);
             R->tiles->mark_frame_full("feeder", 0);
             wait_quiescent(*R, k);
+            if (!sc.combiner_out_buf)
+                capture_scratch(*R, k);
             const std::string u = assembler_name(s, R->idx, sc);
             fire_posts(*R, sky, port, u, k);
             if (std::find(sc.checkpoints.begin(), sc.checkpoints.end(), k) != sc.checkpoints.end())
@@ -1233,6 +1257,22 @@ BOOST_AUTO_TEST_CASE(live) {
                                          << ": (6033, PRN 6) is not one entry each from A "
                                             "and C");
     }
+}
+
+/// Without out_buf each combiner emits to its scratch, and every digest, its bytes included, is
+/// the baseline's, whose combiners write out_buf.
+BOOST_AUTO_TEST_CASE(combiner_without_out_buf) {
+    if (!full_run())
+        return;
+    const Digests& base = baseline();
+    Scenario sc = base_scenario();
+    sc.combiner_out_buf = false;
+    const Digests d = run_scenario(chains(), sc);
+    BOOST_CHECK_MESSAGE(changed(base, d).empty(), "without out_buf: " << join(changed(base, d)));
+    BOOST_CHECK(base.live == d.live);
+    BOOST_CHECK(base.pins == d.pins);
+    for (const auto& s : chains())
+        BOOST_CHECK_MESSAGE(!d.streams.at(s.pre + ".cmb").empty(), s.pre << ": no combiner emit");
 }
 
 BOOST_AUTO_TEST_CASE(identity) {
