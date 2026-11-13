@@ -14,7 +14,9 @@
 # `--n2-send`, `search-port-base: 11040` -> `--search-port-base 11040`, false/null -> omitted,
 # a list -> the flag repeated. A node's flags follow common's on the generator's argv, so a
 # node value overrides common's for a single-valued flag. An unknown key fails as argparse's
-# "unrecognized arguments".
+# "unrecognized arguments". A flag with a --no- form is turned off by it, e.g.
+# `no-combiner-out-buf: true`; gen_fleet refuses `combiner-out-buf: false`, which would be
+# omitted and leave the generator's default.
 
 # The base is production's template rendered stock, exactly as kotekan renders it:
 # config/chord/pathfinder.j2 with the common.j2 and telescope.j2 it includes, the templates

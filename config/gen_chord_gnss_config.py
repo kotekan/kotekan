@@ -3645,7 +3645,8 @@ def main():
         "a dropAllFrames, <chain>n2sink) holding its combined records, for an n2dump "
         "(default %(default)s). Nothing else reads them: the broker reads the combiner's "
         "REST replies. --no-combiner-out-buf needs a kotekan whose combiner takes no "
-        "out_buf.",
+        "out_buf; in a gen_fleet manifest it is `no-combiner-out-buf: true` (gen_fleet "
+        "refuses `combiner-out-buf: false`, which would be omitted).",
     )
     ap.add_argument(
         "--n2-project",

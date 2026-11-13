@@ -116,6 +116,75 @@ def test_chains_follow_common():
     )
 
 
+def test_negatable_flags():
+    """The generator's flags with a --no- form, read from its source."""
+    neg = gen_fleet.negatable_flags()
+    check(
+        {"combiner-out-buf", "elem-sum-shared"} <= neg and "n2-send" not in neg,
+        "the BooleanOptionalAction flags, not a store_true one (%s)" % sorted(neg),
+    )
+
+
+def test_false_with_an_off_form_is_refused():
+    """`key: false` for a flag with a --no- form would be omitted and leave the generator's
+    default, so it is refused; `no-key: true` turns it off, and false on a flag without a --no-
+    form is still omitted."""
+    neg = {"combiner-out-buf"}
+    msg = None
+    try:
+        gen_fleet.flags_from({"combiner-out-buf": False}, neg)
+    except SystemExit as e:
+        msg = str(e.code)
+    check(
+        msg is not None and "write no-combiner-out-buf: true" in msg,
+        "combiner-out-buf: false is refused (%s)" % msg,
+    )
+    check(
+        gen_fleet.flags_from({"no-combiner-out-buf": True}, neg)
+        == ["--no-combiner-out-buf"],
+        "no-combiner-out-buf: true -> --no-combiner-out-buf",
+    )
+    check(
+        gen_fleet.flags_from({"n2-send": False, "combiner-out-buf": None}, neg) == [],
+        "false on a flag without a --no- form, and null, are omitted",
+    )
+
+
+def test_node_false_off_form_stops_the_run():
+    """A node's `combiner-out-buf: false` stops gen_fleet before any generator runs."""
+    with tempfile.TemporaryDirectory() as d:
+        base = os.path.join(d, "base.j2")
+        with open(base, "w") as fh:
+            fh.write("a: 1\n")
+        man = os.path.join(d, "m.yaml")
+        with open(man, "w") as fh:
+            fh.write(
+                "base: %s\nnodes:\n  cx44: {combiner-out-buf: false}\n" % base
+                + PRIMARY_ROW
+            )
+        argv = ["gen_fleet.py", man, "--check", "--preview-dir", d]
+        calls = []
+
+        def fake_run(cmd, **kw):
+            calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, stdout="a: 1\n", stderr="")
+
+        real_run, real_argv = subprocess.run, sys.argv
+        subprocess.run, sys.argv = fake_run, argv
+        exc = None
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                gen_fleet.main()
+        except SystemExit as e:
+            exc = str(e.code)
+        finally:
+            subprocess.run, sys.argv = real_run, real_argv
+    check(
+        exc is not None and "no-combiner-out-buf: true" in exc and not calls,
+        "refused before the generator runs (%s, %d generator runs)" % (exc, len(calls)),
+    )
+
+
 def test_check_relays_notes():
     """--check of one node whose generator succeeds with a note on stderr."""
     with tempfile.TemporaryDirectory() as d:

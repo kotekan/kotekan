@@ -30,6 +30,7 @@ that cannot run, a crash here).
 BRDC.
 """
 import argparse
+import ast
 import difflib
 import json
 import os
@@ -159,15 +160,41 @@ def _relay_notes(node, stderr):
             sys.stderr.write("%s: %s\n" % (node, line))
 
 
-def flags_from(mapping):
+def negatable_flags(path=GEN):
+    """The generator's flags that argparse.BooleanOptionalAction gives a --no- form, read from
+    its source."""
+    with open(path) as fh:
+        tree = ast.parse(fh.read(), path)
+    flags = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        actions = [ast.unparse(k.value) for k in node.keywords if k.arg == "action"]
+        if actions == ["argparse.BooleanOptionalAction"]:
+            for a in node.args:
+                if isinstance(a, ast.Constant) and str(a.value).startswith("--"):
+                    flags.add(a.value[2:])
+    return flags
+
+
+def flags_from(mapping, negatable=()):
     """Manifest keys -> generator flags, same convention as gnss_chains_chord.yaml:
     true -> a bare flag, false/None -> omitted, anything else -> --key value.
 
     A list repeats the flag, as argparse's action="append" expects:
     `extra-signal: [A, B]` -> `--extra-signal A --extra-signal B`.
+
+    A flag with a --no- form (`negatable`, from negatable_flags) is turned off by that form,
+    `no-<key>: true`. `<key>: false` would be omitted and leave the generator's default, so it
+    is refused.
     """
     out = []
     for k, v in mapping.items():
+        if v is False and k in negatable:
+            raise SystemExit(
+                "manifest key %s: false is omitted, which leaves the generator's default; "
+                "write no-%s: true to turn it off" % (k, k)
+            )
         if v is False or v is None:
             continue
         for item in v if isinstance(v, (list, tuple)) else [v]:
@@ -177,14 +204,14 @@ def flags_from(mapping):
     return out
 
 
-def common_flags(man):
+def common_flags(man, negatable=()):
     """The manifest's `common:` as generator flags, less the keys only site services read, then
     an --extra-signal DESCRIPTOR:PRNS per row of the chains table but the first, the primary,
     which the generator builds on its own."""
     common = man.get("common") or {}
     extra = ["%s:%s" % (r.descriptor, r.prns) for r in gnss_chain_table.rows(man)[1:]]
     return flags_from(
-        {k: v for k, v in common.items() if k not in gnss_fleet.SITE_KEYS}
+        {k: v for k, v in common.items() if k not in gnss_fleet.SITE_KEYS}, negatable
     ) + flags_from({"extra-signal": extra})
 
 
@@ -493,7 +520,7 @@ def check_combs(fleet, hosts):
     return out
 
 
-def aggregator_cmd(man, fleet, base_dir):
+def aggregator_cmd(man, fleet, base_dir, negatable=()):
     """(generator argv, output path) for the manifest's aggregator: block, or None."""
     agg = man.get("aggregator")
     if not agg:
@@ -507,7 +534,7 @@ def aggregator_cmd(man, fleet, base_dir):
         [sys.executable, GEN, "--base", base, "--node", fleet.hosts[0]]
         + ["--aggregator-instance"]
         + feeds
-        + flags_from(agg.pop("flags", None) or {})
+        + flags_from(agg.pop("flags", None) or {}, negatable)
     )
     if agg:
         raise SystemExit("aggregator: unknown keys %s" % ", ".join(sorted(agg)))
@@ -593,7 +620,8 @@ def main():
         )
         raise SystemExit(2)
     suffix = man.get("suffix", "")
-    common = common_flags(man)
+    negatable = negatable_flags()
+    common = common_flags(man, negatable)
     # Every config, written or checked, is diffed against the stock render (stock_parity.py);
     # an undeclared difference stops a write and fails --check. Rendered once here.
     stock_ref = stock_parity.render_stock(base)
@@ -647,7 +675,7 @@ def main():
             [sys.executable, GEN, "--base", base, "--node", node]
             + common
             + ["--search-port-base", str(fleet.search_port_base(node))]
-            + flags_from(fleet.gen_flags(node))
+            + flags_from(fleet.gen_flags(node), negatable)
         )
 
         if a.print_cmd:
@@ -775,7 +803,11 @@ def main():
 
     # The search aggregator, from the same fleet list. Not a node config: no stock parity and
     # no live values, so it compares byte for byte (the interface stamp aside).
-    agg = aggregator_cmd(man, fleet, a.preview_dir or OUTDIR) if not a.node else None
+    agg = (
+        aggregator_cmd(man, fleet, a.preview_dir or OUTDIR, negatable)
+        if not a.node
+        else None
+    )
     if agg:
         cmd, out = agg
         if a.print_cmd:
