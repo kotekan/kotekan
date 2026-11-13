@@ -63,6 +63,7 @@ from gnss_record_layout import (
 )
 import kotekan_src  # noqa: E402  (python/scripts/gnss, on sys.path through chord_band_plan)
 import gnss_arraymap  # noqa: E402
+import gnss_chain_table  # noqa: E402
 from gnss_fleet import broker_chain_name, signal_tag  # noqa: E402
 from gnss_broker import iface  # noqa: E402
 
@@ -109,8 +110,6 @@ def lanes_per_slot_for(args):
 
 # Frames per GNSS chain buffer.
 BUFFER_DEPTH = 4
-# The primary chain's PRN slots (each extra chain carries its own list).
-PRIMARY_PRNS = list(range(1, 33))
 # PRN slots an extra search (--aggregator-extra-search) scans when the spec names none, by
 # the signal name's constellation prefix: the broadcast PRN ranges, not a lane budget.
 EXTRA_SEARCH_PRNS = {
@@ -299,118 +298,42 @@ def gpu_pairs_for(cfg, node, gpu, chans):
     return sorted(out)
 
 
-def dll_spacing_chips(name):
-    """Early/Late tap offset from prompt, in the signal's own (component) chips.
-
-    The offset is set by the width of the correlation the loop closes on, not by the chip: E
-    and L must straddle that correlation's mainlobe, inside its first null, or the
-    discriminator reverses sign off-peak and the loop has stable false locks.
-
-    Every chain but GPS L2C despreads a multi-freq_id comb inside one instance, so its
-    correlation is chip-narrow and 0.5 chip sits on the slope. L2C's covering set is six
-    freq_ids, fewer than the comb stride, so each instance despreads one 195 kHz channel, whose
-    |sinc|^2 nulls at 2.6 CM chips. But the fleet loop sums the senders' complex taps
-    coherently, and on L2C the senders are the fleet's contiguous L2C channels, so the loop sees
-    an N-channel Dirichlet whose first null is 1/(NB): 0.52 CM chips for the six-node fleet's
-    five (6284-6288), 0.44 for the eight-node fleet's six (6283 on cx47). The offset must sit
-    inside that combined width, where the discriminator is monotonic (a q far higher than ~6
-    means the taps have landed in a null, not that the lock improved). 0.33 puts the six-channel
-    taps at the level 0.4 gave five (|R| 0.28 of the peak), and five at 0.46: it holds whether
-    or not cx47 reports. At 0.4 six channels put the taps at 0.09, beside the null.
-
-    GLONASS L2OC is BOC(1,1) under a data/pilot TDM: its autocorrelation in 2.046 Mcps chips
-    crosses zero at +-0.67 and bottoms at -0.5 at +-1, and its spectrum has a null at the
-    carrier. Each instance holds one or two of the lobe's 22 channels; six nodes hold 17 of
-    them (~60% of the power), eight all 22 (at 0.4: q 3.8, the sign kept to +-0.82 chip, so
-    0.4 serves both). On the 17-channel sum, at 0.4 spacing, q on peak is 4.4 (a
-    BPSK chain's is 4 at 0.5, so the fixed 2.2 lock bars read alike), the S-curve is linear to
-    +-0.23 chip and keeps its sign to +-0.91, outside which the BOC side peaks (+-1.05 chips)
-    are stable false locks. Its slope is 1.8x what the trim law assumes (dll_tau scales a
-    triangle's), so the chain runs the fast loop at fleet-trim-bandwidth 1.4 rather than 2.5:
-    the same closed loop as the other chains. 0.33 would match the law but cap q at 2.5, under
-    the lock bars; 0.5 would put the taps by the zero (q 15, slope 4.2x). Re-derive if the
-    node set changes.
-
-    GLONASS L2OF is L2C's geometry per satellite: 511 kcps BPSK, each satellite's lobe about six
-    freq_ids, one per instance, summed coherently by the fleet loop, so it takes L2C's 0.33
-    (first sky to confirm; FDMA puts each satellite on its own six of the comb's ~29).
-
-    BeiDou B1I and GPS L1 C/A also hold one or two channels per instance, but their covering
-    sets are the whole main lobe, nulls included (22 freq_ids at 2.046 Mcps, 11 at 1.023), so
-    the fleet's coherent sum is the band-limited chip triangle every comb chain closes on, not
-    L2C's flat Dirichlet: |R| 0.56 of the peak at 0.5 chip, the first null at 1.17 chips. They
-    take 0.5, listed so the broker side's dll-spacing has an entry to match. SBAS L1 is L1 C/A's
-    geometry on the same eleven channels and takes the same.
-
-    Galileo E1-C is BOC(1,1) at 1.023 Mcps, GLONASS L2OC's correlation without the TDM: on its
-    22-channel lobe, every node's, the sum crosses zero at +-0.33 chip and bottoms at -0.5 at
-    +-0.5, and code phases stay in the 1.023 Mcps component chips (the bank expands the BOC). It
-    takes 0.2, L2OC's 0.4 in that chain's 2.046 Mcps chips, and L2OC's slower fast loop.
-
-    Must match the broker chain's dll-spacing (config/gnss_chains_chord.yaml): the C++ fleet
-    loop takes its law's spacing from the arming payload while the taps come from here, so
-    cycle the nodes before the broker and the taps lead the law.
-    """
-    return {
-        "GPS_L2C_CM": 0.33,
-        "GLO_L2OC_P_OC": 0.4,
-        "GLO_L2OF_MC": 0.33,
-        "BDS_B1I_NH": 0.5,
-        "GPS_L1CA_BIT": 0.5,
-        "SBAS_L1_SYM": 0.5,
-        "GAL_E1C_CS": 0.2,
-    }.get(name, 0.5)
+_CHAIN_ROWS = []
+_PRIMARY_PRNS = []
 
 
-# Record slot 2's modulus per tracker code (GnssGpuRecordAssemble record_cp_mod_chips): the
-# primary code length, for a baked code long enough that a float32 phase over it loses
-# precision. GLO_L2OC_P_OC is 2,046,000 chips (a 0.125-chip ulp); its primary is 40920. The
-# broker wraps slot 2 mod the primary anyway (gnss_broker/trkresid.py), so nothing is lost.
-RECORD_CP_MOD_CHIPS = {"GLO_L2OC_P_OC": 40920}
+def chain_rows():
+    """The fleet's chains table (config/gnss_chain_table.py), read once: each chain's PRN slots,
+    DLL spacing, record cp modulus, telemetry rows, projection letter and shared-reference
+    band. The first row is the primary's."""
+    if not _CHAIN_ROWS:
+        _CHAIN_ROWS.extend(gnss_chain_table.load())
+    return _CHAIN_ROWS
 
 
-# PRN rows per chain on the telemetry wire; every other chain gets _TELEM_ROWS_DEFAULT. See
-# telem_rows(). The gather's buffer follows the widest chain (telem_rows_max), so changing a
-# row count means regenerating the gather config too.
-_TELEM_ROWS = {
-    "gal_e5a": 20,
-    "gal_e5b": 20,
-    "gal_e6": 20,
-    "gal_e1c": 20,
-    "bds_b2a": 24,
-    "bds_b2b": 24,
-    "bds_b3i": 24,
-    "bds_b1i": 24,
-    "gps_l2c": 18,
-    "gps_l1ca": 20,
-}
-_TELEM_ROWS_DEFAULT = 14
+def chain_row(chain):
+    """A parse_extra_signals() chain's table row, or the primary's for None."""
+    return chain["row"] if chain else chain_rows()[0]
 
 
-def telem_rows(chain_name):
-    """PRN rows this chain's senders put on the wire.
-
-    A wire capacity, not a PRN list: GnssTelemPack compacts rows onto the PRNs actually
-    despread in the window, so this is how many satellites a sender may carry at once. Over it,
-    the packer ships the lowest-numbered and drops the rest, and downstream a dropped PRN is
-    indistinguishable from one that set.
-
-    It is per chain because the constellations do not seed alike: one number for the fleet
-    either truncates the busiest chain or pads every other, and the padding rides a 1 GbE link
-    the whole fleet shares. Size each chain to its own live count with a few rows of headroom,
-    and watch the packer's overflow WARN, which names the first PRN it dropped.
-    """
-    return _TELEM_ROWS.get(chain_name, _TELEM_ROWS_DEFAULT)
+def primary_prns():
+    """The primary chain's PRN slots, one list for the run: the blocks that name them share it,
+    and yaml.safe_dump writes a shared list once, under an anchor, so the sharing is part of
+    the generated text."""
+    if not _PRIMARY_PRNS:
+        _PRIMARY_PRNS.extend(parse_slots(chain_rows()[0].prns)[0])
+    return _PRIMARY_PRNS
 
 
 def telem_rows_max():
-    """The most rows any chain can put on the wire: what the gather's buffer must hold.
+    """The most PRN rows any chain can put on the wire (its row's telem-rows): what the gather's
+    buffer must hold.
 
-    Read off the same table rather than off the chains in this run: the gather serves the whole
+    Read off the whole table rather than off the chains in this run: the gather serves the whole
     fleet, including chains a later node config adds, and bufferRecv closes the connection of a
     sender whose frame exceeds the buffer, so that sender delivers nothing at all.
     """
-    return max([_TELEM_ROWS_DEFAULT] + list(_TELEM_ROWS.values()))
+    return max(r.telem_rows for r in chain_rows())
 
 
 def vis_capture_chain(args, chain, sig):
@@ -462,6 +385,7 @@ def parse_extra_signals(cfg, args, node, primary_chans):
     if not args.extra_signal:
         return []
     table = signal_table()
+    rows = {r.descriptor: r for r in chain_rows()}
     tags = {signal_tag(cfg["signals"]["primary"])}
     chains = []
     for spec in args.extra_signal:
@@ -469,6 +393,12 @@ def parse_extra_signals(cfg, args, node, primary_chans):
         if name not in table:
             raise SystemExit(
                 f"--extra-signal {name}: unknown signal (not in gnssSignal.hpp)"
+            )
+        if name not in rows:
+            raise SystemExit(
+                f"--extra-signal {name}: no row in the chains table "
+                "(config/gnss_fleet_chord.yaml chains:), which holds its DLL spacing, "
+                "telemetry rows and projection letter; add one"
             )
         if not prn_s.strip():
             raise SystemExit(
@@ -513,6 +443,7 @@ def parse_extra_signals(cfg, args, node, primary_chans):
             {
                 "signal": name,
                 "tracker": name,
+                "row": rows[name],
                 "prns": prns,
                 # per-slot FDMA carrier offsets, Hz; None for CDMA
                 "prn_df": [k * L2OF_CHANNEL_SPACING_HZ for k in ks] if ks else None,
@@ -658,7 +589,7 @@ def gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
     nc = len(cores)
     tag = chain["tag"] if chain else signal_tag(sig["primary"])
     n_chan = len(chan_idx)
-    prns = chain["prns"] if chain else PRIMARY_PRNS
+    prns = chain["prns"] if chain else primary_prns()
     n_prn = len(prns)
     ordv = chain["ord"] if chain else 0
     _aslots = [
@@ -666,7 +597,7 @@ def gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
         for x in str(getattr(args, "assembler_core_slots", "2") or "2").split(",")
     ]
     n_live = live_element_count(arr)
-    track_signal = chain["tracker"] if chain else sig.get("tracker", sig["primary"])
+    track_signal = chain_row(chain).descriptor
     lanes_per_slot = lanes_per_slot_for(args)
     num_synth = lanes_per_slot * SYNTH_SLOTS
 
@@ -696,7 +627,7 @@ def gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
         "chain": broker_chain_name(chain["signal"] if chain else sig["primary"]),
         # The tracked signal descriptor (GPS_L5_Q_NH, GAL_E5A_Q_CS, ...): the label names the
         # chain, this names the code being despread.
-        "signal": chain["tracker"] if chain else sig.get("tracker", sig["primary"]),
+        "signal": track_signal,
         "channel_ids": list(freq_ids),
         "local_channels": list(chan_idx),
         "prns": list(prns),
@@ -734,9 +665,7 @@ def gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
             ),
             "cmb": f"{n_prn} * {record_floats} * sizeof_float32",
             "telem": telem_frame_bytes(
-                TELEM_RECORDS_PER_FRAME,
-                telem_rows(broker_chain_name(sig["primary"])),
-                n_chan,
+                TELEM_RECORDS_PER_FRAME, chain_rows()[0].telem_rows, n_chan,
             ),
         },
     }
@@ -1166,11 +1095,6 @@ def lane_transfer_keys(cfg, node, gpu, chain, freq_ids, args):
     return {"lane_transfer_freq_ids": sorted(out)} if out else {}
 
 
-# GnssGpuRecordAssemble elem_proj_sys per system (the first part of the broker chain key): the
-# constellation letter that names the chain's satellites in the bright-satellite projection.
-PROJ_SYS = {"gps": "G", "sbas": "G", "gw": "G", "gal": "E", "bds": "C", "glo": "R"}
-
-
 def elem_proj_keys(args):
     """Assembler keys for the bright-satellite projection (gnssProjSubspace.hpp); nothing unless
     --elem-proj-mode is shadow or live, so a fleet without it is byte-identical. The mode is
@@ -1376,12 +1300,13 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
     tag = chain["tag"] if chain else signal_tag(sig["primary"])
     pre = f"gnss{gpu}{tag}_"
     n_chan = len(chan_idx)
-    prns = chain["prns"] if chain else PRIMARY_PRNS
+    row = chain_row(chain)
+    prns = chain["prns"] if chain else primary_prns()
     n_prn = len(prns)
     # The replica's sky carrier, from the chain, never the primary: a wrong f_offset builds
     # every replica in the wrong part of the band and every mixed tile reads noise.
     carrier_hz = float(chain["carrier_hz"]) if chain else float(sig["carrier_hz"])
-    track_signal = chain["tracker"] if chain else sig.get("tracker", sig["primary"])
+    track_signal = row.descriptor
     n_live = live_element_count(arr)
 
     # Tile count per channel: see n2_tiles_per_chan (one contract, three sites). The lane
@@ -1464,9 +1389,9 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                     "n_elements": 1,  # unused by the injector; the state class requires it
                     "channel_ids": freq_ids,  # global bins, local order (replica sky freq)
                     "signal": track_signal,
-                    # E/L tap offset in the signal's chips, set by the channel geometry: see
-                    # dll_spacing_chips. Must match the broker chain's dll-spacing.
-                    "dll_spacing": dll_spacing_chips(track_signal),
+                    # E/L tap offset in the signal's chips, from the chain's row, which the
+                    # broker's trim law reads too (config/gnss_fleet_chord.yaml chains:).
+                    "dll_spacing": row.dll_spacing_chips,
                     # The E/L lanes as rotations of the prompt, one chip walk per hop
                     # (lanes_per_slot_for).
                     **({"epl_from_prompt": True} if args.epl_from_prompt else {}),
@@ -1590,8 +1515,8 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             "prns": prns,
             "n_elements": n_live,
             **(
-                {"record_cp_mod_chips": float(RECORD_CP_MOD_CHIPS[track_signal])}
-                if track_signal in RECORD_CP_MOD_CHIPS
+                {"record_cp_mod_chips": float(row.record_cp_mod_chips)}
+                if row.record_cp_mod_chips
                 else {}
             ),
             # The global freq_ids the injector despreads, in local order. They label each
@@ -1638,13 +1563,13 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             **elem_shared_ref_keys(
                 args,
                 # The snapshot's band key (l5, e5a, ...): GPS and SBAS L5 share one.
-                V["chain"].partition("_")[2],
+                row.shared_ref_band,
                 steer,
                 n_live,
                 bad_input_set(cfg, args),
             ),
             **elem_proj_keys(args),
-            "elem_proj_sys": PROJ_SYS[V["chain"].partition("_")[0]],
+            "elem_proj_sys": row.proj_sys,
             **lane_transfer_keys(cfg, node, gpu, V["chain"], freq_ids, args),
             **cube_assembler_keys(args, cfg, gpu, pre),
             "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
@@ -1702,9 +1627,9 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
     # the widest sender, with allow_short_frames), and an unfilled row or column would be bytes
     # on a link the whole fleet shares.
     chain_name = broker_chain_name(chain["signal"] if chain else sig["primary"])
-    # May be fewer than n_prn: the wire rows are compacted onto the PRNs despread (see
-    # telem_rows).
-    telem_max_prn = telem_rows(chain_name)
+    # May be fewer than n_prn: the wire rows are compacted onto the PRNs despread (the row's
+    # telem-rows, config/gnss_fleet_chord.yaml chains:).
+    telem_max_prn = row.telem_rows
     telem_bytes = telem_frame_bytes(TELEM_RECORDS_PER_FRAME, telem_max_prn, n_chan)
     blocks.update(
         {
@@ -2253,7 +2178,7 @@ def search_stage(cfg, args, in_buf, chan_ids, core, signal=None, prns=None):
         "kotekan_stage": "GnssChannelizedSearch",
         "in_buf": in_buf,
         "signal": signal or sig["primary"],
-        "prns": list(prns) if prns else PRIMARY_PRNS,
+        "prns": list(prns) if prns else primary_prns(),
         "sample_rate": float(fe["sampling_rate_MHz"]) * 1e6,
         # The sky carrier, not an IF: covering_bins() places the signal at f_offset, so 0.0
         # puts it at DC, where no covering channel overlaps this subband.
@@ -3290,6 +3215,12 @@ def check_descriptors(cfg, args):
                 f"{g.commit[:12]}). Sync the golden from a kotekan that defines it, or fix "
                 "the name."
             )
+    bad = gnss_chain_table.validate(chain_rows(), set(g.sections["signals"]))
+    if bad:
+        raise SystemExit(
+            "the chains table (config/gnss_fleet_chord.yaml chains:) is invalid:\n  "
+            + "\n  ".join(bad)
+        )
 
 
 def main():

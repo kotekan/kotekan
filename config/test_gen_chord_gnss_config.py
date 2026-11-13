@@ -32,6 +32,7 @@ BASE = "config/base/live_config_20260730.json"
 
 sys.path.insert(0, HERE)
 import gen_chord_gnss_config as g  # noqa: E402
+import gnss_chain_table  # noqa: E402
 
 sys.path.append(os.path.join(ROOT, "python", "scripts", "gnss"))
 import kotekan_src  # noqa: E402
@@ -49,6 +50,11 @@ def check(ok, what):
 def node_cfg():
     with open(g.NODE_FILE) as fh:
         return yaml.safe_load(fh)
+
+
+def row(descriptor):
+    """The chains table's row for a descriptor."""
+    return next(r for r in gnss_chain_table.load() if r.descriptor == descriptor)
 
 
 def run_gen(*argv, env=None):
@@ -295,6 +301,20 @@ def test_unknown_descriptor_is_refused():
             and "%s GPS_L9_X: not a descriptor in the interface golden" % where in err,
             "%s GPS_L9_X is refused, naming it (rc %d)" % (where, rc),
         )
+    rc, _, err = run_gen(
+        "--base",
+        BASE,
+        "--node",
+        "cx19",
+        "--gather-instance",
+        "--extra-signal",
+        "GPS_L1CA:1,2",
+    )
+    check(
+        rc != 0 and "--extra-signal GPS_L1CA: no row in the chains table" in err,
+        "a descriptor the golden has but no chains-table row holds is refused (rc %d)"
+        % rc,
+    )
     cfg = node_cfg()
     cfg["signals"]["tracker"] = "GPS_L5_Q_NHX"
     args = argparse.Namespace(extra_signal=None, aggregator_extra_search=None)
@@ -1192,10 +1212,11 @@ def _lane_transfer_node(
     *transfers,
     signals=("SBAS_L5_I_MC:131,133,135", "GAL_E6_C_CS:2,3,4"),
     exempt="5940-6076",
+    flags=(),
 ):
     """One node config (cx51) with these chains beside GPS L5 (default SBAS L5 and Galileo E6),
-    lanes published, and the given --lane-transfer specs: (SystemExit message or None, parsed
-    config)."""
+    lanes published, the given --lane-transfer specs and any other flags: (SystemExit message or
+    None, parsed config)."""
     argv = [
         "--base",
         kotekan_src.src("config", "chord/pathfinder.j2"),
@@ -1220,6 +1241,7 @@ def _lane_transfer_node(
         argv += ["--extra-signal", e]
     for t in transfers:
         argv += ["--lane-transfer", t]
+    argv += list(flags)
     with stubbed(set()):
         exc, out, _ = run_main(argv)
     return exc, (yaml.safe_load(out) if exc is None else None)
@@ -1308,6 +1330,64 @@ def test_upper_l_band_node():
         check(
             got == want, "gpu%d: L1 C/A's lanes transfer to %s (%s)" % (g_, want, got)
         )
+
+
+def _inject_dll_spacing(cfg):
+    """{chain key: dll_spacing} of every cudaGnssInject in a node config, per GPU."""
+    return {
+        gpu: {
+            g.broker_chain_name(c["signal"]): c["dll_spacing"]
+            for c in cfg["gnss%d_n2dual" % gpu]["commands"]
+            if c["name"] == "cudaGnssInject"
+        }
+        for gpu in (0, 1)
+    }
+
+
+def test_taps_take_the_tables_dll_spacing():
+    """Every chain's taps on a node carry its row's DLL spacing, the value the broker's trim law
+    takes from the same row; a row changed under the generator moves the taps, and
+    dll_spacing_drift names the chain."""
+    if kotekan_src.SRC is None:
+        print("  [SKIP] node config: no kotekan tree to render the base from")
+        return
+    rows = gnss_chain_table.load()
+    signals = ["%s:%s" % (r.descriptor, r.prns) for r in rows[1:]]
+    # The fleet's two lanes per slot: at four, every chain does not fit the synth axis.
+    kw = dict(
+        signals=signals, exempt="5940-6626,7982-8144", flags=["--epl-from-prompt"]
+    )
+    exc, cfg = _lane_transfer_node(**kw)
+    check(exc is None, "cx51 generates with every chain of the table (%s)" % exc)
+    if exc is not None:
+        return
+    taps = _inject_dll_spacing(cfg)
+    check(
+        set(taps[0]) | set(taps[1]) == {r.key for r in rows},
+        "both GPUs together build every chain (%s)"
+        % sorted(set(taps[0]) | set(taps[1])),
+    )
+    drift = [
+        ln
+        for gpu in (0, 1)
+        for ln in gnss_chain_table.dll_spacing_drift(rows, taps[gpu], "gpu%d" % gpu)
+    ]
+    check(drift == [], "every tap is its row's (%s)" % drift)
+    i = next(k for k, r in enumerate(rows) if r.key == "glo_l2oc")
+    g._CHAIN_ROWS[:] = (
+        rows[:i] + [rows[i]._replace(dll_spacing_chips=0.45)] + rows[i + 1 :]
+    )
+    try:
+        exc, cfg = _lane_transfer_node(**kw)
+    finally:
+        g._CHAIN_ROWS[:] = []
+    drift = gnss_chain_table.dll_spacing_drift(
+        rows, _inject_dll_spacing(cfg)[0], "gpu0"
+    )
+    check(
+        drift == ["gpu0: glo_l2oc dll spacing 0.45, the chains table says 0.4"],
+        "a changed row moves the taps, and the drift is named (%s)" % drift,
+    )
 
 
 _ARR4 = {"live_element_ranges": [[0, 1], [64, 65]]}
@@ -1589,7 +1669,7 @@ def test_fdma_slots():
         chain_covering_channels(chans, s, 5e3) == one,
         "no channels list = the k = 0 carrier",
     )
-    check(g.dll_spacing_chips("GLO_L2OF_MC") == 0.33, "L2OF takes L2C's DLL spacing")
+    check(row("GLO_L2OF_MC").dll_spacing_chips == 0.33, "L2OF takes L2C's DLL spacing")
 
 
 def _upper_band():
@@ -1610,9 +1690,11 @@ def test_bds_b1i_lobe():
         min(per) == 1 and per.count(2) == 6,
         "every comb holds one or two, six hold two (%s)" % per,
     )
-    check(g.dll_spacing_chips("BDS_B1I_NH") == 0.5, "B1I closes on the chip triangle")
+    check(row("BDS_B1I_NH").dll_spacing_chips == 0.5, "B1I closes on the chip triangle")
     check(
-        g.telem_rows("bds_b1i") == g.telem_rows("bds_b3i") <= g.telem_rows_max(),
+        row("BDS_B1I_NH").telem_rows
+        == row("BDS_B3I_NH").telem_rows
+        <= g.telem_rows_max(),
         "B1I ships B3I's wire rows, within the gather's buffer",
     )
 
@@ -1629,9 +1711,9 @@ def test_gps_l1ca_lobe():
         combs == [0, 1, 2, 3, 4, 5, 6, 7, 13, 14, 15],
         "one channel on each of eleven combs, none on 8-12 (%s)" % combs,
     )
-    check(g.dll_spacing_chips("GPS_L1CA_BIT") == 0.5, "L1 C/A takes 0.5, as B1I")
+    check(row("GPS_L1CA_BIT").dll_spacing_chips == 0.5, "L1 C/A takes 0.5, as B1I")
     check(
-        g.telem_rows("gps_l1ca") <= g.telem_rows_max(),
+        row("GPS_L1CA_BIT").telem_rows <= g.telem_rows_max(),
         "L1 C/A's wire rows fit the gather's buffer",
     )
 
@@ -1648,11 +1730,11 @@ def test_gal_e1c_lobe():
         "every comb holds a channel (%s)" % sorted(f % 16 for f in cov),
     )
     check(
-        g.dll_spacing_chips("GAL_E1C_CS") == 0.2,
+        row("GAL_E1C_CS").dll_spacing_chips == 0.2,
         "E1-C takes 0.2, L2OC's 0.4 in its chips",
     )
     check(
-        g.telem_rows("gal_e1c") <= g.telem_rows_max(),
+        row("GAL_E1C_CS").telem_rows <= g.telem_rows_max(),
         "E1-C's wire rows fit the gather's buffer",
     )
 
@@ -1663,7 +1745,7 @@ def test_sbas_l1_lobe():
 
     cov = chain_covering_channels(_upper_band(), signal_table()["SBAS_L1_SYM"], 5e3)
     check(cov == list(range(8061, 8072)), "the lobe is 8061-8071 (%s)" % cov)
-    check(g.dll_spacing_chips("SBAS_L1_SYM") == 0.5, "SBAS L1 takes L1 C/A's 0.5")
+    check(row("SBAS_L1_SYM").dll_spacing_chips == 0.5, "SBAS L1 takes L1 C/A's 0.5")
 
 
 def main():

@@ -373,7 +373,7 @@ common:
     # every sender retries a dead listener each reconnect_time (30 s) and logs each attempt.
     #
     # The wire frame size is set in the generator by TELEM_RECORDS_PER_FRAME and each chain's
-    # PRN rows (_TELEM_ROWS), and bufferRecv closes any connection whose frame exceeds the
+    # PRN rows (telem-rows in chains: below), and bufferRecv closes any connection whose frame exceeds the
     # gather's buffer: changing either means regenerating the gather config (--gather-instance)
     # too and restarting both ends. Rows are how many simultaneously live satellites a frame
     # carries, not the record buffer's slot count, because GnssTelemPack compacts rows onto the
