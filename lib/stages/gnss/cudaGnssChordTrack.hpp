@@ -62,6 +62,10 @@
  *                       ~1.8e-4 per sample, cudaGnssPsiBench). Default true.
  * @conf psi_refresh_hz  Double. Under psi_synth, rebuild a slot's table when its Doppler moves
  *                       further than this from the table's. Default 30.
+ * @conf psi_sync_build  Bool. Under psi_synth, for tests only: wait for each Psi build on the
+ *                       GPU thread (GnssCudaDespread::set_psi_sync_build), so the outputs do
+ *                       not depend on the builder's timing. A node config must not set it.
+ *                       Default false.
  * @conf seed_endpoint   String. POST /set_seeds.
  * @conf trim_endpoint   String, ignored (read only so a usage report does not list it).
  * @conf set_trim_endpoint String. POST /set_trim.

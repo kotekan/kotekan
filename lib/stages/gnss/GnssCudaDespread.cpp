@@ -99,6 +99,7 @@ struct GnssCudaDespread::Impl {
     std::vector<PsiCache> psi;
     bool psi_on = false;
     bool psi_half = false;
+    bool psi_sync = false; ///< set_psi_sync_build
     double psi_refresh_hz = 30.0;
     std::vector<gnss_cuda::PsiJob> h_pjobs; ///< [n_prn] staging, pageable like h_jobs
     std::vector<float> h_theta;             ///< [n_prn][n_chan] staging
@@ -135,11 +136,13 @@ struct GnssCudaDespread::Impl {
         std::chrono::steady_clock::time_point t_done;
     };
     std::thread psi_thread;
-    std::mutex psi_mtx; ///< psi_reqs, psi_done, psi_stop, the thread start
+    std::mutex psi_mtx; ///< psi_reqs, psi_done, psi_stop, psi_in_flight, the thread start
     std::condition_variable psi_cv;
     std::deque<PsiReq> psi_reqs;
     std::vector<PsiDone> psi_done; ///< finished builds, drained by the enqueue thread
     bool psi_stop = false;
+    int psi_in_flight = 0; ///< requests not yet in psi_done; psi_landed signals each fall
+    std::condition_variable psi_landed;
     std::mutex code_mtx;            ///< the bank's code table (set_prn vs the builder's copy)
     std::vector<uint32_t> slot_gen; ///< [n_prn] bumped by set_prn, under code_mtx
     std::vector<int> psi_P_builder; ///< [n_prn] the builder's primary period per slot; 0 =
@@ -458,6 +461,7 @@ struct GnssCudaDespread::Impl {
 
     /// Queue a build of slot p's tables at this Doppler unless one is already queued, building
     /// or waiting for its upload (psi_pending). Starts the builder thread on the first call.
+    /// Under psi_sync, returns once the build is in psi_done.
     void psi_request(int p, double doppler) {
         if (psi_pending[(size_t)p])
             return;
@@ -470,10 +474,15 @@ struct GnssCudaDespread::Impl {
             std::lock_guard<std::mutex> lk(psi_mtx);
             r.gen = slot_gen[(size_t)p];
             psi_reqs.push_back(r);
+            ++psi_in_flight;
             if (!psi_thread.joinable())
                 psi_thread = std::thread(&Impl::psi_builder_loop, this);
         }
         psi_cv.notify_one();
+        if (psi_sync) {
+            std::unique_lock<std::mutex> lk(psi_mtx);
+            psi_landed.wait(lk, [&] { return psi_in_flight == 0; });
+        }
     }
 
     /// The builder thread: one request at a time, in order. Niced below the enqueue thread it
@@ -558,7 +567,9 @@ struct GnssCudaDespread::Impl {
             {
                 std::lock_guard<std::mutex> lk(psi_mtx);
                 psi_done.push_back(std::move(d));
+                --psi_in_flight;
             }
+            psi_landed.notify_all();
         }
     }
 
@@ -577,7 +588,8 @@ struct GnssCudaDespread::Impl {
 
     /// Upload a finished build to slot p's device tables on `st` through a free pinned staging
     /// slot, and mark the cache valid. False, with nothing done, when every staging slot still
-    /// has an upload in flight (the caller tries again next record).
+    /// has an upload in flight (the caller tries again next record); under psi_sync it waits for
+    /// the first slot's instead.
     bool psi_upload(PsiDone& d, cudaStream_t st) {
         Staging* sg = nullptr;
         for (auto& cand : psi_staging) {
@@ -587,7 +599,8 @@ struct GnssCudaDespread::Impl {
                 sg = &cand;
                 break;
             }
-            const cudaError_t q = cudaEventQuery(cand.done);
+            const cudaError_t q =
+                psi_sync ? cudaEventSynchronize(cand.done) : cudaEventQuery(cand.done);
             if (q == cudaSuccess) {
                 sg = &cand;
                 break;
@@ -919,6 +932,10 @@ bool GnssCudaDespread::psi_ready(int p, double doppler_hz, void* stream) {
     if (p < 0 || p >= im.n_prn)
         return false;
     return im.psi_ready(p, doppler_hz, (cudaStream_t)stream);
+}
+
+void GnssCudaDespread::set_psi_sync_build() {
+    _impl->psi_sync = true;
 }
 
 void GnssCudaDespread::set_psi_fp16() {

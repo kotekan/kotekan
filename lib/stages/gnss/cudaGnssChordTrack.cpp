@@ -161,6 +161,11 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
         if (config.get_default<bool>(unique_name, "psi_fp16", true))
             despread->set_psi_fp16();
         despread->set_psi_synth(refresh);
+        if (config.get_default<bool>(unique_name, "psi_sync_build", false)) {
+            despread->set_psi_sync_build();
+            WARN("cudaGnssChordTrack: psi_sync_build: every Psi build is waited for on the GPU "
+                 "thread (for tests only)");
+        }
         INFO("cudaGnssChordTrack: psi_synth: replicas from code-phase tables over the full PFB "
              "span (+1.1% replica energy against the 80-chip gather: absolute SNR gates step)");
     } else {

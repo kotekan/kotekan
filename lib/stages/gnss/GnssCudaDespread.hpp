@@ -153,6 +153,12 @@ public:
     /// Independent of @ref set_phi_fp16: the Psi path never reads Phi.
     void set_psi_fp16();
 
+    /// For tests: @ref psi_ready waits on the caller's thread for each build it queues, and for
+    /// a staging slot to upload through, so which tables a record uses depends on the calls
+    /// alone, not on the builder's or the GPU's progress. Every build then stalls the caller,
+    /// which a node cannot afford. Off until called; no way back.
+    void set_psi_sync_build();
+
     /// Largest @c specs.size() for @ref despread_batch, @ref build_jobs and the Spec-taking
     /// enqueue_* calls: the host job staging, and despread_batch's device job arena, hold n_prn
     /// jobs (one per PRN slot). Nothing checks the bound. It is not gnss_gpu::max_specs(n_prn),
