@@ -46,7 +46,7 @@ whole table.
 
 | host | when | job | does | output |
 |---|---|---|---|---|
-| gnss | hourly :17 | `scripts/gnss/site/eop_cron.sh` | pushes choco's EOP table to every running node whose live table ends earlier; since 10-11 it also regenerates the on-disk node configs when their table ends earlier than the staged one and `gen_fleet --check` still passes (#173), so a relaunch never starts on a table that has ended | `/var/tmp/gnss-logs/eop_cron.log` |
+| gnss | daily 12:17 | `scripts/gnss/site/eop_cron.sh` | regenerates the on-disk node configs when their EOP table ends earlier than choco's and `gen_fleet --check` still passes (#173), so a relaunch never starts on a table that has ended. It pushes nothing: since 11-13 choco keeps the running nodes' live table (development mode) | `/var/tmp/gnss-logs/eop_cron.log` |
 | gnss | every 5 min | `scripts/gnss/site/bad_inputs_cron.py` | pushes bffs's bad-input list to the running nodes when it changes (choco skips ours: maintenance mode) | `/var/tmp/gnss-logs/bad_inputs_cron.log` |
 | gnss | every 5 min | `scripts/gnss/site/elem_ref_cron.sh` | #154 safety net: every assembler's shared element model against the fleet reference. With `ELEM_REF_ACT=1` (set in the crontab) it re-posts the reference to an instance that lost it or is pinned off it, re-takes a band's reference from the fleet consensus when it no longer describes the models, and takes a first one for a band that has none (a new chain; `ELEM_REF_HOLD` names bands to leave without) | `fixtures/obs/elem_ref/{ALERT,current.json,watch.log,auto_ref.json}` |
 | gnss | hourly :23 | `logrotate -s /var/tmp/gnss-logs/.logrotate.state scripts/gnss/site/logrotate.conf` | rotates the service logs daily or past 4 GB (copytruncate, 10 gzipped generations; #172) | `/var/tmp/gnss-logs/logrotate.log` |
@@ -239,10 +239,11 @@ diffs the stock half against the render and fails on any difference not declared
 `gen_fleet.py` runs it on every write and `--check`, and
 `stock_parity.py <config> --live cx47` checks the stock half, live values included, against a running
 stock node. When production's template changes, take develop's copy, regenerate, and check.
-**choco has our six in maintenance mode** (it would also push configs we must not have overwritten),
-so it pushes nothing to them. Two gnss cron jobs stand in for it: `scripts/gnss/site/eop_cron.sh` (hourly at :17,
-the EOP table) and `scripts/gnss/site/bad_inputs_cron.py` (every 5 min, bffs's bad-input list, pushed only when it
-changes). Logs: `/var/tmp/gnss-logs/{eop,bad_inputs}_cron.log`.
+**choco has our nodes in development mode**: each runs its own config, and choco pushes only its stored
+updatable values, the live EOP table among them (verified 11-13: its 12:00Z refresh reached every node
+before our cron ran). `scripts/gnss/site/eop_cron.sh` (daily 12:17) keeps the EOP table in the on-disk
+configs current for relaunches, and `scripts/gnss/site/bad_inputs_cron.py` (every 5 min) pushes bffs's
+bad-input list when it changes. Logs: `/var/tmp/gnss-logs/{eop,bad_inputs}_cron.log`.
 **recv1 remembers each sender's config by host:port, and new content from the same node is fatal
 there** (ConfigTracker). After any node-config change, restart the nodes first and then recv1 (Jim).
 
@@ -260,8 +261,8 @@ symptom of each:
 
 1. **The baked EOP table had expired.** Every node runs ~60 s, then exits on `Requesting EOP later
    than in table`. `node_up.sh` refuses below 12 h of headroom and prints the regen. The live
-   table is REST-only, so a node restart reverts to the config's copy: run `eop_push.sh` after
-   every bring-up.
+   table is REST-only, so a node restart reverts to the config's copy until choco's next push
+   (development mode); `eop_push.sh` pushes it by hand.
 2. **choco's maintenance mode was off.** Nodes die within ~60 s with `ERROR: /kill endpoint called`
    as the last log line, one per minute. Nothing in this tree sends `/kill`.
 3. **chive served the epoch from before an F-engine re-base.** `port_axis_gate.py` says both ports

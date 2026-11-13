@@ -1247,7 +1247,18 @@ def test_eop_cron_reads_the_configs_the_manifest_owns():
             )
         bindir = os.path.join(d, "bin")
         stub(bindir, "scp", "exit 1\n")
-        stub(bindir, "curl", "exit 7\n")
+        # A running GNSS node whose live table ends long before the staged one: choco keeps the
+        # live table, so the cron must leave it alone.
+        stub(
+            bindir,
+            "curl",
+            'echo \'{"gnss0_x": {}, "earth_rotation_data": '
+            '{"earth_orientation_parameter_table": [{"t_inst_ns": 1}]}}\'\n',
+        )
+        pushed = os.path.join(d, "pushed")
+        with open(os.path.join(k, "scripts", "gnss", "site", "eop_push.sh"), "w") as fh:
+            fh.write('#!/bin/bash\necho "$@" >> %s\n' % pushed)
+        os.chmod(os.path.join(k, "scripts", "gnss", "site", "eop_push.sh"), 0o755)
         log = os.path.join(d, "eop.log")
         rc, out = run(
             ["bash", os.path.join(k, "scripts", "gnss", "site", "eop_cron.sh")],
@@ -1271,6 +1282,10 @@ def test_eop_cron_reads_the_configs_the_manifest_owns():
         check(
             calls == ["--check", ""],
             "after a --check, then a write (gen_fleet calls %r)" % calls,
+        )
+        check(
+            not os.path.exists(pushed),
+            "nothing is pushed to a running node: choco keeps the live table",
         )
         seen = os.path.join(k, "gen_fleet.env")
         seen = open(seen).read().splitlines() if os.path.exists(seen) else []
