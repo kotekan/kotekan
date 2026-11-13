@@ -253,11 +253,13 @@ const std::vector<ChainSpec>& chains() {
 }
 
 /// The production blocks' element cal (elem_sum_tau_s 2 s) warms in ~150 frames, so their
-/// scenario runs twice as long and is read at two later checkpoints.
+/// scenario runs twice as long, is read at two later checkpoints, and B's reference element moves
+/// after the cal checkpoint, as in the synthetic scenario.
 Scenario base_scenario() {
     Scenario sc;
     if (std::getenv("GNSS_REPLAY_CONFIG")) {
         sc.n_frames = 240;
+        sc.ref_elem_frame = 200;
         sc.checkpoints = {29, 59, 89, 119, 179, 239};
     }
     return sc;
