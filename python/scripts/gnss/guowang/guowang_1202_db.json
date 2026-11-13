@@ -76,13 +76,12 @@
    "catnum": 62329,
    "g2_phase": null,
    "last_observed_utc": null,
-   "last_checked_utc": "2026-11-13T11:47:18Z",
-   "last_checked_sep_deg": 3.28,
+   "last_checked_utc": "2026-11-03T01:07:03Z",
+   "last_checked_sep_deg": 0.25,
    "passes_found": 0,
-   "passes_silent": 2,
+   "passes_silent": 1,
    "passes": [
-    ["2026-11-03T01:07:03Z", 0.25, false],
-    ["2026-11-13T11:47:18Z", 3.28, false]
+    ["2026-11-03T01:07:03Z", 0.25, false]
    ]
   },
   "DIGUI-08": {
@@ -250,14 +249,13 @@
    "catnum": 62977,
    "g2_phase": null,
    "last_observed_utc": null,
-   "last_checked_utc": "2026-11-13T12:07:32Z",
-   "last_checked_sep_deg": 2.32,
+   "last_checked_utc": "2026-11-10T17:36:21Z",
+   "last_checked_sep_deg": 0.91,
    "passes_found": 0,
-   "passes_silent": 3,
+   "passes_silent": 2,
    "passes": [
     ["2026-11-05T14:40:51Z", 1.43, false],
-    ["2026-11-10T17:36:21Z", 0.91, false],
-    ["2026-11-13T12:07:32Z", 2.32, false]
+    ["2026-11-10T17:36:21Z", 0.91, false]
    ]
   },
   "DIGUI-18": {
@@ -446,7 +444,7 @@
    ]
   },
   "DIGUI-28": {
-   "status": "no_transmission",
+   "status": "transmitting",
    "catnum": 63695,
    "g2_phase": 1213,
    "theta_us": -0.301,
@@ -457,14 +455,13 @@
    "ref_input": 116,
    "drift_ns_s": -19.77,
    "last_observed_utc": "2026-11-07T22:42:16Z",
-   "last_checked_utc": "2026-11-13T09:42:26Z",
-   "last_checked_sep_deg": 2.49,
+   "last_checked_utc": "2026-11-07T22:42:16Z",
+   "last_checked_sep_deg": 0.83,
    "passes_found": 2,
-   "passes_silent": 1,
+   "passes_silent": 0,
    "passes": [
     ["2026-11-02T23:02:08Z", 5.91, true],
-    ["2026-11-07T22:42:16Z", 0.83, true],
-    ["2026-11-13T09:42:26Z", 2.49, false]
+    ["2026-11-07T22:42:16Z", 0.83, true]
    ]
   },
   "DIGUI-29": {
@@ -2024,7 +2021,7 @@
    ]
   },
   "DIGUI-112": {
-   "status": "no_transmission",
+   "status": "transmitting",
    "catnum": 66922,
    "g2_phase": 792,
    "theta_us": -11.77,
@@ -2036,14 +2033,13 @@
    "drift_ns_s": 2.93,
    "note": "partial copy, 56/64 channels",
    "last_observed_utc": "2026-11-07T12:09:33Z",
-   "last_checked_utc": "2026-11-13T10:44:06Z",
-   "last_checked_sep_deg": 0.57,
+   "last_checked_utc": "2026-11-07T12:09:33Z",
+   "last_checked_sep_deg": 9.51,
    "passes_found": 2,
-   "passes_silent": 1,
+   "passes_silent": 0,
    "passes": [
     ["2026-11-06T12:43:59Z", 3.36, true],
-    ["2026-11-07T12:09:33Z", 9.51, true],
-    ["2026-11-13T10:44:06Z", 0.57, false]
+    ["2026-11-07T12:09:33Z", 9.51, true]
    ]
   },
   "DIGUI-113": {
@@ -2339,7 +2335,7 @@
    ]
   },
   "DIGUI-128": {
-   "status": "no_transmission",
+   "status": "transmitting",
    "catnum": 67236,
    "g2_phase": 302,
    "theta_us": -17.83,
@@ -2350,15 +2346,14 @@
    "ref_input": 116,
    "drift_ns_s": 0.56,
    "last_observed_utc": "2026-11-07T10:14:02Z",
-   "last_checked_utc": "2026-11-13T08:47:54Z",
-   "last_checked_sep_deg": 0.78,
+   "last_checked_utc": "2026-11-07T10:14:02Z",
+   "last_checked_sep_deg": 8.31,
    "passes_found": 3,
-   "passes_silent": 1,
+   "passes_silent": 0,
    "passes": [
     ["2026-11-05T11:21:18Z", 4.57, true],
     ["2026-11-07T06:26:42Z", 8.42, true],
-    ["2026-11-07T10:14:02Z", 8.31, true],
-    ["2026-11-13T08:47:54Z", 0.78, false]
+    ["2026-11-07T10:14:02Z", 8.31, true]
    ]
   },
   "DIGUI-129": {
@@ -2598,7 +2593,7 @@
    ]
   },
   "DIGUI-140": {
-   "status": "no_transmission",
+   "status": "transmitting",
    "catnum": 67438,
    "g2_phase": 1134,
    "theta_us": -11.723,
@@ -2609,14 +2604,13 @@
    "ref_input": 116,
    "drift_ns_s": 1.36,
    "last_observed_utc": "2026-11-07T08:15:32Z",
-   "last_checked_utc": "2026-11-13T06:50:40Z",
-   "last_checked_sep_deg": 0.58,
+   "last_checked_utc": "2026-11-07T08:15:32Z",
+   "last_checked_sep_deg": 9.46,
    "passes_found": 2,
-   "passes_silent": 1,
+   "passes_silent": 0,
    "passes": [
     ["2026-11-05T09:24:37Z", 4.39, true],
-    ["2026-11-07T08:15:32Z", 9.46, true],
-    ["2026-11-13T06:50:40Z", 0.58, false]
+    ["2026-11-07T08:15:32Z", 9.46, true]
    ]
   },
   "DIGUI-141": {
@@ -3890,7 +3884,7 @@
    ]
   },
   "DIGUI-211": {
-   "status": "no_transmission",
+   "status": "transmitting",
    "catnum": 100797,
    "g2_phase": 1380,
    "theta_us": 5.217,
@@ -3902,17 +3896,16 @@
    "drift_ns_s": -23.05,
    "note": "inferred satellite: theta and ppb on its TLE moved -6.889 s along track (fitted to the carrier); partial copy, 56/64 channels",
    "last_observed_utc": "2026-11-06T12:50:15Z",
-   "last_checked_utc": "2026-11-13T10:50:19Z",
-   "last_checked_sep_deg": 2.35,
+   "last_checked_utc": "2026-11-06T12:50:15Z",
+   "last_checked_sep_deg": 1.31,
    "passes_found": 1,
-   "passes_silent": 1,
+   "passes_silent": 0,
    "passes": [
-    ["2026-11-06T12:50:15Z", 1.31, true],
-    ["2026-11-13T10:50:19Z", 2.35, false]
+    ["2026-11-06T12:50:15Z", 1.31, true]
    ]
   },
   "DIGUI-212": {
-   "status": "no_transmission",
+   "status": "transmitting",
    "catnum": 100798,
    "g2_phase": 1585,
    "theta_us": 9.634,
@@ -3924,13 +3917,12 @@
    "drift_ns_s": -13.09,
    "note": "inferred satellite: theta and ppb on its TLE moved -7.629 s along track (fitted to the carrier)",
    "last_observed_utc": "2026-11-07T08:15:32Z",
-   "last_checked_utc": "2026-11-13T10:37:40Z",
-   "last_checked_sep_deg": 2.86,
+   "last_checked_utc": "2026-11-07T08:15:32Z",
+   "last_checked_sep_deg": 3.33,
    "passes_found": 1,
-   "passes_silent": 1,
+   "passes_silent": 0,
    "passes": [
-    ["2026-11-07T08:15:32Z", 3.33, true],
-    ["2026-11-13T10:37:40Z", 2.86, false]
+    ["2026-11-07T08:15:32Z", 3.33, true]
    ]
   },
   "DIGUI-213": {
@@ -4214,6 +4206,11 @@
    "start": "2026-11-05T14:47:19Z",
    "end": "2026-11-05T22:10:05Z",
    "note": "site work 11-04 (analog front end / F-engine); closed by gw_nosky_watch.py: gps_l5 >= 3 present from 2026-11-05T22:10:05Z"
+  },
+  {
+   "start": "2026-11-13T06:39:01Z",
+   "end": null,
+   "note": "sky input down ~10 dB on every node at once (rf_chan median pw 1.47 -> 0.15 between 06:39:01.0 and 06:39:01.5Z), upstream of the nodes; still down at 12:38Z (gnss guowang)"
   }
  ],
  "silent_max_sep_deg": 4.0,
