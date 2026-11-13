@@ -11,7 +11,7 @@ import numpy as np
 
 # freq_id ranges (vis_dtv_extract / the manifest's dtv-targets)
 TARGETS = (
-    ("MUOS", 1845, 1943),
+    ("MUOS", 1844, 1944),
     ("17", 2499, 2529),
     ("19", 2560, 2590),
     ("24", 2714, 2744),

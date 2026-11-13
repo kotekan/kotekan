@@ -37,6 +37,12 @@ STATION_SETS = {
         ("MUOS 370-375", 1897, 1917, "Greens", "#16a34a"),
         ("MUOS 375-380", 1923, 1942, "Purples", "#7c3aed"),
     ),
+    # the channels between the carriers (targeted from 11-06 22:45Z: one range 1844-1944)
+    "muosgaps": (
+        ("MUOS gap 1868-1870", 1868, 1870, "Blues", "#2563eb"),
+        ("MUOS gap 1893-1896", 1893, 1896, "Oranges", "#ea580c"),
+        ("MUOS gap 1919-1921", 1919, 1921, "Greens", "#16a34a"),
+    ),
 }
 STATIONS = STATION_SETS["atsc2430"]
 C_SKY = "#6b7280"
@@ -63,6 +69,9 @@ def load(path, t0, t1):
     o = np.argsort(t)
     t = t[o]
     th = t / 1e9 % 86400 / 3600
+    th = np.where(
+        th > 18, th - 24, th
+    )  # a night that starts before 00Z: hours before it are negative
     sel = (th >= t0) & (th <= t1)
     lam = d["lam"][:, :, o][:, :, sel]
     fids = d["fids"]
@@ -93,7 +102,13 @@ def main():
         required=True,
         help="LABEL=NPZ, repeatable, in row order",
     )
-    ap.add_argument("--from", dest="t0", type=float, default=3.83, help="UTC hours")
+    ap.add_argument(
+        "--from",
+        dest="t0",
+        type=float,
+        default=3.83,
+        help="UTC hours (-1: 23Z the day before)",
+    )
     ap.add_argument("--to", dest="t1", type=float, default=12.25)
     ap.add_argument(
         "--transit",
@@ -187,6 +202,8 @@ def main():
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
+    utc_hour = matplotlib.ticker.FuncFormatter(lambda x, _: "%g" % (x % 24))
+
     nn = len(nights)
     nc = len(STATIONS)
     fig = plt.figure(figsize=(7.5 * nc, 2.3 * nn + 3.6), constrained_layout=True)
@@ -235,6 +252,7 @@ def main():
             i0 = np.argmin(np.abs(n["ha"]))
             ax.axvline(n["th"][i0], color="k", lw=0.7, ls=":")
             ax.set_xlim(a.t0, a.t1)
+            ax.xaxis.set_major_formatter(utc_hour)
             ax.set_yticks(np.arange(len(f))[::6])
             ax.set_yticklabels(["%d" % x for x in f[::6]], fontsize=7)
             ax.tick_params(axis="x", labelsize=8)
@@ -302,6 +320,7 @@ def main():
         ax.set_yticklabels(["%g" % v for v in yt])
         ax.minorticks_off()
         ax.set_xlim(a.t0, a.t1)
+        ax.xaxis.set_major_formatter(utc_hour)
         ax.grid(color="#e5e7eb", lw=0.6)
         ax.set_xlabel("UTC hour (dotted: Tau A transit, ~4 min earlier each night)")
         ax.set_ylabel(
