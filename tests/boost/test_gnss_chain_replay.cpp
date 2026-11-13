@@ -238,10 +238,16 @@ int max_live(const std::vector<ChainSpec>& chains) {
     return n;
 }
 
+const std::vector<ChainSpec>& synthetic() {
+    static const std::vector<ChainSpec> c = synthetic_chains(make_sky(SKY_AMP, 16));
+    return c;
+}
+
+/// The chains the baseline replays: GNSS_REPLAY_CONFIG's, else the synthetic ones.
 const std::vector<ChainSpec>& chains() {
     static const std::vector<ChainSpec> c = [] {
         const char* cfg = std::getenv("GNSS_REPLAY_CONFIG");
-        return cfg ? config_chains(cfg) : synthetic_chains(make_sky(SKY_AMP, 16));
+        return cfg ? config_chains(cfg) : synthetic();
     }();
     return c;
 }
@@ -851,6 +857,27 @@ Digests run_with(Mutation m) {
     return run_scenario(chains(), sc);
 }
 
+/// The mutation controls name the synthetic chains' roles, so they always replay those.
+const Digests& synthetic_baseline() {
+    static const Digests d =
+        std::getenv("GNSS_REPLAY_CONFIG") ? run_scenario(synthetic(), Scenario{}) : baseline();
+    return d;
+}
+
+/// Each mutation must change the keys in `differ` (a key ending in '*' matches any key with that
+/// prefix, and one changed match is enough) and no key matching `same`.
+struct MutationCase {
+    Mutation m;
+    const char* name;
+    std::vector<std::string> differ, same;
+};
+
+bool matches(const std::string& key, const std::string& pat) {
+    if (!pat.empty() && pat.back() == '*')
+        return key.compare(0, pat.size() - 1, pat, 0, pat.size() - 1) == 0;
+    return key == pat;
+}
+
 // ---- checks ----
 
 std::set<std::string> changed(const Digests& a, const Digests& b) {
@@ -1151,6 +1178,50 @@ BOOST_AUTO_TEST_CASE(identity) {
         BOOST_CHECK_EQUAL(d.strings.at(s.pre + ".cube_chain"), want);
     }
     BOOST_CHECK_EQUAL(d.strings.at("endpoints"), expected_endpoints(chains(), sc));
+}
+
+BOOST_AUTO_TEST_CASE(mutations) {
+    const Digests& base = synthetic_baseline();
+    const std::string A = synthetic()[0].pre, B = synthetic()[1].pre, C = synthetic()[2].pre;
+    // E and L are the prompt rotated per channel, so a flipped rotation moves only the DLL
+    // powers: the cal, lanes, cube and records come from the prompt.
+    const std::vector<MutationCase> cases = {
+        {Mutation::rot_sign_A10,
+         "rot_sign_A10",
+         {A + ".epl", A + ".rec", A + ".telem", A + ".cmb", A + ".rest.get_status@*"},
+         {B + ".*", C + ".*", "board@*", A + ".cube", A + ".rest.get_elem_cal@*",
+          A + ".rest.get_records@*", A + ".rest.get_elements@*"}},
+        {Mutation::job0_plus4_C12,
+         "job0_plus4_C12",
+         {C + ".epl", C + ".rec", C + ".telem", C + ".cmb", C + ".cube"},
+         {A + ".*", B + ".*"}},
+        {Mutation::rename_A,
+         "rename_A",
+         {"board@*", "strings:" + A + ".cube_chain", "endpoints"},
+         {A + ".epl", A + ".rec", A + ".telem", A + ".cmb", A + ".cube", A + ".rest.*", B + ".*",
+          C + ".*"}},
+        {Mutation::tile_word_B10, "tile_word_B10", {B + ".epl", B + ".rec"}, {A + ".*", C + ".*"}},
+        {Mutation::clock_step_50,
+         "clock_step_50",
+         {A + ".rest.get_elem_cal@59", B + ".rest.get_elem_cal@59", C + ".rest.get_elem_cal@59"},
+         {"board@29", A + ".rest.get_elem_cal@29", B + ".rest.get_elem_cal@29",
+          C + ".rest.get_elem_cal@29"}},
+    };
+    for (const auto& mc : cases) {
+        Scenario sc;
+        sc.mut = mc.m;
+        const std::set<std::string> ch = changed(base, run_scenario(synthetic(), sc));
+        BOOST_TEST_MESSAGE(mc.name << " changes: " << join(ch));
+        for (const auto& pat : mc.differ) {
+            bool hit = false;
+            for (const auto& k : ch)
+                hit = hit || matches(k, pat);
+            BOOST_CHECK_MESSAGE(hit, mc.name << ": " << pat << " did not change");
+        }
+        for (const auto& pat : mc.same)
+            for (const auto& k : ch)
+                BOOST_CHECK_MESSAGE(!matches(k, pat), mc.name << ": " << k << " changed");
+    }
 }
 
 BOOST_AUTO_TEST_CASE(golden) {
