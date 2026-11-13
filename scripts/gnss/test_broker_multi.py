@@ -63,9 +63,9 @@ def test_commanded_chains_feed_no_command():
     check(n > 0, "the chains yaml has commanded chains (%d)" % n)
 
 
-# Each chain's --dll-spacing as the chains yaml wrote it before the chains table held it: 0.5
-# (the broker's default) unless named.
-HAND_COPY_DLL_SPACING = {
+# Each chain's broker --dll-spacing: 0.5 (the broker's default) unless named. A row's spacing
+# moves the node taps and the trim law together, so changing one changes this pin too.
+PINNED_DLL_SPACING = {
     "gps_l2c": 0.33,
     "glo_l2oc": 0.4,
     "glo_l2of": 0.33,
@@ -78,8 +78,7 @@ HAND_COPY_DLL_SPACING = {
 
 def test_dll_spacing_from_the_chains_table():
     """The broker's dll_spacing per chain, parsed from broker_multi's argv as the chain's
-    thread parses it, is its chains-table row's (the node taps' value) and the value the
-    chains yaml held by hand before the table."""
+    thread parses it, is its chains-table row's (the node taps' value) and the pinned one."""
     from gnss_broker.cli import build_parser
     import gnss_chain_table
 
@@ -94,10 +93,10 @@ def test_dll_spacing_from_the_chains_table():
         "every chain's dll_spacing is its row's (%s)"
         % gnss_chain_table.dll_spacing_drift(table, got, "broker"),
     )
-    want = {c: HAND_COPY_DLL_SPACING.get(c, 0.5) for c in got}
+    want = {c: PINNED_DLL_SPACING.get(c, 0.5) for c in got}
     check(
-        got == want and len(got) == 17,
-        "and the hand copy's, chain for chain (%s)"
+        got == want and set(PINNED_DLL_SPACING) <= set(got),
+        "and the pinned value, chain for chain (%s)"
         % {c: (got[c], want[c]) for c in got if got[c] != want[c]},
     )
 

@@ -807,12 +807,12 @@ while running. All eight site hosts read equal to the table on 10-25 (cx27's GPU
 is 8 as entered).
 **Left (2026-10-26): L2C's tap spacing does not follow the fleet.** L2C sums its contiguous channels
 coherently (6283-6288, one per GPU: 6283 cx47/1, 6284 cx42/1), so the correlation's mainlobe widens as
-nodes leave. `dll_spacing_chips` (gen_chord_gnss_config.py) and the chain's `dll-spacing` are a hand-set
-0.33 for five or six channels. With cx42 and cx47 out for site tests (10-26 15:54Z) four remain
-(6285-6288), the first null moves 0.44 -> 0.66 CM chips, and q sits at 2.0-2.1 on every PRN at any power,
-under every 2.2 lock bar (lock_q, dll_quality_min, q_stall_bar); disc ~0 and 8 present. Nodes now come and
-go, so derive both from the fleet's count of contiguous L2C channels (~0.5 for four, 0.33 for five or six),
-in the generator and the chain config together, at each regen.
+nodes leave. The chain's `dll-spacing-chips` (its `chains:` row in config/gnss_fleet_chord.yaml, read by
+the node taps and the broker) is a hand-set 0.33 for five or six channels. With cx42 and cx47 out for site
+tests (10-26 15:54Z) four remain (6285-6288), the first null moves 0.44 -> 0.66 CM chips, and q sits at
+2.0-2.1 on every PRN at any power, under every 2.2 lock bar (lock_q, dll_quality_min, q_stall_bar); disc
+~0 and 8 present. Nodes now come and go, so derive it from the fleet's count of contiguous L2C channels
+(~0.5 for four, 0.33 for five or six), at each regen.
 
 ### #215 — changing the live element set costs a release cycle (2026-10-25, KV: "a weirdly large amount of processing")
 **What:** at the F-engine's return, row H's Y pol went out and H-X stayed good. That needed a new epoch.

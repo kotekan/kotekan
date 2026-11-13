@@ -57,6 +57,11 @@ def row(descriptor):
     return next(r for r in gnss_chain_table.load() if r.descriptor == descriptor)
 
 
+def spec(descriptor):
+    """The --extra-signal DESCRIPTOR:PRNS gen_fleet passes for a descriptor's row."""
+    return "%s:%s" % (descriptor, row(descriptor).prns)
+
+
 def run_gen(*argv, env=None):
     """The generator as a subprocess from the repo root, with env added to this environment:
     (returncode, stdout, stderr)."""
@@ -315,6 +320,21 @@ def test_unknown_descriptor_is_refused():
         "a descriptor the golden has but no chains-table row holds is refused (rc %d)"
         % rc,
     )
+    rc, _, err = run_gen(
+        "--base",
+        BASE,
+        "--node",
+        "cx19",
+        "--gather-instance",
+        "--extra-signal",
+        "GAL_E5A_Q_CS:2,3",
+    )
+    check(
+        rc != 0
+        and "--extra-signal GAL_E5A_Q_CS: PRNs 2,3 are not its chains-table row's"
+        in err,
+        "PRNs other than the chain's row's are refused (rc %d)" % rc,
+    )
     rows = gnss_chain_table.load()
     g._CHAIN_ROWS[:] = [rows[0]._replace(descriptor="GPS_L5_Q_NHX")] + rows[1:]
     args = argparse.Namespace(extra_signal=None, aggregator_extra_search=None)
@@ -330,6 +350,19 @@ def test_unknown_descriptor_is_refused():
         and "chain gps_l5 (id 1): descriptor GPS_L5_Q_NHX is not one signal_by_name"
         in msg,
         "a chains-table descriptor the golden lacks is refused (%s)" % msg,
+    )
+    cfg = node_cfg()
+    cfg["signals"]["primary"] = "GAL_E5A_Q"
+    try:
+        g.check_descriptors(cfg, args)
+        msg = None
+    except SystemExit as e:
+        msg = str(e)
+    check(
+        msg is not None
+        and "the first row is gps_l5, but signals.primary (GAL_E5A_Q) is chain gal_e5a"
+        in msg,
+        "a first row that is not the node table's primary is refused (%s)" % msg,
     )
     cfg = node_cfg()
     args = argparse.Namespace(
@@ -999,7 +1032,7 @@ def test_manual_mask_reaches_the_node_config():
             "--track-beam-freq-ids",
             "6144-6164",
             "--extra-signal",
-            "GW_1202:894,1101,1214",
+            spec("GW_1202"),
             "--dtv-subtract-freq-ids",
             "2720-2735",
             "--lane-dump-period-s",
@@ -1213,10 +1246,7 @@ def test_manual_mask_reaches_the_node_config():
 
 
 def _lane_transfer_node(
-    *transfers,
-    signals=("SBAS_L5_I_MC:131,133,135", "GAL_E6_C_CS:2,3,4"),
-    exempt="5940-6076",
-    flags=(),
+    *transfers, signals=None, exempt="5940-6076", flags=(),
 ):
     """One node config (cx51) with these chains beside GPS L5 (default SBAS L5 and Galileo E6),
     lanes published, the given --lane-transfer specs and any other flags: (SystemExit message or
@@ -1241,7 +1271,7 @@ def _lane_transfer_node(
         "--elem-dir-publish",
         "all",
     ]
-    for e in signals:
+    for e in signals or (spec("SBAS_L5_I_MC"), spec("GAL_E6_C_CS")):
         argv += ["--extra-signal", e]
     for t in transfers:
         argv += ["--lane-transfer", t]
@@ -1308,7 +1338,7 @@ def test_upper_l_band_node():
         return
     exc, cfg = _lane_transfer_node(
         "gps_l1ca:1560.1-1590.8",
-        signals=("BDS_B1I_NH:6,7,8", "GPS_L1CA_BIT:1,2,3"),
+        signals=(spec("BDS_B1I_NH"), spec("GPS_L1CA_BIT")),
         exempt="5940-6076,7982-8144",
     )
     check(exc is None, "the node config generates (%s)" % exc)

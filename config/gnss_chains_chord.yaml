@@ -946,8 +946,8 @@ chains:
         rrate-state: false
         rrate-kcoh-feed: 0
         fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
-    # The BOC(1,1) S-curve at the chain's 0.2-chip spacing is 1.8x the trim law's slope, as
-    # glo_l2oc's at 0.4, so it takes glo_l2oc's slower fast loop.
+    # The BOC(1,1) S-curve at the chain's spacing (its chains row) is 1.8x the trim law's slope,
+    # as glo_l2oc's, so it takes glo_l2oc's slower fast loop.
         fleet-trim-bandwidth: 1.4
         fleet-trim-readback: 1
         trackers: fleet

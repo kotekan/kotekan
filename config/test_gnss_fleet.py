@@ -315,6 +315,15 @@ def test_chains_are_the_table():
     m = manifest({"cx19": {}})
     m["common"] = dict(m["common"], **{"extra-signal": ["GAL_E5A_Q_CS:2"]})
     check(refused(m, "common sets extra-signal"), "an extra-signal list is refused")
+    m = manifest({"cx19": {}})
+    del m["chains"]
+    check(refused(m, "no chains"), "a manifest without chains is refused")
+    m = manifest({"cx19": {}})
+    m["chains"] = m["chains"][1:]
+    check(
+        refused(m, "the first chains row is gal_e5a, but the node table's primary"),
+        "a first row that is not the node table's primary is refused",
+    )
 
 
 def test_broker_dll_spacing_is_the_tables():
@@ -359,6 +368,15 @@ def test_broker_dll_spacing_is_the_tables():
         check(
             "chains.gps_l9: gps_l9 has no row" in str(got),
             "a chain without a row is refused (%s)" % got,
+        )
+        cfg = chains_cfg()
+        cfg["common"]["signal"] = "gps_l2c"
+        cfg["chains"]["l2c_b"] = {}
+        got = load(cfg)
+        check(
+            not isinstance(got, str) and got["chains"]["l2c_b"]["dll-spacing"] == 0.33,
+            "a chain without its own signal takes common's row (%s)"
+            % (got if isinstance(got, str) else got["chains"]["l2c_b"]),
         )
     probs = gen_fleet.check_chains(six())
     check(probs == [], "the repo's chains yaml runs every row (%s)" % probs)

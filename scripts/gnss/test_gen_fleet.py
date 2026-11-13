@@ -19,6 +19,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import gen_fleet  # noqa: E402
 
+# A manifest's one required chains row, the primary's (config/gnss_chain_table.py).
+PRIMARY_ROW = (
+    "chains:\n  - {id: 1, key: gps_l5, descriptor: GPS_L5_Q_NH, prns: '1,2', primary: true,"
+    " dll-spacing-chips: 0.5, telem-rows: 14, proj-sys: G, shared-ref-band: l5}\n"
+)
 NOTE = (
     "  note: GPS_L2C_CM has no covering channel on cx44 (carrier 1227.60 MHz, mainlobe "
     "1.023 MHz) -- chain SKIPPED on this node\n"
@@ -36,7 +41,7 @@ def check(ok, what):
 def manifest(d, base):
     path = os.path.join(d, "m.yaml")
     with open(path, "w") as fh:
-        fh.write("base: %s\nnodes:\n  cx44: {}\n" % base)
+        fh.write("base: %s\nnodes:\n  cx44: {}\n" % base + PRIMARY_ROW)
     return path
 
 
@@ -151,7 +156,10 @@ def test_check_names_a_role_off_config():
                 fh.write("a: 1\n")
         man = os.path.join(d, "m.yaml")
         with open(man, "w") as fh:
-            fh.write("base: %s\nnodes:\n  cx19: {role: 'off'}\n  cx44: {}\n" % base)
+            fh.write(
+                "base: %s\nnodes:\n  cx19: {role: 'off'}\n  cx44: {}\n" % base
+                + PRIMARY_ROW
+            )
         argv = ["gen_fleet.py", man, "--check", "--preview-dir", d]
 
         def fake_run(cmd, **kw):

@@ -413,6 +413,11 @@ def parse_extra_signals(cfg, args, node, primary_chans):
             prns, ks = parse_slots(prn_s)
         except ValueError as e:
             raise SystemExit(f"--extra-signal {name}: {e}")
+        if (prns, ks) != parse_slots(rows[name].prns):
+            raise SystemExit(
+                f"--extra-signal {name}: PRNs {prn_s} are not its chains-table row's "
+                f"({rows[name].prns})"
+            )
         s = table[name]
         tag = signal_tag(name)
         if tag in tags:
@@ -3213,6 +3218,12 @@ def check_descriptors(cfg, args):
                 "the name."
             )
     bad = gnss_chain_table.validate(chain_rows(), set(g.sections["signals"]))
+    prim = broker_chain_name(cfg["signals"]["primary"])
+    if chain_rows() and chain_rows()[0].key != prim:
+        bad.append(
+            f"the first row is {chain_rows()[0].key}, but signals.primary "
+            f"({cfg['signals']['primary']}) is chain {prim}"
+        )
     if bad:
         raise SystemExit(
             "the chains table (config/gnss_fleet_chord.yaml chains:) is invalid:\n  "
@@ -3535,10 +3546,10 @@ def main():
         action="append",
         default=[],
         metavar="NAME:PRNS",
-        help="add a tracker chain for another signal (NAME from gnssSignal.hpp), e.g. "
-        "--extra-signal GAL_E5A_Q_CS:1,2,3. Repeatable. PRNs are required "
-        "(constellations number their PRNs differently, and a chain has "
-        f"{SYNTH_SLOTS} PRN slots). A chain whose covering "
+        help="add the tracker chain of a row of the chains table "
+        "(config/gnss_fleet_chord.yaml chains:): NAME is the row's descriptor and PRNS "
+        "its prns, which must match, e.g. --extra-signal GAL_E5A_Q_CS:2,3,4. Repeatable; "
+        "gen_fleet passes every row but the primary, in row order. A chain whose covering "
         "channels match the primary's shares its voltage tap (E5a and B2a are on "
         "L5's carrier); a different carrier gets its own tap. Buffer and endpoint "
         "names carry the chain's broker key (GAL_E5A_Q_CS -> gnss0_gal_e5a_n2assemble). "

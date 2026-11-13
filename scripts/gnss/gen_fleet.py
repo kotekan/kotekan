@@ -420,8 +420,10 @@ def check_chains(fleet, path=CHAINS):
         gnss_fleet.table_keys(raw, fleet.chains)
     except gnss_fleet.FleetError as e:
         bad.append(str(e))
+    common_signal = (raw.get("common") or {}).get("signal")
     run = {
-        str((v or {}).get("signal", c)) for c, v in (raw.get("chains") or {}).items()
+        str((v or {}).get("signal", common_signal or c))
+        for c, v in (raw.get("chains") or {}).items()
     }
     for r in fleet.chains:
         if r.key not in run:

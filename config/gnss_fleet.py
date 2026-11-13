@@ -161,6 +161,14 @@ class Fleet:
             self.chains = gnss_chain_table.rows(self.man)
         except gnss_chain_table.TableError as e:
             raise FleetError("%s: %s" % (self.manifest_path, e))
+        if not self.chains:
+            raise FleetError("%s: no chains" % self.manifest_path)
+        prim = broker_chain_name(self.site["signals"]["primary"])
+        if self.chains[0].key != prim:
+            raise FleetError(
+                "%s: the first chains row is %s, but the node table's primary is chain %s"
+                % (self.manifest_path, self.chains[0].key, prim)
+            )
         if "extra-signal" in (self.man.get("common") or {}):
             raise FleetError(
                 "%s: common sets extra-signal; the chains are the rows of chains: "
@@ -362,6 +370,7 @@ def table_keys(cfg, table, where="the chains table"):
             "common sets dll-spacing; each chain's comes from its row in %s" % where
         )
     rows = {r.key: r for r in table}
+    common_signal = (cfg.get("common") or {}).get("signal")
     chains = {}
     for name, spec in (cfg.get("chains") or {}).items():
         spec = dict(spec or {})
@@ -370,7 +379,7 @@ def table_keys(cfg, table, where="the chains table"):
                 "chains.%s sets dll-spacing; it comes from the chain's row in %s"
                 % (name, where)
             )
-        key = str(spec.get("signal", name))
+        key = str(spec.get("signal", common_signal or name))
         if key not in rows:
             raise FleetError("chains.%s: %s has no row in %s" % (name, key, where))
         spec["dll-spacing"] = rows[key].dll_spacing_chips
