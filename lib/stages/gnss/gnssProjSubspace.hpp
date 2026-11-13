@@ -433,6 +433,8 @@ struct ProjEntry {
 /// complex<float> per channel per record.
 class ProjBoard {
 public:
+    using Key = std::tuple<std::string, int, std::string>; ///< (group, freq_id, owner)
+
     static ProjBoard& instance() {
         static ProjBoard b;
         return b;
@@ -470,11 +472,16 @@ public:
             f(e);
         }
     }
+    /// A copy of every entry, in key order, taken under the lock.
+    std::vector<std::pair<Key, ProjEntry>> snapshot() const {
+        std::lock_guard<std::mutex> lk(_m);
+        return {_e.begin(), _e.end()};
+    }
 
 private:
     ProjBoard() = default;
     mutable std::mutex _m;
-    std::map<std::tuple<std::string, int, std::string>, ProjEntry> _e;
+    std::map<Key, ProjEntry> _e;
 };
 
 } // namespace gnss
