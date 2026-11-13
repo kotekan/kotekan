@@ -354,7 +354,13 @@ common:
     # inputs and config/gnss_bad_inputs.json's are zeroed on top at generation. Relabelled
     # unchanged to the per-dish positions' key (elem_shared_ref.py relabel). After any F-engine
     # restart, expect to re-take it.
-    elem-shared-ref: config/elem_shared_ref_20261025_f0reset_refkey.json
+    # Re-taken 2026-11-13 00:08Z after the chord-merge cycle: the 150-1600 MHz band's gains of
+    # 11-11 had left the 10-25 shapes describing the models at similarity 0.5-0.8 (B2a pol0
+    # 0.53), so every restart started on it and the cron re-posted its own re-takes for up to
+    # 30 min. Fourteen bands (the ten, plus B1I, E1-C, L1 C/A and SBAS L1), all instances,
+    # R >= 0.99, similarity medians 0.85-1.00, phases within 2 deg of the pins in use. GuoWang
+    # 1202 and GLONASS L2 FDMA have no consensus and stay out (elem_ref_cron.sh holds them).
+    elem-shared-ref: config/elem_shared_ref_20261113.json
     elem-shared-ref-mode: live
     # The gnss VM, which runs the search aggregator, the telemetry gather and the broker.
     # 127.0.0.1, the generator default, would point every node at itself. Moving the aggregator
