@@ -312,6 +312,52 @@ class DbTest(unittest.TestCase):
         self.assertEqual(e["status"], "transmitting")
         self.assertNotIn("status_basis", e)
 
+    def test_rejected_detection_and_entry_without_evidence(self):
+        db = {
+            "about": "",
+            "satellites": {
+                # credited with a code-mate's signal at 7.5 deg after a silent pass
+                "DIGUI-1": dict(
+                    g2_phase=10,
+                    theta_us=374.0,
+                    measured_utc="2026-11-02T10:00:40Z",
+                    sep_deg=7.5,
+                    ref_input=116,
+                    passes=[
+                        ["2026-11-01T10:00:00Z", 1.0, False],
+                        ["2026-11-02T10:00:40Z", 7.5, True],
+                    ],
+                    status="transmitting",
+                ),
+                # entered from a miss that a later no-sky period covers
+                "DIGUI-2": dict(
+                    passes=[["2026-11-02T12:30:00Z", 2.0, False]],
+                    status="no_transmission",
+                ),
+                # a hand entry: no passes
+                "DIGUI-3": dict(passes=[], status="no_transmission"),
+            },
+            "no_sky": [dict(start="2026-11-02T12:00:00Z", end=None)],
+            "rejected": {"DIGUI-1": [["2026-11-02T10:00:43Z", "DIGUI-9's signal"]]},
+        }
+        prop = dict(
+            sat="DIGUI-1", g2_phase=10, theta_us=374.0, sep_deg=7.5, ref_input=116
+        )
+        prop["measured_utc"] = "2026-11-02T10:00:38Z"
+        passes = {
+            "DIGUI-1": {"2026-11-02T10:00:40Z": ["2026-11-02T10:00:40Z", 7.5, True]}
+        }
+        changes = gdb.update(db, passes, {"DIGUI-1": [prop]}, {})
+        s = db["satellites"]
+        e = s["DIGUI-1"]
+        self.assertEqual((e["status"], e["g2_phase"]), ("no_transmission", None))
+        self.assertEqual(e["passes"], [["2026-11-01T10:00:00Z", 1.0, False]])
+        self.assertNotIn("theta_us", e)
+        self.assertNotIn("DIGUI-2", s)
+        self.assertEqual(s["DIGUI-3"]["status"], "no_transmission")
+        self.assertTrue(any("DIGUI-1: code G2' 10 withdrawn" in c for c in changes))
+        self.assertTrue(any("DIGUI-2: REMOVED" in c for c in changes))
+
     def test_no_sky_set_after_the_fact(self):
         db = {
             "about": "",

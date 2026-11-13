@@ -1197,24 +1197,16 @@
    ]
   },
   "DIGUI-72": {
-   "status": "transmitting",
+   "status": "no_transmission",
    "catnum": 65232,
-   "g2_phase": 1896,
-   "theta_us": 374.256,
-   "carrier_minus_tle_ppb": 28.4,
-   "measured_utc": "2026-11-13T02:10:48Z",
-   "source": "2026-11-13 beam dump window 168 (gw_reduce, 8135 frames over 16 s)",
-   "sep_deg": 8.32,
-   "ref_input": 116,
-   "drift_ns_s": -117.72,
-   "last_observed_utc": "2026-11-13T02:11:24Z",
-   "last_checked_utc": "2026-11-13T02:11:24Z",
-   "last_checked_sep_deg": 7.55,
-   "passes_found": 1,
+   "g2_phase": null,
+   "last_observed_utc": null,
+   "last_checked_utc": "2026-11-07T14:16:16Z",
+   "last_checked_sep_deg": 1.77,
+   "passes_found": 0,
    "passes_silent": 1,
    "passes": [
-    ["2026-11-07T14:16:16Z", 1.77, false],
-    ["2026-11-13T02:11:24Z", 7.55, true]
+    ["2026-11-07T14:16:16Z", 1.77, false]
    ]
   },
   "DIGUI-73": {
@@ -3974,19 +3966,6 @@
     ["2026-11-12T21:00:59Z", 0.2, false]
    ]
   },
-  "DIGUI-223": {
-   "status": "no_transmission",
-   "catnum": null,
-   "g2_phase": null,
-   "last_observed_utc": null,
-   "last_checked_utc": "2026-11-13T08:42:04Z",
-   "last_checked_sep_deg": 2.98,
-   "passes_found": 0,
-   "passes_silent": 1,
-   "passes": [
-    ["2026-11-13T08:42:04Z", 2.98, false]
-   ]
-  },
   "DIGUI-227": {
    "status": "no_transmission",
    "catnum": null,
@@ -4257,6 +4236,11 @@
   ],
   "DIGUI-125": [
    ["2026-11-08T23:47:38Z", false, "clipping monitor: the 1268 MHz lobe without the 1202 MHz lobe on this pass and every later one to 11-11 (KV 2026-11-12: count silent), 5.58 deg"]
+  ]
+ },
+ "rejected": {
+  "DIGUI-72": [
+   ["2026-11-13T02:11:24Z", "DIGUI-141 signal: code 1896 found on DIGUI-141 in the same window (168) at 4.12 deg; theta +374 us = the range difference to DIGUI-141 (113.1 km); ring r326 has no transmitter"]
   ]
  }
 }

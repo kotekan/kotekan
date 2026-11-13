@@ -33,10 +33,16 @@ the clipping monitor (the 1268 MHz lobe on a pass without the 1202 MHz lobe) or 
 (CRC-valid messages). A verdict newer than the newest conclusive pass sets status, and
 status_basis says which; passes and last_checked_utc stay beam-dump only.
 
+rejected holds, per satellite, detections credited to it that belong to another satellite (a
+code-mate's signal in the same window): [utc, basis]. The pass and the proposal within 300 s of
+utc count for nothing, and a code reference taken from them is withdrawn. An entry left with no
+evidence at all (its passes in a no-sky period or rejected) is removed.
+
     guowang_db.py update --reduce-log cf06_reduce_log.jsonl --reduce-log cf05_reduce_log.jsonl \\
         --proposals ~/gnss/builds/gw1202/db_proposals.jsonl [--dry-run] [--message-out msg.txt]
     guowang_db.py nosky --start 2026-11-03T16:34:50Z [--end 2026-11-04T01:00:00Z] --note "..."
     guowang_db.py verdict --sat DIGUI-119 --utc 2026-11-07T23:43:14Z --silent --basis "..."
+    guowang_db.py reject --sat DIGUI-72 --utc 2026-11-13T02:11:24Z --basis "..."
     guowang_db.py show
 """
 import argparse
@@ -117,6 +123,11 @@ def save(db, path=DB_PATH):
     with open(tmp, "w") as fh:
         fh.write(dumps(db))
     os.replace(tmp, path)
+
+
+def near(t, times, secs=300):
+    """whether the UTC string t lies within secs of any of times (datetimes): the same pass."""
+    return any(abs((parse_utc(t) - x).total_seconds()) < secs for x in times)
 
 
 def in_no_sky(db, t):
@@ -237,30 +248,39 @@ def update(db, passes, proposals, catnums, silent_max_sep=SILENT_MAX_SEP_DEG):
     for name in sorted(names, key=sat_key):
         old = sats.get(name)
         e = dict(old) if old else {}
+        # a rejected detection (a code-mate's signal) counts for nothing, nor a code reference from it
+        rej = [parse_utc(r[0]) for r in db.get("rejected", {}).get(name, [])]
+        if e.get("measured_utc") and near(e["measured_utc"], rej):
+            for k in CODE_FIELDS:
+                e.pop(k, None)
         # pass history: the stored list, the reduce logs, and the code reference's own pass
         # a miss inside a no-sky period (set after the fact) is not evidence of silence
         hist = {
             p[0]: list(p)
             for p in e.get("passes", [])
-            if p[2] or not in_no_sky(db, parse_utc(p[0]))
+            if (p[2] or not in_no_sky(db, parse_utc(p[0]))) and not near(p[0], rej)
         }
         if e.get("g2_phase") is not None and e.get("measured_utc") and not hist:
             hist[e["measured_utc"]] = [e["measured_utc"], e.get("sep_deg"), True]
         for key, p in passes.get(name, {}).items():
-            near = [
+            if near(key, rej):
+                continue
+            same = [
                 k
                 for k in hist
                 if abs((parse_utc(k) - parse_utc(key)).total_seconds()) < 300
             ]
             if (
-                near
+                same
             ):  # the same pass (the code reference's closest-approach stamp, or a re-reduction)
-                for k in near:
+                for k in same:
                     del hist[k]
             hist[key] = p
         # code reference: the closest pass on which the code was found, on the same reference input
         ref = {k: e[k] for k in CODE_FIELDS if k in e and e.get("g2_phase") is not None}
         for p in proposals.get(name, []):
+            if near(p["measured_utc"], rej):
+                continue
             if ref and p["g2_phase"] != ref["g2_phase"]:
                 changes.append(
                     "%s: CODE CONFLICT, pass %s has G2' %d, library %d (library kept)"
@@ -282,6 +302,13 @@ def update(db, passes, proposals, catnums, silent_max_sep=SILENT_MAX_SEP_DEG):
             ):
                 hist[p["measured_utc"]] = [p["measured_utc"], p["sep_deg"], True]
         if not hist and not ref:
+            # no evidence left (passes in a no-sky period or rejected); hand entries have no passes
+            if old and old.get("passes") and not db.get("verdicts", {}).get(name):
+                del sats[name]
+                changes.append(
+                    "%s: REMOVED, no evidence left (no-sky or rejected passes only)"
+                    % name
+                )
             continue
         plist = sorted(hist.values(), key=lambda p: p[0])
         found = [p for p in plist if p[2]]
@@ -350,6 +377,11 @@ def update(db, passes, proposals, catnums, silent_max_sep=SILENT_MAX_SEP_DEG):
                 )
             if old.get("g2_phase") is None and n["g2_phase"] is not None:
                 changes.append("%s: code found, G2' %d" % (name, n["g2_phase"]))
+            if old.get("g2_phase") is not None and n["g2_phase"] is None:
+                changes.append(
+                    "%s: code G2' %d withdrawn (rejected detection)"
+                    % (name, old["g2_phase"])
+                )
         sats[name] = n
     db["schema"] = SCHEMA
     db["silent_max_sep_deg"] = silent_max_sep
@@ -432,6 +464,22 @@ def cmd_verdict(a):
     print(
         json.dumps(
             {a.sat: db["satellites"].get(a.sat, {}).get("status"), "verdicts": v},
+            indent=1,
+        )
+    )
+
+
+def cmd_reject(a):
+    db = load(a.db)
+    r = db.setdefault("rejected", {}).setdefault(a.sat, [])
+    r[:] = [x for x in r if x[0] != a.utc] + [[a.utc, a.basis]]
+    r.sort()
+    for c in update(db, {}, {}, {}):
+        print("  " + c)
+    save(db, a.db)
+    print(
+        json.dumps(
+            {a.sat: db["satellites"].get(a.sat, {}).get("status"), "rejected": r},
             indent=1,
         )
     )
@@ -526,10 +574,18 @@ def main():
     v.add_argument("--utc", required=True, help="UTC of the pass or first message")
     v.add_argument("--silent", action="store_true", help="not transmitting at 1202 MHz")
     v.add_argument("--basis", required=True)
+    r = sub.add_parser(
+        "reject",
+        help="drop a detection credited to a satellite that belongs to another",
+    )
+    r.add_argument("--sat", required=True)
+    r.add_argument("--utc", required=True, help="UTC of the pass (within 300 s)")
+    r.add_argument("--basis", required=True)
     s = sub.add_parser("show", help="one line per satellite")
     u.set_defaults(func=cmd_update)
     n.set_defaults(func=cmd_nosky)
     v.set_defaults(func=cmd_verdict)
+    r.set_defaults(func=cmd_reject)
     s.set_defaults(func=cmd_show)
     a = ap.parse_args()
     a.func(a)
