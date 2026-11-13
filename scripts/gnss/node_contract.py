@@ -22,10 +22,10 @@ The facets:
              beam_lane_owner, the telemetry header fields and frame size, bufferSend addresses
   placement  numa_node of every buffer and cpu_affinity of every stage; a gnss<g>_ buffer off
              NUMA node g is listed as misplaced
-  stall      per chain, the GPU frames of slack before cudaOutputData blocks the half: tiles +
-             epl + usable rec frames / records per frame. A bufferMerge with no timeout
-             downstream of a chain's tiles or records is listed under its own name with its
-             (negative) timeout
+  stall      per chain, the GPU frames of slack before cudaOutputData blocks the half:
+             min(tiles, ctl) + epl + usable rec frames / records per frame. A bufferMerge with
+             no timeout on a chain's path from cudaOutputData's tiles and ctl through its
+             records is listed under its own name with its (negative) timeout
   census     what elem_shared_ref, lane_relay, gen_fleet, viscap_read and gnss_fleet.stage_chain
              find in the config, each by its own code
 """
@@ -237,43 +237,85 @@ def placement(cfg):
     }
 
 
+def _ins(scope):
+    return {n for k in IN_KEYS for n in _names(scope[0].get(k))}
+
+
+def _outs(scope):
+    return {n for k in OUT_KEYS for n in _names(scope[0].get(k))}
+
+
+def _downstream(stages, buf, kind):
+    """The scope of the first stage of this kind downstream of buf, or None."""
+    seen, todo = {buf}, [buf]
+    while todo:
+        b = todo.pop(0)
+        for u, s in stages:
+            if b not in _ins(s):
+                continue
+            if s[0]["kotekan_stage"] == kind:
+                return s
+            todo += sorted(_outs(s) - seen)
+            seen |= _outs(s)
+    return None
+
+
+def _upstream(stages, bufs):
+    """bufs and every buffer the host stages that fill them read, back to the GPU."""
+    out, todo = set(bufs), list(bufs)
+    while todo:
+        b = todo.pop()
+        for u, s in stages:
+            if b in _outs(s):
+                todo += sorted(_ins(s) - out)
+                out |= _ins(s)
+    return out
+
+
 def stall_budget(cfg):
-    """{adapter unique_name: GPU frames of slack}, plus {bufferMerge unique_name: timeout} for
-    every merge with no timeout downstream of a chain's tiles or records."""
+    """{adapter unique_name: GPU frames of slack, or 'unresolved' with no assembler downstream
+    of its epl}, plus {bufferMerge unique_name: timeout} for every merge with no timeout on a
+    chain's path from cudaOutputData's tiles and ctl through its records. cudaOutputData fills
+    tiles and ctl together and the adapter drains them together, so the shallower counts."""
     bufs = _buffers(cfg)
-    asm = {_get(s, "in_buf"): s for u, s in _stages(cfg, "GnssGpuRecordAssemble")}
+    stages = _stages(cfg)
     out, reach = {}, set()
     for u, s in _stages(cfg, "GnssN2RecordAssemble"):
-        tiles, epl = _get(s, "tiles_buf"), _get(s, "out_buf")
-        rec = _get(asm[epl], "out_buf")
+        tiles, ctl, epl = _get(s, "tiles_buf"), _get(s, "ctl_buf"), _get(s, "out_buf")
+        reach |= _upstream(stages, (tiles, ctl))
+        a = _downstream(stages, epl, "GnssGpuRecordAssemble")
+        if a is None:
+            out[u] = "unresolved"
+            continue
+        rec = _get(a, "out_buf")
         rb = bufs[rec]
         per_frame = _get(s, "samples_per_data_set") // _get(s, "hops_per_record")
         hold = 1 if _get(rb, "peek_hold", False) else 0
         out[u] = (
-            _get(bufs[tiles], "num_frames")
+            min(_get(bufs[tiles], "num_frames"), _get(bufs[ctl], "num_frames"))
             + _get(bufs[epl], "num_frames")
             + (_get(rb, "num_frames") - hold) / per_frame
         )
-        reach.update((tiles, rec))
-    stages = _stages(cfg)
+        reach.add(rec)
     grown = True
     while grown:
         grown = False
         for u, s in stages:
-            if any(n in reach for k in IN_KEYS for n in _names(s[0].get(k))):
-                new = {n for k in OUT_KEYS for n in _names(s[0].get(k))} - reach
+            if _ins(s) & reach:
+                new = _outs(s) - reach
                 reach |= new
                 grown = grown or bool(new)
     for u, s in _stages(cfg, "bufferMerge"):
         timeout = _get(s, "timeout", -1.0)
-        if timeout < 0 and any(n in reach for n in _names(s[0].get("in_bufs"))):
+        if timeout < 0 and set(_names(s[0].get("in_bufs"))) & reach:
             out[u] = float(timeout)
     return out
 
 
-def census(cfg_path, node):
+def census(cfg_path, node, host=None):
     """{tool: [what it finds]} for this node's config. elem_shared_ref reads its configs by
-    name from one directory, so CONFIG must carry the generated name."""
+    name from one directory, so CONFIG must carry the generated name. config_zeros is asked
+    about every assembler in the config, not only those endpoints() finds."""
     if os.path.basename(cfg_path) != "chord_gnss_%s_multi.yaml" % node:
         raise ValueError(
             "%s: the census needs chord_gnss_%s_multi.yaml" % (cfg_path, node)
@@ -290,7 +332,9 @@ def census(cfg_path, node):
         zeros = [
             "%s: %s"
             % (st, ",".join(map(str, sorted(elem_shared_ref.config_zeros(node, st)))))
-            for st in eps
+            for st in sorted(
+                u.rsplit("/", 1)[1] for u, s in _stages(cfg, "GnssGpuRecordAssemble")
+            )
         ]
     finally:
         elem_shared_ref.GEN = saved
@@ -304,7 +348,7 @@ def census(cfg_path, node):
     for u, s in _stages(cfg, "GnssGpuRecordAssemble"):
         m = lane_relay.OWNER.match(u + "/lane/0")
         own = gnss_fleet.stage_chain(m.group(1), "n2assemble") if m else None
-        cube = _cube(u, s, node)
+        cube = _cube(u, s, host or node)
         chains.append("owner %s/lane/ -> %s" % (u, own))
         if cube:
             chains.append(
@@ -343,7 +387,7 @@ def snapshot(cfg_path, node, host):
         "identity": identity(cfg, host),
         "placement": placement(cfg),
         "stall": stall_budget(cfg),
-        "census": census(cfg_path, node),
+        "census": census(cfg_path, node, host),
     }
 
 
