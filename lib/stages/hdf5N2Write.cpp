@@ -11,6 +11,7 @@
 #include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO, FATAL_ERROR, WARN
 #include "restClient.hpp"     // for restClient
 #include "timeUtil.hpp"       // for EOP
+#include "truncate.hpp"       // for bit_truncate_float
 #include "util.h"             // for mkdir_p
 #include "visUtil.hpp"        // for cfloat
 
@@ -28,7 +29,7 @@
 #include <cassert>           // for assert
 #include <cfloat>            // for DBL_MAX
 #include <chrono>            // for duration, duration_cast, operator-, sys...
-#include <cmath>             // for fabs
+#include <cmath>             // for fabs, sqrt, isfinite
 #include <complex>           // for complex
 #include <configTracker.hpp> // for ConfigTracker
 #include <cstdint>           // for uint64_t, int64_t, int32_t, uint16_t
@@ -329,6 +330,8 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_attribute(*file, "num_ev", fv.num_ev);
         _check_create_attribute(*file, "n2_layout", N2Layout_to_string(fv.n2_layout));
         _check_create_attribute(*file, "input_order", ElementOrder_to_string(input_order));
+        _check_create_attribute(*file, "err_sq_lim", err_sq_lim);
+        _check_create_attribute(*file, "weight_fixed_precision", weight_fixed_precision);
 
         // Telescope info
         const CHORDTelescope& telescope = Telescope::instance().cast<CHORDTelescope>();
@@ -692,15 +695,17 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
                        const ElementOrder input_order_, const size_t blocksize_f_,
                        const size_t blocksize_p_, const size_t blocksize_t_,
                        const std::string compression_, const size_t compression_level_,
-                       const bool use_bitshuffle_, const std::string base_dir_,
+                       const bool use_bitshuffle_, const float err_sq_lim_,
+                       const float weight_fixed_precision_, const std::string base_dir_,
                        const std::string baseband_gain_file_, const int baseband_gain_update_idx_) :
     num_elements(fv.num_elements), num_prod(fv.num_prod), num_ev(fv.num_ev),
     input_order(input_order_),
     num_file_f(Telescope::instance().cast<CHORDTelescope>().num_science_freqs()),
     num_file_t(num_file_t_), file_mode(file_mode_), blocksize_f(blocksize_f_),
     blocksize_p(blocksize_p_), blocksize_t(blocksize_t_), compression(compression_),
-    compression_level(compression_level_), use_bitshuffle(use_bitshuffle_),
-    open_wall_s(open_wall_s_), abs_file_idx(abs_file_idx_), base_dir(std::move(base_dir_)),
+    compression_level(compression_level_), use_bitshuffle(use_bitshuffle_), err_sq_lim(err_sq_lim_),
+    weight_fixed_precision(weight_fixed_precision_), open_wall_s(open_wall_s_),
+    abs_file_idx(abs_file_idx_), base_dir(std::move(base_dir_)),
     baseband_gain_file(std::move(baseband_gain_file_)),
     baseband_gain_update_idx(baseband_gain_update_idx_),
     partial_filepath(base_dir + "/.partial/" + "vis_" + std::to_string(abs_file_idx_) + ".h5"),
@@ -893,10 +898,21 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
                            f_index, t_index, structural_checks_failures);
 
 
-    // Store vis + weight
+    // Store vis + weight, truncated to the precision the weight supports
     for (size_t p = 0; p < num_prod; ++p) {
-        vis[idx_fpt(f_index, p, t_index)] = fv.vis[p];
-        vis_weight[idx_fpt(f_index, p, t_index)] = fv.weight[p];
+        N2::cfloat v = fv.vis[p];
+        float w = fv.weight[p];
+        if (w > 0.0f && std::isfinite(w)) {
+            // Weight first, so the vis error bound holds for the stored weight.
+            if (weight_fixed_precision > 0.0f)
+                w = bit_truncate_float(w, weight_fixed_precision * w);
+            if (err_sq_lim > 0.0f) {
+                const float err = std::sqrt(0.5f * err_sq_lim / w);
+                v = {bit_truncate_float(v.real(), err), bit_truncate_float(v.imag(), err)};
+            }
+        }
+        vis[idx_fpt(f_index, p, t_index)] = v;
+        vis_weight[idx_fpt(f_index, p, t_index)] = w;
     }
     // Store eval + evec
     for (size_t e = 0; e < num_ev; ++e) {
@@ -1259,6 +1275,8 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
     _compression(config.get_default<std::string>(unique_name, "compression", "none")),
     _compression_level(config.get_default<std::uint64_t>(unique_name, "compression_level", 0)),
     _use_bitshuffle(config.get_default<bool>(unique_name, "use_bitshuffle", false)),
+    _err_sq_lim(config.get_default<float>(unique_name, "err_sq_lim", 0.0f)),
+    _weight_fixed_precision(config.get_default<float>(unique_name, "weight_fixed_precision", 0.0f)),
     _blocksize_f(config.get_default<std::uint64_t>(unique_name, "blocksize_f", 16)),
     _blocksize_p(config.get_default<std::uint64_t>(unique_name, "blocksize_p", 16)),
     _blocksize_t(config.get_default<std::uint64_t>(unique_name, "blocksize_t", _num_file_t)),
@@ -1300,6 +1318,17 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
         "kotekan_hdf5N2Write_bad_feed_mask_unmasked_freqs_total", unique_name, {"stream"})) {
 
     _buffer->register_consumer(unique_name);
+
+    if (!(_err_sq_lim >= 0.0f && std::isfinite(_err_sq_lim)))
+        FATAL_ERROR("err_sq_lim ({:f}) must be finite and >= 0", _err_sq_lim);
+    // A relative precision of 1 or more rounds weights to 0, marking the data missing.
+    if (!(_weight_fixed_precision >= 0.0f && _weight_fixed_precision < 1.0f))
+        FATAL_ERROR("weight_fixed_precision ({:f}) must be in [0, 1)", _weight_fixed_precision);
+    const bool compressed = _use_bitshuffle ? (_compression == "zstd" || _compression == "lz4")
+                                            : _compression == "deflate";
+    if ((_err_sq_lim > 0.0f || _weight_fixed_precision > 0.0f) && !compressed)
+        FATAL_ERROR("err_sq_lim and weight_fixed_precision need a compressor: deflate, or "
+                    "bitshuffle with zstd or lz4");
 
     if (_bad_feed_mask_buf != nullptr) {
         _bad_feed_mask_buf->register_consumer(unique_name);
@@ -1897,7 +1926,8 @@ void hdf5N2Write::main_thread() {
             auto N2FileData_obj = std::make_unique<N2FileData>(
                 N2FileData::CHORD, _num_file_t, fv, frame_recv_time, abs_file_idx, _input_order,
                 _blocksize_f, _blocksize_p, _blocksize_t, _compression, _compression_level,
-                _use_bitshuffle, _base_dir, _baseband_gain_file, _baseband_gain_update_idx);
+                _use_bitshuffle, _err_sq_lim, _weight_fixed_precision, _base_dir,
+                _baseband_gain_file, _baseband_gain_update_idx);
 
             filedata.emplace(abs_file_idx, std::move(N2FileData_obj));
             N2FileData_ptr = filedata.find(abs_file_idx)->second.get();
