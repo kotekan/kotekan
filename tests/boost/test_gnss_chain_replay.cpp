@@ -878,6 +878,12 @@ bool matches(const std::string& key, const std::string& pat) {
     return key == pat;
 }
 
+/// 1/s as GnssN2RecordAssemble computes it from a replica energy.
+double adapter_inv_scale(const ChainSpec& s, double e) {
+    const double rms = std::sqrt(e / (double)s.hops_per_record);
+    return 1.0 / (7.0 / (3.0 * rms));
+}
+
 // ---- checks ----
 
 std::set<std::string> changed(const Digests& a, const Digests& b) {
@@ -1221,6 +1227,66 @@ BOOST_AUTO_TEST_CASE(mutations) {
         for (const auto& pat : mc.same)
             for (const auto& k : ch)
                 BOOST_CHECK_MESSAGE(!matches(k, pat), mc.name << ": " << k << " changed");
+    }
+}
+
+/// Bytes a stage leaves unwritten would carry the buffers' fill into a digest.
+BOOST_AUTO_TEST_CASE(prefill) {
+    const Digests& base = baseline();
+    Scenario stale = base_scenario();
+    stale.refill_a5 = false;
+    Scenario zero = base_scenario();
+    zero.prefill = 0x00;
+    const std::set<std::string> a = changed(base, run_scenario(chains(), stale));
+    const std::set<std::string> b = changed(base, run_scenario(chains(), zero));
+    BOOST_CHECK_MESSAGE(a.empty(), "no 0xA5 epl refill changes: " << join(a));
+    BOOST_CHECK_MESSAGE(b.empty(), "a 0x00 prefill changes: " << join(b));
+}
+
+/// Current behaviour that a fix must flip.
+BOOST_AUTO_TEST_CASE(current_behaviour_pins) {
+    const Digests& d = baseline();
+    const Scenario sc = base_scenario();
+    // PIN_B1: GnssCoherentCombiner keeps slot state across a PRN swap. At the next checkpoint the
+    // swapped slot's get_records still holds the departed PRN's records, and its ADR arc did not
+    // break at the swap.
+    {
+        const ChainSpec& A = chains()[0];
+        const json& L = d.live.at(A.pre);
+        const int was = A.prns[(size_t)sc.swap_slot], now = was + 100;
+        const double swap_hop =
+            (double)(REC_BASE + (int64_t)A.n_rec * sc.swap_frame) * A.hops_per_record;
+        const json before = L.at("status@29").at((size_t)sc.swap_slot);
+        const json after = L.at("status@59").at((size_t)sc.swap_slot);
+        BOOST_CHECK_EQUAL(before[0].get<int>(), was);
+        BOOST_CHECK_EQUAL(after[0].get<int>(), now);
+        BOOST_CHECK_MESSAGE(L.at("records_min_hop@59").at(std::to_string(now)).get<double>()
+                                < swap_hop,
+                            "PIN_B1: get_records of PRN " << now
+                                                          << " holds no record from before the "
+                                                             "swap");
+        BOOST_CHECK_MESSAGE(before[2] == after[2], "PIN_B1: the ADR arc broke at the swap: "
+                                                       << before[2] << " -> " << after[2]);
+    }
+    // PIN_B2: GnssN2RecordAssemble dequantises a slot dark at record 0 with record 0's job-0
+    // energy (another slot's) in the later records, not with its own.
+    {
+        const ChainSpec& B = chains()[1];
+        const json& t = d.pins.at("B2_tiles");
+        const json& v = d.pins.at("B2_epl");
+        const double e_job0 = energy(B, 0, 0), e_own = energy(B, sc.dark_r0_slot, 0);
+        BOOST_REQUIRE_EQUAL(v.size(), (size_t)(B.n_rec - 1));
+        for (size_t r = 0; r < v.size(); ++r) {
+            const double tile = t[r].get<double>(), got = v[r].get<double>();
+            const double want = tile * adapter_inv_scale(B, e_job0);
+            BOOST_REQUIRE(tile != 0.0);
+            BOOST_CHECK_MESSAGE(std::fabs(got - want) <= 1e-12 * std::fabs(got),
+                                "PIN_B2: record " << r + 1 << " reads " << got
+                                                  << ", not tile/s(job 0) " << want);
+            BOOST_CHECK_MESSAGE(std::fabs(got - tile * adapter_inv_scale(B, e_own))
+                                    > 1e-6 * std::fabs(got),
+                                "PIN_B2: record " << r + 1 << " is scaled by its own energy");
+        }
     }
 }
 
