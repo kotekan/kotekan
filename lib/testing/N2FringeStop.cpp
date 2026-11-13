@@ -64,6 +64,10 @@ N2FringeStop::N2FringeStop(Config& config, const std::string& unique_name,
     nprod = num_elements * (num_elements + 1) / 2;
 
     feed_positions_m = Telescope::instance().get_feed_positions_m(num_elements, input_order);
+    fringestop_mask = Telescope::instance().get_fringestop_mask(num_elements, input_order);
+    if (fringestop_mode > 0 && !Telescope::instance().phase_center_is_set())
+        FATAL_ERROR("fringestop_mode is set but the telescope phase center (dish_coelev_deg) is "
+                    "not.");
 }
 
 void N2FringeStop::main_thread() {
@@ -115,7 +119,7 @@ void N2FringeStop::main_thread() {
 
         if (fringestop_mode > 0)
             tel.fill_fringestop_phases_1d(in_frame.freq_MHz, eop, eop_target, feed_positions_m,
-                                          fringe_phase);
+                                          fringestop_mask, fringe_phase);
 
         size_t idx = 0;
         for (size_t i = 0; i < num_elements; i++) {
