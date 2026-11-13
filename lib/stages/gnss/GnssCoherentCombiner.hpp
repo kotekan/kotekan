@@ -75,6 +75,8 @@
  * @conf fft_len             Int. F-engine FFT length, to turn sample_seq into hops.
  * @conf record_export       Int (default 0 = off). Per-PRN record ring length for get_records.
  * @conf bit_export          Bool (default false). Publish nav_obs in get_status.
+ * @conf reset_on_prn_change Bool (default true). When a slot's records carry a new PRN (a live
+ *                           swap), its state restarts cold, as GnssGpuRecordAssemble's does.
  *
  * @buffer in_bufs A list of one buffer: the node's records (gnssRecord.hpp tracker layout: a
  *                 RECORD_FLOATS header plus n_elements element blocks per PRN).
@@ -192,6 +194,7 @@ private:
     std::vector<float> _st_elem;
     double _st_elem_keff = 0.0; ///< effective records behind the snapshot (significance input)
     int _integration_length;    ///< EMA time constant (records)
+    bool _reset_on_prn_change;  ///< cold-reset a slot when its PRN changes
     int _emit_every;            ///< records between emits (output cadence)
     int _navwipe_bit_records;   ///< records per nav bit (0 = no wipe)
     /// Shared secondary overlay wiped ahead of the nav-bit wipe; empty if unused.

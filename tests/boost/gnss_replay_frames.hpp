@@ -65,6 +65,8 @@ struct Scenario {
     int cpu = -1;
     /// false: every combiner runs without out_buf, and its emits are read from its scratch.
     bool combiner_out_buf = true;
+    /// false: the combiners keep a slot's state across a PRN swap (reset_on_prn_change).
+    bool combiner_prn_reset = true;
 };
 
 /// Record index of frame 0's first record: a multiple of every window length the chains use

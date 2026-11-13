@@ -152,6 +152,7 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _navutc.assign(_n_prn, {});
     _navhead.assign(_n_prn, {});
     _bit_export = config.get_default<bool>(unique_name, "bit_export", false);
+    _reset_on_prn_change = config.get_default<bool>(unique_name, "reset_on_prn_change", true);
     if (_bit_export)
         _st_nav_obs.assign(_n_prn, {});
 
@@ -228,8 +229,8 @@ void GnssCoherentCombiner::main_thread() {
         out_id.emplace(out_buf);
 
     // Per-PRN integration accumulators: exponential moving averages (alpha =
-    // 1/_integration_length), bias-corrected at emit by dividing by (1 - (1-alpha)^n_roll) so
-    // they read true running means from record 1.
+    // 1/_integration_length), bias-corrected at emit by dividing by (1 - (1-alpha)^n), n the
+    // slot's records since its last reset, so they read true running means from record 1.
     std::vector<double> acc_pow(_n_prn), acc_ar(_n_prn), acc_ai(_n_prn), acc_nchan(_n_prn);
     std::vector<double> acc_pow2(_n_prn); // <|A|^4>, for the noise-debiased incoherent significance
     std::vector<double> acc_epow(_n_prn), acc_lpow(_n_prn); // <|E|^2>, <|L|^2> for the DLL disc
@@ -257,9 +258,12 @@ void GnssCoherentCombiner::main_thread() {
     _acc_eu_r.assign((size_t)_n_prn * _n_elements, 0.0);
     _acc_eu_i.assign((size_t)_n_prn * _n_elements, 0.0);
     _acc_euq.assign((size_t)_n_prn * _n_elements, 0.0);
-    long long n_roll = 0;   // total records seen (for EMA bias correction)
+    long long n_roll = 0;   // total records seen
     long long win_hop = -1; // absolute hop index labelling the current E/P/L window
     int since_emit = 0;     // records since the last emit
+    // Per slot, the records since its last cold reset (for EMA bias correction) and its PRN.
+    std::vector<long long> n_slot(_n_prn, 0);
+    std::vector<int> last_prn(_n_prn, -1);
     const double alpha = 1.0 / (double)_integration_length; // EMA weight
 
     while (!stop_thread) {
@@ -289,6 +293,39 @@ void GnssCoherentCombiner::main_thread() {
             // The un-normalized correlation and replica energy over the covering channels, and
             // from them the full-band amplitude.
             const float* ref = in + (size_t)p * _rec_stride;
+            // A live PRN swap: everything the slot holds describes the departed satellite and
+            // would be attributed to the new one, so the slot restarts as at the stage's start.
+            const int prn = (int)std::lround(ref[0]);
+            if (_reset_on_prn_change && prn != last_prn[p]) {
+                if (last_prn[p] >= 0) {
+                    INFO("GnssCoherentCombiner: slot {:d} PRN {:d} -> {:d}: cold reset", p,
+                         last_prn[p], prn);
+                    acc_pow[p] = acc_pow2[p] = acc_epow[p] = acc_lpow[p] = acc_ppow[p] = 0.0;
+                    acc_he[p] = acc_pe[p] = acc_ar[p] = acc_ai[p] = acc_nchan[p] = 0.0;
+                    n_slot[p] = 0;
+                    car_S[p] = {0.0, 0.0};
+                    car_prev[p] = {0.0, 0.0};
+                    car_dt[p] = 0.0;
+                    car_n[p] = 0;
+                    car_prev_utc[p] = -1.0;
+                    _navbuf[p].clear();
+                    _navsky[p].clear();
+                    _navutc[p].clear();
+                    _navhead[p].clear();
+                    for (int el = 0; el < _n_elements; ++el) {
+                        const size_t k = (size_t)p * _n_elements + el;
+                        _acc_epow_el[k] = _acc_ear[k] = _acc_eai[k] = 0.0;
+                        _acc_eu_r[k] = _acc_eu_i[k] = _acc_euq[k] = 0.0;
+                    }
+                    // The arc breaks; the next record pair starts a new one with a new id.
+                    _adr_ok[p] = 0;
+                    _adr_cyc[p] = _trim_cyc[p] = _res_cyc[p] = _adr_t0[p] = 0.0;
+                    _adr_n[p] = 0;
+                    if (_rec_export > 0)
+                        _recex[p].clear();
+                }
+                last_prn[p] = prn;
+            }
             const double gr = ref[3], gi = ref[4], energy = ref[5], nchan = ref[6];
             // Early/Late (gnssRecord.hpp): only their powers feed the DLL discriminator.
             const double er = ref[gnss::REC_E_RE], ei = ref[gnss::REC_E_IM],
@@ -426,7 +463,8 @@ void GnssCoherentCombiner::main_thread() {
                 car_prev[p] = A;
                 car_prev_utc[p] = utc_p;
             }
-            // Exponential moving average (no reset; integrates indefinitely).
+            // Exponential moving average, reset only on a PRN swap.
+            ++n_slot[p];
             acc_pow[p] += alpha * (p2 - acc_pow[p]);
             acc_pow2[p] += alpha * (p2 * p2 - acc_pow2[p]);
             acc_epow[p] += alpha * (e2 - acc_epow[p]);
@@ -484,9 +522,6 @@ void GnssCoherentCombiner::main_thread() {
         }
         // Again after the blocking wait: downstream backpressure is not this stage's cost.
         const double _t_emit0 = current_time();
-        // The EMA is already a mean, so just undo the warm-up bias (1-(1-alpha)^n_roll) -> a
-        // true running mean from record 1.
-        const double inv = 1.0 / (1.0 - std::pow(1.0 - alpha, (double)n_roll));
         std::vector<float> p_pow_out(_n_prn, 0.0f); // fleet-DLL prompt power (see acc_ppow)
         std::vector<double> deep_snr(_n_prn, 0.0);  // significance of the deep detection (for REST)
         std::vector<double> amp_snr(_n_prn, 0.0);   // noise-debiased incoherent significance (REST)
@@ -631,6 +666,9 @@ void GnssCoherentCombiner::main_thread() {
         };
         const double Keff = (double)_integration_length;
         for (int p = 0; p < _n_prn; ++p) {
+            // The EMA is already a mean, so just undo the warm-up bias (1-(1-alpha)^n) over the
+            // slot's n records since its last reset -> a true running mean from record 1.
+            const double inv = 1.0 / (1.0 - std::pow(1.0 - alpha, (double)n_slot[p]));
             float* rec = out + (size_t)p * _rec_stride;
             for (int f = 0; f < _rec_stride; ++f) // whole record: element blocks too
                 rec[f] = 0.0f;

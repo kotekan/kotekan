@@ -12,7 +12,8 @@
 // golden (GNSS_REPLAY_BLESS=1 writes it), and GNSS_REPLAY_DUMP=<dir> writes the endpoints and the
 // stage configs. A replay takes seconds in a Test build, so by default only the baseline and the
 // zero-amplitude control run; GNSS_REPLAY_FULL=1 adds the determinism, mutation and prefill
-// controls and a run whose combiners have no out_buf.
+// controls, a run whose combiners have no out_buf and one whose combiners keep slot state across
+// a PRN swap.
 
 #include "Config.hpp"                // for Config
 #include "GnssChanMetadata.hpp"      // for GnssChanMetadata, get_gnss_chan_metadata
@@ -308,6 +309,8 @@ json build_config(const std::vector<ChainSpec>& cs, const Scenario& sc,
             cb["out_buf"] = buf_name(s, "n2cmb_buf");
         else
             cb.erase("out_buf");
+        if (!sc.combiner_prn_reset)
+            cb["reset_on_prn_change"] = false;
         tp["in_buf"] = buf_name(s, "n2rec_buf");
         tp["out_buf"] = buf_name(s, "telem_buf");
         for (json* b : {&ad, &as, &cb, &tp})
@@ -589,7 +592,8 @@ void fire_gets(ChainRun& R, unsigned short port, const std::string& u, int k, Di
         } else if (verb == "get_status" && j.is_array()) {
             json rows = json::array();
             for (const auto& r : j)
-                rows.push_back({r["prn"], r["amplitude"], r["adr_arc"], r["coh_amplitude"]});
+                rows.push_back({r["prn"], r["amplitude"], r["adr_arc"], r["coh_amplitude"],
+                                r["deep_records"], r["adr_records"]});
             L["status" + cp] = rows;
         } else if (verb == "get_records" && j.is_array()) {
             json rows = json::object();
@@ -1351,30 +1355,37 @@ BOOST_AUTO_TEST_CASE(prefill) {
     BOOST_CHECK_MESSAGE(b.empty(), "a 0x00 prefill changes: " << join(b));
 }
 
-/// Current behaviour that a fix must flip.
+/// Behaviour that a fix changed (PIN_B1) or must change (PIN_B2).
 BOOST_AUTO_TEST_CASE(current_behaviour_pins) {
     const Digests& d = baseline();
     const Scenario sc = base_scenario();
-    // PIN_B1: GnssCoherentCombiner keeps slot state across a PRN swap. At the next checkpoint the
-    // swapped slot's get_records still holds the departed PRN's records, and its ADR arc did not
-    // break at the swap.
-    {
-        const ChainSpec& A = chains()[0];
+    // PIN_B1: GnssCoherentCombiner restarts a slot cold on a PRN swap. At the next checkpoint
+    // the swapped slot's get_records holds only the new PRN's records, its ADR arc broke at the
+    // swap, and its deep window and ADR arc hold no record from before the swap.
+    for (const ChainSpec& A : chains()) {
         const json& L = d.live.at(A.pre);
         const int was = A.prns[(size_t)sc.swap_slot], now = was + 100;
         const double swap_hop =
             (double)(REC_BASE + (int64_t)A.n_rec * sc.swap_frame) * A.hops_per_record;
+        const int since = (59 - sc.swap_frame + 1) * A.n_rec;
         const json before = L.at("status@29").at((size_t)sc.swap_slot);
         const json after = L.at("status@59").at((size_t)sc.swap_slot);
         BOOST_CHECK_EQUAL(before[0].get<int>(), was);
         BOOST_CHECK_EQUAL(after[0].get<int>(), now);
         BOOST_CHECK_MESSAGE(L.at("records_min_hop@59").at(std::to_string(now)).get<double>()
-                                < swap_hop,
+                                >= swap_hop,
                             "PIN_B1: get_records of PRN " << now
-                                                          << " holds no record from before the "
+                                                          << " holds a record from before the "
                                                              "swap");
-        BOOST_CHECK_MESSAGE(before[2] == after[2], "PIN_B1: the ADR arc broke at the swap: "
+        BOOST_CHECK_MESSAGE(before[2] != after[2], "PIN_B1: the ADR arc did not break at the "
+                                                   "swap: "
                                                        << before[2] << " -> " << after[2]);
+        BOOST_CHECK_MESSAGE(after[4].get<int>() <= since, "PIN_B1: the deep window holds "
+                                                              << after[4] << " records, " << since
+                                                              << " since the swap");
+        BOOST_CHECK_MESSAGE(after[5].get<int>() < since, "PIN_B1: the ADR arc holds "
+                                                             << after[5] << " records, " << since
+                                                             << " since the swap");
     }
     // PIN_B2: GnssN2RecordAssemble dequantises a slot dark at record 0 with record 0's job-0
     // energy (another slot's) in the later records, not with its own.
@@ -1396,6 +1407,53 @@ BOOST_AUTO_TEST_CASE(current_behaviour_pins) {
                                 "PIN_B2: record " << r + 1 << " is scaled by its own energy");
         }
     }
+}
+
+/// reset_on_prn_change false keeps a slot's state across a PRN swap: the run differs from the
+/// baseline only in the combiners from the swap on, and in their status only in the swapped
+/// slot, whose ADR arc then runs on through the swap.
+BOOST_AUTO_TEST_CASE(prn_swap_without_reset) {
+    if (!full_run())
+        return;
+    const Digests& base = baseline();
+    Scenario sc = base_scenario();
+    sc.combiner_prn_reset = false;
+    const Digests d = run_scenario(chains(), sc);
+    const std::set<std::string> ch = changed(base, d);
+    BOOST_TEST_MESSAGE("without the reset: " << join(ch));
+    std::set<std::string> allowed;
+    for (const auto& s : chains()) {
+        allowed.insert(s.pre + ".cmb");
+        for (int cp : sc.checkpoints)
+            for (const char* v : {"get_status", "get_records", "get_elements"})
+                if (cp >= sc.swap_frame)
+                    allowed.insert(s.pre + ".rest." + v + "@" + std::to_string(cp));
+        BOOST_CHECK_MESSAGE(ch.count(s.pre + ".cmb") == 1, s.pre << ".cmb did not change");
+        // The emits before the swap are the baseline's.
+        const std::vector<uint64_t>& x = base.streams.at(s.pre + ".cmb");
+        const std::vector<uint64_t>& y = d.streams.at(s.pre + ".cmb");
+        const size_t n_before =
+            (size_t)(s.n_rec * sc.swap_frame
+                     / std::max(1, s.combine.value("integration_length", 1) / 10));
+        BOOST_REQUIRE(x.size() == y.size() && x.size() > n_before);
+        BOOST_CHECK(std::equal(x.begin(), x.begin() + n_before, y.begin()));
+        for (int cp : sc.checkpoints) {
+            const std::string key = "status@" + std::to_string(cp);
+            const json& a = base.live.at(s.pre).at(key);
+            const json& b = d.live.at(s.pre).at(key);
+            BOOST_REQUIRE_EQUAL(a.size(), b.size());
+            for (size_t p = 0; p < a.size(); ++p)
+                if (!((int)p == sc.swap_slot && cp >= sc.swap_frame))
+                    BOOST_CHECK_MESSAGE(a[p] == b[p], s.pre << " " << key << " slot " << p
+                                                            << " changed: " << a[p] << " -> "
+                                                            << b[p]);
+        }
+        const json& L = d.live.at(s.pre);
+        BOOST_CHECK_EQUAL(L.at("status@29").at((size_t)sc.swap_slot)[2],
+                          L.at("status@59").at((size_t)sc.swap_slot)[2]);
+    }
+    for (const auto& k : ch)
+        BOOST_CHECK_MESSAGE(allowed.count(k) == 1, k << " changed");
 }
 
 BOOST_AUTO_TEST_CASE(golden) {
