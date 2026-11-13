@@ -185,6 +185,18 @@ if(FFTW_FOUND)
                                                                      ../../lib/stages/gnss)
     target_include_directories(test_gnss_channelized_replica SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(test_gnss_channelized_replica PRIVATE ${FFTW_LIBRARY} ${FFTWF_LIBRARY})
+
+    # The host stages of three GNSS chains replayed from synthetic control blocks and tiles,
+    # digested for determinism, liveness and mutation controls. GnssN2RecordAssemble and
+    # GnssGpuRecordAssemble build under FFTW_FOUND.
+    add_executable(test_gnss_chain_replay test_gnss_chain_replay.cpp)
+    target_link_libraries(
+        test_gnss_chain_replay PRIVATE libexternal kotekan_stages kotekan_libs kotekan_utils
+                                       kotekan_core kotekan_metadata)
+    target_include_directories(test_gnss_chain_replay PRIVATE ../../lib/stages
+                                                              ../../lib/stages/gnss)
+    target_compile_definitions(test_gnss_chain_replay
+                               PRIVATE REPLAY_BUILD_TYPE="${CMAKE_BUILD_TYPE}")
 endif()
 
 # frameID / modulo<int>: reduce-on-write, the 2^32 wrap that skips buffer slots
