@@ -10,7 +10,9 @@
 // GNSS_REPLAY_CONFIG=<json> replays the production stage blocks scripts/gnss/replay_extract.py
 // extracts instead of the built-in chains. GNSS_REPLAY_GOLDEN=<file> compares the baseline with a
 // golden (GNSS_REPLAY_BLESS=1 writes it), and GNSS_REPLAY_DUMP=<dir> writes the endpoints and the
-// stage configs.
+// stage configs. A replay takes seconds in a Test build, so by default only the baseline and the
+// zero-amplitude control run; GNSS_REPLAY_FULL=1 adds the determinism, mutation and prefill
+// controls.
 
 #include "Config.hpp"                // for Config
 #include "GnssChanMetadata.hpp"      // for GnssChanMetadata, get_gnss_chan_metadata
@@ -884,6 +886,14 @@ bool matches(const std::string& key, const std::string& pat) {
     return key == pat;
 }
 
+bool full_run() {
+    const char* f = std::getenv("GNSS_REPLAY_FULL");
+    if (f != nullptr && std::string(f) == "1")
+        return true;
+    BOOST_TEST_MESSAGE("GNSS_REPLAY_FULL=1 not set: skipped");
+    return false;
+}
+
 /// 1/s as GnssN2RecordAssemble computes it from a replica energy.
 double adapter_inv_scale(const ChainSpec& s, double e) {
     const double rms = std::sqrt(e / (double)s.hops_per_record);
@@ -1139,6 +1149,8 @@ json golden_of(const Digests& d) {
 } // namespace
 
 BOOST_AUTO_TEST_CASE(deterministic) {
+    if (!full_run())
+        return;
     const Digests& a = baseline();
     const Digests b = run_scenario(chains(), base_scenario());
     Scenario pinned = base_scenario();
@@ -1193,6 +1205,8 @@ BOOST_AUTO_TEST_CASE(identity) {
 }
 
 BOOST_AUTO_TEST_CASE(mutations) {
+    if (!full_run())
+        return;
     const Digests& base = synthetic_baseline();
     const std::string A = synthetic()[0].pre, B = synthetic()[1].pre, C = synthetic()[2].pre;
     // E and L are the prompt rotated per channel, so a flipped rotation moves only the DLL
@@ -1238,6 +1252,8 @@ BOOST_AUTO_TEST_CASE(mutations) {
 
 /// Bytes a stage leaves unwritten would carry the buffers' fill into a digest.
 BOOST_AUTO_TEST_CASE(prefill) {
+    if (!full_run())
+        return;
     const Digests& base = baseline();
     Scenario stale = base_scenario();
     stale.refill_a5 = false;
