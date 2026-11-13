@@ -287,8 +287,9 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
             INFO("lane directions: publishing every running non-probe slot's prompt-row "
                  "direction per channel to the board group {:s}, tau {:.2f} s, every {:d} "
                  "records, coherence >= {:.3f}, held {:.0f} s from a mean within {:.2f} of "
-                 "the slot's best coherence (floor {:.2f}), captured below cos^2 {:.2f} of the "
-                 "held direction, transferred to {:d} more channels, instrumental delay {:s}",
+                 "the slot's best coherence (floor {:.2f}), captured on a {:.2f}x coherence jump "
+                 "below cos^2 {:.2f} of the held direction, transferred to {:d} more channels, "
+                 "instrumental delay {:s}",
                  _lane_group, tau, _lane_every, _lane_coh_min, _lane_hold_s, _lane_hold_frac,
                  _lane_hold_coh_min, _lane_capture_gain, _lane_capture_cos2,
                  (int)_lane_xfer_fids.size(), _inst_on ? "on" : "off");
