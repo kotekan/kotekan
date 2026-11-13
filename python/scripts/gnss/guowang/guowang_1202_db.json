@@ -2022,7 +2022,7 @@
    ]
   },
   "DIGUI-112": {
-   "status": "transmitting",
+   "status": "no_transmission",
    "catnum": 66922,
    "g2_phase": 792,
    "theta_us": -11.77,
@@ -2034,13 +2034,14 @@
    "drift_ns_s": 2.93,
    "note": "partial copy, 56/64 channels",
    "last_observed_utc": "2026-11-07T12:09:33Z",
-   "last_checked_utc": "2026-11-07T12:09:33Z",
-   "last_checked_sep_deg": 9.51,
+   "last_checked_utc": "2026-11-13T10:44:06Z",
+   "last_checked_sep_deg": 0.57,
    "passes_found": 2,
-   "passes_silent": 0,
+   "passes_silent": 1,
    "passes": [
     ["2026-11-06T12:43:59Z", 3.36, true],
-    ["2026-11-07T12:09:33Z", 9.51, true]
+    ["2026-11-07T12:09:33Z", 9.51, true],
+    ["2026-11-13T10:44:06Z", 0.57, false]
    ]
   },
   "DIGUI-113": {
@@ -3887,7 +3888,7 @@
    ]
   },
   "DIGUI-211": {
-   "status": "transmitting",
+   "status": "no_transmission",
    "catnum": 100797,
    "g2_phase": 1380,
    "theta_us": 5.217,
@@ -3899,16 +3900,17 @@
    "drift_ns_s": -23.05,
    "note": "inferred satellite: theta and ppb on its TLE moved -6.889 s along track (fitted to the carrier); partial copy, 56/64 channels",
    "last_observed_utc": "2026-11-06T12:50:15Z",
-   "last_checked_utc": "2026-11-06T12:50:15Z",
-   "last_checked_sep_deg": 1.31,
+   "last_checked_utc": "2026-11-13T10:50:19Z",
+   "last_checked_sep_deg": 2.35,
    "passes_found": 1,
-   "passes_silent": 0,
+   "passes_silent": 1,
    "passes": [
-    ["2026-11-06T12:50:15Z", 1.31, true]
+    ["2026-11-06T12:50:15Z", 1.31, true],
+    ["2026-11-13T10:50:19Z", 2.35, false]
    ]
   },
   "DIGUI-212": {
-   "status": "transmitting",
+   "status": "no_transmission",
    "catnum": 100798,
    "g2_phase": 1585,
    "theta_us": 9.634,
@@ -3920,12 +3922,13 @@
    "drift_ns_s": -13.09,
    "note": "inferred satellite: theta and ppb on its TLE moved -7.629 s along track (fitted to the carrier)",
    "last_observed_utc": "2026-11-07T08:15:32Z",
-   "last_checked_utc": "2026-11-07T08:15:32Z",
-   "last_checked_sep_deg": 3.33,
+   "last_checked_utc": "2026-11-13T10:37:40Z",
+   "last_checked_sep_deg": 2.86,
    "passes_found": 1,
-   "passes_silent": 0,
+   "passes_silent": 1,
    "passes": [
-    ["2026-11-07T08:15:32Z", 3.33, true]
+    ["2026-11-07T08:15:32Z", 3.33, true],
+    ["2026-11-13T10:37:40Z", 2.86, false]
    ]
   },
   "DIGUI-213": {
