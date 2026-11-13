@@ -192,7 +192,7 @@ frb:
 
 dataset_manager:
   use_dataset_broker: {{ not disable_output }}
-  <!-- ds_broker_host: 10.1.50.11 # cv0r1/recv1 -->
+  # ds_broker_host: 10.1.50.11 # cv0r1/recv1
   ds_broker_host: 10.5.60.1 # vm-steelpan-recv1 - used for testing only
   ds_broker_port: 12050
 
@@ -374,8 +374,10 @@ dpdk:
   pcie_block_list:
     - 0d:00.0
     - 0d:00.1
-    - 9f:00.0
-    - 9f:00.1
+    - 9f:00.0 # on upgrade-gpu[12]
+    - 9f:00.1 # on upgrade-gpu[12]
+    - a0:00.0 # on cx0g3
+    - a0:00.1 # on cx0g3
   # Format is index = lcore, value = array of port IDs
   # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
   # and lcore 1 to service ports 2 and 3.
@@ -1153,7 +1155,7 @@ numa_{{ numa }}:
         # frequencies of this stream, from the metadata of the first frame
         metadata_source: host_n2k_correlation_buffer{{ numa_sfx }}
         # must match the git hash of the receiver, which is currently 2021.11_hotfix
-        fake_git_tag: "f97998b79bb057668de62ced820273c3f5a5fd27"
+        fake_git_tag: "3f2198ea1c3f45135123a5e7f355342a88d51f45"
 
     ############################################################################
     # FRB beamforming
@@ -1570,10 +1572,6 @@ numa_{{ numa }}:
         # needs an address on each of them.
         number_of_subnets: 4
         beam_offset: 0
-        # This node's addresses on the L1 VLANs, in VLAN order. Without this list
-        # they are derived from the CHIME GPU node name (cnXgY), which this node
-        # does not follow.
-        local_ips: [10.6.200.10, 10.7.200.10, 10.8.200.10, 10.9.200.10]
         ping_dead_threshold: 30
         updatable_config: /frb/update_beam_offset
         # From the legacy CHIME config
