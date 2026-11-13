@@ -3,6 +3,7 @@
 #include "GnssChanMetadata.hpp"
 #include "StageFactory.hpp"
 #include "gnssChanPower.hpp" // for ChanPower, chan_norm_weights
+#include "gnssClock.hpp"     // for steady_now_s
 #include "gnssGpuChain.hpp"
 #include "gnssRecord.hpp"
 #include "gnssSharedPin.hpp" // for ref_offset, pin_rotation
@@ -586,9 +587,7 @@ void GnssGpuRecordAssemble::set_sat_geometry_callback(kotekan::connectionInstanc
         return;
     }
     try {
-        const double now_s =
-            std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
-                .count();
+        const double now_s = gnss::steady_now_s();
         // "_bore": [sep_deg, t_utc], the broker's nearest-to-boresight separation pooled over
         // every constellation (a satellite of another system leaks into this band just the
         // same). It gates the shared model's learning (see _elem_shared_freeze_deg).
@@ -645,9 +644,7 @@ int GnssGpuRecordAssemble::follow_frame_prns(const void* pctl_v, int n_prn) {
             _cal_shadow[(size_t)p] = _cal[(size_t)p];
             _cal_sim[(size_t)p] = -1.0;
             shared_reset_prn((size_t)p);
-            proj_reset_slot((size_t)p, std::chrono::duration<double>(
-                                           std::chrono::steady_clock::now().time_since_epoch())
-                                           .count());
+            proj_reset_slot((size_t)p, gnss::steady_now_s());
             if ((size_t)p < _anchor_warned.size())
                 _anchor_warned[(size_t)p] = 0;
         }
@@ -860,10 +857,7 @@ void GnssGpuRecordAssemble::main_thread() {
             // siblings. k = 0 unless armed and a source is in force.
             if (_proj_ready && _proj_mode.load() != 0)
                 proj_prepare_record(corr, &pctl[(size_t)r * n_prn], n_chan, _n_elements, wstart,
-                                    utc,
-                                    std::chrono::duration<double>(
-                                        std::chrono::steady_clock::now().time_since_epoch())
-                                        .count());
+                                    utc, gnss::steady_now_s());
             else
                 _proj_k_rec = 0;
             int proj_src = 0; // the OR of the basis sources over this instance's channels
@@ -939,10 +933,7 @@ void GnssGpuRecordAssemble::main_thread() {
                         }
                     } else {
                         std::lock_guard<std::mutex> lk(_steer_mtx);
-                        const double now_s =
-                            std::chrono::duration<double>(
-                                std::chrono::steady_clock::now().time_since_epoch())
-                                .count();
+                        const double now_s = gnss::steady_now_s();
                         if (_steer.warm((int)p, now_s)) {
                             // Evaluate the track at this record's time (the data clock:
                             // records lag the wall clock by the pipeline depth).
@@ -1007,9 +998,7 @@ void GnssGpuRecordAssemble::main_thread() {
                 // the current table, for up to elem_dir_hold_s (_lane_ok 2).
                 if (lane_rec && (++_lane_cnt[p] % _lane_every) == 0) {
                     gnss::ProjBoard& board = gnss::ProjBoard::instance();
-                    const double now_s = std::chrono::duration<double>(
-                                             std::chrono::steady_clock::now().time_since_epoch())
-                                             .count();
+                    const double now_s = gnss::steady_now_s();
                     std::fill(_lane_ok.begin(), _lane_ok.end(), 0);
                     for (int ch = 0; ch < n_chan; ++ch) {
                         if (!((c.chan_mask >> ch) & 1ULL))
@@ -1923,14 +1912,6 @@ void GnssGpuRecordAssemble::set_elem_sum_shared_callback(kotekan::connectionInst
         nlohmann::json{{"shared", shared}, {"was", was}, {"adapt", _elem_adapt.load()}});
 }
 
-namespace {
-/// The steady clock in seconds, the clock every freshness decision here uses.
-double steady_now_s() {
-    return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
-        .count();
-}
-} // namespace
-
 void GnssGpuRecordAssemble::shared_reset_prn(size_t p) {
     if (p >= _pol_num.size())
         return;
@@ -2280,8 +2261,7 @@ void GnssGpuRecordAssemble::shared_hold(size_t p) {
     const int n = _n_elements;
     if (p >= _cal.size())
         return;
-    const double now_s =
-        std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    const double now_s = gnss::steady_now_s();
     if (now_s - _g_shared_t >= 1.0) {
         shared_consensus(now_s);
         shared_apply(now_s);
@@ -2340,7 +2320,7 @@ void GnssGpuRecordAssemble::shared_pol_update(size_t p, const std::complex<doubl
     // Transit: hold every coefficient too. The sub-beams reject leakage by the half-array's
     // gain, but a boresight transit is 20-30 dB above a weak satellite and the coefficient's
     // EMA (elem_sum_pol_tau_s) is short.
-    if (shared_frozen(steady_now_s()))
+    if (shared_frozen(gnss::steady_now_s()))
         return;
     const int h = n / 2;
     cd b0(0.0, 0.0), b1(0.0, 0.0);
@@ -2366,7 +2346,7 @@ void GnssGpuRecordAssemble::get_elem_cal_callback(kotekan::connectionInstance& c
     out["shared_warm"] = _g_shared_warm;
     out["shared_n"] = _g_shared_n;
     {
-        const double now_s = steady_now_s();
+        const double now_s = gnss::steady_now_s();
         out["shared_frozen"] = now_s < _freeze_until;
         out["form_frozen"] = gnss::formation_frozen(now_s, _bore_post_t.load(),
                                                     _bore_sep_deg.load(), _elem_shared_form_deg);
