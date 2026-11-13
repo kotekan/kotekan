@@ -47,6 +47,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <sched.h>
@@ -924,6 +925,9 @@ std::set<std::string> changed(const Digests& a, const Digests& b) {
         if (it == b.strings.end() || it->second != v)
             out.insert("strings:" + k);
     }
+    for (const auto& [k, v] : b.strings)
+        if (!a.strings.count(k))
+            out.insert("strings:" + k);
     return out;
 }
 
@@ -1134,6 +1138,17 @@ std::string hex(uint64_t v) {
     return b;
 }
 
+/// The production config by file name and a digest of its bytes, or "synthetic".
+std::string config_id() {
+    const char* cfg = std::getenv("GNSS_REPLAY_CONFIG");
+    if (cfg == nullptr)
+        return "synthetic";
+    std::ifstream in(cfg, std::ios::binary);
+    const std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    const std::string path(cfg);
+    return path.substr(path.rfind('/') + 1) + " " + hex(fnv1a64(bytes.data(), bytes.size()));
+}
+
 json golden_of(const Digests& d) {
     json st = json::object();
     for (const auto& [k, v] : d.streams) {
@@ -1146,8 +1161,7 @@ json golden_of(const Digests& d) {
             {"compiler", std::string(__VERSION__)},
             {"build_type", REPLAY_BUILD_TYPE},
             {"git_sha", get_git_commit_hash()},
-            {"config",
-             std::getenv("GNSS_REPLAY_CONFIG") ? std::getenv("GNSS_REPLAY_CONFIG") : "synthetic"},
+            {"config", config_id()},
             {"streams", st},
             {"strings", d.strings}};
 }
@@ -1280,7 +1294,9 @@ BOOST_AUTO_TEST_CASE(mutations) {
     }
 }
 
-/// Bytes a stage leaves unwritten would carry the buffers' fill into a digest.
+/// Bytes a stage leaves unwritten would carry the buffers' fill into a digest. The prefill is
+/// written only when a frame is allocated, so it shows bytes left unwritten in each frame's first
+/// use; the epl refill covers every frame.
 BOOST_AUTO_TEST_CASE(prefill) {
     if (!full_run())
         return;

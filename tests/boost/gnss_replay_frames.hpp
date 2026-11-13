@@ -239,7 +239,7 @@ struct Noise {
         x ^= x >> 27;
         return (double)((x * 2685821657736338717ULL) >> 11) * (1.0 / 9007199254740992.0);
     }
-    /// Unit variance from four uniforms; no libm, so every build draws the same numbers.
+    /// Unit variance from four uniforms.
     double normal() {
         return (uniform() + uniform() + uniform() + uniform() - 2.0) * 1.7320508075688772;
     }
