@@ -683,11 +683,12 @@ def group_delay_s(e, signal, dcb=None):
                 int(e.get("prn") or 0), float(e.get("toe_gpst") or 0.0)
             )
         return 0.0
-    # Measured DCBs (gnss_dcb.signal_bias_s) take precedence when loaded. They cover GPS L5 and
-    # L2C, Galileo E5a/E5b and BeiDou B2a/B2b (B2a's broadcast term is not in RINEX 3 at all)
-    # and return None otherwise, so a missing pair falls through to the broadcast term for that
-    # satellite alone. The product is zero-mean per constellation, so it carries the
-    # per-satellite spread and no constellation-common level; only the broadcast term has one.
+    # Measured DCBs (gnss_dcb.signal_bias_s) take precedence when loaded. They cover GPS L1 C/A,
+    # L5 and L2C, Galileo E1, E5a and E5b and BeiDou B1I, B2a and B2b (B2a's broadcast term is
+    # not in RINEX 3 at all) and return None otherwise, so a missing pair falls through to the
+    # broadcast term for that satellite alone. The product is zero-mean per constellation, so it
+    # carries the per-satellite spread and no constellation-common level; only the broadcast term
+    # has one.
     if dcb:
         try:
             import gnss_dcb as _dcbmod

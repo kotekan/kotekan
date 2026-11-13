@@ -241,10 +241,15 @@ def signal_bias_s(dcb, sysc, prn, signal, gal_inav=False):
     """Seconds to add to the broadcast clock for `signal`, from measured DCBs; None if the
     needed pairs are absent (the caller falls back to the broadcast TGD/BGD).
 
-    Covers GPS L5 and L2C, Galileo E5a/E5b and BeiDou B2a/B2b; any other signal returns None.
-    Every case is (datum - our signal), the datum being the combination the broadcast clock is
-    fitted to. With DSB(a,b) = b_a - b_b, the ionosphere-free identity behind GPS and Galileo:
+    Covers GPS L1 C/A, L5 and L2C, Galileo E1, E5a and E5b and BeiDou B1I, B2a and B2b; any
+    other signal returns None. Every case is (datum - our signal), the datum being the
+    combination the broadcast clock is fitted to. With DSB(a,b) = b_a - b_b, the
+    ionosphere-free identity behind GPS and Galileo:
         b_IF(1,2) - b_X = DSB(1,X) + DSB(1,2)/(gamma_12 - 1)
+    A constellation's chains must all take this path or all take the broadcast one: the product
+    is zero-mean and the broadcast terms are not, so a mix puts the constellation's mean
+    group delay between its bands (-2.6 m GPS L1 C/A - L5 and -1.2 m Galileo E1 - E5a when only
+    the L5-band chains took it, 2026-11).
     """
     tab = (dcb or {}).get((sysc, prn))
     if not tab:
@@ -261,6 +266,14 @@ def signal_bias_s(dcb, sysc, prn, signal, gal_inav=False):
             return None
         d_1w_5 = d_1c_5x - d_1c_1w  # b_C1W - b_C5X
         return d_1w_5 + d_1w_2w / (GAMMA_L1L2 - 1.0)
+    if sysc == "G" and "l1ca" in sig:
+        # datum = L1P/L2P IF (C1W/C2W); L1 C/A is C1C:
+        #   b_IF(1W,2W) - b_C1C = DSB(C1W,C2W)/(gamma_12 - 1) - DSB(C1C,C1W)
+        d_1c_1w = _dsb(tab, "C1C", "C1W")
+        d_1w_2w = _dsb(tab, "C1W", "C2W")
+        if d_1c_1w is None or d_1w_2w is None:
+            return None
+        return d_1w_2w / (GAMMA_L1L2 - 1.0) - d_1c_1w
     if sysc == "G" and "l2c" in sig:
         # datum = L1P/L2P IF (C1W/C2W). L2C is C2L, reached from C2W:
         #   b_IF(1W,2W) - b_C2L = gamma_12 * DSB(C1W,C2W) / (gamma_12 - 1) + DSB(C2W,C2L)
@@ -294,9 +307,17 @@ def signal_bias_s(dcb, sysc, prn, signal, gal_inav=False):
             if d15 is None or d17 is None:
                 return None
             return d15 / (GAMMA_E1E5A - 1.0) + d17
+        if "e1" in sig:
+            #   E1 itself:  datum - b_1  =  d1x / (g_x - 1)
+            d = d17 if gal_inav else d15
+            g = GAMMA_E1E5B if gal_inav else GAMMA_E1E5A
+            return None if d is None else d / (g - 1.0)
         return None
     if sysc == "C":
-        # datum = B3I (C6I). B2a is C5P (pilot), C5X or C5D; B2b is C7D or C7Z.
+        # datum = B3I (C6I). B2a is C5P (pilot), C5X or C5D; B2b is C7D or C7Z; B1I is C2I.
+        if "b1i" in sig:
+            d = _dsb(tab, "C2I", "C6I")
+            return None if d is None else -d  # = b_C6I - b_C2I
         if "b2a" in sig:
             for one, five in (("C1P", "C5P"), ("C1X", "C5X"), ("C1D", "C5D")):
                 d15 = _dsb(tab, one, five)

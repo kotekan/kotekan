@@ -285,6 +285,67 @@ class TestDcbSource(unittest.TestCase):
         rms = (sum((d - mean) ** 2 for d in diff) / len(diff)) ** 0.5
         self.assertLess(rms, 1.5 * NS, "L2C DCB and broadcast paths disagree")
 
+    def test_one_frame_per_constellation(self):
+        """With every chain of a constellation on the DCB path, the difference of two chains'
+        terms is the satellites' own inter-signal bias and nothing else: no constellation mean.
+        Absolute biases are made up per signal, DSBs formed from them, and each chain's term
+        must be b_datum - b_X exactly, so any two chains differ by b_Y - b_X."""
+        g12, g15, g17 = self.m.GAMMA_L1L2, GAMMA_E1E5A, GAMMA_E1E5B
+        b = {
+            "C1C": 3.1e-9,
+            "C1W": -1.7e-9,
+            "C2W": 4.4e-9,
+            "C2L": 0.9e-9,
+            "C5Q": -6.2e-9,
+        }
+        dsb = {
+            (x, y): b[x] - b[y]
+            for x, y in [("C1C", "C1W"), ("C1W", "C2W"), ("C1C", "C5Q"), ("C2W", "C2L")]
+        }
+        tab = {("G", 1): dsb}
+        datum = (g12 * b["C1W"] - b["C2W"]) / (g12 - 1.0)
+        for sig, code in (("gps_l1ca", "C1C"), ("gps_l5", "C5Q"), ("gps_l2c", "C2L")):
+            v = self.m.signal_bias_s(tab, "G", 1, sig)
+            self.assertAlmostEqual(v, datum - b[code], places=18, msg=sig)
+        e = {"C1C": 2.0e-9, "C5Q": -3.5e-9, "C7Q": 1.25e-9}
+        tab = {
+            ("E", 7): {
+                ("C1C", "C5Q"): e["C1C"] - e["C5Q"],
+                ("C1C", "C7Q"): e["C1C"] - e["C7Q"],
+            }
+        }
+        for inav, g, x in ((False, g15, "C5Q"), (True, g17, "C7Q")):
+            datum = (g * e["C1C"] - e[x]) / (g - 1.0)
+            for sig, code in (
+                ("gal_e1c", "C1C"),
+                ("gal_e5a", "C5Q"),
+                ("gal_e5b", "C7Q"),
+            ):
+                v = self.m.signal_bias_s(tab, "E", 7, sig, gal_inav=inav)
+                self.assertAlmostEqual(v, datum - e[code], places=18, msg=(sig, inav))
+        c = {"C2I": -7.5e-9, "C6I": 0.4e-9, "C1P": 2.2e-9, "C5P": -1.0e-9}
+        tab = {
+            ("C", 26): {
+                ("C2I", "C6I"): c["C2I"] - c["C6I"],
+                ("C1P", "C5P"): c["C1P"] - c["C5P"],
+                ("C1P", "C6I"): c["C1P"] - c["C6I"],
+            }
+        }
+        for sig, code in (("bds_b1i", "C2I"), ("bds_b2a", "C5P")):
+            v = self.m.signal_bias_s(tab, "C", 26, sig)
+            self.assertAlmostEqual(v, c["C6I"] - c[code], places=18, msg=sig)
+
+    def test_l1_falls_back_to_broadcast_without_its_pairs(self):
+        """A satellite the product does not cover keeps the broadcast term, as for L5."""
+        e = dict(sys="G", prn=40, tgd=-8.38 * NS, iodc=0.0, l2_codes=0)
+        self.assertAlmostEqual(
+            group_delay_s(e, "gps_l1ca", {("G", 1): {}}), +8.38 * NS, places=18
+        )
+        c = dict(sys="C", prn=99, tgd=-10 * NS, iodc=0.0, l2_codes=0)
+        self.assertAlmostEqual(
+            group_delay_s(c, "bds_b1i", self.tab), +10 * NS, places=18
+        )
+
     def test_dcb_overrides_the_broadcast_term(self):
         e = dict(sys="C", prn=26, tgd=0.0, iodc=-4.3 * NS, l2_codes=0)
         self.assertAlmostEqual(group_delay_s(e, "bds_b2a", self.tab), 5e-9, places=15)
