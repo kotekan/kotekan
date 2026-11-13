@@ -97,6 +97,19 @@
     ["2026-11-04T01:03:06Z", 1.22, false]
    ]
   },
+  "DIGUI-09": {
+   "status": "no_transmission",
+   "catnum": 62331,
+   "g2_phase": null,
+   "last_observed_utc": null,
+   "last_checked_utc": "2026-11-13T00:16:32Z",
+   "last_checked_sep_deg": 0.56,
+   "passes_found": 0,
+   "passes_silent": 1,
+   "passes": [
+    ["2026-11-13T00:16:32Z", 0.56, false]
+   ]
+  },
   "DIGUI-10": {
    "status": "no_transmission",
    "catnum": 62332,
@@ -3937,6 +3950,19 @@
    "passes_silent": 1,
    "passes": [
     ["2026-11-12T21:00:59Z", 0.2, false]
+   ]
+  },
+  "JISHU-SHIYAN-7D": {
+   "status": "no_transmission",
+   "catnum": null,
+   "g2_phase": null,
+   "last_observed_utc": null,
+   "last_checked_utc": "2026-11-13T00:16:32Z",
+   "last_checked_sep_deg": 0.44,
+   "passes_found": 0,
+   "passes_silent": 1,
+   "passes": [
+    ["2026-11-13T00:16:32Z", 0.44, false]
    ]
   },
   "JISHU-SHIYAN-8A": {
