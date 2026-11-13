@@ -563,6 +563,8 @@ void fire_gets(ChainRun& R, unsigned short port, const std::string& u, int k, Di
             for (const auto& r : j["prns"])
                 rows.push_back({r["prn"], r["warm"], r["shadow_warm"]});
             L["elem_cal" + cp] = rows;
+            if (j.contains("proj"))
+                L["proj" + cp] = json::array({j["proj"]["mode"], j["proj"]["k"]});
         } else if (verb == "get_status" && j.is_array()) {
             json rows = json::array();
             for (const auto& r : j)
@@ -1186,6 +1188,21 @@ BOOST_AUTO_TEST_CASE(live) {
         BOOST_CHECK_MESSAGE(!cal_live(z, s, &why), "zero_amp passed: " << why);
         BOOST_CHECK_MESSAGE(!combiner_live(z, s, &why), "zero_amp passed: " << why);
         BOOST_CHECK_MESSAGE(!cube_live(z, s, &why), "zero_amp passed: " << why);
+    }
+    // The projection posted live on A at proj_live_frame is off before it and in force after.
+    {
+        const json& L = d.live.at(chains()[0].pre);
+        int after = sc.checkpoints.back();
+        for (int cp : sc.checkpoints)
+            if (cp > sc.proj_live_frame && cp < after)
+                after = cp;
+        const json pb = L.value("proj@" + std::to_string(sc.checkpoints[0]), json());
+        const json pa = L.value("proj@" + std::to_string(after), json());
+        BOOST_CHECK_MESSAGE(pb == json::array({"off", 0}), "projection before the POST: " << pb);
+        BOOST_CHECK_MESSAGE(pa.is_array() && pa[0] == "live" && pa[1].get<int>() > 0,
+                            "projection after the POST: " << pa);
+        BOOST_TEST_MESSAGE("projection [mode, k] at " << sc.checkpoints[0] << ": " << pb << ", at "
+                                                      << after << ": " << pa);
     }
     for (int cp : {sc.checkpoints[sc.checkpoints.size() - 2], sc.checkpoints.back()}) {
         BOOST_CHECK_MESSAGE(board_ok(d, chains(), sc, cp, &why), why);
