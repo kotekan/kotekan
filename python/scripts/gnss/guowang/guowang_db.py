@@ -28,9 +28,15 @@ renamed maps old names to current ones: on 2026-11-12 the 28 satellites known by
 no_sky lists periods whose windows carry no sky signal (analog chains off, ...): their windows
 count for nothing. An open period (end null) excludes everything after its start.
 
+verdicts holds, per satellite, the evidence other than beam dumps: [utc, transmitting, basis], from
+the clipping monitor (the 1268 MHz lobe on a pass without the 1202 MHz lobe) or the track beam
+(CRC-valid messages). A verdict newer than the newest conclusive pass sets status, and
+status_basis says which; passes and last_checked_utc stay beam-dump only.
+
     guowang_db.py update --reduce-log cf06_reduce_log.jsonl --reduce-log cf05_reduce_log.jsonl \\
         --proposals ~/gnss/builds/gw1202/db_proposals.jsonl [--dry-run] [--message-out msg.txt]
     guowang_db.py nosky --start 2026-11-03T16:34:50Z [--end 2026-11-04T01:00:00Z] --note "..."
+    guowang_db.py verdict --sat DIGUI-119 --utc 2026-11-07T23:43:14Z --silent --basis "..."
     guowang_db.py show
 """
 import argparse
@@ -285,6 +291,10 @@ def update(db, passes, proposals, catnums, silent_max_sep=SILENT_MAX_SEP_DEG):
             if newest
             else "transmitting"
         }
+        verdict = max(db.get("verdicts", {}).get(name, []), default=None)
+        if verdict and (newest is None or verdict[0] > newest[0]):
+            n["status"] = "transmitting" if verdict[1] else "no_transmission"
+            n["status_basis"] = "%s (%s)" % (verdict[2], verdict[0])
         n["catnum"] = (
             e.get("catnum")
             or next(
@@ -317,7 +327,17 @@ def update(db, passes, proposals, catnums, silent_max_sep=SILENT_MAX_SEP_DEG):
                 )
             )
         else:
-            if old.get("status", "transmitting") != n["status"]:
+            if old.get("status", "transmitting") != n["status"] and "status_basis" in n:
+                changes.append(
+                    "%s: %s -> %s by %s"
+                    % (
+                        name,
+                        old.get("status", "transmitting"),
+                        n["status"],
+                        n["status_basis"],
+                    )
+                )
+            elif old.get("status", "transmitting") != n["status"]:
                 changes.append(
                     "%s: %s -> %s on the %s pass (%.2f deg)"
                     % (
@@ -402,6 +422,21 @@ def cmd_update(a):
         print("no change")
 
 
+def cmd_verdict(a):
+    db = load(a.db)
+    v = db.setdefault("verdicts", {}).setdefault(a.sat, [])
+    v[:] = [x for x in v if x[0] != a.utc] + [[a.utc, not a.silent, a.basis]]
+    v.sort()
+    update(db, {}, {}, {})
+    save(db, a.db)
+    print(
+        json.dumps(
+            {a.sat: db["satellites"].get(a.sat, {}).get("status"), "verdicts": v},
+            indent=1,
+        )
+    )
+
+
 def cmd_nosky(a):
     db = load(a.db)
     periods = db.setdefault("no_sky", [])
@@ -484,9 +519,17 @@ def main():
     n.add_argument("--start", required=True, help="UTC, e.g. 2026-11-03T16:34:50Z")
     n.add_argument("--end", help="UTC; omit for an open period")
     n.add_argument("--note")
+    v = sub.add_parser(
+        "verdict", help="add a clipping-monitor or track-beam verdict on a satellite"
+    )
+    v.add_argument("--sat", required=True)
+    v.add_argument("--utc", required=True, help="UTC of the pass or first message")
+    v.add_argument("--silent", action="store_true", help="not transmitting at 1202 MHz")
+    v.add_argument("--basis", required=True)
     s = sub.add_parser("show", help="one line per satellite")
     u.set_defaults(func=cmd_update)
     n.set_defaults(func=cmd_nosky)
+    v.set_defaults(func=cmd_verdict)
     s.set_defaults(func=cmd_show)
     a = ap.parse_args()
     a.func(a)

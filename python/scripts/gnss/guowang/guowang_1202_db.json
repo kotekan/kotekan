@@ -2130,7 +2130,8 @@
    ]
   },
   "DIGUI-119": {
-   "status": "transmitting",
+   "status": "no_transmission",
+   "status_basis": "clipping monitor: the 1268 MHz lobe without the 1202 MHz lobe on this pass and every later one to 11-11 (KV 2026-11-12: count silent), 4.82 deg (2026-11-07T23:43:14Z)",
    "catnum": 67059,
    "g2_phase": 1275,
    "theta_us": -11.785,
@@ -2260,7 +2261,8 @@
    ]
   },
   "DIGUI-125": {
-   "status": "transmitting",
+   "status": "no_transmission",
+   "status_basis": "clipping monitor: the 1268 MHz lobe without the 1202 MHz lobe on this pass and every later one to 11-11 (KV 2026-11-12: count silent), 5.58 deg (2026-11-08T23:47:38Z)",
    "catnum": 67065,
    "g2_phase": 1835,
    "theta_us": -10.676,
@@ -2281,7 +2283,8 @@
    ]
   },
   "DIGUI-126": {
-   "status": "transmitting",
+   "status": "no_transmission",
+   "status_basis": "clipping monitor: the 1268 MHz lobe without the 1202 MHz lobe on this pass and every later one to 11-11 (KV 2026-11-12: count silent), 6.86 deg (2026-11-08T00:08:35Z)",
    "catnum": 67066,
    "g2_phase": 1275,
    "theta_us": -2.703,
@@ -2303,6 +2306,7 @@
   },
   "DIGUI-127": {
    "status": "transmitting",
+   "status_basis": "track beam: PRN 1293 with DIGUI-127 Doppler, 432 CRC-valid seconds 11-12 21:07 to 11-13 00:59; code-mate DIGUI-121 below the horizon (2026-11-12T21:07:21Z)",
    "catnum": 67067,
    "g2_phase": 1292,
    "theta_us": -15.092,
@@ -4035,5 +4039,20 @@
   "DIGUI-H24-7": "DIGUI-211",
   "DIGUI-H24-8": "DIGUI-212",
   "DIGUI-H24-9": "DIGUI-213"
+ },
+ "verdicts": {
+  "DIGUI-119": [
+   ["2026-11-07T23:43:14Z", false, "clipping monitor: the 1268 MHz lobe without the 1202 MHz lobe on this pass and every later one to 11-11 (KV 2026-11-12: count silent), 4.82 deg"]
+  ],
+  "DIGUI-126": [
+   ["2026-11-08T00:08:35Z", false, "clipping monitor: the 1268 MHz lobe without the 1202 MHz lobe on this pass and every later one to 11-11 (KV 2026-11-12: count silent), 6.86 deg"]
+  ],
+  "DIGUI-127": [
+   ["2026-11-08T23:22:35Z", false, "clipping monitor: the 1268 MHz lobe without the 1202 MHz lobe on this pass and every later one to 11-11 (KV 2026-11-12: count silent), 4.82 deg"],
+   ["2026-11-12T21:07:21Z", true, "track beam: PRN 1293 with DIGUI-127 Doppler, 432 CRC-valid seconds 11-12 21:07 to 11-13 00:59; code-mate DIGUI-121 below the horizon"]
+  ],
+  "DIGUI-125": [
+   ["2026-11-08T23:47:38Z", false, "clipping monitor: the 1268 MHz lobe without the 1202 MHz lobe on this pass and every later one to 11-11 (KV 2026-11-12: count silent), 5.58 deg"]
+  ]
  }
 }

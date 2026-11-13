@@ -276,6 +276,42 @@ class DbTest(unittest.TestCase):
         self.assertTrue(any("no_transmission -> transmitting" in c for c in changes))
         self.assertEqual(json.loads(gdb.dumps(db)), db)
 
+    def test_verdict_newer_than_the_newest_pass(self):
+        db = {
+            "about": "",
+            "satellites": {
+                "DIGUI-1": dict(
+                    catnum=1,
+                    g2_phase=10,
+                    measured_utc="2026-11-02T10:00:40Z",
+                    sep_deg=1.0,
+                    passes=[["2026-11-02T10:00:40Z", 1.0, True]],
+                    status="transmitting",
+                ),
+            },
+            "verdicts": {
+                "DIGUI-1": [["2026-11-01T00:00:00Z", False, "clipping monitor"]]
+            },
+        }
+        gdb.update(db, {}, {}, {})
+        self.assertEqual(db["satellites"]["DIGUI-1"]["status"], "transmitting")
+        db["verdicts"]["DIGUI-1"].append(
+            ["2026-11-03T00:00:00Z", False, "clipping monitor"]
+        )
+        changes = gdb.update(db, {}, {}, {})
+        e = db["satellites"]["DIGUI-1"]
+        self.assertEqual(e["status"], "no_transmission")
+        self.assertEqual(e["last_checked_utc"], "2026-11-02T10:00:40Z")
+        self.assertIn("by clipping monitor", changes[0])
+        # a later beam-dump pass outranks the verdict
+        passes = {
+            "DIGUI-1": {"2026-11-04T10:00:40Z": ["2026-11-04T10:00:40Z", 1.0, True]}
+        }
+        gdb.update(db, passes, {}, {})
+        e = db["satellites"]["DIGUI-1"]
+        self.assertEqual(e["status"], "transmitting")
+        self.assertNotIn("status_basis", e)
+
     def test_no_sky_set_after_the_fact(self):
         db = {
             "about": "",
