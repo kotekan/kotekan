@@ -228,7 +228,9 @@ def pull_save(node, g, tag, clock):
     name = "steer_g%d_%s.bin" % (g, tag)
     d = os.path.join(WORK, "identify", node)
     os.makedirs(d, exist_ok=True)
-    subprocess.run(["ssh", node, "mkdir -p " + NODE_DIR], check=False)
+    subprocess.run(
+        ["ssh", node, "mkdir -p %s; chmod 0777 %s" % (NODE_DIR, NODE_DIR)], check=False
+    )
     r = post(node, g, "rolling", {"save": NODE_DIR + "/" + name})
     # a stage before the steering one reports no seq: the wall clock, to ~1 s
     seq = get(node, g).get("seq", clock.seq(time.time()))

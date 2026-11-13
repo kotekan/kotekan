@@ -8,14 +8,18 @@
     dtv_roll.py --nodes cx51 save            # the state in use -> STATES/<node>/st_g<g>_roll<HHMMSS>.bin, current
     dtv_roll.py --nodes cx19,cx27,... watch [--every 60] [--save-every 600] [--protect-min 25]
         [--protect NAME:RA:DEC ...] [--rearm] [--restore] [--min-explained F]
+        [--pass-tle FILE [--pass-freq 1886-1893] [--pass-pad 60]]
 
 watch: one status line per GPU each --every s; saves each --save-every s (keeps the last 3 per node, so a
 restarted node's restore loads a g at most minutes old); freezes sources 1.. while a protected sky source
 (--protect, J2000 degrees; default Tau A) is within --protect-min minutes of drift of the boresight (on the
-meridian at --boresight-dec), so the blind sources do not fit it as it crosses the beam; with --rearm, re-enables a GPU that subtracts with the rolling fit off (a node restart loses it); with
+meridian at --boresight-dec), so the blind sources do not fit it as it crosses the beam; with --pass-tle,
+freezes every source on the GPUs holding a --pass-freq channel while a satellite of that file is above the
+horizon, from --pass-pad s before its rise to as long after its set, so the fit does not follow the
+satellite's burst and trip when it ends (CHUANGXIN 1-03/1-04 at 369 MHz); with --rearm, re-enables a GPU that subtracts with the rolling fit off (a node restart loses it); with
 --restore, first loads the node's current state on a GPU in pass-through 600..30000 frames after a restart;
 with --min-explained, sets the rolling fit's hold on a GPU that reports another value (a node restart brings
-back its config's). Saves go through the node's local /tmp/gnss/dtvroll (kotekan is root; /home is root-squashed NFS).
+back its config's). Saves go through the node's local /tmp/gnss/dtvroll (kotekan cannot write /home).
 REST calls only: safe on the VM.
 """
 import argparse
@@ -36,6 +40,16 @@ import dtv_state  # noqa: E402
 
 STATES = os.environ.get("DTV_STATES", "/home/kvand/gnss/builds/dtv-live/states-rev2")
 NODE_DIR = "/tmp/gnss/dtvroll"
+# a node that dies mid-save must not hang the watcher
+SSH = [
+    "ssh",
+    "-o",
+    "ConnectTimeout=10",
+    "-o",
+    "ServerAliveInterval=10",
+    "-o",
+    "ServerAliveCountMax=3",
+]
 
 
 def url(node, g, ep):
@@ -119,19 +133,30 @@ def line(node, g, s, prev=None):
 
 
 def save(node, gpus):
-    # kotekan runs as root and /home is root-squashed NFS: the node writes to its local NODE_DIR, we pull the file.
+    # kotekan cannot write /home (root-squashed NFS, or another account): the node writes to its local NODE_DIR,
+    # world-writable so either account works, and we pull the file.
     tag = "roll" + time.strftime("%H%M%S", time.gmtime())
     ok = True
-    subprocess.run(["ssh", node, "mkdir -p " + NODE_DIR], check=False)
+    subprocess.run(
+        SSH + [node, "mkdir -p %s; chmod 0777 %s" % (NODE_DIR, NODE_DIR)], check=False
+    )
     for g in gpus:
         name = "st_g%d_%s.bin" % (g, tag)
         p = os.path.join(STATES, node, name)
         r = post(node, g, "rolling", {"save": NODE_DIR + "/" + name})
         if "error" not in r:
             subprocess.run(
-                ["rsync", "-a", "%s:%s/%s" % (node, NODE_DIR, name), p], check=False
+                [
+                    "rsync",
+                    "-a",
+                    "-e",
+                    " ".join(SSH),
+                    "%s:%s/%s" % (node, NODE_DIR, name),
+                    p,
+                ],
+                check=False,
             )
-            subprocess.run(["ssh", node, "rm -f %s/%s" % (NODE_DIR, name)], check=False)
+            subprocess.run(SSH + [node, "rm -f %s/%s" % (NODE_DIR, name)], check=False)
         if "error" in r or not os.path.exists(p):
             print("%s %s g%d save failed: %s" % (stamp(), node, g, r), flush=True)
             ok = False
@@ -174,6 +199,17 @@ def nearest_protected(specs, dec_b):
         if best is None or sep < best[1]:
             best = (name, sep, ha)
     return best
+
+
+def satellites_up(sky, t0, t1):
+    """'NAME up (TLE d old)' for each satellite of sky (dtv_steer.Sky) above the horizon at any time
+    in [t0, t1]."""
+    up = sorted({n for t in range(int(t0), int(t1) + 30, 30) for n in sky.up(t)})
+    return [
+        "%s up (TLE %.1f d old)"
+        % (n, (t0 - sky.sats[n].epoch.utc_datetime().timestamp()) / 86400)
+        for n in up
+    ]
 
 
 def main():
@@ -219,6 +255,16 @@ def main():
         type=float,
         help="keep the rolling fit's min_explained at this value",
     )
+    p.add_argument(
+        "--pass-tle",
+        help="TLE file (name + 2 lines each) of satellites whose passes freeze every source",
+    )
+    p.add_argument(
+        "--pass-freq", default="1886-1893", help="freq_ids of the GPUs a pass freezes"
+    )
+    p.add_argument(
+        "--pass-pad", type=float, default=60.0, help="s before a rise and after a set"
+    )
     a = ap.parse_args()
     a.nodes = a.nodes.split(",")
     a.gpus = [int(g) for g in a.gpus.split(",")]
@@ -254,12 +300,22 @@ def main():
             print(stamp(), n, "saved", save(n, a.gpus))
     elif a.cmd == "watch":
         prev, last_save = {}, time.time()
+        sky = None
+        if a.pass_tle:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            from dtv_steer import Sky, ranges  # skyfield
+
+            sky, pass_fids = Sky(a.pass_tle), ranges(a.pass_freq)
         while True:
             want = None
             if a.protect_min > 0:
                 name, sep, ha = nearest_protected(a.protect or PROTECT, a.boresight_dec)
                 radius = a.protect_min / 4.0 * math.cos(math.radians(a.boresight_dec))
                 want = 1 if sep < radius else 0
+            up = []
+            if sky is not None:
+                now = time.time()
+                up = satellites_up(sky, now - a.pass_pad, now + a.every + a.pass_pad)
             for n in a.nodes:
                 for g in a.gpus:
                     s = get(n, g)
@@ -309,18 +365,29 @@ def main():
                             ),
                             flush=True,
                         )
+                    n_src, fz, why = len(r["freeze"]), None, []
                     if want is not None:
-                        fz = [0] + [want] * (len(r["freeze"]) - 1)
-                        if r["freeze"] != fz:
-                            print(
-                                stamp(),
-                                n,
-                                "g%d" % g,
-                                "%s %.1f deg from the boresight (HA %+.1f min): freeze %s ->"
-                                % (name, sep, ha, fz),
-                                post(n, g, "rolling", {"freeze": fz}).get("freeze"),
-                                flush=True,
-                            )
+                        fz = [0] + [want] * (n_src - 1)
+                        why.append(
+                            "%s %.1f deg from the boresight (HA %+.1f min)"
+                            % (name, sep, ha)
+                        )
+                    if sky is not None and any(
+                        c["freq_id"] in pass_fids for c in r["channels"]
+                    ):
+                        if up:
+                            fz, why = [1] * n_src, up
+                        else:
+                            fz, why = fz or [0] * n_src, ["no satellite up"] + why
+                    if fz is not None and r["freeze"] != fz:
+                        print(
+                            stamp(),
+                            n,
+                            "g%d" % g,
+                            "%s: freeze %s ->" % (", ".join(why), fz),
+                            post(n, g, "rolling", {"freeze": fz}).get("freeze"),
+                            flush=True,
+                        )
                     prev[(n, g)] = s
             if time.time() - last_save >= a.save_every:
                 last_save = time.time()
