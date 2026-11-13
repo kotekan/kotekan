@@ -63,6 +63,45 @@ def test_commanded_chains_feed_no_command():
     check(n > 0, "the chains yaml has commanded chains (%d)" % n)
 
 
+# Each chain's --dll-spacing as the chains yaml wrote it before the chains table held it: 0.5
+# (the broker's default) unless named.
+HAND_COPY_DLL_SPACING = {
+    "gps_l2c": 0.33,
+    "glo_l2oc": 0.4,
+    "glo_l2of": 0.33,
+    "bds_b1i": 0.5,
+    "gps_l1ca": 0.5,
+    "gal_e1c": 0.2,
+    "sbas_l1": 0.5,
+}
+
+
+def test_dll_spacing_from_the_chains_table():
+    """The broker's dll_spacing per chain, parsed from broker_multi's argv as the chain's
+    thread parses it, is its chains-table row's (the node taps' value) and the value the
+    chains yaml held by hand before the table."""
+    from gnss_broker.cli import build_parser
+    import gnss_chain_table
+
+    ap = build_parser("test")
+    path = os.path.join(HERE, "..", "..", "config", "gnss_chains_chord.yaml")
+    got = {
+        name: ap.parse_args(argv).dll_spacing for name, argv in broker_multi.load(path)
+    }
+    table = gnss_chain_table.load()
+    check(
+        gnss_chain_table.dll_spacing_drift(table, got, "broker") == [],
+        "every chain's dll_spacing is its row's (%s)"
+        % gnss_chain_table.dll_spacing_drift(table, got, "broker"),
+    )
+    want = {c: HAND_COPY_DLL_SPACING.get(c, 0.5) for c in got}
+    check(
+        got == want and len(got) == 17,
+        "and the hand copy's, chain for chain (%s)"
+        % {c: (got[c], want[c]) for c in got if got[c] != want[c]},
+    )
+
+
 def test_iface_is_not_a_chain_flag():
     """common `iface:` configures the interface watcher (gnss_broker/iface_watch.py); passed on
     as --iface, every chain would refuse to start."""
@@ -73,7 +112,8 @@ def test_iface_is_not_a_chain_flag():
         fh.flush()
         got = broker_multi.load(fh.name)
     check(
-        got == [("a", ["--interval", "2", "--signal", "gps_l5"])],
+        got
+        == [("a", ["--interval", "2", "--signal", "gps_l5", "--dll-spacing", "0.5"])],
         "common iface: is dropped from the chains' flags (got %r)" % got,
     )
 
@@ -85,6 +125,8 @@ def main():
     test_commanded_chains_feed_no_command()
     print("the interface watcher's settings")
     test_iface_is_not_a_chain_flag()
+    print("dll-spacing from the chains table")
+    test_dll_spacing_from_the_chains_table()
     if _fails:
         print("FAILED (%d)" % len(_fails))
         return 1

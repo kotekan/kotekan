@@ -40,13 +40,10 @@ clock:
     profile: gpsdo
 
 signals:
-    # The primary chain's and the search's signal; other chains come from --extra-signal
-    # (config/gnss_fleet_chord.yaml).
+    # The search's signal, and the carrier and chip rate below set the primary chain's covering
+    # channels. The chains, the primary's tracker code included, are the chains table
+    # (config/gnss_fleet_chord.yaml chains:).
     primary: GPS_L5_Q           # dataless pilot, 10230 chips, 1 ms primary, NH20 secondary
-    # The primary chain's tracker code: NH20 tiled into one 204600-chip, 20 ms code, so a 10.5 ms
-    # record despreads coherently instead of summing ~10 NH chips that largely cancel. The search
-    # uses `primary` with nh_search.
-    tracker: GPS_L5_Q_NH
     # Same carrier, so the same covering channels. Printed by chord_band_plan.py only.
     also_available: [GAL_E5A_Q, BDS_B2A_P]
     # Also the replica's f_offset, which is the sky carrier, not an IF: CHORD samples 0-1600 MHz

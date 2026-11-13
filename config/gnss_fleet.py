@@ -10,6 +10,8 @@ hosts outside the fleet: those run production's stock kotekan and are the stock 
 generator asks for the EOP table and the bad-input block (a role-off node is given back to
 production, so it is one too).
 
+The chains are the chains table, `chains:` in the same manifest (config/gnss_chain_table.py).
+
 Derived from the list and nothing else:
   * each node's search-port-base (gen_fleet.py passes it to the generator);
   * the search aggregator's feeds (gen_chord_gnss_config.py --aggregator-instance);
@@ -35,6 +37,8 @@ import re
 import sys
 
 import yaml
+
+import gnss_chain_table
 
 CONF = os.path.dirname(os.path.abspath(__file__))
 MANIFEST = os.path.join(CONF, "gnss_fleet_chord.yaml")
@@ -153,6 +157,15 @@ class Fleet:
             self.manifest_path = "<manifest>"
         site_nodes = self.site.get("nodes") or {}
         self.site_hosts = [h for h, v in site_nodes.items() if isinstance(v, dict)]
+        try:
+            self.chains = gnss_chain_table.rows(self.man)
+        except gnss_chain_table.TableError as e:
+            raise FleetError("%s: %s" % (self.manifest_path, e))
+        if "extra-signal" in (self.man.get("common") or {}):
+            raise FleetError(
+                "%s: common sets extra-signal; the chains are the rows of chains: "
+                "(config/gnss_chain_table.py), so move it there" % self.manifest_path
+            )
         if "search-port-base" in (self.man.get("common") or {}):
             raise FleetError(
                 "%s: common sets search-port-base; each node's is derived from its slot "
@@ -213,43 +226,26 @@ class Fleet:
 
     # ---- chains ----------------------------------------------------------------------------
     def tracker_signals(self):
-        """{broker chain: (descriptor, tag)} for every chain the nodes build: the primary
-        (node table signals.tracker) and each manifest extra-signal."""
-        sig = self.site["signals"]
-        out = {
-            broker_chain_name(sig["primary"]): (
-                sig.get("tracker", sig["primary"]),
-                signal_tag(sig["primary"]),
-            )
-        }
-        for ent in (self.man.get("common") or {}).get("extra-signal") or []:
-            name = str(ent).partition(":")[0].strip()
-            out[broker_chain_name(name)] = (name, signal_tag(name))
-        return out
+        """{broker chain: (descriptor, tag)} for every chain the nodes build: the rows of the
+        chains table, the primary first."""
+        return {r.key: (r.descriptor, signal_tag(r.descriptor)) for r in self.chains}
 
     def instances(self, chain):
         """[(host, gpu)] of the chain's instances, slot-major: every fleet GPU holding at least
         one of the chain's covering channels, by the rule the generator builds it with."""
-        sigs = self.tracker_signals()
-        prim = broker_chain_name(self.site["signals"]["primary"])
-        if chain not in sigs:
+        row = next((r for r in self.chains if r.key == chain), None)
+        if row is None:
             raise FleetError(
-                "chain %s: no node builds it (the primary is %s; extra-signal in %s: %s)"
-                % (
-                    chain,
-                    self.site["signals"]["primary"],
-                    self.manifest_path,
-                    ", ".join(sorted(c for c in sigs if c != prim)),
-                )
+                "chain %s: no node builds it (chains: in %s: %s)"
+                % (chain, self.manifest_path, ", ".join(r.key for r in self.chains))
             )
-        name = sigs[chain][0]
         out = []
         for host in self.hosts:
-            for gpu in self._chain_gpus(host, name, primary=chain == prim):
+            for gpu in self._chain_gpus(host, row):
                 out.append((host, gpu))
         return out
 
-    def _chain_gpus(self, host, name, primary):
+    def _chain_gpus(self, host, row):
         # Lazy: chord_band_plan imports the interface golden (gnss_broker.iface).
         if CONF not in sys.path:
             sys.path.insert(0, CONF)
@@ -264,23 +260,17 @@ class Fleet:
         sig = self.site["signals"]
         doppler = float(sig["max_doppler_hz"])
         chans = node_channels(self.site, host)
-        if primary:
+        if row.primary:
             # As gen_chord_gnss_config.py: the node table's carrier and chip rate.
             cov = covering_channels(
                 chans, float(sig["carrier_hz"]), float(sig["chip_rate_hz"]), doppler
             )
         else:
             # As gen_chord_gnss_config.py: an FDMA chain covers the union of its slots' lobes.
-            prn_s = next(
-                (
-                    str(e).partition(":")[2]
-                    for e in (self.man.get("common") or {}).get("extra-signal") or []
-                    if str(e).partition(":")[0].strip() == name
-                ),
-                "",
+            ks = parse_slots(row.prns)[1]
+            cov = chain_covering_channels(
+                chans, signal_table()[row.descriptor], doppler, ks
             )
-            ks = parse_slots(prn_s)[1]
-            cov = chain_covering_channels(chans, signal_table()[name], doppler, ks)
         offs = self.offsets(host)
         return sorted({offs.index(f % 16) for f in cov})
 
@@ -309,8 +299,7 @@ class Fleet:
                 continue
             if stage == "srch_tap":
                 # The search taps: one per GPU holding the primary's covering channels.
-                prim = broker_chain_name(self.site["signals"]["primary"])
-                inst = self.instances(prim)
+                inst = self.instances(self.chains[0].key)
             else:
                 inst = self.instances(chain)
             out[key] = ",".join(self.stage_url(h, g, chain, stage) for h, g in inst)
@@ -362,18 +351,55 @@ def expand_chains(cfg, fleet=None):
     return cfg
 
 
+def table_keys(cfg, table, where="the chains table"):
+    """A parsed chains yaml with each chain's dll-spacing set from its row of the chains table
+    (the input is not modified): the spacing the node generator puts on the chain's taps, so
+    the trim law and the taps cannot disagree. A dll-spacing written in the yaml is refused,
+    as is a chain without a row (no node builds it)."""
+    cfg = dict(cfg or {})
+    if "dll-spacing" in (cfg.get("common") or {}):
+        raise FleetError(
+            "common sets dll-spacing; each chain's comes from its row in %s" % where
+        )
+    rows = {r.key: r for r in table}
+    chains = {}
+    for name, spec in (cfg.get("chains") or {}).items():
+        spec = dict(spec or {})
+        if "dll-spacing" in spec:
+            raise FleetError(
+                "chains.%s sets dll-spacing; it comes from the chain's row in %s"
+                % (name, where)
+            )
+        key = str(spec.get("signal", name))
+        if key not in rows:
+            raise FleetError("chains.%s: %s has no row in %s" % (name, key, where))
+        spec["dll-spacing"] = rows[key].dll_spacing_chips
+        chains[name] = spec
+    cfg["chains"] = chains
+    return cfg
+
+
 def load_chains(path=None, fleet=None):
-    """The chains yaml at `path`, parsed and expanded. Without `fleet`, the fleet list and the
-    node table are the ones beside the chains file (a checkout's config/), else this module's."""
+    """The chains yaml at `path`, parsed, expanded, and each chain's dll-spacing taken from the
+    chains table (table_keys). Without `fleet`, the fleet list, the chains table and the node
+    table are the ones beside the chains file (a checkout's config/), else this module's."""
     path = path or CHAINS_YAML
     cfg = _load_yaml(path)
+    d = os.path.dirname(os.path.abspath(path))
+    man = os.path.join(d, os.path.basename(MANIFEST))
     if fleet is None:
-        d = os.path.dirname(os.path.abspath(path))
-        man = os.path.join(d, os.path.basename(MANIFEST))
         nodes = os.path.join(d, os.path.basename(NODE_FILE))
         if os.path.exists(man) and os.path.exists(nodes):
             fleet = lambda: Fleet(man, nodes)  # noqa: E731  (built only if needed)
-    return expand_chains(cfg, fleet)
+    if isinstance(fleet, Fleet):
+        table, man = fleet.chains, fleet.manifest_path
+    else:
+        man = man if os.path.exists(man) else MANIFEST
+        try:
+            table = gnss_chain_table.load(man)
+        except gnss_chain_table.TableError as e:
+            raise FleetError("%s: %s" % (man, e))
+    return table_keys(expand_chains(cfg, fleet), table, "%s chains:" % man)
 
 
 def live_comb(host, port, science_band, timeout=4.0):

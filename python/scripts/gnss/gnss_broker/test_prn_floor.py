@@ -9,7 +9,6 @@ both broadcast, and the broker takes both of its floors from it.
 
 import ast
 import os
-import re
 import sys
 
 import yaml
@@ -75,11 +74,14 @@ def test_fleet_slots_above_floor():
     chains = yaml.safe_load(
         open(os.path.join(REPO, "config", "gnss_chains_chord.yaml"))
     )
-    fleet = open(os.path.join(REPO, "config", "gnss_fleet_chord.yaml")).read()
-    lists = {}
-    # an FDMA list gives each slot as slot@k
-    for m in re.finditer(r"^\s*- ([A-Z0-9_]+):([0-9,@-]+)\s*$", fleet, re.M):
-        lists[m.group(1)] = [int(p.partition("@")[0]) for p in m.group(2).split(",")]
+    fleet = yaml.safe_load(open(os.path.join(REPO, "config", "gnss_fleet_chord.yaml")))
+    # The chains table's PRN lists; an FDMA list gives each slot as slot@k.
+    lists = {
+        row["descriptor"]: [
+            int(p.partition("@")[0]) for p in str(row["prns"]).split(",")
+        ]
+        for row in fleet["chains"]
+    }
     n = 0
     for name, block in chains["chains"].items():
         key = block.get("signal")

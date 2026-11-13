@@ -300,6 +300,85 @@ def test_built_instances_matches_derived():
     )
 
 
+def test_chains_are_the_table():
+    """The chains the nodes build are the chains table's rows, the primary first, and the
+    manifest's common may not carry the old extra-signal list beside them."""
+    fl = six()
+    sig = fl.tracker_signals()
+    check(
+        list(sig) == [r.key for r in fl.chains]
+        and sig["gps_l5"] == ("GPS_L5_Q_NH", "_gps_l5")
+        and sig["glo_l2of"] == ("GLO_L2OF_MC", "_glo_l2of"),
+        "tracker_signals: every row, primary first, descriptor and tag (%s)"
+        % list(sig),
+    )
+    m = manifest({"cx19": {}})
+    m["common"] = dict(m["common"], **{"extra-signal": ["GAL_E5A_Q_CS:2"]})
+    check(refused(m, "common sets extra-signal"), "an extra-signal list is refused")
+
+
+def test_broker_dll_spacing_is_the_tables():
+    """load_chains gives every chain its row's dll-spacing, and refuses a dll-spacing written
+    in the chains yaml (a second copy that can drift from the node taps) or a chain without a
+    row; gen_fleet --check names a row the broker runs no chain for."""
+    with tempfile.TemporaryDirectory() as d:
+        with open(os.path.join(d, "gnss_fleet_chord.yaml"), "w") as fh:
+            yaml.safe_dump(manifest({h: {} for h in SIX}), fh)
+        with open(os.path.join(d, "chord_gnss_node.yaml"), "w") as fh:
+            yaml.safe_dump(site(), fh)
+        path = os.path.join(d, "chains.yaml")
+
+        def load(cfg):
+            with open(path, "w") as fh:
+                yaml.safe_dump(cfg, fh)
+            try:
+                return gf.load_chains(path)
+            except gf.FleetError as e:
+                return str(e)
+
+        out = load(chains_cfg())
+        check(
+            out["chains"]["gps_l2c"]["dll-spacing"] == 0.33
+            and out["chains"]["gps_l5"]["dll-spacing"] == 0.5,
+            "each chain's dll-spacing is its row's",
+        )
+        cfg = chains_cfg()
+        cfg["chains"]["gps_l2c"]["dll-spacing"] = 0.33
+        got = load(cfg)
+        check(
+            "chains.gps_l2c sets dll-spacing" in str(got),
+            "a dll-spacing in the chains yaml is refused (%s)" % got,
+        )
+        cfg = chains_cfg()
+        cfg["common"]["dll-spacing"] = 0.5
+        got = load(cfg)
+        check("common sets dll-spacing" in str(got), "...in common too (%s)" % got)
+        cfg = chains_cfg()
+        cfg["chains"]["gps_l9"] = {"signal": "gps_l9"}
+        got = load(cfg)
+        check(
+            "chains.gps_l9: gps_l9 has no row" in str(got),
+            "a chain without a row is refused (%s)" % got,
+        )
+    probs = gen_fleet.check_chains(six())
+    check(probs == [], "the repo's chains yaml runs every row (%s)" % probs)
+    with tempfile.TemporaryDirectory() as d:
+        with open(gen_fleet.CHAINS) as fh:
+            raw = yaml.safe_load(fh)
+        del raw["chains"]["glo_l2of"]
+        raw["chains"]["gps_l2c"]["dll-spacing"] = 0.4
+        path = os.path.join(d, "chains.yaml")
+        with open(path, "w") as fh:
+            yaml.safe_dump(raw, fh)
+        probs = gen_fleet.check_chains(six(), path)
+    check(
+        any("chains.gps_l2c sets dll-spacing" in p for p in probs)
+        and any("row glo_l2of" in p for p in probs),
+        "--check names a hand dll-spacing and a row without a broker chain (%s)"
+        % probs,
+    )
+
+
 def test_stage_chain():
     """stage_chain reads the chain from a stage name of either generation: the broker key, or
     the band tag that came before it (no tag = the primary, l5 = SBAS L5)."""
@@ -333,7 +412,9 @@ def test_stage_chain():
 
 
 def test_check_instances_names_a_mismatch():
-    fl = gf.Fleet(manifest({"cx44": {}}, {"common": {}}), site())
+    m = manifest({"cx44": {}}, {"common": {}})
+    m["chains"] = m["chains"][:1]
+    fl = gf.Fleet(m, site())
     text = "# h\n" + yaml.safe_dump({"gnss0_n2combine": {}, "gnss1_n2combine": {}})
     check(
         gen_fleet.check_instances(fl, {"cx44": text}) == [], "a matching node is quiet"

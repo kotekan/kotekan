@@ -315,17 +315,21 @@ def test_unknown_descriptor_is_refused():
         "a descriptor the golden has but no chains-table row holds is refused (rc %d)"
         % rc,
     )
-    cfg = node_cfg()
-    cfg["signals"]["tracker"] = "GPS_L5_Q_NHX"
+    rows = gnss_chain_table.load()
+    g._CHAIN_ROWS[:] = [rows[0]._replace(descriptor="GPS_L5_Q_NHX")] + rows[1:]
     args = argparse.Namespace(extra_signal=None, aggregator_extra_search=None)
     try:
-        g.check_descriptors(cfg, args)
+        g.check_descriptors(node_cfg(), args)
         msg = None
     except SystemExit as e:
         msg = str(e)
+    finally:
+        g._CHAIN_ROWS[:] = []
     check(
-        msg is not None and msg.startswith("signals.tracker GPS_L5_Q_NHX:"),
-        "a tracker descriptor the golden lacks is refused (%s)" % msg,
+        msg is not None
+        and "chain gps_l5 (id 1): descriptor GPS_L5_Q_NHX is not one signal_by_name"
+        in msg,
+        "a chains-table descriptor the golden lacks is refused (%s)" % msg,
     )
     cfg = node_cfg()
     args = argparse.Namespace(

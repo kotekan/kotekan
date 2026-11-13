@@ -76,6 +76,41 @@ def test_common_flags_leave_out_site_keys():
     )
 
 
+def test_chains_follow_common():
+    """Every chains-table row but the primary reaches the generator as --extra-signal
+    DESCRIPTOR:PRNS, in row order, after common's flags."""
+    man = {
+        "common": {"fleet-lanes": True},
+        "chains": [
+            {"key": "gps_l5", "descriptor": "GPS_L5_Q_NH", "prns": "1,2"},
+            {"key": "glo_l2of", "descriptor": "GLO_L2OF_MC", "prns": "1@1,2@-4"},
+            {"key": "gal_e5a", "descriptor": "GAL_E5A_Q_CS", "prns": "2,3"},
+        ],
+    }
+    for row in man["chains"]:
+        row.update(
+            {
+                "id": 1 + man["chains"].index(row),
+                "dll-spacing-chips": 0.5,
+                "telem-rows": 14,
+                "proj-sys": "G",
+                "shared-ref-band": "x",
+            }
+        )
+    got = gen_fleet.common_flags(man)
+    check(
+        got
+        == [
+            "--fleet-lanes",
+            "--extra-signal",
+            "GLO_L2OF_MC:1@1,2@-4",
+            "--extra-signal",
+            "GAL_E5A_Q_CS:2,3",
+        ],
+        "the rows after the primary follow common, in order (%s)" % got,
+    )
+
+
 def test_check_relays_notes():
     """--check of one node whose generator succeeds with a note on stderr."""
     with tempfile.TemporaryDirectory() as d:
@@ -253,6 +288,7 @@ def test_no_kotekan_tree():
             "scripts/gnss/stock_parity.py",
             "python/scripts/gnss/kotekan_src.py",
             "config/gnss_fleet.py",
+            "config/gnss_chain_table.py",
             "config/chord_gnss_node.yaml",
         ):
             os.makedirs(os.path.dirname(os.path.join(c, rel)), exist_ok=True)

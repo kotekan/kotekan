@@ -7,7 +7,9 @@
 
 The manifest holds every node's config/gen_chord_gnss_config.py flags, so each config can be
 reproduced from a committed file; a node's config is regenerated, never hand-edited. Its
-`nodes:` is the fleet list (config/gnss_fleet.py): the nodes written are its hosts, each node's
+`chains:` is the chains table (config/gnss_chain_table.py): every row but the primary goes to
+the generator as --extra-signal DESCRIPTOR:PRNS, after `common:`'s flags. Its `nodes:` is the
+fleet list (config/gnss_fleet.py): the nodes written are its hosts, each node's
 search-port-base comes from its slot, and the search aggregator's config (the manifest's
 `aggregator:` block) is written from the same list, so a node joining or leaving is one line
 there and one run of this.
@@ -49,6 +51,7 @@ OUTDIR = os.path.join(K, "config", "generated")
 sys.path.append(os.path.join(K, "python", "scripts", "gnss"))
 sys.path.insert(0, os.path.join(K, "config"))
 import kotekan_src  # noqa: E402
+import gnss_chain_table  # noqa: E402
 import gnss_fleet  # noqa: E402
 
 CHAINS = os.path.join(K, "config", "gnss_chains_chord.yaml")
@@ -175,9 +178,14 @@ def flags_from(mapping):
 
 
 def common_flags(man):
-    """The manifest's `common:` as generator flags, less the keys only site services read."""
+    """The manifest's `common:` as generator flags, less the keys only site services read, then
+    an --extra-signal DESCRIPTOR:PRNS per row of the chains table but the first, the primary,
+    which the generator builds on its own."""
     common = man.get("common") or {}
-    return flags_from({k: v for k, v in common.items() if k not in gnss_fleet.SITE_KEYS})
+    extra = ["%s:%s" % (r.descriptor, r.prns) for r in gnss_chain_table.rows(man)[1:]]
+    return flags_from(
+        {k: v for k, v in common.items() if k not in gnss_fleet.SITE_KEYS}
+    ) + flags_from({"extra-signal": extra})
 
 
 # ---- PRN content gate (--check-prns) -------------------------------------------------------
@@ -226,14 +234,13 @@ def check_prns(man, rise_deg=RISE_DEG, hours=24.0, step_min=10.0):
 
     lists = {}
     fdma_k = {}  # FDMA chains (PRN@k): {name: {slot: k}}
-    for ent in man.get("common", {}).get("extra-signal") or []:
-        name, _, prn_s = str(ent).partition(":")
-        prns, ks = parse_slots(prn_s)
-        lists[name] = sorted(prns)
+    for row in gnss_chain_table.rows(man)[1:]:
+        prns, ks = parse_slots(row.prns)
+        lists[row.descriptor] = sorted(prns)
         if ks:
-            fdma_k[name] = dict(zip(prns, ks))
+            fdma_k[row.descriptor] = dict(zip(prns, ks))
     if not lists:
-        print("no extra-signal PRN lists in the manifest -- nothing to check")
+        print("no chains but the primary in the manifest -- nothing to check")
         return 0
 
     # Chains whose broker block sets probe-dark (config/gnss_chains_chord.yaml): only there is a
@@ -389,9 +396,10 @@ def derived_instances(fleet, host):
 
 
 def check_chains(fleet, path=CHAINS):
-    """Problems with the chains yaml against the fleet list, as lines (empty = none): a node
-    endpoint key written by hand rather than `fleet`, or an expanded URL on a host outside
-    the fleet."""
+    """Problems with the chains yaml against the fleet list and the chains table, as lines
+    (empty = none): a node endpoint key written by hand rather than `fleet`, an expanded URL on
+    a host outside the fleet, a dll-spacing written in the yaml, a chain without a table row,
+    or a row the broker runs no chain for."""
     with open(path) as f:
         raw = yaml.safe_load(f) or {}
     keys = set(gnss_fleet.URL_KEYS) | set(gnss_fleet.SINGLE_KEYS)
@@ -407,6 +415,19 @@ def check_chains(fleet, path=CHAINS):
             bad.append(
                 "%s: %s is written by hand (%s); set it to `fleet` so it follows the "
                 "fleet list" % (where, k, str(v)[:60])
+            )
+    try:
+        gnss_fleet.table_keys(raw, fleet.chains)
+    except gnss_fleet.FleetError as e:
+        bad.append(str(e))
+    run = {
+        str((v or {}).get("signal", c)) for c, v in (raw.get("chains") or {}).items()
+    }
+    for r in fleet.chains:
+        if r.key not in run:
+            bad.append(
+                "chains table row %s: the nodes build it and the chains yaml runs no "
+                "chain for it" % r.key
             )
     try:
         cfg = gnss_fleet.expand_chains(raw, fleet)
@@ -532,7 +553,7 @@ def main():
     ap.add_argument(
         "--check-prns",
         action="store_true",
-        help="check the manifest's extra-signal PRN lists against live BRDC and a 24 h "
+        help="check the chains table's PRN lists (but the primary's) against live BRDC and a 24 h "
         "visibility sweep, and exit: reports dead slots (no active satellite; warn), "
         "dark slots on a probe-dark chain (noted), and active, capable satellites that "
         "rise above 10 deg here without a slot (fail, exit 1). Not part of --check, "

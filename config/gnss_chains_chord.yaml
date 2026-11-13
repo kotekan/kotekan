@@ -9,9 +9,15 @@
 # "unrecognized arguments". --list prints each chain's resolved flags.
 #
 # Production runs this as gnss-broker.service. gnss-stack.target (scripts/gnss/site/systemd/)
-# starts one gnss-obs@<chain> writer per chain and must list the same chains as this file.
+# starts one gnss-obs@<chain> writer per chain and must list the same chains as this file;
+# `python3 config/gnss_chain_table.py obs-units` compares it with the chains table.
 # Adding a chain: regenerate and restart the nodes first, so its stages exist, then restart the
 # broker; a broker pointed at stages that do not exist yet fails its polls and posts.
+#
+# Each chain's dll-spacing is not here: it is the chain's row in the chains table
+# (config/gnss_fleet_chord.yaml chains:), which the node generator puts on the chain's taps, and
+# the loader (config/gnss_fleet.py load_chains) adds it, refusing one written here. Every chain
+# here needs a row there.
 #
 # The per-signal constants are not here: `signal: gps_l5` resolves carrier, chip rate, code
 # length, long-code segments and epoch, and overlay length from the broker's interface golden
@@ -770,16 +776,6 @@ chains:
         dr-clock-adopt: true
     # The phase ships in CM chips; the node's propagate_seed scales it by comb_mult.
         seed-phase-transport: true
-    # E/L tap offset from prompt, in CM chips (the default 0.5 suits the chip-narrow chains).
-    # Each L2C instance despreads one channel of width B = 195.3 kHz, and the fleet loop sums
-    # the contiguous channels coherently: an N-channel Dirichlet whose first null is 1/(NB),
-    # 0.52 CM chips for five channels and 0.44 for six (cx47 adds 6283), not the single
-    # channel's |sinc|^2 null at 2.6. Taps beyond it sit on sidelobes, where the discriminator
-    # reverses sign and the loop false-locks off peak. 0.33 serves five and six
-    # (gen_chord_gnss_config.py dll_spacing_chips has the numbers). Must match the node taps;
-    # when changing both, cycle the nodes before the broker so the taps lead the law.
-    # Re-derive both if the count of contiguous channels changes again.
-        dll-spacing: 0.33
         presence-admit-displaced: true
         joint-consume: clk,rate
         fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
@@ -826,14 +822,6 @@ chains:
     # record under an hour old the clock stays primed.
         dr-clock-adopt: true
         seed-phase-transport: true
-    # E/L tap offset from prompt, in 2.046 Mcps chips. On the fleet's 17-channel BOC sum, at 0.4,
-    # q on peak is 4.4 (the lock bars' 2.2 reads as on a BPSK chain at 0.5), the S-curve is
-    # linear to +-0.23 chip and keeps its sign to +-0.91, outside which the BOC side peaks
-    # (+-1.05) are stable false locks. With all 22 channels (eight nodes) 0.4 gives q 3.8 and keeps
-    # the sign to +-0.82. Must match the node taps (config/gen_chord_gnss_config.py
-    # dll_spacing_chips); when changing both, cycle the nodes before the broker. Re-derive if the
-    # node set changes.
-        dll-spacing: 0.4
         presence-admit-displaced: true
         joint-consume: clk,rate
         fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
@@ -865,10 +853,6 @@ chains:
         prn-reconfig: read
         dr-clock-adopt: true
         seed-phase-transport: true
-    # E/L tap offset in 511 kcps chips: per satellite, L2C's geometry (each lobe ~6 channels, one
-    # per instance, summed coherently by the fleet loop). Must match the node taps
-    # (config/gen_chord_gnss_config.py dll_spacing_chips). First sky to confirm.
-        dll-spacing: 0.33
         presence-admit-displaced: true
         joint-consume: clk,rate
         fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
@@ -901,11 +885,6 @@ chains:
     # carrier from.
         rrate-state: false
         rrate-kcoh-feed: 0
-    # E/L tap offset in 2.046 Mcps chips. The covering set is the whole main lobe, so the fleet
-    # sum is the band-limited chip triangle every comb chain closes on (|R| 0.56 at 0.5 chip,
-    # first null at 1.17), not L2C's Dirichlet. Must match the node taps
-    # (config/gen_chord_gnss_config.py dll_spacing_chips).
-        dll-spacing: 0.5
         fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
         fleet-trim-bandwidth: 2.5
         fleet-trim-readback: 1
@@ -938,10 +917,6 @@ chains:
     # Not in the joint state yet, as bds_b1i: the GPS rows take no rate from this band.
         rrate-state: false
         rrate-kcoh-feed: 0
-    # E/L tap offset in 1.023 Mcps chips: one channel per instance, but the eleven span the whole
-    # main lobe, so the fleet sum is the chip triangle, as on bds_b1i. Must match the node taps
-    # (config/gen_chord_gnss_config.py dll_spacing_chips).
-        dll-spacing: 0.5
         fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
         fleet-trim-bandwidth: 2.5
         fleet-trim-readback: 1
@@ -970,12 +945,9 @@ chains:
     # Not in the joint state yet, as gps_l1ca: the Galileo rows take no rate from this band.
         rrate-state: false
         rrate-kcoh-feed: 0
-    # E/L tap offset in 1.023 Mcps chips. On the 22-channel BOC(1,1) sum, which crosses zero at
-    # +-0.33 chip and bottoms at -0.5 at +-0.5, 0.2 is glo_l2oc's 0.4 in its 2.046 Mcps chips,
-    # and its 1.8x the trim law's slope takes glo_l2oc's slower fast loop. Must match the node
-    # taps (config/gen_chord_gnss_config.py dll_spacing_chips).
-        dll-spacing: 0.2
         fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+    # The BOC(1,1) S-curve at the chain's 0.2-chip spacing is 1.8x the trim law's slope, as
+    # glo_l2oc's at 0.4, so it takes glo_l2oc's slower fast loop.
         fleet-trim-bandwidth: 1.4
         fleet-trim-readback: 1
         trackers: fleet
@@ -999,8 +971,6 @@ chains:
         joint-consume: clk,rate
         rrate-state: false
         rrate-kcoh-feed: 0
-    # E/L tap offset in 1.023 Mcps chips, as gps_l1ca on the same eleven channels.
-        dll-spacing: 0.5
         fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
         fleet-trim-bandwidth: 2.5
         fleet-trim-readback: 1

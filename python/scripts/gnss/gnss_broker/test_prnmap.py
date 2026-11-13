@@ -21,7 +21,6 @@ What is pinned:
 """
 
 import os
-import re
 import sys
 from datetime import datetime, timezone
 
@@ -384,7 +383,8 @@ MAX_PRN = {"GW_1202": 2047}
 
 def test_chains_config():
     """The production chains (config/gnss_chains_chord.yaml, each chain over `common:`) against
-    the manifest's PRN lists (config/gnss_fleet_chord.yaml): a chain under apply must have PRNs
+    the chains table's PRN lists (config/gnss_fleet_chord.yaml chains:; an FDMA list, PRN@k,
+    pins its slots and is left out): a chain under apply must have PRNs
     the node's /set_prns can take (1..gnss::max_prn: cudaGnssChordTrack.cpp), or every swap it
     proposes is refused (sbas_l5, 10-23); and a chain with probe-require-slot must read the map
     back, or the filter never has a map and the probes go unfiltered."""
@@ -395,12 +395,12 @@ def test_chains_config():
     chains = yaml.safe_load(
         open(os.path.join(repo, "config", "gnss_chains_chord.yaml"))
     )
-    fleet = open(os.path.join(repo, "config", "gnss_fleet_chord.yaml")).read()
-    lists = {}
-    for m in re.finditer(r"^\s*- ([A-Z0-9_]+):([0-9,]+)\s*$", fleet, re.M):
-        lists.setdefault(m.group(1), set()).update(
-            int(p) for p in m.group(2).split(",")
-        )
+    fleet = yaml.safe_load(open(os.path.join(repo, "config", "gnss_fleet_chord.yaml")))
+    lists = {
+        row["descriptor"]: {int(p) for p in str(row["prns"]).split(",")}
+        for row in fleet["chains"]
+        if "@" not in str(row["prns"])
+    }
     common = chains.get("common") or {}
     n = 0
     for name, block in chains["chains"].items():

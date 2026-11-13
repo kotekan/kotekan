@@ -1689,16 +1689,17 @@ def build_parser(description):
         "chips. The taps are on the node; this value enters the trim law here (tau = "
         "-disc/4 x (spacing/0.5)), the C++ fast loop's copy, posted with its policy, "
         "and the --presence-admit-displaced fit, so it must match the node's "
-        "dll_spacing for this chain (config/gen_chord_gnss_config.py "
-        "dll_spacing_chips): in the loops a mismatch is a pure gain error, in the fit "
-        "a misread offset. When changing both, cycle the nodes before the broker. The "
+        "dll_spacing for this chain: in the loops a mismatch is a pure gain error, in "
+        "the fit a misread offset. broker_multi.py takes it from the chain's row in the "
+        "chains table (config/gnss_fleet_chord.yaml chains:), which the node generator "
+        "puts on the taps; when changing it, cycle the nodes before the broker. The "
         "offset is set by the width of the correlation the loop closes on, not by the "
         "chip: E and L must sit inside its first null, where the discriminator is "
         "monotonic, or the loop false-locks off peak. 0.5 (the default) suits the "
         "chip-narrow correlation of a chain whose instances each despread a "
         "multi-channel comb; GPS L2C (a fleet sum of single-channel instances) and "
-        "GLONASS L2OC (BOC side peaks) run the narrower offsets dll_spacing_chips "
-        "gives them and says why.",
+        "GLONASS L2OC (BOC side peaks) run the narrower offsets their rows give and "
+        "explain.",
     )
     ap.add_argument(
         "--dll-deep-gate",

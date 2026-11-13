@@ -1142,7 +1142,12 @@ def test_run_component_exports_no_kotekan_src():
         os.makedirs(os.path.join(k, "python", "scripts", "js_viewer"))
         # The obs writers' frame-0 node defaults to the fleet's first host.
         os.makedirs(os.path.join(k, "config"))
-        for name in ("gnss_fleet.py", "gnss_fleet_chord.yaml", "chord_gnss_node.yaml"):
+        for name in (
+            "gnss_fleet.py",
+            "gnss_chain_table.py",
+            "gnss_fleet_chord.yaml",
+            "chord_gnss_node.yaml",
+        ):
             shutil.copy(os.path.join(CONFIG, name), os.path.join(k, "config"))
         rc_sh = os.path.join(k, "scripts", "gnss", "site", "run_component.sh")
         out = {}

@@ -3198,10 +3198,7 @@ def check_descriptors(cfg, args):
     from the kotekan the golden pins would not resolve it, and the node would stop at stage
     construction."""
     g = iface.golden()
-    names = [
-        ("signals.primary", cfg["signals"]["primary"]),
-        ("signals.tracker", cfg["signals"].get("tracker")),
-    ]
+    names = [("signals.primary", cfg["signals"]["primary"])]
     names += [("--extra-signal", s.partition(":")[0]) for s in args.extra_signal or []]
     names += [
         ("--aggregator-extra-search", s.partition(":")[0])
