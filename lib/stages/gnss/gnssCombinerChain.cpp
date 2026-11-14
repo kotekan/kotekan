@@ -460,7 +460,7 @@ bool CombinerChain::ingest(const float* in, long long cur_hop) {
 }
 
 void CombinerChain::emit(float* out) {
-    // Again after the blocking wait: downstream backpressure is not this stage's cost.
+    // The host calls this after its out_buf wait: downstream backpressure is not this chain's cost.
     const double _t_emit0 = current_time();
     std::vector<float> p_pow_out(_n_prn, 0.0f); // fleet-DLL prompt power (see acc_ppow)
     std::vector<double> deep_snr(_n_prn, 0.0);  // significance of the deep detection (for REST)

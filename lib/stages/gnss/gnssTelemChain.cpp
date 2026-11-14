@@ -40,7 +40,7 @@ TelemChain::TelemChain(Config& config, const std::string& cfg_path, const std::s
         return;
     }
     // max_prn is a wire capacity, not n_prn: rows are compacted to the PRNs despread in each
-    // window. Overflow is checked per window in main_thread and only WARNs; telemetry is not
+    // window. Overflow is checked per window in add_record and only WARNs; telemetry is not
     // worth stopping the tracker for.
     if (_max_prn < 1) {
         FATAL_ERROR("GnssTelemPack[{:s}]: max_prn {:d} must be >= 1", _name, _max_prn);
