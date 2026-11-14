@@ -1082,20 +1082,35 @@ int main(int argc, char** argv) {
                 s2s_b[(size_t)q] = (q == 3 || q == 7) ? -1 : sp++;
         }
         const std::vector<int> s2s_c((size_t)n_slot, -1);
-        int *d_s2s_a = nullptr, *d_s2s_b = nullptr, *d_s2s_c = nullptr;
-        CK(cudaMalloc(&d_s2s_a, (size_t)n_slot * sizeof(int)));
-        CK(cudaMalloc(&d_s2s_b, (size_t)n_slot * sizeof(int)));
-        CK(cudaMalloc(&d_s2s_c, (size_t)n_slot * sizeof(int)));
+        // The second record of a 'first' case: the same slots on the +0.1-chip jobs, in reverse
+        // order, so no slot's job index equals its slot.
+        std::vector<int> s2s_a2(n_slot), s2s_b2(n_slot);
+        for (int q = 0; q < n_slot; ++q) {
+            s2s_a2[(size_t)q] = 2 * n_prn - 1 - s2s_a[(size_t)q];
+            s2s_b2[(size_t)q] = (s2s_b[(size_t)q] < 0) ? -1 : 2 * n_prn - 1 - s2s_b[(size_t)q];
+        }
+        int *d_s2s_a = nullptr, *d_s2s_b = nullptr, *d_s2s_c = nullptr, *d_s2s_a2 = nullptr,
+            *d_s2s_b2 = nullptr;
+        for (int** d : {&d_s2s_a, &d_s2s_b, &d_s2s_c, &d_s2s_a2, &d_s2s_b2})
+            CK(cudaMalloc(d, (size_t)n_slot * sizeof(int)));
         CK(cudaMemcpy(d_s2s_a, s2s_a.data(), (size_t)n_slot * sizeof(int), cudaMemcpyHostToDevice));
         CK(cudaMemcpy(d_s2s_b, s2s_b.data(), (size_t)n_slot * sizeof(int), cudaMemcpyHostToDevice));
         CK(cudaMemcpy(d_s2s_c, s2s_c.data(), (size_t)n_slot * sizeof(int), cudaMemcpyHostToDevice));
+        CK(cudaMemcpy(d_s2s_a2, s2s_a2.data(), (size_t)n_slot * sizeof(int),
+                      cudaMemcpyHostToDevice));
+        CK(cudaMemcpy(d_s2s_b2, s2s_b2.data(), (size_t)n_slot * sizeof(int),
+                      cudaMemcpyHostToDevice));
 
         const size_t wn = (size_t)3 * n_job * n_chan * n_hops, en = (size_t)4 * n_job * n_chan;
         float2* d_wave = nullptr;
-        double *d_energy = nullptr, *d_energy_f = nullptr;
+        double *d_energy = nullptr, *d_energy_f = nullptr, *d_es_a = nullptr, *d_es_b = nullptr;
         CK(cudaMalloc(&d_wave, wn * sizeof(float2)));
         CK(cudaMalloc(&d_energy, en * sizeof(double)));
         CK(cudaMalloc(&d_energy_f, en * sizeof(double)));
+        // Per-slot scale rows of a 'first' case, sized by job so a row indexed by job stays in
+        // bounds.
+        CK(cudaMalloc(&d_es_a, en * sizeof(double)));
+        CK(cudaMalloc(&d_es_b, en * sizeof(double)));
 
         struct FusedCase {
             const char* name;
@@ -1104,10 +1119,11 @@ int main(int argc, char** argv) {
             int fixed;
             bool caseB, other;
             int opts = 0;
-            bool none = false; ///< case C: every slot inactive, jobs/pjobs/theta/rot nullptr
+            bool none = false;  ///< case C: every slot inactive, jobs/pjobs/theta/rot nullptr
+            bool first = false; ///< two records on unset (NaN) per-slot scale rows
         };
         std::vector<unsigned char> A(synth_len), Bv(synth_len);
-        std::vector<double> e_ref(en), e_fus(en);
+        std::vector<double> e_ref(en), e_fus(en), es_a(en), es_b(en);
         int n_fail = 0;
         // Reference (launch_psi_waveform -> launch_pack44) and fused (launch_psi_pack) for one
         // configuration; every byte of the synth array and the active specs' energy rows.
@@ -1117,7 +1133,8 @@ int main(int argc, char** argv) {
             const float* rot = fc.rot ? dj.rot : nullptr;
             const gnss_cuda::DespreadJob* jobs = fc.caseB ? d_jobs_b : dj.full;
             const int* s2s = fc.none ? d_s2s_c : (fc.caseB ? d_s2s_b : d_s2s_a);
-            const std::vector<int>& s2s_h = fc.none ? s2s_c : (fc.caseB ? s2s_b : s2s_a);
+            const std::vector<int>& s2s_h1 = fc.none ? s2s_c : (fc.caseB ? s2s_b : s2s_a);
+            const std::vector<int>& s2s_h = !fc.first ? s2s_h1 : (fc.caseB ? s2s_b2 : s2s_a2);
             const int n_lanes = n_lanes_for(fc.lps, n_slot);
             CK(cudaMemset(d_energy, 0, en * sizeof(double)));
             CK(cudaMemset(d_energy_f, 0xff, en * sizeof(double))); // NaN: untouched rows show
@@ -1144,6 +1161,25 @@ int main(int argc, char** argv) {
                                                    n_slot, fc.lps, n_chan, pp, d_chan_map, fcs,
                                                    n_lanes, lane_base, lane_pitch, escale,
                                                    d_energy_f, d_synth_b, fc.opts, 0));
+            }
+            if (fc.first) {
+                // The first record sets each active slot's rows from its own energy (above, as
+                // 'own'); the second, on other jobs, must be scaled by them. Only its bytes are
+                // compared.
+                CK(cudaMemset(d_es_a, 0xff, en * sizeof(double)));
+                CK(cudaMemset(d_es_b, 0xff, en * sizeof(double)));
+                for (int k = 0; k < 2; ++k) {
+                    const int* s = (k == 0) ? s2s : (fc.caseB ? d_s2s_b2 : d_s2s_a2);
+                    CK(gnss_cuda::launch_pack44(d_wave, d_energy, d_es_a, jobs, s, n_slot, fc.lps,
+                                                n_chan, n_hops, d_chan_map, fcs, n_lanes, lane_base,
+                                                lane_pitch, d_synth_a, 0));
+                    CK(gnss_cuda::launch_psi_pack_opts(jobs, pjobs, dj.theta, rot, fc.fixed, s,
+                                                       n_slot, fc.lps, n_chan, pp, d_chan_map, fcs,
+                                                       n_lanes, lane_base, lane_pitch, d_es_b,
+                                                       d_energy_f, d_synth_b, fc.opts, 0));
+                }
+                CK(cudaMemcpy(es_a.data(), d_es_a, en * sizeof(double), cudaMemcpyDeviceToHost));
+                CK(cudaMemcpy(es_b.data(), d_es_b, en * sizeof(double), cudaMemcpyDeviceToHost));
             }
             CK(cudaDeviceSynchronize());
             CK(cudaMemcpy(A.data(), d_synth_a, synth_len, cudaMemcpyDeviceToHost));
@@ -1182,13 +1218,15 @@ int main(int argc, char** argv) {
                             ++z[region];
                     }
             // Energy rows of the active specs.
-            int n_spec = 0;
+            std::vector<char> used(n_job, 0);
             for (int q = 0; q < n_slot; ++q)
-                n_spec = std::max(n_spec, s2s_h[(size_t)q] + 1);
+                for (int sp : {s2s_h1[(size_t)q], s2s_h[(size_t)q]})
+                    if (sp >= 0)
+                        used[(size_t)sp] = 1;
             size_t e_same = 0, e_n = 0;
             double e_rel = 0.0;
-            for (int j = 0; j < n_spec; ++j)
-                for (int t = 0; t < 4; ++t)
+            for (int j = 0; j < n_job; ++j)
+                for (int t = 0; t < (used[(size_t)j] ? 4 : 0); ++t)
                     for (int c = 0; c < n_chan; ++c) {
                         const size_t i = (size_t)(4 * j + t) * n_chan + c;
                         ++e_n;
@@ -1198,8 +1236,25 @@ int main(int argc, char** argv) {
                             e_rel = std::max(e_rel, std::fabs(e_fus[i] - e_ref[i])
                                                         / std::max(1e-300, std::fabs(e_ref[i])));
                     }
-            const bool ok = (n_diff == 0) && (e_same == e_n) && z[0] == tot[0] && z[1] == tot[1]
-                            && z[2] == tot[2] && z[3] == tot[3];
+            // 'first': each active slot's packed rows hold its first record's energy, in both
+            // kernels; every other row is still unset.
+            size_t s_bad = 0;
+            if (fc.first)
+                for (size_t i = 0; i < en; ++i) {
+                    const int q = (int)(i / (4 * (size_t)n_chan)), t = (int)(i / n_chan) % 4;
+                    const int sp = (q < n_slot) ? s2s_h1[(size_t)q] : -1;
+                    const bool packed = (fc.lps == 4) || t == 1 || t == 3;
+                    if (sp >= 0 && packed) {
+                        const double* want = &e_ref[((size_t)4 * sp + t) * n_chan + i % n_chan];
+                        s_bad += std::memcmp(&es_a[i], want, sizeof(double)) != 0;
+                        s_bad += std::memcmp(&es_b[i], want, sizeof(double)) != 0;
+                    } else {
+                        s_bad += !std::isnan(es_a[i]);
+                        s_bad += (sp < 0) && !std::isnan(es_b[i]);
+                    }
+                }
+            const bool ok = (n_diff == 0) && (e_same == e_n) && (s_bad == 0) && z[0] == tot[0]
+                            && z[1] == tot[1] && z[2] == tot[2] && z[3] == tot[3];
             if (!ok)
                 ++n_fail;
             printf("   %-44s bytes differ %zu / %zu", fc.name, n_diff, synth_len);
@@ -1209,10 +1264,12 @@ int main(int argc, char** argv) {
                        first, first / ((size_t)fcs * lane_pitch), (first / lane_pitch) % fcs,
                        first % lane_pitch, A[first], Bv[first]);
             printf("; energy rows %zu/%zu bit-identical (max rel %.3e); 0x88: beyond-n_slot "
-                   "%zu/%zu inactive %zu/%zu uncovered %zu/%zu head-gated %zu/%zu live %zu/%zu "
-                   "%s\n",
+                   "%zu/%zu inactive %zu/%zu uncovered %zu/%zu head-gated %zu/%zu live %zu/%zu",
                    e_same, e_n, e_rel, z[0], tot[0], z[1], tot[1], z[2], tot[2], z[3], tot[3], z[4],
-                   tot[4], ok ? "OK" : "FAIL");
+                   tot[4]);
+            if (fc.first)
+                printf("; scale rows wrong %zu", s_bad);
+            printf(" %s\n", ok ? "OK" : "FAIL");
         };
 
         if (!prof) {
@@ -1220,8 +1277,9 @@ int main(int argc, char** argv) {
                    "[%d][%d][%d] bytes, lane_base %d, n_lanes 64, chan_map 2,4,..,14; %d slots; "
                    "case B = slots 3,7 inactive + channel %d uncovered; case C = no active PRN "
                    "(slot2spec all -1, job pointers nullptr); 'own' = record-0 scale "
-                   "(this launch's energies), 'other' = scale from the +0.1-chip jobs' energies "
-                   "===\n",
+                   "(this launch's energies), 'other' = scale from the +0.1-chip jobs' energies, "
+                   "'first' = 'own' setting unset per-slot scale rows, then a record on the "
+                   "+0.1-chip jobs in reverse slot order scaled by them ===\n",
                    n_hops, fcs, lane_pitch, lane_base, n_slot, chans[(size_t)UNCOV]);
             const FusedCase cases[] = {
                 {"lanes 2 rot  fp16 fixed  A own", 2, true, true, 1, false, false},
@@ -1257,6 +1315,16 @@ int main(int argc, char** argv) {
                  0, true},
                 {"lanes 2 rot  fp16 fixed  C T512", 2, true, true, 1, false, false, 1, true},
                 {"lanes 4 rot  fp16 fixed  C T512", 4, true, true, 1, false, false, 1, true},
+                {"lanes 2 rot  fp16 fixed  A first", 2, true, true, 1, false, false, 0, false,
+                 true},
+                {"lanes 2 rot  fp16 fixed  B first", 2, true, true, 1, true, false, 0, false, true},
+                {"lanes 2 rot  fp16 fixed  B first T512", 2, true, true, 1, true, false, 1, false,
+                 true},
+                {"lanes 4 rot  fp16 fixed  B first", 4, true, true, 1, true, false, 0, false, true},
+                {"lanes 4 exact fp16 fixed A first", 4, false, true, 1, false, false, 0, false,
+                 true},
+                {"lanes 4 exact fp16 fixed B first", 4, false, true, 1, true, false, 0, false,
+                 true},
             };
             for (const auto& fc : cases)
                 run_case(fc);
@@ -1432,6 +1500,8 @@ int main(int argc, char** argv) {
         cudaFree(d_wave);
         cudaFree(d_energy);
         cudaFree(d_energy_f);
+        cudaFree(d_es_a);
+        cudaFree(d_es_b);
         if (!prof)
             printf("\n=== fused bench: cudaEvent per launch (pairs timed as two launches), one "
                    "stream, warm-up 3, n=20 ===\n");

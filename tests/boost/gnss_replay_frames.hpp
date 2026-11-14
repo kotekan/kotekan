@@ -56,8 +56,8 @@ enum class Mutation {
 /// The events, by frame. Chain A is chains[0], B chains[1] and C chains[2].
 struct Scenario {
     int n_frames = 120, swap_frame = 40, swap_slot = 2, proj_live_frame = 45, reanchor_frame = 55,
-        reanchor_slot = 1, dark_r0_frame = 70, dark_r0_slot = 3, ref_elem_frame = 90,
-        shared_ref_frame = 30, gain_frame = 15, geom_every = 24;
+        reanchor_slot = 1, dark_r0_frame = 70, dark_r0_slot = 3, dark_r0_join = 2,
+        ref_elem_frame = 90, shared_ref_frame = 30, gain_frame = 15, geom_every = 24;
     std::vector<int> checkpoints{29, 59, 89, 119};
     Mutation mut = Mutation::none;
     bool refill_a5 = true;
@@ -114,11 +114,12 @@ inline int prn_at(const ChainSpec& s, const Scenario& sc, int frame, int slot) {
 }
 
 /// Does @p slot despread record @p rec of @p frame? Planted PRNs, every fourth slot from 2
-/// (unplanted, noise only) and slots 0 and dark_r0_slot run; chain B's dark_r0_slot is dark at
-/// record 0 of dark_r0_frame, so later records of that frame shift the job numbering.
+/// (unplanted, noise only) and slots 0 and dark_r0_slot run; chain B's dark_r0_slot is dark
+/// before record dark_r0_join of dark_r0_frame, so later records of that frame shift the job
+/// numbering.
 inline bool runs(const ChainSpec& s, const Scenario& sc, const Sky& sky, int frame, int rec,
                  int slot) {
-    if (s.idx == 1 && frame == sc.dark_r0_frame && rec == 0 && slot == sc.dark_r0_slot)
+    if (s.idx == 1 && frame == sc.dark_r0_frame && rec < sc.dark_r0_join && slot == sc.dark_r0_slot)
         return false;
     return slot == 0 || slot == sc.dark_r0_slot || slot % 4 == 2
            || sky.planted.count(prn_at(s, sc, frame, slot)) > 0;

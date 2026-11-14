@@ -141,7 +141,7 @@ cudaError_t launch_psi_waveform(const DespreadJob* jobs, const PsiJob* pjobs, co
  * otherwise). Under lanes_per_slot 2 the 512-thread variant runs (PSI_PACK_T512, two blocks per SM;
  * the bytes and energy rows are the same), under 4 the 1024-thread one; see
  * @ref launch_psi_pack_opts. At 12 slots x 7 channels x 2048 hops on an A40: 28.7 us (lanes 2,
- * fp16 tables, fixed phases; 26.6 us for records with energy_scale) against 47.1 us for
+ * fp16 tables, fixed phases; 26.6 us for records whose scale rows are set) against 47.1 us for
  * launch_psi_waveform + launch_pack44 and 122.9 us for launch_waveform + launch_pack44
  * (fixtures/gpu_budget/psi_fused_cx52_20261021.txt).
  *

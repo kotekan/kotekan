@@ -429,7 +429,7 @@ uint64_t hash_epl(const ChainRun& R, const uint8_t* f) {
 }
 
 /// PIN_B2's reading: the prompt, channel 0, element 0, in records 1.. of the dark_r0 frame, of
-/// slot dark_r0_slot and then of slot 0.
+/// slot dark_r0_slot and then of slot 0; 0 where the slot does not run.
 void read_pin_epl(ChainRun& R, const uint8_t* f) {
     using namespace gnss_gpu;
     const ChainSpec& s = *R.s;
@@ -440,7 +440,7 @@ void read_pin_epl(ChainRun& R, const uint8_t* f) {
         for (int r = 1; r < h->n_rec; ++r) {
             const PrnCtl& c = pc[(size_t)r * s.n_prn + slot];
             R.pin_epl.push_back(
-                c.run ? corr[((size_t)(c.job0 + ROW_P) * h->n_chan + 0) * s.n_live * 2] : NAN);
+                c.run ? corr[((size_t)(c.job0 + ROW_P) * h->n_chan + 0) * s.n_live * 2] : 0.0);
         }
 }
 
@@ -1641,18 +1641,21 @@ BOOST_AUTO_TEST_CASE(current_behaviour_pins) {
     }
     // PIN_B2: in the dark_r0 frame, where the energies differ by record, GnssN2RecordAssemble
     // dequantises each slot in the later records with the energy of its first running record, as
-    // the pack scaled it: record 1's for the slot dark at record 0, not record 0's job-0 energy
-    // (another slot's), and record 0's for slot 0, not the record's own.
+    // the pack scaled it: record dark_r0_join's for the slot dark before it, not record 0's job-0
+    // energy (another slot's), and record 0's for slot 0, not the record's own.
     {
         const ChainSpec& B = chains()[1];
         const json& t = d.pins.at("B2_tiles");
         const json& v = d.pins.at("B2_epl");
         const int f = sc.dark_r0_frame, n = B.n_rec - 1;
         BOOST_REQUIRE_EQUAL(v.size(), (size_t)(2 * n));
+        BOOST_REQUIRE(sc.dark_r0_join >= 2 && sc.dark_r0_join < B.n_rec);
         for (int i = 0; i < 2 * n; ++i) {
             const int r = 1 + i % n, slot = (i < n) ? sc.dark_r0_slot : 0;
+            if (slot != 0 && r < sc.dark_r0_join)
+                continue;
             const double tile = t[i].get<double>(), got = v[i].get<double>();
-            const double e_rule = energy_at(B, sc, f, slot == 0 ? 0 : 1, slot, 0);
+            const double e_rule = energy_at(B, sc, f, slot == 0 ? 0 : sc.dark_r0_join, slot, 0);
             const double e_not =
                 (slot == 0) ? energy_at(B, sc, f, r, 0, 0) : energy_at(B, sc, f, 0, 0, 0);
             const double want = tile * adapter_inv_scale(B, e_rule);

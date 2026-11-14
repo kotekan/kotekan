@@ -37,7 +37,10 @@ in a control run). --scale-r0 adds the check that a slot running in a record aft
 dequantises, by GnssN2RecordAssemble's rule (scale_r0 restates it, so it changes with it), to the
 replica energy the pack reduced from its float synthesis (P lane), both for a slot dark at record
 0 and for one whose position among the running slots moved since record 0; the run exits 2 while
-either fails. digests.json records the run's arguments and the half's cpu_affinity.
+either fails. The psi_sync_build runs give no shifted cases, so only --async-build runs whose
+seeds ramp or reseed check that the pack keeps its scale rows by slot, not by job; a pack that
+scales each record by its own energy fails only the controls, by the energy's change within the
+frame. digests.json records the run's arguments and the half's cpu_affinity.
 
 compare reports which (row, kind) digests differ between two runs over their digest frames
 (--all-frames: every digested frame). It fails unless both runs have the same rows and frames,
