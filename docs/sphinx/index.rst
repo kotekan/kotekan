@@ -21,6 +21,7 @@ Welcome to Kotekan's documentation!
    user/user_operation
    user/user_element_order
    user/user_packet_loss
+   user/user_gpu_stages
    user/user_file_formats
    user/dev_pipeline_viewer
 
