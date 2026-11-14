@@ -69,9 +69,9 @@ namespace {
 /// What one run emitted. streams: per-frame (or one) FNV-1a digests, keyed "<pre>.epl", ".rec",
 /// ".cmb", ".telem", ".cube", "<pre>.rest.<verb>@<checkpoint>", "board@<checkpoint>" and
 /// "endpoints". strings: "<pre>.cube_chain" and "endpoints". live and pins: the values the
-/// liveness and pin checks read. slots: per chain and combiner ("own", and "cold" and "scint"
-/// with Scenario::cold_ref), per-slot digests of every emit ("cmb", see cmb_slot_rows) and of the
-/// GETs at the slot frames (read_slot_gets).
+/// liveness and pin checks read. slots: per chain and combiner ("own", and "cold", "scint" and
+/// "others" with Scenario::cold_ref), per-slot digests of every emit ("cmb", see cmb_slot_rows) and
+/// of the GETs at the slot frames (read_slot_gets).
 struct Digests {
     std::map<std::string, std::vector<uint64_t>> streams;
     std::map<std::string, std::string> strings;
@@ -292,7 +292,7 @@ std::string buf_name(const ChainSpec& s, const std::string& role) {
 }
 
 /// A combiner without out_buf beside a chain's own (Scenario::cold_ref), fed copies of its
-/// records in frames [from, to).
+/// records in frames [from, to): the swapped slot's, or for "others" every other slot's.
 struct SideCombiner {
     std::string name;
     int from = 0, to = 0;
@@ -302,15 +302,18 @@ struct SideCombiner {
     int id = 0;                // the REC capture's next frame of `in`
 };
 
-/// The side combiners with Scenario::cold_ref ("cold", then "scint"), up to 6 frames after the
-/// swap, and "scint" from 10 frames before it.
+/// The side combiners with Scenario::cold_ref ("cold", "scint", then "others"), up to 6 frames
+/// after the swap: "cold" from the swap, "scint" from 10 frames before it and "others" from the
+/// start.
 std::vector<SideCombiner> side_combiners(const Scenario& sc) {
-    std::vector<SideCombiner> v(2);
+    std::vector<SideCombiner> v(3);
     v[0].name = "cold";
     v[0].from = sc.swap_frame;
     v[1].name = "scint";
     v[1].from = sc.swap_frame - 10;
-    v[0].to = v[1].to = sc.swap_frame + 6;
+    v[2].name = "others";
+    v[2].from = 0;
+    v[0].to = v[1].to = v[2].to = sc.swap_frame + 6;
     return v;
 }
 
@@ -512,14 +515,19 @@ void capture(ChainRun* R, int kind) {
                 float* x = (float*)c.in->wait_for_empty_frame(name, c.id);
                 if (x == nullptr)
                     return;
-                // Only the swapped slot's record: the others are not compared, and empty they
-                // keep the side combiners' emits cheap.
+                // Only the swapped slot's record, or for "others" every other slot's: the rest are
+                // not compared, and empty they keep the side combiners' emits cheap.
                 const size_t stride =
                     gnss::record_stride(R->s->combine.at("n_elements").get<int>());
                 float* rec = x + stride * R->sc->swap_slot;
-                std::memset(x, 0, b->frame_size);
-                std::memcpy(rec, (const float*)f + stride * R->sc->swap_slot,
-                            stride * sizeof(float));
+                if (c.name == "others") {
+                    std::memcpy(x, f, b->frame_size);
+                    std::memset(rec, 0, stride * sizeof(float));
+                } else {
+                    std::memset(x, 0, b->frame_size);
+                    std::memcpy(rec, (const float*)f + stride * R->sc->swap_slot,
+                                stride * sizeof(float));
+                }
                 // A is over the prompt energy: a tenth of it is ten times the amplitude.
                 if (c.name == "scint" && n < R->s->n_rec * R->sc->swap_frame && n % 10 == 0)
                     rec[gnss::REC_P_ENERGY] *= 0.1f;
@@ -959,7 +967,7 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
             // costly one, so it is read only where the swap checks compare it: the chain's own
             // from the swap on, and the side combiners' on "cold". The side combiners are read
             // from the frame of the chain's first emit since the swap, and "scint" also at the
-            // frame before it (its raw S4).
+            // frame before it (its raw S4); "others" from the frame before the swap.
             if (sc.mut == Mutation::none && slot_frame(sc, k)) {
                 const std::string c = "/" + s.pre + "_n2combine";
                 if (!checkpoint) // fire_gets read them
@@ -967,8 +975,10 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
                 const int first = (s.n_rec * sc.swap_frame / R->emit_every + 1) * R->emit_every;
                 for (const SideCombiner& x : R->side)
                     if (k < x.to
-                        && (k >= (first - 1) / s.n_rec
-                            || (x.name == "scint" && k == sc.swap_frame - 1)))
+                        && (x.name == "others"
+                                ? k >= sc.swap_frame - 1
+                                : k >= (first - 1) / s.n_rec
+                                      || (x.name == "scint" && k == sc.swap_frame - 1)))
                         read_slot_gets(port, c + "_" + x.name, k, x.name == "cold",
                                        d.slots[s.pre][x.name]);
             }
@@ -1690,8 +1700,8 @@ BOOST_AUTO_TEST_CASE(elements_keff) {
 /// every get_status, get_elements and (for the chain's own) get_records read since, except that
 /// its arc id counts on from the departed PRN's arcs. It holds for the chain's own combiner and
 /// for "scint", whose history before the swap has a raw S4 above 1: carried across the swap, that
-/// would survive the thermal floor (at most 1) into the first emit's S4. prn_swap_without_reset
-/// checks the other slots.
+/// would survive the thermal floor (at most 1) into the first emit's S4. prn_swap_spares_others
+/// and prn_swap_without_reset check the other slots.
 BOOST_AUTO_TEST_CASE(prn_swap_cold_start) {
     const Digests& d = baseline();
     const Scenario sc = base_scenario();
@@ -1754,6 +1764,45 @@ BOOST_AUTO_TEST_CASE(prn_swap_cold_start) {
                                      << " before it");
         }
         BOOST_TEST_MESSAGE(s.pre << " scint: raw S4 " << s4_last << " before the swap");
+    }
+}
+
+/// The reset touches only the swapped slot: every other slot of the chain's own combiner equals
+/// "others", a combiner fed only those slots from the start, in every emit and in every
+/// get_status and get_elements read from the frame before the swap until "others" stops.
+BOOST_AUTO_TEST_CASE(prn_swap_spares_others) {
+    const Digests& d = baseline();
+    const Scenario sc = base_scenario();
+    const int q = sc.swap_slot;
+    for (const ChainSpec& s : chains()) {
+        const json& own = d.slots.at(s.pre).at("own");
+        const json& oth = d.slots.at(s.pre).at("others");
+        const json& xc = oth.at("cmb");
+        BOOST_REQUIRE(!xc.empty() && own.at("cmb").size() >= xc.size());
+        std::vector<std::string> bad;
+        auto others = [&](json r) {
+            BOOST_REQUIRE_EQUAL(r.size(), (size_t)s.n_prn);
+            r[q] = nullptr;
+            return r;
+        };
+        for (size_t i = 0; i < xc.size(); ++i)
+            note_diff("emit " + std::to_string(i), others(own.at("cmb")[i]), others(xc[i]), bad);
+        int n_read = 0;
+        for (int k = sc.swap_frame - 1; k < sc.n_frames; ++k) {
+            const std::string cp = "@" + std::to_string(k);
+            if (!oth.contains("status" + cp))
+                continue;
+            for (const char* v : {"status", "elements"})
+                note_diff(v + cp, others(own.at(v + cp)), others(oth.at(v + cp)), bad);
+            ++n_read;
+        }
+        BOOST_CHECK_MESSAGE(n_read > 1, s.pre << ": " << n_read << " slot frames read");
+        BOOST_CHECK_MESSAGE(bad.empty(), s.pre << ": " << bad.size()
+                                               << " emits or GETs of the other slots differ, "
+                                                  "first: "
+                                               << (bad.empty() ? "" : bad[0]));
+        BOOST_TEST_MESSAGE(s.pre << " others: " << xc.size() << " emits and " << n_read
+                                 << " slot frames");
     }
 }
 
