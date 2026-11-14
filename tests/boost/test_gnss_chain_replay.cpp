@@ -10,8 +10,9 @@
 // GNSS_REPLAY_CONFIG=<json> replays the production stage blocks scripts/gnss/replay_extract.py
 // extracts instead of the built-in chains. GNSS_REPLAY_GOLDEN=<file> compares the baseline with a
 // golden (GNSS_REPLAY_BLESS=1 writes it), and GNSS_REPLAY_DUMP=<dir> writes the endpoints and the
-// stage configs. A replay takes seconds in a Test build, so by default only the baseline and the
-// zero-amplitude control run; GNSS_REPLAY_FULL=1 adds the determinism, mutation and prefill
+// stage configs. A replay takes seconds in a Test build, so by default only the baseline, which
+// also runs each chain's PRN swap references (Scenario::cold_ref), and the zero-amplitude
+// control run; GNSS_REPLAY_FULL=1 adds the determinism, mutation and prefill
 // controls, a run whose combiners have no out_buf and one whose combiners keep slot state across
 // a PRN swap.
 
@@ -68,11 +69,13 @@ namespace {
 /// What one run emitted. streams: per-frame (or one) FNV-1a digests, keyed "<pre>.epl", ".rec",
 /// ".cmb", ".telem", ".cube", "<pre>.rest.<verb>@<checkpoint>", "board@<checkpoint>" and
 /// "endpoints". strings: "<pre>.cube_chain" and "endpoints". live and pins: the values the
-/// liveness and pin checks read.
+/// liveness and pin checks read. slots: per chain and combiner ("own", and "cold" and "scint"
+/// with Scenario::cold_ref), per-slot digests of every emit ("cmb", see cmb_slot_rows) and of the
+/// GETs at the slot frames (read_slot_gets).
 struct Digests {
     std::map<std::string, std::vector<uint64_t>> streams;
     std::map<std::string, std::string> strings;
-    json live, pins;
+    json live, pins, slots;
 };
 
 // ---- chains ----
@@ -288,6 +291,29 @@ std::string buf_name(const ChainSpec& s, const std::string& role) {
     return s.pre + "_" + role;
 }
 
+/// A combiner without out_buf beside a chain's own (Scenario::cold_ref), fed copies of its
+/// records in frames [from, to).
+struct SideCombiner {
+    std::string name;
+    int from = 0, to = 0;
+    std::unique_ptr<Buffer> in;
+    GnssCoherentCombiner* cmb = nullptr;
+    json rows = json::array(); // cmb_slot_rows of each emit
+    int id = 0;                // the REC capture's next frame of `in`
+};
+
+/// The side combiners with Scenario::cold_ref ("cold", then "scint"), 20 frames either side of
+/// the swap.
+std::vector<SideCombiner> side_combiners(const Scenario& sc) {
+    std::vector<SideCombiner> v(2);
+    v[0].name = "cold";
+    v[0].from = sc.swap_frame;
+    v[1].name = "scint";
+    v[1].from = sc.swap_frame - 20;
+    v[0].to = v[1].to = sc.swap_frame + 20;
+    return v;
+}
+
 /// One kotekan config holding every chain's four blocks, with the harness's buffer names.
 json build_config(const std::vector<ChainSpec>& cs, const Scenario& sc,
                   const std::vector<int>& cpus) {
@@ -319,6 +345,14 @@ json build_config(const std::vector<ChainSpec>& cs, const Scenario& sc,
         cfg[assembler_name(s, (int)i, sc).substr(1)] = as;
         cfg[s.pre + "_n2combine"] = cb;
         cfg[s.pre + "_telem_pack"] = tp;
+        if (!sc.cold_ref)
+            continue;
+        for (const SideCombiner& x : side_combiners(sc)) {
+            json c = cb;
+            c.erase("out_buf");
+            c["in_bufs"] = {buf_name(s, "n2rec_" + x.name + "_buf")};
+            cfg[s.pre + "_n2combine_" + x.name] = c;
+        }
     }
     return cfg;
 }
@@ -354,6 +388,7 @@ struct ChainRun {
     std::unique_ptr<Buffer> ctl, tiles, buf[N_KIND];
     std::vector<std::unique_ptr<kotekan::Stage>> stages;
     GnssCoherentCombiner* cmb = nullptr;
+    std::vector<SideCombiner> side;
     std::vector<uint64_t> hashes[N_KIND];
     std::atomic<int> count[N_KIND];
     std::thread cap[N_KIND];
@@ -362,8 +397,23 @@ struct ChainRun {
     std::vector<double> pin_epl;
     std::string cube_chain;
     json cube_pow;
+    json cmb_rows = json::array(); // cmb_slot_rows of each emit
     int telem_bad = 0;
 };
+
+/// One emit's records per slot: [digest of the record with its arc id zeroed, arc id].
+json cmb_slot_rows(const ChainSpec& s, const float* f) {
+    const size_t stride = gnss::record_stride(s.combine.at("n_elements").get<int>());
+    std::vector<float> rec(stride);
+    json rows = json::array();
+    for (int p = 0; p < s.n_prn; ++p) {
+        std::memcpy(rec.data(), f + p * stride, stride * sizeof(float));
+        const float arc = rec[gnss::CMB_ARC];
+        rec[gnss::CMB_ARC] = 0.0f;
+        rows.push_back({fnv1a64(rec.data(), stride * sizeof(float)), arc});
+    }
+    return rows;
+}
 
 uint64_t hash_epl(const ChainRun& R, const uint8_t* f) {
     using namespace gnss_gpu;
@@ -456,10 +506,29 @@ void capture(ChainRun* R, int kind) {
             const GnssChanMetadata* m = get_gnss_chan_metadata(b, id);
             const int64_t seq = m ? m->sample_seq : -1;
             h = fnv1a64(&seq, sizeof(seq), h);
+            for (SideCombiner& c : R->side) {
+                if (n < R->s->n_rec * c.from || n >= R->s->n_rec * c.to)
+                    continue;
+                float* x = (float*)c.in->wait_for_empty_frame(name, c.id);
+                if (x == nullptr)
+                    return;
+                std::memcpy(x, f, b->frame_size);
+                if (c.name == "scint" && n < R->s->n_rec * R->sc->swap_frame && n % 10 == 0) {
+                    // A is over the prompt energy: a tenth of it is ten times the amplitude.
+                    const int stride =
+                        gnss::record_stride(R->s->combine.at("n_elements").get<int>());
+                    x[stride * R->sc->swap_slot + gnss::REC_P_ENERGY] *= 0.1f;
+                }
+                b->pass_metadata(id, c.in.get(), c.id);
+                c.in->mark_frame_full(name, c.id);
+                c.id = (c.id + 1) % c.in->num_frames;
+            }
         } else if (kind == CUBE) {
             read_cube(*R, f, b->frame_size, &h);
         } else {
             h = fnv1a64(f, b->frame_size);
+            if (kind == CMB)
+                R->cmb_rows.push_back(cmb_slot_rows(*R->s, (const float*)f));
             if (kind == TELEM) {
                 gnss::TelemHeader th;
                 std::memcpy(&th, f, sizeof(th));
@@ -475,28 +544,54 @@ void capture(ChainRun* R, int kind) {
     }
 }
 
+/// Records side combiner @p c has been fed by the end of frame @p k.
+int side_records(const ChainRun& R, const SideCombiner& c, int k) {
+    return R.s->n_rec * std::max(0, std::min(k + 1, c.to) - c.from);
+}
+
+bool sides_quiescent(const ChainRun& R, int k) {
+    for (const SideCombiner& c : R.side)
+        if (c.in->get_num_full_frames() != 0
+            || c.cmb->records_done() != (uint64_t)side_records(R, c, k))
+            return false;
+    return true;
+}
+
 bool quiescent(ChainRun& R, int k) {
     const int n_rec = R.s->n_rec;
     return R.ctl->is_frame_empty(0) && R.tiles->is_frame_empty(0) && R.buf[EPL]->is_frame_empty(0)
            && R.buf[REC]->get_num_full_frames() == 0 && R.buf[CUBE]->get_num_full_frames() == 0
            && R.count[EPL].load() == k + 1 && R.count[REC].load() == n_rec * (k + 1)
            && R.count[TELEM].load() == k + 1 && R.cmb->records_done() == (uint64_t)n_rec * (k + 1)
-           && (!R.sc->combiner_out_buf || R.count[CMB].load() == n_rec * (k + 1) / R.emit_every);
+           && (!R.sc->combiner_out_buf || R.count[CMB].load() == n_rec * (k + 1) / R.emit_every)
+           && sides_quiescent(R, k);
 }
 
-/// Without out_buf, digests the combiner's emit of frame @p k, if it made one, from its scratch,
-/// which holds only the last emit.
-void capture_scratch(ChainRun& R, int k) {
-    const int want = R.s->n_rec * (k + 1) / R.emit_every;
-    const int n = R.count[CMB].load();
-    if (want == n)
-        return;
-    if (want > n + 1)
+/// Whether a combiner without out_buf, fed @p records by the end of frame @p k and of whose
+/// emits @p done were read, made one in frame @p k. Its scratch holds only the last emit.
+bool scratch_emit(const ChainRun& R, int records, int done, int k) {
+    const int want = records / R.emit_every;
+    if (want > done + 1)
         child_fail(78, fmt::format("{:s}: {:d} combiner emits in frame {:d}; the scratch holds one",
-                                   R.s->pre, want - n, k));
+                                   R.s->pre, want - done, k));
+    return want > done;
+}
+
+/// Without out_buf, digests the combiner's emit of frame @p k, if it made one, from its scratch.
+void capture_scratch(ChainRun& R, int k) {
+    const int n = R.count[CMB].load();
+    if (!scratch_emit(R, R.s->n_rec * (k + 1), n, k))
+        return;
     const std::vector<float>& f = R.cmb->scratch();
     R.hashes[CMB].push_back(fnv1a64(f.data(), f.size() * sizeof(float)));
-    R.count[CMB].store(want);
+    R.cmb_rows.push_back(cmb_slot_rows(*R.s, f.data()));
+    R.count[CMB].store(n + 1);
+}
+
+void capture_side(ChainRun& R, int k) {
+    for (SideCombiner& c : R.side)
+        if (scratch_emit(R, side_records(R, c, k), (int)c.rows.size(), k))
+            c.rows.push_back(cmb_slot_rows(*R.s, c.cmb->scratch().data()));
 }
 
 void wait_quiescent(ChainRun& R, int k) {
@@ -606,6 +701,46 @@ void fire_gets(ChainRun& R, unsigned short port, const std::string& u, int k, Di
             L["records_min_hop" + cp] = rows;
         }
     }
+}
+
+uint64_t digest(const json& j) {
+    const std::string b = j.dump();
+    return fnv1a64(b.data(), b.size());
+}
+
+json rest_rows(unsigned short port, const std::string& path) {
+    const json j = rest(port, path, json{});
+    if (!j.is_array())
+        child_fail(79, "GET " + path + ": " + j.dump());
+    return j;
+}
+
+/// Frames after which the combiners' GETs are read per slot: the first four after the start and
+/// after the swap, which hold the first emit of each, the last before the swap, and the
+/// checkpoints.
+bool slot_frame(const Scenario& sc, int k) {
+    return k < 4 || (k >= sc.swap_frame - 1 && k < sc.swap_frame + 4)
+           || std::find(sc.checkpoints.begin(), sc.checkpoints.end(), k) != sc.checkpoints.end();
+}
+
+/// The GETs of combiner @p name after frame @p k, per slot, into @p out: "status@k" as
+/// [digest of the row without adr_arc, prn, adr_arc, s4_raw], "elements@k" as [digest, prn, keff]
+/// and "records@k" as {prn: digest}.
+void read_slot_gets(unsigned short port, const std::string& name, int k, json& out) {
+    const std::string cp = "@" + std::to_string(k);
+    json st = json::array(), el = json::array(), rc = json::object();
+    for (json r : rest_rows(port, name + "/get_status")) {
+        const json arc = r.at("adr_arc");
+        r.erase("adr_arc");
+        st.push_back({digest(r), r.at("prn"), arc, r.at("s4_raw")});
+    }
+    for (const json& r : rest_rows(port, name + "/get_elements"))
+        el.push_back({digest(r), r.at("prn"), r.at("keff")});
+    for (const json& r : rest_rows(port, name + "/get_records"))
+        rc[std::to_string(r.at("prn").get<int>())] = digest(r);
+    out["status" + cp] = st;
+    out["elements" + cp] = el;
+    out["records" + cp] = rc;
 }
 
 void snapshot_board(int k, Digests& d) {
@@ -721,6 +856,15 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
             R->buf[k]->register_consumer(std::string("capture_") + KIND[k]);
             R->count[k].store(0);
         }
+        if (sc.cold_ref)
+            R->side = side_combiners(sc);
+        for (SideCombiner& c : R->side) {
+            const std::string bn = buf_name(s, "n2rec_" + c.name + "_buf");
+            c.in = std::make_unique<Buffer>(4, sizes[REC], pool, bn, "standard", 0, false, false,
+                                            std::vector<int>{}, true, sc.prefill);
+            bc.add_buffer(bn, c.in.get());
+            c.in->register_producer("capture_rec");
+        }
         R->emit_every = std::max(1, s.combine.value("integration_length", 1) / 10);
         runs.push_back(std::move(R));
     }
@@ -736,6 +880,10 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
         R->cmb = new GnssCoherentCombiner(config, "/" + s.pre + "_n2combine", bc);
         R->stages.emplace_back(R->cmb);
         R->stages.emplace_back(new GnssTelemPack(config, "/" + s.pre + "_telem_pack", bc));
+        for (SideCombiner& c : R->side) {
+            c.cmb = new GnssCoherentCombiner(config, "/" + s.pre + "_n2combine_" + c.name, bc);
+            R->stages.emplace_back(c.cmb);
+        }
     }
     // One band-power pass before any frame: chan_noise_norm weights from the first record.
     {
@@ -784,10 +932,18 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
             wait_quiescent(*R, k);
             if (!sc.combiner_out_buf)
                 capture_scratch(*R, k);
+            capture_side(*R, k);
             const std::string u = assembler_name(s, R->idx, sc);
             fire_posts(*R, sky, port, u, k);
             if (std::find(sc.checkpoints.begin(), sc.checkpoints.end(), k) != sc.checkpoints.end())
                 fire_gets(*R, port, u, k, d);
+            if (slot_frame(sc, k)) {
+                const std::string c = "/" + s.pre + "_n2combine";
+                read_slot_gets(port, c, k, d.slots[s.pre]["own"]);
+                for (const SideCombiner& x : R->side)
+                    if (k >= std::max(x.from, sc.swap_frame - 1) && k < x.to)
+                        read_slot_gets(port, c + "_" + x.name, k, d.slots[s.pre][x.name]);
+            }
             if (sc.refill_a5)
                 std::memset(R->buf[EPL]->frames[0], 0xA5, R->buf[EPL]->frame_size);
         }
@@ -806,6 +962,9 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
         d.live[pre]["telem_bad_present"] = R->telem_bad;
         if (R->idx == 1)
             d.pins["B2_epl"] = R->pin_epl;
+        d.slots[pre]["own"]["cmb"] = R->cmb_rows;
+        for (const SideCombiner& x : R->side)
+            d.slots[pre][x.name]["cmb"] = x.rows;
     }
     // The REST surface under the chains' stage names.
     {
@@ -831,7 +990,11 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
         d.streams["endpoints"] = {fnv1a64(all.data(), all.size())};
     }
 
-    json out = {{"streams", d.streams}, {"strings", d.strings}, {"live", d.live}, {"pins", d.pins}};
+    json out = {{"streams", d.streams},
+                {"strings", d.strings},
+                {"live", d.live},
+                {"pins", d.pins},
+                {"slots", d.slots}};
     std::ofstream f(out_path);
     f << out.dump();
     f.close();
@@ -887,11 +1050,17 @@ Digests run_scenario(const std::vector<ChainSpec>& cs, const Scenario& sc) {
     d.strings = j.at("strings").get<std::map<std::string, std::string>>();
     d.live = j.at("live");
     d.pins = j.at("pins");
+    d.slots = j.at("slots");
     return d;
 }
 
+/// The base scenario with the PRN swap references beside every chain's combiner.
 const Digests& baseline() {
-    static const Digests d = run_scenario(chains(), base_scenario());
+    static const Digests d = [] {
+        Scenario sc = base_scenario();
+        sc.cold_ref = true;
+        return run_scenario(chains(), sc);
+    }();
     return d;
 }
 
@@ -964,6 +1133,31 @@ std::string join(const std::set<std::string>& s) {
     for (const auto& x : s)
         o += (o.empty() ? "" : " ") + x;
     return o;
+}
+
+/// The indices (arrays) or keys (objects) at which @p a and @p b differ.
+std::string differing(const json& a, const json& b) {
+    std::set<std::string> out;
+    if (a.is_array() && b.is_array()) {
+        for (size_t i = 0; i < std::max(a.size(), b.size()); ++i)
+            if (i >= a.size() || i >= b.size() || a[i] != b[i])
+                out.insert(std::to_string(i));
+    } else {
+        for (const auto& [k, v] : a.items())
+            if (!b.contains(k) || b.at(k) != v)
+                out.insert(k);
+        for (const auto& [k, v] : b.items())
+            if (!a.contains(k))
+                out.insert(k);
+    }
+    return join(out);
+}
+
+/// Notes in @p bad where @p got differs from @p want, under @p what.
+void note_diff(const std::string& what, const json& got, const json& want,
+               std::vector<std::string>& bad) {
+    if (got != want)
+        bad.push_back(what + " differs at " + differing(got, want));
 }
 
 bool planted_running(const ChainSpec& s, int prn) {
@@ -1208,6 +1402,9 @@ BOOST_AUTO_TEST_CASE(deterministic) {
     BOOST_CHECK_MESSAGE(changed(a, c).empty(), "pinned to cpu 0: " << join(changed(a, c)));
     BOOST_CHECK(a.live == b.live && a.live == c.live);
     BOOST_CHECK(a.pins == b.pins && a.pins == c.pins);
+    for (const auto& s : chains())
+        BOOST_CHECK(a.slots.at(s.pre).at("own") == b.slots.at(s.pre).at("own")
+                    && a.slots.at(s.pre).at("own") == c.slots.at(s.pre).at("own"));
     BOOST_TEST_MESSAGE(fmt::format("{:d} digest streams", a.streams.size()));
 }
 
@@ -1275,8 +1472,10 @@ BOOST_AUTO_TEST_CASE(combiner_without_out_buf) {
     BOOST_CHECK_MESSAGE(changed(base, d).empty(), "without out_buf: " << join(changed(base, d)));
     BOOST_CHECK(base.live == d.live);
     BOOST_CHECK(base.pins == d.pins);
-    for (const auto& s : chains())
+    for (const auto& s : chains()) {
         BOOST_CHECK_MESSAGE(!d.streams.at(s.pre + ".cmb").empty(), s.pre << ": no combiner emit");
+        BOOST_CHECK(base.slots.at(s.pre).at("own") == d.slots.at(s.pre).at("own"));
+    }
 }
 
 BOOST_AUTO_TEST_CASE(identity) {
@@ -1383,9 +1582,12 @@ BOOST_AUTO_TEST_CASE(current_behaviour_pins) {
         BOOST_CHECK_MESSAGE(after[4].get<int>() <= since, "PIN_B1: the deep window holds "
                                                               << after[4] << " records, " << since
                                                               << " since the swap");
-        BOOST_CHECK_MESSAGE(after[5].get<int>() < since, "PIN_B1: the ADR arc holds "
-                                                             << after[5] << " records, " << since
-                                                             << " since the swap");
+        // The first record after the swap has no predecessor on the new PRN and the second
+        // opens the arc, which then counts every record.
+        BOOST_CHECK_MESSAGE(after[5].get<int>() == since - 2, "PIN_B1: the ADR arc holds "
+                                                                  << after[5] << " records, not "
+                                                                  << since - 2 << " (" << since
+                                                                  << " since the swap)");
     }
     // PIN_B2: GnssN2RecordAssemble dequantises a slot dark at record 0 with record 0's job-0
     // energy (another slot's) in the later records, not with its own.
@@ -1409,9 +1611,79 @@ BOOST_AUTO_TEST_CASE(current_behaviour_pins) {
     }
 }
 
+/// A cold reset leaves the swapped slot as a combiner that first saw it on the new PRN (the
+/// baseline's "cold" side combiner, fed the same records from the swap on), in every emit and in
+/// every GET at the slot frames, except that its arc id counts on from the departed PRN's arcs.
+/// It holds for the chain's own combiner and for "scint", whose history before the swap has a raw
+/// S4 above 1: carried across the swap, that would survive the thermal floor (at most 1) into the
+/// first emit's S4. prn_swap_without_reset checks the other slots.
+BOOST_AUTO_TEST_CASE(prn_swap_cold_start) {
+    const Digests& d = baseline();
+    const Scenario sc = base_scenario();
+    const int q = sc.swap_slot;
+    const std::vector<SideCombiner> side = side_combiners(sc);
+    for (const ChainSpec& s : chains()) {
+        const json& cold = d.slots.at(s.pre).at("cold");
+        const json& cc = cold.at("cmb");
+        const int E = std::max(1, s.combine.value("integration_length", 1) / 10);
+        // The first emit since the swap must be read at a slot frame.
+        BOOST_REQUIRE(slot_frame(sc, (s.n_rec * sc.swap_frame + E - 1) / s.n_rec));
+        BOOST_REQUIRE(!cc.empty());
+        const int now = s.prns[(size_t)q] + 100;
+        const std::string key = std::to_string(now);
+        const std::string last = "status@" + std::to_string(sc.swap_frame - 1);
+        const double s4_last = d.slots.at(s.pre).at("scint").at(last)[q][3].get<double>();
+        BOOST_CHECK_MESSAGE(s4_last > 1.0, s.pre << " scint: raw S4 " << s4_last
+                                                 << " before the swap, not above 1");
+        for (const auto& [name, from] : {std::make_pair("own", 0), {"scint", side[1].from}}) {
+            const json& got = d.slots.at(s.pre).at(name);
+            const json& oc = got.at("cmb");
+            // It emits with the cold reference only if the swap falls on one of its emits.
+            const int before = s.n_rec * (sc.swap_frame - from);
+            BOOST_REQUIRE(before > 0 && before % E == 0);
+            const size_t n_before = (size_t)(before / E);
+            BOOST_REQUIRE(oc.size() >= n_before + cc.size());
+            // The arc id at the last emit before the swap.
+            const double arc0 = oc[n_before - 1][q][1].get<double>();
+            std::vector<std::string> bad;
+            for (size_t i = 0; i < cc.size(); ++i) {
+                const json& c = cc[i][q];
+                note_diff("emit " + std::to_string(n_before + i), oc[n_before + i][q],
+                          {c[0], arc0 + c[1].get<double>()}, bad);
+            }
+            int n_swapped = 0;
+            for (int k = sc.swap_frame; k < side[0].to; ++k) {
+                const std::string cp = "@" + std::to_string(k);
+                if (!slot_frame(sc, k) || got.at("status" + cp)[q][1].get<int>() != now)
+                    continue; // not read, or no emit since the swap yet
+                const json& c = cold.at("status" + cp)[q];
+                note_diff("status" + cp, got.at("status" + cp)[q],
+                          {c[0], c[1], arc0 + c[2].get<double>(), c[3]}, bad);
+                note_diff("elements" + cp, got.at("elements" + cp)[q], cold.at("elements" + cp)[q],
+                          bad);
+                note_diff("records" + cp, got.at("records" + cp).at(key),
+                          cold.at("records" + cp).at(key), bad);
+                ++n_swapped;
+            }
+            BOOST_CHECK_MESSAGE(n_swapped > 0, s.pre << " " << name
+                                                     << ": no slot frame after the swap's first "
+                                                        "emit");
+            BOOST_CHECK_MESSAGE(bad.empty(), s.pre << " " << name << " slot " << q << ": "
+                                                   << bad.size()
+                                                   << " emits or GETs differ from the cold start, "
+                                                      "first: "
+                                                   << (bad.empty() ? "" : bad[0]));
+            BOOST_TEST_MESSAGE(s.pre << " " << name << ": " << cc.size() << " emits and "
+                                     << n_swapped << " slot frames since the swap; arc id " << arc0
+                                     << " before it");
+        }
+        BOOST_TEST_MESSAGE(s.pre << " scint: raw S4 " << s4_last << " before the swap");
+    }
+}
+
 /// reset_on_prn_change false keeps a slot's state across a PRN swap: the run differs from the
-/// baseline only in the combiners from the swap on, and in their status only in the swapped
-/// slot, whose ADR arc then runs on through the swap.
+/// baseline only in the combiners from the swap on, and there only in the swapped slot, whose
+/// ADR arc then runs on through the swap.
 BOOST_AUTO_TEST_CASE(prn_swap_without_reset) {
     if (!full_run())
         return;
@@ -1421,6 +1693,7 @@ BOOST_AUTO_TEST_CASE(prn_swap_without_reset) {
     const Digests d = run_scenario(chains(), sc);
     const std::set<std::string> ch = changed(base, d);
     BOOST_TEST_MESSAGE("without the reset: " << join(ch));
+    const int q = sc.swap_slot;
     std::set<std::string> allowed;
     for (const auto& s : chains()) {
         allowed.insert(s.pre + ".cmb");
@@ -1437,20 +1710,41 @@ BOOST_AUTO_TEST_CASE(prn_swap_without_reset) {
                      / std::max(1, s.combine.value("integration_length", 1) / 10));
         BOOST_REQUIRE(x.size() == y.size() && x.size() > n_before);
         BOOST_CHECK(std::equal(x.begin(), x.begin() + n_before, y.begin()));
-        for (int cp : sc.checkpoints) {
-            const std::string key = "status@" + std::to_string(cp);
-            const json& a = base.live.at(s.pre).at(key);
-            const json& b = d.live.at(s.pre).at(key);
-            BOOST_REQUIRE_EQUAL(a.size(), b.size());
-            for (size_t p = 0; p < a.size(); ++p)
-                if (!((int)p == sc.swap_slot && cp >= sc.swap_frame))
-                    BOOST_CHECK_MESSAGE(a[p] == b[p], s.pre << " " << key << " slot " << p
-                                                            << " changed: " << a[p] << " -> "
-                                                            << b[p]);
+        // Per slot, every emit and every GET at the slot frames is the baseline's, except the
+        // swapped slot's from the swap's first emit on.
+        const json& a = base.slots.at(s.pre).at("own");
+        const json& b = d.slots.at(s.pre).at("own");
+        BOOST_REQUIRE_EQUAL(a.at("cmb").size(), b.at("cmb").size());
+        std::vector<std::string> bad;
+        for (size_t i = 0; i < a.at("cmb").size(); ++i) {
+            json ra = a.at("cmb")[i], rb = b.at("cmb")[i];
+            if (i >= n_before)
+                ra[q] = rb[q] = nullptr;
+            note_diff("emit " + std::to_string(i), rb, ra, bad);
         }
+        const int now = s.prns[(size_t)q] + 100;
+        for (int k = 0; k < sc.n_frames; ++k) {
+            if (!slot_frame(sc, k))
+                continue;
+            const std::string cp = "@" + std::to_string(k);
+            json sa = a.at("status" + cp), sb = b.at("status" + cp);
+            json ea = a.at("elements" + cp), eb = b.at("elements" + cp);
+            json ra = a.at("records" + cp), rb = b.at("records" + cp);
+            if (sa[q][1].get<int>() == now) {
+                sa[q] = sb[q] = ea[q] = eb[q] = nullptr;
+                ra.erase(std::to_string(now));
+                rb.erase(std::to_string(now));
+            }
+            note_diff("status" + cp, sb, sa, bad);
+            note_diff("elements" + cp, eb, ea, bad);
+            note_diff("records" + cp, rb, ra, bad);
+        }
+        BOOST_CHECK_MESSAGE(bad.empty(), s.pre << ": " << bad.size()
+                                               << " emits or GETs differ from the baseline, "
+                                                  "first: "
+                                               << (bad.empty() ? "" : bad[0]));
         const json& L = d.live.at(s.pre);
-        BOOST_CHECK_EQUAL(L.at("status@29").at((size_t)sc.swap_slot)[2],
-                          L.at("status@59").at((size_t)sc.swap_slot)[2]);
+        BOOST_CHECK_EQUAL(L.at("status@29").at((size_t)q)[2], L.at("status@59").at((size_t)q)[2]);
     }
     for (const auto& k : ch)
         BOOST_CHECK_MESSAGE(allowed.count(k) == 1, k << " changed");

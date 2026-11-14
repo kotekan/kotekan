@@ -34,11 +34,13 @@
  *
  * Temporal integration is an exponential moving average with time constant
  * K = @c integration_length records (alpha = 1/K), updated every record and emitted every K/10
- * records without reset. It gives both the incoherent amplitude
+ * records. It gives both the incoherent amplitude
  * @f$ \sqrt{\langle|A|^2\rangle} @f$ (slot 3, ~sqrt(K) SNR, no phase needed) and the coherent
  * mean @f$ \langle A\rangle @f$ (slots 4-6, up to K SNR, but only while the carrier phase is
- * stable across the K records). Each is divided by 1-(1-alpha)^n at emit, so it reads a true
- * running mean from the first record.
+ * stable across the K records). Each is divided by 1-(1-alpha)^n at emit, n the slot's records
+ * since its last reset, so it reads a true running mean from the first record. A slot is reset
+ * only when its records carry a new PRN (@c reset_on_prn_change); its state then restarts as at
+ * the stage's start, except that its ADR arc id keeps counting.
  *
  * Slot 8 is a deep coherent |A| over the buffered per-record A, by one of three paths:
  *  - nav-bit wipe (@c navwipe_bit_records): records are grouped into data-bit epochs, each

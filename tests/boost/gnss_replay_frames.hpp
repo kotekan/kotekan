@@ -67,6 +67,12 @@ struct Scenario {
     bool combiner_out_buf = true;
     /// false: the combiners keep a slot's state across a PRN swap (reset_on_prn_change).
     bool combiner_prn_reset = true;
+    /// true: beside its own combiner each chain runs two without out_buf, fed copies of the
+    /// chain's records around the swap: "cold" from swap_frame on, so its swap_slot starts on the
+    /// new PRN with no history, and "scint" from before it with the swap_slot's amplitude x10 in
+    /// every tenth record before swap_frame, a history far from the chain's own that the swap
+    /// must clear.
+    bool cold_ref = false;
 };
 
 /// Record index of frame 0's first record: a multiple of every window length the chains use

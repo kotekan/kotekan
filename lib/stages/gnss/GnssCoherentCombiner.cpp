@@ -1119,7 +1119,9 @@ void GnssCoherentCombiner::main_thread() {
                     const double K = (double)std::max(1, deep_rec[p]);
                     const double x = (deep_snr[p] > 0.0) ? deep_snr[p] * deep_snr[p] / K : 0.0;
                     const double s4_th2 = (1.0 + 2.0 * x) / ((1.0 + x) * (1.0 + x));
-                    const double s4r = _st_s4_raw[p];
+                    // The previous emit's raw S4; none at the slot's first emit since its last
+                    // reset, as at the stage's start.
+                    const double s4r = n_slot[p] > _emit_every ? _st_s4_raw[p] : 0.0;
                     _st_s4[p] = (float)std::sqrt(std::max(0.0, s4r * s4r - s4_th2));
                 }
                 _st_s4_raw[p] = (float)s4_raw[p];
