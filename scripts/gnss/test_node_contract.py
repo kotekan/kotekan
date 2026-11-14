@@ -5,7 +5,8 @@ mutation per facet that must show in that facet's diff.
     GNSS_CONTRACT_BASELINE=DIR python3 scripts/gnss/test_node_contract.py
 
 DIR holds a generated chord_gnss_cx52_multi.yaml; the counts are those of the config the
-generator writes for cx52 today. Without GNSS_CONTRACT_BASELINE the test exits 77. With GNSS_REPLAY_DUMP=DIR2
+generator writes for cx52 today. Without GNSS_CONTRACT_BASELINE only test_only_keys is checked
+and the test exits 77. With GNSS_REPLAY_DUMP=DIR2
 (test_gnss_chain_replay's config.json and endpoints.json) rest_surface of the replay's config
 must equal the per-chain endpoints its stages registered.
 """
@@ -279,9 +280,31 @@ def test_replay(dump):
     )
 
 
+def test_test_only():
+    tree = {
+        "gnss0_n2dual": {
+            "commands": [{"name": "cudaGnssInject", "psi_sync_build": False}]
+        },
+        "psi_sync_build": True,
+    }
+    found = nc.test_only_keys(tree)
+    check(
+        found == ["/: psi_sync_build", "/gnss0_n2dual/commands/0: psi_sync_build"],
+        "test_only_keys finds psi_sync_build at the root and on a command: %s" % found,
+    )
+    check(
+        nc.test_only_keys({"gnss0_n2dual": {"commands": [{}]}}) == [],
+        "test_only_keys finds nothing in a tree without a test-only key",
+    )
+
+
 def main():
+    test_test_only()
     d = os.environ.get("GNSS_CONTRACT_BASELINE")
     if not d:
+        if _fails:
+            print("\n%d FAILED" % len(_fails))
+            return 1
         print("skip: GNSS_CONTRACT_BASELINE is not set")
         return 77
     path = os.path.join(d, NAME)
