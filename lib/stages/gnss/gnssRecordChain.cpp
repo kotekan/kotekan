@@ -550,7 +550,7 @@ std::vector<RecordChain::RestVerb> RecordChain::rest_verbs() {
 }
 
 void RecordChain::get_lane_inst_callback(kotekan::connectionInstance& conn) {
-    // Read off main_thread without a lock: a torn double gives one element one wrong delay
+    // Read off the record path without a lock: a torn double gives one element one wrong delay
     // in one poll, which the relay's pooling over instances and time absorbs.
     nlohmann::json out;
     out["warm"] = _inst.warm();
@@ -624,7 +624,7 @@ int RecordChain::follow_frame_prns(const void* pctl_v, int n_prn) {
 
         // Cold-reset everything keyed to this slot. Each describes the satellite that left, and
         // carried across it would be attributed to the new one, silently: a warm cal or a phase
-        // history looks plausible. main_thread's reference-element swap also rebuilds the cals
+        // history looks plausible. begin_frame's reference-element swap also rebuilds the cals
         // cold.
         if (_elem_sum && (size_t)p < _cal.size()) {
             _cal[(size_t)p] =
@@ -1785,7 +1785,7 @@ void RecordChain::spectrum_callback(kotekan::connectionInstance& conn) {
 
 
 // Inject a per-element complex gain prior into every PRN's ElemCal so the combine starts warm
-// on (re)acquisition. Parse first, lock last: main_thread takes _gain_mtx only for the swap.
+// on (re)acquisition. Parse first, lock last: begin_frame takes _gain_mtx only for the swap.
 void RecordChain::set_elem_gain_callback(kotekan::connectionInstance& conn,
                                          nlohmann::json& request) {
     if (!_elem_sum) {
@@ -2293,7 +2293,7 @@ void RecordChain::shared_pol_update(size_t p, const std::complex<double>* g_prom
 void RecordChain::get_elem_cal_callback(kotekan::connectionInstance& conn) {
     // Per PRN slot: is the live cal warm, is the anchor off the reference, and -- when held --
     // how well the shadow (still learning) agrees with the held weights (-1 = not measured).
-    // The doubles are written by main_thread and read here without a lock: a torn read of one
+    // The doubles are written by the record path and read here without a lock: a torn read of one
     // diagnostic double is acceptable, a lock on the per-record path is not.
     nlohmann::json out;
     out["adapt"] = _elem_adapt.load();
@@ -2389,7 +2389,7 @@ void RecordChain::get_elem_cal_callback(kotekan::connectionInstance& conn) {
 
 void RecordChain::set_reference_element_callback(kotekan::connectionInstance& conn,
                                                  nlohmann::json& request) {
-    // Body: {"element": N}. Staged only; main_thread applies it at the next frame boundary.
+    // Body: {"element": N}. Staged only; begin_frame applies it at the next frame boundary.
     // The bounds are the constructor's, answered with a 400 instead of FATAL_ERROR.
     int el = -1;
     try {

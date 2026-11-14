@@ -269,10 +269,10 @@ private:
     };
     std::vector<SpecWindow> _spec_ring; ///< depth from config; index -> idx % depth
     int64_t _spec_max_idx = -1;         ///< newest index seen; complete windows are < this
-    std::mutex _spec_mtx;               ///< guards _spec_* between main_thread and REST
+    std::mutex _spec_mtx;               ///< guards _spec_* between the record path and REST
     // Per-element complex gain prior from POST /set_elem_gain (e.g. an N2 eigenvector with the
-    // sky removed): staged here by REST, seeded into every PRN's ElemCal by main_thread.
-    std::mutex _gain_mtx; ///< guards every _pending_* field between REST and main_thread
+    // sky removed): staged here by REST, seeded into every PRN's ElemCal by begin_frame.
+    std::mutex _gain_mtx; ///< guards every _pending_* field between REST and the record path
     std::vector<std::complex<double>> _pending_gain;
     bool _pending_gain_set = false;
     /// Reference element staged by POST /set_reference_element, applied at the next frame
@@ -331,7 +331,7 @@ private:
     int _cube_gpu = -1;        ///< beam_cube_gpu, stamped in every frame for the reader
 
     /// The ring slot for the window owning `wstart`, cleared when a new window takes it.
-    /// Opening a later window completes the previous newest one, which is pushed to cube_buf.
+    /// Opening a later window completes the previous newest one, for take_cube_window().
     CubeWindow& cube_window_for(int64_t wstart);
     /// The ring slot for the window owning `wstart`, cleared when a new window takes it. Caller
     /// holds _spec_mtx.
@@ -462,7 +462,7 @@ private:
     std::vector<int> _proj_sig;    ///< signature of the source set, for change detection
     std::vector<uint8_t> _proj_probe_used;  ///< [n_chan] a probe direction was used this record
     const double* _proj_corr_rec = nullptr; ///< this record's raw corr rows (proj_identify)
-    // Served state: written by main_thread, read by REST without a lock (torn reads of a
+    // Served state: written by the record path, read by REST without a lock (torn reads of a
     // diagnostic double are acceptable; a lock on the per-record path is not).
     std::vector<double> _proj_probe_frac; ///< [n_chan] probe-stack component-0 energy fraction
     std::vector<uint8_t> _proj_probe_on;  ///< [n_chan] probe trigger latched (hysteresis)
