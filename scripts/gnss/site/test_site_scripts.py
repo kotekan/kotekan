@@ -1280,8 +1280,9 @@ def test_eop_cron_reads_the_configs_the_manifest_owns():
             "and regenerated (%r)" % text.strip().splitlines()[-1:],
         )
         check(
-            calls == ["--check", ""],
-            "after a --check, then a write (gen_fleet calls %r)" % calls,
+            calls == ["--check", "--keep-bad-inputs"],
+            "after a --check, then a write that keeps the files' bad inputs (gen_fleet calls %r)"
+            % calls,
         )
         check(
             not os.path.exists(pushed),

@@ -13,7 +13,9 @@
 #      table whose last entry is already in the past
 #   2. regenerate the on-disk node configs when their table ends earlier than the staged one and
 #      they still match the manifest apart from live data, so a relaunch never starts on a table
-#      that has ended. Nothing is pushed to a running node.
+#      that has ended. The write keeps each file's bad-input block (--keep-bad-inputs), so it
+#      changes the EOP table only, and keeps working through an outage, when bffs flags every
+#      input and the generator refuses its list. Nothing is pushed to a running node.
 #
 #   crontab:  17 12 * * *  /home/kvand/gnss/gnss-broker/scripts/gnss/site/eop_cron.sh
 #   env:      EOP_LOG (default /var/tmp/gnss-logs/eop_cron.log),
@@ -70,7 +72,7 @@ if [ -n "$DISK_END" ] && [ "$DISK_END" -lt "$FILE_END" ]; then
     rc=0
     "$PY" "$K/scripts/gnss/gen_fleet.py" "$MAN" --check >/dev/null 2>&1 || rc=$?
     if [ "$rc" = 0 ]; then
-        if "$PY" "$K/scripts/gnss/gen_fleet.py" "$MAN" >/dev/null 2>&1; then
+        if "$PY" "$K/scripts/gnss/gen_fleet.py" "$MAN" --keep-bad-inputs >/dev/null 2>&1; then
             echo "  on-disk configs regenerated: table end $DISK_END -> $FILE_END"
         else
             echo "  on-disk regen FAILED (gen_fleet write); table end still $DISK_END"
