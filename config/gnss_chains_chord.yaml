@@ -670,30 +670,32 @@ chains:
   # integration past 20 ms needs the nav-bit wipe no chain runs. `signal: bds_b3i` implies no
   # capability gate and no PRN floor (BDS-2 and BDS-3 both broadcast B3I), so the broker
   # predicts, maps and seeds every BeiDou PRN, C06-C08 and C11-C14 among them.
-    # SBAS L5 (#190 coverage): the WAAS GEOs 131/133/135/138 on the I5 code of the GPS L5 family
+    # SBAS L5 (#190 coverage): the WAAS GEOs 131/133/135 on the I5 code of the GPS L5 family
     # under the 2 ms Manchester pair (SBAS_L5_I_MC). SBAS L5 has no pilot: the I channel carries
     # 500 sps data, so a record sums ~5 unknown symbol signs (~7 dB of a pilot's power; q and the
     # squared carrier walk do not care about the signs). Geostationary at el ~33 due south of DRAO,
     # state vectors from the IGS BRDC's S records (gnss_ephemeris, 2 h age). Model-primary
     # like glo_l3oc: no search, the dead-reckon seed from the ephemeris (a GEO's range is known
     # to metres and its Doppler is ~0), the joint clock adopted. No signal-capability: the
-    # registry has no SBAS block types; the manifest's PRN list is the capable set. The
-    # chain's tag is _sbas_l5 (signal_tag of SBAS_L5_I_MC), so its node endpoints read
-    # gnss<g>_sbas_l5_*.
+    # registry has no SBAS block types; prn-reconfig-prns, the manifest's PRN list, is the
+    # capable set. The chain's tag is _sbas_l5 (signal_tag of SBAS_L5_I_MC), so its node
+    # endpoints read gnss<g>_sbas_l5_*.
     # Every node carries SBAS_L5_I_MC (the manifest's common signal set). probe-require-slot
     # filters probes by the PRN map the listed trackers agree on, and a listed node without the
     # chain answers 404, so there is never agreement and the probes go unfiltered (no slot, no
     # report, presence never anchored): list only nodes that carry it, which `fleet` does. An
     # unreachable node no longer blocks the consensus (prnmap: a quorum since 10-24).
     # The boot list is the three WAAS GEOs plus 121/123/136, EGNOS GEOs that never rise here,
-    # kept as the noise probes. Under common's apply the map follows the SBAS GEOs up in BRDC
-    # (the nodes take SBAS PRNs 120-158). probe-dark-prns pins the probes. Without it apply
-    # trades them for the deepest GEOs in BRDC (GAGAN, MSAS, BDSBAS), some of which BRDC carries
-    # only a few hours a day, and a GEO that rises then takes the slot of a probe that is not
-    # among the deepest, leaving two probes. A pinned probe stays one through a BRDC gap, at el
-    # -90, and a fourth GEO up finds no slot (logged as wanting one).
+    # kept as the noise probes. The chain runs common's apply (the nodes take SBAS PRNs
+    # 120-158) on that list only: prn-reconfig-prns. The BRDC also carries GEOs that cannot be
+    # tracked here, placeholder records with a nominal position and no motion (139 at +13 deg,
+    # a few hours a day), which would take the slot of a WAAS GEO missing from one cycle's
+    # prediction and keep it; and deeper GEOs (GAGAN, MSAS, BDSBAS) that the probe order would
+    # take over the EGNOS GEOs. probe-dark-prns keeps an EGNOS probe with no BRDC record a probe,
+    # at el -90.
     sbas_l5:
         signal: sbas_l5
+        prn-reconfig-prns: "131,133,135,121,123,136"
         probe-dark: true
         probe-dark-prns: "121,123,136"
         presence-admit-displaced: true
@@ -992,9 +994,10 @@ chains:
   # only, 250 bps through rate-1/2 FEC to 500 sps, so a record sums ~5 unknown symbol signs as
   # on sbas_l5. The trackers despread two C/A periods tiled into one 2 ms symbol (SBAS_L1_SYM),
   # placed from absolute time. gps_l1ca's eleven channels. Model-primary like sbas_l5, with its
-  # PRN list and pinned probes.
+  # PRN list and probes.
     sbas_l1:
         signal: sbas_l1
+        prn-reconfig-prns: "131,133,135,121,123,136"
         probe-dark: true
         probe-dark-prns: "121,123,136"
         presence-admit-displaced: true

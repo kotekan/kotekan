@@ -147,14 +147,16 @@ The nodes' `/set_prns` takes the PRNs `gnss::min_prn`..`gnss::max_prn` of the ch
 binary older than that takes 1-63 on every signal but GW_1202 and refuses every SBAS map, so
 the SBAS chains need the node binary before the broker runs them under `apply`.
 
-The SBAS chains pin their noise probes, the EGNOS GEOs 121/123/136 that never rise here, with
-`--probe-dark --probe-dark-prns`. The probe order would otherwise take the deepest GEOs in the
-BRDC sky (GAGAN, MSAS, BDSBAS), some of which the BRDC carries only a few hours a day, so the
-map would trade probes as they come and go. With six slots, a GEO that rises then takes the
-slot of a probe that is not among the deepest, and the chain runs on two probes, below the
-three the presence gate needs. A pinned PRN keeps its predicted row while below -15 deg and is
-a probe at el -90 when the BRDC has no record of it, so the map keeps it; a fourth GEO up is
-logged as wanting a slot.
+`--prn-reconfig-prns` names the only PRNs a chain's map may hold; any other satellite is never
+a slot candidate. The SBAS chains list their boot list, the WAAS GEOs 131/133/135 and the EGNOS
+GEOs 121/123/136, which never rise here and are the noise probes. The BRDC also carries GEOs
+that cannot be tracked here. Some are placeholder records, a nominal position with no motion:
+139 sits at +13 deg for a few hours a day, and without the list it would take the slot of a
+WAAS GEO missing from one cycle's prediction and keep it while both are up. The deeper GAGAN,
+MSAS and BDSBAS GEOs would take the probes' slots. With the list, a GEO missing from the
+prediction leaves its slot dead until it returns, and nothing is posted. `--probe-dark
+--probe-dark-prns` keeps an EGNOS probe a probe when the BRDC has no record of it: its row is
+then el -90, while a PRN with a record keeps its predicted row below -15 deg.
 
 ## Verification
 

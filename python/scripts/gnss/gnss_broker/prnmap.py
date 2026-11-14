@@ -23,8 +23,9 @@ LEO satellites), so a slot is held before a satellite arrives and kept until it 
 --prn-reconfig defaults to off (the stage does nothing; the replay fixtures' argv predates the
 flag); every live chain runs `apply` except glo_l2of, whose PRN list is fixed (the node refuses
 a live swap on an FDMA bank) and which runs `read`: the map is read back and published for the
-probe selector, and never posted. The SBAS chains keep their EGNOS GEOs, which never rise here,
-as probes with --probe-dark-prns: a deeper GEO would otherwise take their slots.
+probe selector, and never posted. The SBAS chains hold only the PRNs of --prn-reconfig-prns,
+their GEOs and probes, since the BRDC also carries GEOs that cannot be tracked here; their
+EGNOS GEOs, which never rise here, stay probes through a BRDC gap with --probe-dark-prns.
 
 The broker does not read the node's config; it GETs the live map, so it diffs against what
 each node actually holds. The map is a runtime overlay, not persisted: a node restart reverts
@@ -598,15 +599,21 @@ def stage_prn_membership(ctx):
                 ),
                 every_s=600.0,
             )
+    # --prn-reconfig-prns: the only PRNs the map may hold, dropped here as the incapable are.
+    _only = set(getattr(a, "prn_reconfig_prns", None) or ())
+    if _only:
+        el = {p: e for p, e in el.items() if p in _only}
     # Under --prn-rank boresight an empty sky now is the normal gap between passes, and the
     # look-ahead may still see a satellite coming; sep_ahead guards the outage case instead.
     bore = a.prn_rank == "boresight"
     if not el and not bore:
         return  # no prediction this cycle: say nothing rather than evict the whole map
-    # --probe-dark: satellites with ephemeris that cannot broadcast this signal, kept as noise
-    # probes (probe_order). Not in `el`, so without this they would read as dead slots.
+    # --probe-dark: the signal-free PRNs of ctx.pred_dark, kept as noise probes (probe_order).
+    # Those not in `el` would otherwise read as dead slots.
     dark = (
-        sorted(getattr(ctx, "pred_dark", None) or {})
+        sorted(
+            p for p in getattr(ctx, "pred_dark", None) or {} if not _only or p in _only
+        )
         if getattr(a, "probe_dark", False)
         else []
     )
@@ -623,7 +630,7 @@ def stage_prn_membership(ctx):
         sep = sep_ahead(ctx, _incap)
         if sep is None:
             return
-        rank = {p: -s for p, s in sep.items()}
+        rank = {p: -s for p, s in sep.items() if not _only or p in _only}
         admit, evict = -a.prn_rank_admit_sep_deg, -a.prn_rank_evict_sep_deg
     # Unslotted satellites above the admit mask, for the heartbeat's "waiting for a slot"
     # count only; desired_map() decides. There a slot holding a real satellite is given up
@@ -788,9 +795,10 @@ def probe_order(el, dark=(), held=()):
     """Noise-probe candidates, best first: the `dark` PRNs (those in `held` first, each group
     in PRN order), then every PRN of `el` ({prn: elevation deg}) below -15 deg, deepest first.
 
-    Dark PRNs (--probe-dark) have ephemeris but cannot broadcast this signal, so they are
-    signal-free at any elevation and never set. Every such satellite qualifies (on glo_l2oc the
-    plain GLO-M slots as well as the M+ ones), so the ones the nodes already hold come first:
+    Dark PRNs (--probe-dark) are signal-free here at any time: satellites unable to broadcast
+    this signal, or --probe-dark-prns (codes no satellite transmits, satellites that never
+    rise here). Every such satellite qualifies (on glo_l2oc the plain GLO-M slots as well as
+    the M+ ones), so the ones the nodes already hold come first:
     the map then has nothing to swap. PRN order keeps the choice stable from cycle to cycle.
     The broker's selector (held = the nodes' map) and desired_map (held = the current map)
     both order probes by this, so the map holds the probes the selector picks. Callers take
@@ -807,7 +815,7 @@ def desired_map(cur, el, n_probe, admit_deg, evict_deg, dark=(), rank=None):
 
     Wanted: every satellite up (admitted at >= `admit_deg`, a held one kept until it falls
     below `evict_deg`), then `n_probe` noise probes in probe_order: the `dark` PRNs
-    (--probe-dark; not in `el`), then the deepest below -15 deg.
+    (--probe-dark), then the deepest below -15 deg.
 
     `rank` ({prn: value}, higher is better; default `el`) is what "up" and the thresholds are
     judged on and what orders the slots to reuse; a PRN not in it is dead. The probes are

@@ -1519,7 +1519,7 @@ def main(argv=None, rx=None, publisher=None):
         _ctx.pred = {}  # prn -> (doppler_hz, rate_hz_s, elev_deg, ...) [sign-applied]
         _ctx.pred_dark = (
             {}
-        )  # the same rows for capability-excluded satellites (--probe-dark)
+        )  # the same rows for the signal-free PRNs (--probe-dark, --probe-dark-prns)
         # Stale-bias rescue (bias_stale_s): a solved bias unmeasured that long widens the search
         # margins until re-solved. If it latched away from truth, the narrow hints it centres
         # would prevent the measurements that fix it. The held value still centres the wide
@@ -1862,8 +1862,8 @@ def main(argv=None, rx=None, publisher=None):
         # tracks one. Probes are exempt from coast/drop and never command a carrier; they fail
         # every lock gate on their own. Doppler and code phase are arbitrary for noise; the
         # predicted Doppler keeps the despread configuration representative.
-        # --probe-dark puts the dark satellites (with ephemeris, but excluded by
-        # --signal-capability: signal-free at any elevation) ahead of the deepest; prnmap's
+        # --probe-dark puts the dark PRNs (signal-free here at any time: excluded by
+        # --signal-capability, or --probe-dark-prns) ahead of the deepest; prnmap's
         # desired_map orders its probe slots by the same prnmap.probe_order.
         _ctx.probe_set = set()
         # A --probe-dark-prns chain (GuoWang) keeps its probes between passes, when no
@@ -1914,7 +1914,7 @@ def main(argv=None, rx=None, publisher=None):
                         % (
                             p,
                             _pp[2],
-                            "" if p in _ctx.pred else ", dark: not on this signal",
+                            "" if p in _ctx.pred else ", dark: signal-free here",
                         )
                     )
                 seeds[p] = Seed.born(

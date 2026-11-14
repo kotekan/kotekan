@@ -1074,7 +1074,7 @@ def build_parser(description):
         "any the nodes already hold first, ahead of the deepest below -15 deg. Use it "
         "on a chain with too few capable satellites to keep the 3 probes the presence "
         "gate needs below -15 deg. The nodes must hold slots for the dark PRNs; the PRN "
-        "map keeps them as probes. Needs --signal-capability.",
+        "map keeps them as probes. Needs --signal-capability or --probe-dark-prns.",
     )
     ap.add_argument(
         "--prn-reconfig",
@@ -1118,6 +1118,16 @@ def build_parser(description):
         default=0.0,
         help="a slot's satellite keeps it until its elevation falls below this, deg; "
         "the slot can then go to a satellite that wants one",
+    )
+    ap.add_argument(
+        "--prn-reconfig-prns",
+        type=lambda s: [int(x) for x in s.split(",") if x.strip()],
+        default=[],
+        help="comma-separated PRNs the map may hold. Any other satellite is never a "
+        "slot candidate, and a slot holding one counts as dead. For a chain the "
+        "registry cannot gate (--signal-capability): the SBAS chains, whose BRDC also "
+        "carries GEOs that cannot be tracked here, placeholder records with a nominal "
+        "position among them. Empty (default): every predicted satellite.",
     )
     ap.add_argument(
         "--prn-rank",
