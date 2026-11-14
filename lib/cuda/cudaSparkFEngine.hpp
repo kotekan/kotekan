@@ -52,6 +52,13 @@
  * @conf samples_per_packet Int, default 4096.
  * @conf gain               Float, default 1.0. Applied to every bin before quantization.
  * @conf gpu_id             Int, default 0.
+ * @conf fft_precision      String, default "fp32". "fp16" runs the four-step path: the
+ *                          fft_length/2-point transform becomes two batched fp16 cuFFTs
+ *                          with a twiddle/transpose pass between (cuFFT applies no scaling
+ *                          and overflows fp16 at these sizes in one piece; the twiddle pass
+ *                          scales by 1/m1), halving the memory traffic. Needs fft_length a
+ *                          power of two of at least 2^11 and samples_per_packet a multiple
+ *                          of 64.
  *
  * @par Metrics
  * @metric kotekan_cuda_spark_fengine_windows_total  Windows processed.
@@ -77,6 +84,8 @@ private:
     uint32_t num_packets;
     float gain;
     int32_t gpu_id;
+    bool fp16;
+    size_t m1 = 0, m2 = 0;
 
     std::shared_ptr<cudaDeviceInterface> device;
 
