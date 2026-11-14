@@ -68,6 +68,7 @@ add_library(
     # The tracker -> broker telemetry transport, outside the FFTW block: the gather half runs on
     # the broker host, which has no F-engine, GPU or FFTW.
     gnss/GnssTelemPack.cpp
+    gnss/gnssTelemChain.cpp
     gnss/GnssTelemGather.cpp
     # The fleet code loop runs in the gather instance beside GnssTelemGather (the only place
     # with the whole fleet at frame rate), so it is in the same no-FFTW block.
