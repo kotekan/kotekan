@@ -194,11 +194,13 @@ private:
     /// REST snapshot of the element-gain state (under _st_mtx): [n_prn][n_elem][4] =
     /// u_re, u_im, <|A_e|^2>, <|ref|^2>, normalized at emit like the element blocks.
     std::vector<float> _st_elem;
-    double _st_elem_keff = 0.0; ///< effective records behind the snapshot (significance input)
-    int _integration_length;    ///< EMA time constant (records)
-    bool _reset_on_prn_change;  ///< cold-reset a slot when its PRN changes
-    int _emit_every;            ///< records between emits (output cadence)
-    int _navwipe_bit_records;   ///< records per nav bit (0 = no wipe)
+    /// Per PRN, the records behind the snapshot: the slot's since the stage's start or its last
+    /// reset, at most integration_length (significance input).
+    std::vector<double> _st_elem_keff;
+    int _integration_length;   ///< EMA time constant (records)
+    bool _reset_on_prn_change; ///< cold-reset a slot when its PRN changes
+    int _emit_every;           ///< records between emits (output cadence)
+    int _navwipe_bit_records;  ///< records per nav bit (0 = no wipe)
     /// Shared secondary overlay wiped ahead of the nav-bit wipe; empty if unused.
     std::vector<int8_t> _secondary;
     /// F-engine FFT length (samples per hop), used only to turn GnssChanMetadata::sample_seq, an

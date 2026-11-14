@@ -172,6 +172,7 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
     _st_head_frac.assign(_n_prn, 0.0f);
     _st_s4.assign(_n_prn, 0.0f);
     _st_s4_raw.assign(_n_prn, 0.0f);
+    _st_elem_keff.assign(_n_prn, 0.0);
     _st_sigma_phi.assign(_n_prn, 0.0f);
     _st_car_resid.assign(_n_prn, 0.0f);
     _adr_cyc.assign(_n_prn, 0.0);
@@ -689,7 +690,7 @@ void GnssCoherentCombiner::main_thread() {
                 std::lock_guard<std::mutex> elk(_st_mtx);
                 if (_st_elem.size() != (size_t)_n_prn * _n_elements * 4)
                     _st_elem.assign((size_t)_n_prn * _n_elements * 4, 0.0f);
-                _st_elem_keff = Keff;
+                _st_elem_keff[p] = (double)std::min<long long>(n_slot[p], _integration_length);
                 for (int el = 0; el < _n_elements; ++el) {
                     float* eb = rec + gnss::RECORD_FLOATS + (size_t)el * gnss::ELEM_FLOATS;
                     const size_t k = (size_t)p * _n_elements + el;
@@ -1186,7 +1187,8 @@ void GnssCoherentCombiner::get_elements_callback(kotekan::connectionInstance& co
     // Per-element complex gain, per PRN and element: [u_re, u_im, p2, q] with
     // u = <A_e * conj(LOO ref)> (the gain), p2 = <|A_e|^2> (incoherent beam-map power, not
     // debiased) and q = <|LOO ref|^2> (the normalizer: amp_e ~ |u|/q). keff is the effective
-    // record count behind the averages, for significance. The parts are exported raw so any
+    // record count behind the averages, for significance: the slot's records since the stage's
+    // start or its last reset, at most integration_length. The parts are exported raw so any
     // combination can be rebuilt downstream.
     nlohmann::json reply = nlohmann::json::array();
     std::lock_guard<std::mutex> lk(_st_mtx);
@@ -1202,7 +1204,7 @@ void GnssCoherentCombiner::get_elements_callback(kotekan::connectionInstance& co
             reply.push_back({{"prn", _st_prn[p]},
                              {"doppler_hz", _st_dop[p]},
                              {"pow_hop", _st_pow_hop},
-                             {"keff", _st_elem_keff},
+                             {"keff", _st_elem_keff[p]},
                              {"n_elem", _n_elements},
                              {"elems", els}});
         }

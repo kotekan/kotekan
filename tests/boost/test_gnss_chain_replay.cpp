@@ -1611,6 +1611,52 @@ BOOST_AUTO_TEST_CASE(current_behaviour_pins) {
     }
 }
 
+/// get_elements' keff for slot @p p after frame @p k: the slot's records at the last emit since
+/// the stage's start, or with @p reset since the swap, at most integration_length.
+int keff_at(const ChainSpec& s, const Scenario& sc, int p, int k, bool reset) {
+    const int K = s.combine.value("integration_length", 1);
+    const int E = std::max(1, K / 10);
+    const int last = s.n_rec * (k + 1) / E * E;
+    const int swap_rec = s.n_rec * sc.swap_frame;
+    return std::min(K, (reset && p == sc.swap_slot && last > swap_rec) ? last - swap_rec : last);
+}
+
+/// Notes in @p bad every slot frame where combiner @p got's get_elements keff is not keff_at.
+void note_keff(const ChainSpec& s, const Scenario& sc, const json& got, bool reset,
+               std::vector<std::string>& bad) {
+    for (int k = 0; k < sc.n_frames; ++k) {
+        if (!slot_frame(sc, k))
+            continue;
+        const json& el = got.at("elements@" + std::to_string(k));
+        if (keff_at(s, sc, 0, k, false) == 0) {
+            if (!el.empty())
+                bad.push_back(fmt::format("elements@{:d}: rows before the first emit", k));
+            continue;
+        }
+        if (el.size() != (size_t)s.n_prn) {
+            bad.push_back(fmt::format("elements@{:d}: {:d} rows", k, el.size()));
+            continue;
+        }
+        for (int p = 0; p < s.n_prn; ++p)
+            if (el[p][2].get<double>() != keff_at(s, sc, p, k, reset))
+                bad.push_back(fmt::format("elements@{:d} slot {:d}: keff {:s}, not {:d}", k, p,
+                                          el[p][2].dump(), keff_at(s, sc, p, k, reset)));
+    }
+}
+
+/// get_elements' keff counts each slot's records since the stage's start or its last reset, at
+/// most integration_length, so the broker's min_keff holds back a slot only just reset.
+BOOST_AUTO_TEST_CASE(elements_keff) {
+    const Digests& d = baseline();
+    const Scenario sc = base_scenario();
+    for (const ChainSpec& s : chains()) {
+        std::vector<std::string> bad;
+        note_keff(s, sc, d.slots.at(s.pre).at("own"), true, bad);
+        BOOST_CHECK_MESSAGE(bad.empty(), s.pre << ": " << bad.size() << " keff differ, first: "
+                                               << (bad.empty() ? "" : bad[0]));
+    }
+}
+
 /// A cold reset leaves the swapped slot as a combiner that first saw it on the new PRN (the
 /// baseline's "cold" side combiner, fed the same records from the swap on), in every emit and in
 /// every GET at the slot frames, except that its arc id counts on from the departed PRN's arcs.
@@ -1739,6 +1785,8 @@ BOOST_AUTO_TEST_CASE(prn_swap_without_reset) {
             note_diff("elements" + cp, eb, ea, bad);
             note_diff("records" + cp, rb, ra, bad);
         }
+        // Without the reset the swapped slot's keff runs on through the swap.
+        note_keff(s, sc, b, false, bad);
         BOOST_CHECK_MESSAGE(bad.empty(), s.pre << ": " << bad.size()
                                                << " emits or GETs differ from the baseline, "
                                                   "first: "
