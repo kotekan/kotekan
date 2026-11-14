@@ -1,8 +1,9 @@
 # Live PRN reconfiguration
 
 **Status: LIVE.** Every chain runs `--prn-reconfig apply` (`config/gnss_chains_chord.yaml`,
-`common`) except sbas_l5, whose PRN list is fixed and which runs `read`. The node half is in place on every producer, the record assembler follows the frame,
-and the search is driven in step.
+`common`) except glo_l2of, whose PRN list is fixed (an FDMA bank refuses a live swap) and which
+runs `read`. The node half is in place on every producer, the record assembler follows the
+frame, and the search is driven in step.
 
 ## Why
 
@@ -138,9 +139,22 @@ restart is a clean slate rather than a silently-inherited history.
 
 `--prn-reconfig off | read | apply`, default **off**: the stage does nothing (the replay
 fixtures' argv predates the flag). `read` polls `/get_prns` and publishes the unanimous map for
-`--probe-require-slot`, and never posts: sbas_l5 runs it, since its list (the WAAS GEOs plus
-three EGNOS GEOs as noise probes) is fixed and the nodes' `/set_prns` takes PRNs 1-63 only.
-Every other live chain runs `apply`.
+`--probe-require-slot`, and never posts: glo_l2of runs it, since the node refuses a live swap
+on an FDMA bank. Every other live chain runs `apply`.
+
+The nodes' `/set_prns` takes the PRNs `gnss::min_prn`..`gnss::max_prn` of the chain's signal
+(`gnssSignal.hpp`): 120-158 on the SBAS signals, 1-2047 on GW_1202, 1-63 elsewhere. A node
+binary older than that takes 1-63 on every signal but GW_1202 and refuses every SBAS map, so
+the SBAS chains need the node binary before the broker runs them under `apply`.
+
+The SBAS chains pin their noise probes, the EGNOS GEOs 121/123/136 that never rise here, with
+`--probe-dark --probe-dark-prns`. The probe order would otherwise take the deepest GEOs in the
+BRDC sky (GAGAN, MSAS, BDSBAS), some of which the BRDC carries only a few hours a day, so the
+map would trade probes as they come and go. With six slots, a GEO that rises then takes the
+slot of a probe that is not among the deepest, and the chain runs on two probes, below the
+three the presence gate needs. A pinned PRN keeps its predicted row while below -15 deg and is
+a probe at el -90 when the BRDC has no record of it, so the map keeps it; a fourth GEO up is
+logged as wanting a slot.
 
 ## Verification
 

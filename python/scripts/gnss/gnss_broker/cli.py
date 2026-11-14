@@ -1056,11 +1056,14 @@ def build_parser(description):
         "--probe-dark-prns",
         type=lambda s: [int(x) for x in s.split(",") if x.strip()],
         default=[],
-        help="comma-separated PRNs no satellite of this chain transmits, kept as dark noise "
-        "probes with no orbit (zero Doppler, el -90) under --probe-dark, also between "
-        "passes. For GuoWang (gw_1202), whose ephemeris table holds only satellites near "
-        "the boresight, these are the only probes: G2' code phases no satellite in the "
-        "library carries. The nodes must hold slots for them (the manifest PRN list).",
+        help="comma-separated PRNs signal-free here at any time, kept as dark noise probes "
+        "under --probe-dark, also between passes: codes no satellite of this chain "
+        "transmits, with no orbit (zero Doppler, el -90), or satellites that never rise "
+        "here, on their predicted row while below -15 deg. For GuoWang (gw_1202), whose "
+        "ephemeris table holds only satellites near the boresight, these are the only "
+        "probes: G2' code phases no satellite in the library carries. On SBAS they are "
+        "the EGNOS GEOs, which the PRN map then keeps over deeper GEOs. The nodes must "
+        "hold slots for them (the manifest PRN list).",
     )
     ap.add_argument(
         "--probe-dark",
@@ -1081,7 +1084,7 @@ def build_parser(description):
         "(gnss_broker/prnmap.py, docs/CHORD_LIVE_PRN_RECONFIG.md). off (default): the "
         "stage does nothing. read: read each tracker's map back (/get_prns) and publish "
         "the unanimous map for --probe-require-slot, but never post one: for a chain "
-        "whose PRN list is fixed (sbas_l5). apply: as read, and when "
+        "whose PRN list is fixed (glo_l2of, an FDMA bank). apply: as read, and when "
         "the wanted map (every satellite up, then the noise probes) differs, POST it "
         "whole to every tracker's /set_prns on one F-engine hop deadline, and without "
         "one to the detectors. A moved slot re-acquires cold (the node resets its code "

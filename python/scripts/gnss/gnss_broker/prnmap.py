@@ -21,8 +21,10 @@ separation: for a chain whose satellites are seen only while they cross the beam
 LEO satellites), so a slot is held before a satellite arrives and kept until it has passed.
 
 --prn-reconfig defaults to off (the stage does nothing; the replay fixtures' argv predates the
-flag); every live chain runs `apply` except sbas_l5, whose PRN list is fixed and which runs
-`read`: the map is read back and published for the probe selector, and never posted.
+flag); every live chain runs `apply` except glo_l2of, whose PRN list is fixed (the node refuses
+a live swap on an FDMA bank) and which runs `read`: the map is read back and published for the
+probe selector, and never posted. The SBAS chains keep their EGNOS GEOs, which never rise here,
+as probes with --probe-dark-prns: a deeper GEO would otherwise take their slots.
 
 The broker does not read the node's config; it GETs the live map, so it diffs against what
 each node actually holds. The map is a runtime overlay, not persisted: a node restart reverts
