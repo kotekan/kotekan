@@ -471,11 +471,11 @@ def digest(b):
 def scale_r0(row, ctl, synth_rect):
     """[scale-r0] of one frame: (kind, slot, record, channel, E_deq/E_true - 1) for every running
     (record >= 1, slot) and covering channel. E_deq is the P lane's packed energy undone by
-    GnssN2RecordAssemble's scale, from record 0's PrnCtl::job0 rows; E_true is the record's own
-    energy row, which the pack reduced from its float synthesis. kind "dark_r0": the slot is dark
-    at record 0 (the [scale-r0] gate); "shifted": it runs at record 0 but its position among the
-    running slots, which the pack's energy_scale row follows, differs at this record; "control":
-    the same position."""
+    GnssN2RecordAssemble's scale, from the PrnCtl::job0 rows of the slot's first running record;
+    E_true is the record's own energy row, which the pack reduced from its float synthesis. kind
+    "dark_r0": the slot is dark at record 0 (the [scale-r0] gate); "shifted": it runs at record 0
+    but its position among the running slots differs at this record; "control": the same
+    position."""
     out = []
     lane = 1 if row.lps == 4 else 0  # gnss_gpu::lane_of_row(lps, ROW_P)
     run = ctl["run"]
@@ -497,7 +497,8 @@ def scale_r0(row, ctl, synth_rect):
                 e_true = ctl["energy"][ctl["job0"][r, p] + ROW_P, c]
                 if e_true <= 0:
                     continue
-                e0 = ctl["energy"][ctl["job0"][0, p] + ROW_P, c]
+                r_scale = int(np.argmax(run[:, p] != 0))
+                e0 = ctl["energy"][ctl["job0"][r_scale, p] + ROW_P, c]
                 s = 7.0 / (3.0 * math.sqrt(e0 / row.hpr)) if e0 > 0 else 0.0
                 e_deq = eq[c] / (s * s) if s > 0 else 0.0
                 out.append((kind, p, r, c, e_deq / e_true - 1.0))

@@ -388,12 +388,13 @@ __device__ __forceinline__ void fill88(unsigned char* row, int lo, int hi, bool 
 /// threads per thread (virtual thread m and m + 512) and reduces in the same order, so its
 /// rows are bit-identical too.
 ///
-/// Record 0 (energy_scale == nullptr): each thread synthesises its HPT hops into registers
-/// (the prompt, plus the exact E/L under LPS 4 without rot), the block reduces the energy,
-/// lane 0 of warp 0 broadcasts the totals through shared memory, and every thread quantises
-/// what it holds with the pack's scale. Records 1..: the scale is known from energy_scale up
-/// front, so each hop is quantised and stored inside the synthesis loop (the stores drain
-/// under the next hop's work) and the energy rows are still reduced and written.
+/// A block whose scale row is unset (energy_scale nullptr or NaN) synthesises its HPT hops
+/// into registers (the prompt, plus the exact E/L under LPS 4 without rot), the block reduces
+/// the energy, lane 0 of warp 0 broadcasts the totals through shared memory and sets the
+/// scale row, and every thread quantises what it holds with the pack's scale. With the row
+/// set, the scale is known up front, so each hop is quantised and stored inside the synthesis
+/// loop (the stores drain under the next hop's work) and the energy rows are still reduced and
+/// written.
 /// Blocks of inactive slots and of uncovered channels only write 0x88 (an uncovered channel's
 /// energy rows are 0, as the waveform kernel's). The sweeper blocks write the lanes beyond
 /// the last slot, one (hop, 16-lane chunk) unit per thread, spread over as many blocks as the
@@ -406,7 +407,7 @@ __global__ __launch_bounds__(MAXT, MAXT == 512 ? 2 : 1) void gnss_psi_pack_kerne
     const float* __restrict__ theta, gnss_cuda::DespreadParams p, const float* __restrict__ rot,
     const int* __restrict__ slot2spec, int n_slot, const int* __restrict__ chan_map,
     int frame_chan_stride, int n_lanes, int lane_base, int lane_pitch, int flags,
-    const double* __restrict__ energy_scale, double* __restrict__ energy,
+    double* __restrict__ energy_scale, double* __restrict__ energy,
     unsigned char* __restrict__ synth) {
     constexpr int VT = (MAXT == 512) ? 2 : 1; // virtual 1024-thread-kernel threads per thread
     const int slot = blockIdx.x;
@@ -446,14 +447,19 @@ __global__ __launch_bounds__(MAXT, MAXT == 512 ? 2 : 1) void gnss_psi_pack_kerne
     }
     const gnss_cuda::DespreadJob job = jobs[spec];
     double* erow = energy + (size_t)(4 * spec) * n_chan + ci;
+    double* srow = energy_scale ? energy_scale + (size_t)(4 * slot) * n_chan + ci : nullptr;
+    const bool prescale = srow && !isnan(srow[0]);
     if (!((job.chan_mask >> ci) & 1ULL)) {
         if (n_valid > 0)
             for (int mh = m; mh < p.n_hops; mh += blockDim.x)
                 store_lanes<LPS>(dst0 + (size_t)mh * hop_stride, zb, vec, n_valid);
         if (m == 0) {
 #pragma unroll
-            for (int j = 0; j < 4; ++j)
+            for (int j = 0; j < 4; ++j) {
                 erow[(size_t)j * n_chan] = 0.0;
+                if (srow && !prescale)
+                    srow[(size_t)j * n_chan] = 0.0;
+            }
         }
         return;
     }
@@ -472,16 +478,15 @@ __global__ __launch_bounds__(MAXT, MAXT == 512 ? 2 : 1) void gnss_psi_pack_kerne
     // Exact early/late lookups only when they are packed (LPS 4 without rot): under LPS 2
     // nobody reads them, and their energy rows are written equal to P's (see the header).
     constexpr bool EXACT = (!ROT) && (LPS == 4);
-    const bool prescale = (energy_scale != nullptr);
 
     // The pack's scale per lane, exactly as gnss_pack44_kernel forms it: rms over n_hops, the
-    // head lane over this job's m_head. From energy_scale now, or from this block's totals
+    // head lane over this job's m_head. From the scale row now, or from this block's totals
     // after the reduction.
     float s[4] = {0.f, 0.f, 0.f, 0.f};
     if (prescale) {
 #pragma unroll
         for (int t = 0; t < 4; ++t) {
-            const double E = energy_scale[(size_t)(4 * spec + t) * n_chan + ci];
+            const double E = srow[(size_t)t * n_chan];
             const int nh = (t == 3) ? (job.m_head > 0 ? job.m_head : 1) : p.n_hops;
             const float rms = sqrtf((float)(E / nh));
             s[t] = (rms > 0.0f) ? 7.0f / (3.0f * rms) : 0.0f;
@@ -597,6 +602,8 @@ __global__ __launch_bounds__(MAXT, MAXT == 512 ? 2 : 1) void gnss_psi_pack_kerne
                 if (lane == 0) {
                     erow[(size_t)j * n_chan] = tv;
                     sh_tot[j] = tv;
+                    if (srow && !prescale)
+                        srow[(size_t)j * n_chan] = tv;
                 }
             }
         }
@@ -647,7 +654,7 @@ struct PackArgs {
     int lane_base;
     int lane_pitch;
     int flags;
-    const double* energy_scale;
+    double* energy_scale;
     double* energy;
     unsigned char* synth;
     dim3 grid;
@@ -766,7 +773,7 @@ cudaError_t launch_psi_pack_opts(const DespreadJob* jobs, const PsiJob* pjobs, c
                                  const float* rot, int fixed, const int* slot2spec, int n_slot,
                                  int lanes_per_slot, int n_chan, const DespreadParams& p,
                                  const int* chan_map, int frame_chan_stride, int n_lanes,
-                                 int lane_base, int lane_pitch, const double* energy_scale,
+                                 int lane_base, int lane_pitch, double* energy_scale,
                                  double* energy, unsigned char* synth, int opts,
                                  cudaStream_t stream) {
     if (lanes_per_slot != 4 && lanes_per_slot != 2)
@@ -825,7 +832,7 @@ cudaError_t launch_psi_pack(const DespreadJob* jobs, const PsiJob* pjobs, const 
                             const float* rot, int fixed, const int* slot2spec, int n_slot,
                             int lanes_per_slot, int n_chan, const DespreadParams& p,
                             const int* chan_map, int frame_chan_stride, int n_lanes, int lane_base,
-                            int lane_pitch, const double* energy_scale, double* energy,
+                            int lane_pitch, double* energy_scale, double* energy,
                             unsigned char* synth, cudaStream_t stream) {
     // The 512-thread kernel wins at every slot count under lanes 2 (28.7 vs 33.8 us at 12
     // slots, 68.6 vs 82.8 at 36, cx52) and only from ~24 slots under lanes 4 (43.0 vs 34.8 us

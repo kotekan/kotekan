@@ -428,19 +428,20 @@ uint64_t hash_epl(const ChainRun& R, const uint8_t* f) {
                    rows * nc * sizeof(double), x);
 }
 
-/// PIN_B2's reading: slot dark_r0_slot's prompt, channel 0, element 0, in records 1.. of the
-/// dark_r0 frame.
+/// PIN_B2's reading: the prompt, channel 0, element 0, in records 1.. of the dark_r0 frame, of
+/// slot dark_r0_slot and then of slot 0.
 void read_pin_epl(ChainRun& R, const uint8_t* f) {
     using namespace gnss_gpu;
     const ChainSpec& s = *R.s;
     const auto* h = (const FrameHdr*)f;
     const auto* pc = (const PrnCtl*)(f + off_prnctl());
     const double* corr = (const double*)(f + off_corr(s.n_prn));
-    for (int r = 1; r < h->n_rec; ++r) {
-        const PrnCtl& c = pc[(size_t)r * s.n_prn + R.sc->dark_r0_slot];
-        R.pin_epl.push_back(c.run ? corr[((size_t)(c.job0 + ROW_P) * h->n_chan + 0) * s.n_live * 2]
-                                  : NAN);
-    }
+    for (int slot : {R.sc->dark_r0_slot, 0})
+        for (int r = 1; r < h->n_rec; ++r) {
+            const PrnCtl& c = pc[(size_t)r * s.n_prn + slot];
+            R.pin_epl.push_back(
+                c.run ? corr[((size_t)(c.job0 + ROW_P) * h->n_chan + 0) * s.n_live * 2] : NAN);
+        }
 }
 
 void read_cube(ChainRun& R, const uint8_t* f, size_t bytes, uint64_t* h) {
@@ -954,10 +955,12 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
             apply_mutation(sc, R->idx, k, s, ctl, tiles);
             if (R->idx == 1 && k == sc.dark_r0_frame) {
                 json t = json::array();
-                const int lane = s.lanes_per_slot * sc.dark_r0_slot
-                                 + gnss_gpu::lane_of_row(s.lanes_per_slot, gnss_gpu::ROW_P);
-                for (int r = 1; r < s.n_rec; ++r)
-                    t.push_back(tiles[tile_index(s, r, 0, lane, 0)]);
+                for (int slot : {sc.dark_r0_slot, 0}) {
+                    const int lane = s.lanes_per_slot * slot
+                                     + gnss_gpu::lane_of_row(s.lanes_per_slot, gnss_gpu::ROW_P);
+                    for (int r = 1; r < s.n_rec; ++r)
+                        t.push_back(tiles[tile_index(s, r, 0, lane, 0)]);
+                }
                 d.pins["B2_tiles"] = t;
             }
             R->ctl->mark_frame_full("feeder", 0);
@@ -1636,24 +1639,31 @@ BOOST_AUTO_TEST_CASE(current_behaviour_pins) {
                                                                   << since - 2 << " (" << since
                                                                   << " since the swap)");
     }
-    // PIN_B2: GnssN2RecordAssemble dequantises a slot dark at record 0 with record 0's job-0
-    // energy (another slot's) in the later records, not with its own.
+    // PIN_B2: in the dark_r0 frame, where the energies differ by record, GnssN2RecordAssemble
+    // dequantises each slot in the later records with the energy of its first running record, as
+    // the pack scaled it: record 1's for the slot dark at record 0, not record 0's job-0 energy
+    // (another slot's), and record 0's for slot 0, not the record's own.
     {
         const ChainSpec& B = chains()[1];
         const json& t = d.pins.at("B2_tiles");
         const json& v = d.pins.at("B2_epl");
-        const double e_job0 = energy(B, 0, 0), e_own = energy(B, sc.dark_r0_slot, 0);
-        BOOST_REQUIRE_EQUAL(v.size(), (size_t)(B.n_rec - 1));
-        for (size_t r = 0; r < v.size(); ++r) {
-            const double tile = t[r].get<double>(), got = v[r].get<double>();
-            const double want = tile * adapter_inv_scale(B, e_job0);
+        const int f = sc.dark_r0_frame, n = B.n_rec - 1;
+        BOOST_REQUIRE_EQUAL(v.size(), (size_t)(2 * n));
+        for (int i = 0; i < 2 * n; ++i) {
+            const int r = 1 + i % n, slot = (i < n) ? sc.dark_r0_slot : 0;
+            const double tile = t[i].get<double>(), got = v[i].get<double>();
+            const double e_rule = energy_at(B, sc, f, slot == 0 ? 0 : 1, slot, 0);
+            const double e_not =
+                (slot == 0) ? energy_at(B, sc, f, r, 0, 0) : energy_at(B, sc, f, 0, 0, 0);
+            const double want = tile * adapter_inv_scale(B, e_rule);
             BOOST_REQUIRE(tile != 0.0);
             BOOST_CHECK_MESSAGE(std::fabs(got - want) <= 1e-12 * std::fabs(got),
-                                "PIN_B2: record " << r + 1 << " reads " << got
-                                                  << ", not tile/s(job 0) " << want);
-            BOOST_CHECK_MESSAGE(std::fabs(got - tile * adapter_inv_scale(B, e_own))
-                                    > 1e-6 * std::fabs(got),
-                                "PIN_B2: record " << r + 1 << " is scaled by its own energy");
+                                "PIN_B2: slot " << slot << " record " << r << " reads " << got
+                                                << ", not tile/s(first running record) " << want);
+            BOOST_CHECK_MESSAGE(
+                std::fabs(got - tile * adapter_inv_scale(B, e_not)) > 1e-6 * std::fabs(got),
+                "PIN_B2: slot " << slot << " record " << r << " is scaled by "
+                                << (slot == 0 ? "its own record's" : "job 0's") << " energy");
         }
     }
 }

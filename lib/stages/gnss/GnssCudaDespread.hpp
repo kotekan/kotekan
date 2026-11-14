@@ -233,8 +233,8 @@ public:
     /// ([specs][n_chan] float) are this record's device slices, allocated by the caller like
     /// @c d_jobs_slot. @c slot2spec_dev, @c n_slot, @c lanes_per_slot, @c chan_map_dev,
     /// @c frame_chan_stride, @c n_lanes, @c lane_base, @c lane_pitch and @c d_synth_rec are
-    /// launch_pack44's; @c energy_scale is nullptr for a frame's record 0 (the pack scales from
-    /// its own energy reduction) and the record-0 energy rows for the others. The E and L
+    /// launch_pack44's; @c energy_scale is launch_psi_pack's (cudaGnssInject's per-slot
+    /// quantizer scale rows, set by each slot's first record of the frame). The E and L
     /// lanes are the rotated prompt under @ref set_epl_from_prompt (the ROT contract of
     /// launch_waveform). The launch is unconditional, as launch_pack44's is: with no spec the
     /// record's lanes are still refreshed (0x88). Returns specs.size().
@@ -242,7 +242,7 @@ public:
                          void* d_jobs_slot, void* d_pjobs_slot, void* d_theta_slot,
                          const int* slot2spec_dev, int n_slot, int lanes_per_slot,
                          const int* chan_map_dev, int frame_chan_stride, int n_lanes, int lane_base,
-                         int lane_pitch, const double* energy_scale,
+                         int lane_pitch, double* energy_scale,
                          void* d_energy_out /*double [4*specs][n_chan]*/,
                          unsigned char* d_synth_rec, void* stream);
 

@@ -1123,13 +1123,13 @@ int main(int argc, char** argv) {
             CK(cudaMemset(d_energy_f, 0xff, en * sizeof(double))); // NaN: untouched rows show
             CK(cudaMemset(d_synth_a, 0x5a, synth_len));
             CK(cudaMemset(d_synth_b, 0x5a, synth_len));
-            const double* escale = fc.other ? d_energy + (size_t)4 * n_prn * n_chan : d_energy;
+            double* escale = fc.other ? d_energy + (size_t)4 * n_prn * n_chan : nullptr;
             if (fc.none) {
                 // A record with no active PRN, as the stage launches it: slot2spec all -1 and
                 // the job arrays unwritten (nullptr here, so a read would fault).
-                CK(gnss_cuda::launch_pack44(d_wave, d_energy, nullptr, s2s, n_slot, fc.lps, n_chan,
-                                            n_hops, d_chan_map, fcs, n_lanes, lane_base, lane_pitch,
-                                            d_synth_a, 0));
+                CK(gnss_cuda::launch_pack44(d_wave, d_energy, nullptr, nullptr, s2s, n_slot, fc.lps,
+                                            n_chan, n_hops, d_chan_map, fcs, n_lanes, lane_base,
+                                            lane_pitch, d_synth_a, 0));
                 CK(gnss_cuda::launch_psi_pack_opts(nullptr, nullptr, nullptr, nullptr, fc.fixed,
                                                    s2s, n_slot, fc.lps, n_chan, pp, d_chan_map, fcs,
                                                    n_lanes, lane_base, lane_pitch, nullptr,
@@ -1137,13 +1137,13 @@ int main(int argc, char** argv) {
             } else {
                 CK(gnss_cuda::launch_psi_waveform(jobs, pjobs, dj.theta, n_job, n_chan, pp, rot,
                                                   fc.fixed, d_wave, d_energy, 0));
-                CK(gnss_cuda::launch_pack44(d_wave, escale, jobs, s2s, n_slot, fc.lps, n_chan,
-                                            n_hops, d_chan_map, fcs, n_lanes, lane_base, lane_pitch,
-                                            d_synth_a, 0));
-                CK(gnss_cuda::launch_psi_pack_opts(
-                    jobs, pjobs, dj.theta, rot, fc.fixed, s2s, n_slot, fc.lps, n_chan, pp,
-                    d_chan_map, fcs, n_lanes, lane_base, lane_pitch, fc.other ? escale : nullptr,
-                    d_energy_f, d_synth_b, fc.opts, 0));
+                CK(gnss_cuda::launch_pack44(d_wave, d_energy, escale, jobs, s2s, n_slot, fc.lps,
+                                            n_chan, n_hops, d_chan_map, fcs, n_lanes, lane_base,
+                                            lane_pitch, d_synth_a, 0));
+                CK(gnss_cuda::launch_psi_pack_opts(jobs, pjobs, dj.theta, rot, fc.fixed, s2s,
+                                                   n_slot, fc.lps, n_chan, pp, d_chan_map, fcs,
+                                                   n_lanes, lane_base, lane_pitch, escale,
+                                                   d_energy_f, d_synth_b, fc.opts, 0));
             }
             CK(cudaDeviceSynchronize());
             CK(cudaMemcpy(A.data(), d_synth_a, synth_len, cudaMemcpyDeviceToHost));
@@ -1369,9 +1369,10 @@ int main(int argc, char** argv) {
                 CK(cudaMemset(d_synth_a, 0x5a, synth_len));
                 CK(gnss_cuda::launch_waveform(d_code, dj.prod, n_job, n_chan, p16, dj.rot, d_wave,
                                               d_energy, 0));
-                CK(gnss_cuda::launch_pack44(d_wave, d_energy, dj.full, d_s2s_a, n_slot, lps, n_chan,
-                                            n_hops, d_chan_map, fcs, n_lanes_for(lps, n_slot),
-                                            lane_base, lane_pitch, d_synth_a, 0));
+                CK(gnss_cuda::launch_pack44(d_wave, d_energy, nullptr, dj.full, d_s2s_a, n_slot,
+                                            lps, n_chan, n_hops, d_chan_map, fcs,
+                                            n_lanes_for(lps, n_slot), lane_base, lane_pitch,
+                                            d_synth_a, 0));
                 CK(cudaDeviceSynchronize());
                 L.synth.resize(synth_len);
                 L.energy.resize(en);
@@ -1458,8 +1459,7 @@ int main(int argc, char** argv) {
                                           lane_base, lane_pitch, nullptr, d_e0, d_synth_b, 0));
             CK(cudaDeviceSynchronize());
             auto fused = [&](const gnss_cuda::PsiJob* pj, const gnss_cuda::DespreadParams& pp,
-                             const float* rot, int lps, const int* s2s, const double* es,
-                             int opts = 0) {
+                             const float* rot, int lps, const int* s2s, double* es, int opts = 0) {
                 return gnss_cuda::launch_psi_pack_opts(
                     db.full, pj, db.theta, rot, 1, s2s, ns, lps, n_chan, pp, d_chan_map, fcs,
                     n_lanes_for(lps, ns), lane_base, lane_pitch, es, d_eb, d_synth_b, opts, 0);
@@ -1484,8 +1484,8 @@ int main(int argc, char** argv) {
                 CK(fused(db.psi, p32, db.rot, 2, d_ident, nullptr, 1));
                 CK(gnss_cuda::launch_psi_waveform(db.full, db.half, db.theta, ns, n_chan, p16,
                                                   db.rot, 1, d_wb, d_eb, 0));
-                CK(gnss_cuda::launch_pack44(d_wb, d_eb, db.full, d_ident, ns, 2, n_chan, n_hops,
-                                            d_chan_map, fcs, n_lanes_for(2, ns), lane_base,
+                CK(gnss_cuda::launch_pack44(d_wb, d_eb, nullptr, db.full, d_ident, ns, 2, n_chan,
+                                            n_hops, d_chan_map, fcs, n_lanes_for(2, ns), lane_base,
                                             lane_pitch, d_synth_b, 0));
                 CK(cudaDeviceSynchronize());
                 printf("fusedprof: %d slots, launches done\n", ns);
@@ -1540,9 +1540,9 @@ int main(int argc, char** argv) {
                         db.full, db.half, db.theta, ns, n_chan, p16, db.rot, 1, d_wb, d_eb, 0);
                     if (e != cudaSuccess)
                         return e;
-                    return gnss_cuda::launch_pack44(d_wb, d_eb, db.full, d_ident, ns, 2, n_chan,
-                                                    n_hops, d_chan_map, fcs, n_lanes_for(2, ns),
-                                                    lane_base, lane_pitch, d_synth_b, 0);
+                    return gnss_cuda::launch_pack44(
+                        d_wb, d_eb, nullptr, db.full, d_ident, ns, 2, n_chan, n_hops, d_chan_map,
+                        fcs, n_lanes_for(2, ns), lane_base, lane_pitch, d_synth_b, 0);
                 },
                 20, &mn, &md);
             time_launch(
@@ -1552,9 +1552,9 @@ int main(int argc, char** argv) {
                                                                db.rot, d_wb, d_eb, 0);
                     if (e != cudaSuccess)
                         return e;
-                    return gnss_cuda::launch_pack44(d_wb, d_eb, db.full, d_ident, ns, 2, n_chan,
-                                                    n_hops, d_chan_map, fcs, n_lanes_for(2, ns),
-                                                    lane_base, lane_pitch, d_synth_b, 0);
+                    return gnss_cuda::launch_pack44(
+                        d_wb, d_eb, nullptr, db.full, d_ident, ns, 2, n_chan, n_hops, d_chan_map,
+                        fcs, n_lanes_for(2, ns), lane_base, lane_pitch, d_synth_b, 0);
                 },
                 20, &mn, &md);
             time_launch(
@@ -1564,17 +1564,17 @@ int main(int argc, char** argv) {
                                                                db.rot, d_wb, d_eb, 0);
                     if (e != cudaSuccess)
                         return e;
-                    return gnss_cuda::launch_pack44(d_wb, d_eb, db.full, d_ident, ns, 4, n_chan,
-                                                    n_hops, d_chan_map, fcs, n_lanes_for(4, ns),
-                                                    lane_base, lane_pitch, d_synth_b, 0);
+                    return gnss_cuda::launch_pack44(
+                        d_wb, d_eb, nullptr, db.full, d_ident, ns, 4, n_chan, n_hops, d_chan_map,
+                        fcs, n_lanes_for(4, ns), lane_base, lane_pitch, d_synth_b, 0);
                 },
                 20, &mn, &md);
             time_launch(
                 "pack44 lanes2 alone",
                 [&] {
-                    return gnss_cuda::launch_pack44(d_wb, d_eb, db.full, d_ident, ns, 2, n_chan,
-                                                    n_hops, d_chan_map, fcs, n_lanes_for(2, ns),
-                                                    lane_base, lane_pitch, d_synth_b, 0);
+                    return gnss_cuda::launch_pack44(
+                        d_wb, d_eb, nullptr, db.full, d_ident, ns, 2, n_chan, n_hops, d_chan_map,
+                        fcs, n_lanes_for(2, ns), lane_base, lane_pitch, d_synth_b, 0);
                 },
                 20, &mn, &md);
             cudaFree(d_wb);

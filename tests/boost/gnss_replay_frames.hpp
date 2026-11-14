@@ -98,6 +98,15 @@ inline double energy(const ChainSpec& s, int slot, int chan) {
     return s.hops_per_record * (1.0 + 0.05 * slot + 0.01 * chan);
 }
 
+/// Replica energy of (slot, channel) at record @p rec of @p frame: energy(), except in chain B's
+/// dark_r0 frame, where it grows 2% a record, so a record scaled by another record's energy reads
+/// visibly wrong there.
+inline double energy_at(const ChainSpec& s, const Scenario& sc, int frame, int rec, int slot,
+                        int chan) {
+    const double e = energy(s, slot, chan);
+    return (s.idx == 1 && frame == sc.dark_r0_frame) ? e * (1.0 + 0.02 * rec) : e;
+}
+
 /// The PRN in @p slot at @p frame: the configured one, or the swapped one from swap_frame on.
 inline int prn_at(const ChainSpec& s, const Scenario& sc, int frame, int slot) {
     const int prn = s.prns[(size_t)slot];
@@ -224,7 +233,7 @@ inline void write_ctl(uint8_t* f, size_t bytes, const ChainSpec& s, const Sky& s
                 c.rot[ch] = (float)(0.05 * (ch + 1) + 0.01 * p);
             for (int t = 0; t < ROWS_PLAIN; ++t)
                 for (int ch = 0; ch < s.n_chan; ++ch)
-                    en[(size_t)(c.job0 + t) * s.n_chan + ch] = energy(s, p, ch);
+                    en[(size_t)(c.job0 + t) * s.n_chan + ch] = energy_at(s, sc, frame, r, p, ch);
             ++n_spec;
         }
     }
@@ -270,7 +279,8 @@ struct Noise {
 };
 
 /// Writes the gathered tiles of @p frame: every running slot's lanes carry V = sqrt(hops)
-/// (amp g_e conj(D_ce) f_t + n), quantized by the slot's own energy as lround(s V). D is the
+/// (amp g_e conj(D_ce) f_t + n), quantized as lround(s V) by the slot's energy at its first
+/// running record of the frame, as cudaGnssInject's pack scales it. D is the
 /// steering phasor the assembler applies, so the steered sum over elements is coherent; f_t is 1
 /// for the prompt, 0.5 for its head segment and 0.7 for the E and L lanes of a LANES_FULL chain.
 /// The planted term turns with the slot's carrier_cyc(), which the assembler's NCO removes.
@@ -286,12 +296,15 @@ inline void write_tiles(int32_t* t, size_t n_i32, const ChainSpec& s, const Sky&
         std::vector<gnss::ElemSteer::cf> D;
         if (planted)
             D = steer_of(s, prn);
+        int r_scale = -1;
         for (int r = 0; r < s.n_rec; ++r) {
             if (!runs(s, sc, sky, frame, r, p))
                 continue;
+            if (r_scale < 0)
+                r_scale = r;
             const std::complex<double> car = std::polar(1.0, 2.0 * M_PI * carrier_cyc(p, rec0 + r));
             for (int c = 0; c < s.n_chan; ++c) {
-                const double qs = pack_scale(s, energy(s, p, c));
+                const double qs = pack_scale(s, energy_at(s, sc, frame, r_scale, p, c));
                 Noise nz(sky.seed, s.pre, p, rec0 + r, c);
                 for (int row = 0; row < ROWS_PLAIN; ++row) {
                     const int lr = lane_of_row(s.lanes_per_slot, row);

@@ -1087,7 +1087,7 @@ int GnssCudaDespread::enqueue_psi_pack(long long window_start_sample,
                                        void* d_pjobs_slot, void* d_theta_slot,
                                        const int* slot2spec_dev, int n_slot, int lanes_per_slot,
                                        const int* chan_map_dev, int frame_chan_stride, int n_lanes,
-                                       int lane_base, int lane_pitch, const double* energy_scale,
+                                       int lane_base, int lane_pitch, double* energy_scale,
                                        void* d_energy_out, unsigned char* d_synth_rec,
                                        void* stream) {
     Impl& im = *_impl;

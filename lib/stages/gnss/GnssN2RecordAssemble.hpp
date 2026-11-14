@@ -32,8 +32,8 @@
  * Scale. The pack quantises each replica lane to 4+4 bits with a per-lane scale s, so the
  * tile is V = s * corr. The quantiser holds M^2 nearly constant across lanes, so s scales as
  * 1/sqrt(E_R) and V/M^2 would weight the channel combine by the PFB response instead of by
- * SNR. cudaGnssInject has the pack take s from record 0's energy for every record of the
- * frame, so this stage recomputes s from the control block's record-0 energy and emits
+ * SNR. cudaGnssInject has the pack take s for every record of the frame from the energy of
+ * the slot's first running record, so this stage recomputes s from those rows and emits
  * corr = V/s with the record's own E_R, the units the GPU despread reports. For the P_HEAD
  * lane the pack divides that energy by the record's m_head, not hops_per_record, so the s
  * recomputed here differs from the pack's (see gnss_gpu::assemble_epl).

@@ -63,6 +63,12 @@ int assemble_epl(const CtlView& ctl, const TilesView& tiles, uint8_t* out, size_
                 continue;
             oc = in0;
             oc.job0 = n_out_jobs * gnss_gpu::ROWS_PLAIN;
+            // The pack scales a slot by the energy rows of its first running record of the
+            // frame (cudaGnssInject).
+            int r_scale = 0;
+            while (!ictl[(size_t)r_scale * n_prn + p].run)
+                ++r_scale;
+            const int job_scale = ictl[(size_t)r_scale * n_prn + p].job0;
 
             // Rows in lane order, P first: under LANES_PROMPT the E and L rows are formed
             // from the finished P row, so it must be in the frame before they are written.
@@ -99,18 +105,15 @@ int assemble_epl(const CtlView& ctl, const TilesView& tiles, uint8_t* out, size_
                 for (int c = 0; c < n_chan && c < tiles.n_chan; ++c) {
                     const int32_t* slice = tiles.slice(r, c);
 
-                    // The pack's scale is frozen frame-wide at record 0's energy
-                    // (cudaGnssInject), so read s from record 0's rows for this PRN; the
-                    // active PRN set is fixed per frame, so those rows exist. This matches the
-                    // pack for the E, P and L lanes; the pack takes the P_HEAD lane's rms over
-                    // its m_head hops instead of hops_per_record.
-                    const double e0 = ienergy[(size_t)(ictl[p].job0 + t) * n_chan + c];
+                    // The pack's scale, for the E, P and L lanes; the pack takes the P_HEAD
+                    // lane's rms over its m_head hops instead of hops_per_record.
+                    const double e0 = ienergy[(size_t)(job_scale + t) * n_chan + c];
                     const double rms = (e0 > 0.0) ? std::sqrt(e0 / (double)hops_per_record) : 0.0;
                     const double s = (rms > 0.0) ? 7.0 / (3.0 * rms) : 0.0;
 
                     // Absolute units, not just the right ratio: the combiner uses energy as
                     // an ML combining weight, so it must be the physical replica energy. Emit
-                    // this record's E_R as-is and divide the correlation by s (record 0's).
+                    // this record's E_R as-is and divide the correlation by s.
                     const double e_rec = ienergy[(size_t)(in0.job0 + t) * n_chan + c];
                     oenergy[orow * n_chan + c] = e_rec;
 

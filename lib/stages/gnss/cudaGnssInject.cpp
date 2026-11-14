@@ -179,8 +179,8 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
     }
     auto* d_energy = (double*)device.get_gpu_memory(
         unique_name + "_energy", (size_t)4 * S.n_prn * S.n_chan * sizeof(double));
-    // The quantizer scale is fixed for the frame: record 0's energy, handed to every record's
-    // pack. GnssN2RecordAssemble recomputes the scale from record 0's energy rows to undo it.
+    // The quantizer scale rows per slot, [n_prn][4][n_chan]: a slot's pack scales every record
+    // of the frame by the energy of its first running record, as GnssN2RecordAssemble undoes it.
     auto* d_energy0 = (double*)device.get_gpu_memory(
         unique_name + "_energy0", (size_t)4 * S.n_prn * S.n_chan * sizeof(double));
     auto* d_chan_map =
@@ -243,6 +243,9 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
              "phase has stepped back to the broker's bare model.",
              prn);
 
+    // Unset (NaN) until the pack sets them.
+    CHECK_CUDA_ERROR(
+        cudaMemsetAsync(d_energy0, 0xFF, (size_t)4 * S.n_prn * S.n_chan * sizeof(double), stream));
     int n_jobs_frame = 0, n_active = 0, n_psi_dark0 = 0;
     for (int r = 0; r < n_rec; ++r) {
         const long long hop0 = hop0_frame + (long long)r * S.hops_per_record;
@@ -370,14 +373,12 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
             d_synth + (size_t)r * S.hops_per_record * _synth_n_chan * _synth_lane_pitch;
         if (S.psi_synth)
             // Synthesis and pack in one launch, every record (an empty record still refreshes
-            // its lanes). Record 0 sets the frame's quantizer scale from its own energy; the
-            // others take record 0's rows, as launch_pack44 does below.
+            // its lanes).
             S.despread->enqueue_psi_pack(
                 wstart, specs, d_jobs_r, d_pjobs + (size_t)r * S.n_prn,
                 d_theta + (size_t)r * S.n_prn * S.n_chan, d_slot2spec + (size_t)r * S.n_prn,
                 S.n_prn, _lanes_per_slot, d_chan_map, _synth_n_chan, _num_synth, _synth_lane_base,
-                _synth_lane_pitch, r == 0 ? nullptr : d_energy0, d_energy, d_synth_rec,
-                (void*)stream);
+                _synth_lane_pitch, d_energy0, d_energy, d_synth_rec, (void*)stream);
         else if (!specs.empty())
             S.despread->enqueue_waveform(wstart, specs, d_jobs_r, d_wave, d_energy, (void*)stream);
         if (!specs.empty()) {
@@ -398,12 +399,6 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
             // The consumer needs the true replica energy to undo the pack's per-lane scale: the
             // quantizer holds every lane near a constant M^2, so V/M^2 alone would weight the
             // channel combine by the PFB response instead of by SNR. Copied D2D on the stream.
-            // Record 0's energy is also kept as the frame's quantizer reference (d_energy0).
-            if (r == 0)
-                CHECK_CUDA_ERROR(cudaMemcpyAsync(d_energy0, d_energy,
-                                                 (size_t)gnss_gpu::ROWS_PLAIN * specs.size()
-                                                     * S.n_chan * sizeof(double),
-                                                 cudaMemcpyDeviceToDevice, stream));
             CHECK_CUDA_ERROR(cudaMemcpyAsync(
                 d_ctl + _ctl_off_energy
                     + (size_t)n_jobs_frame * gnss_gpu::ROWS_PLAIN * S.n_chan * sizeof(double),
@@ -414,7 +409,7 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
 
         if (!S.psi_synth)
             CHECK_CUDA_ERROR(gnss_cuda::launch_pack44(
-                d_wave, d_energy0, d_jobs_r, d_slot2spec + (size_t)r * S.n_prn, S.n_prn,
+                d_wave, d_energy, d_energy0, d_jobs_r, d_slot2spec + (size_t)r * S.n_prn, S.n_prn,
                 _lanes_per_slot, S.n_chan, S.hops_per_record, d_chan_map, _synth_n_chan, _num_synth,
                 _synth_lane_base, _synth_lane_pitch, d_synth_rec, stream));
     }
