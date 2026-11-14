@@ -871,10 +871,20 @@ inline const SignalDescriptor* signal_by_name(const std::string& name) {
     return nullptr;
 }
 
-/// The highest PRN a signal's code generator takes: 63 for the GNSS tables (the BeiDou and
-/// SBAS ranges are the widest); GW_1202 numbers its satellites by G2' phase, 1..2047.
+/// The lowest PRN /set_prns takes for a signal (see max_prn).
+inline int min_prn(const SignalDescriptor& s) {
+    return std::string(s.name).rfind("SBAS_", 0) == 0 ? 120 : 1;
+}
+
+/// The highest PRN /set_prns takes for a signal. SBAS signals take 120..158, the SBAS rows of
+/// the C/A and L5 code tables (the L5 table's other rows are GPS satellites). GW_1202 numbers its
+/// satellites by G2' phase, 1..2047. The other signals take 1..63, BeiDou's range and the widest
+/// GNSS table; a PRN outside a narrower generator's range is refused when the swap applies.
 inline int max_prn(const SignalDescriptor& s) {
-    return std::string(s.name) == "GW_1202" ? 2047 : 63;
+    const std::string name(s.name);
+    if (name == "GW_1202")
+        return 2047;
+    return name.rfind("SBAS_", 0) == 0 ? 158 : 63;
 }
 
 } // namespace gnss
