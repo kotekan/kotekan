@@ -418,8 +418,8 @@ RecordChain::RecordChain(Config& config, const std::string& cfg_path, const std:
         // default, 96 records x 2048 hops x 16384 samples = 1.00663 s, is a whole number of
         // records and of 8192-hop frames, so no record is split; at a 195312.5 Hz hop rate no
         // exact 1 s window exists.
-        _cube_win_samples = (int64_t)config.get_default<double>(_name, "beam_cube_window_samples",
-                                                                96.0 * 2048.0 * 16384.0);
+        _cube_win_samples = (int64_t)config.get_default<double>(
+            cfg_path, "beam_cube_window_samples", 96.0 * 2048.0 * 16384.0);
         const int depth = std::max(2, config.get_default<int>(cfg_path, "beam_cube_ring_depth", 8));
         _cube_ring.resize((size_t)depth);
         const size_t ncell = (size_t)n * _cube_bins * _n_elements;
