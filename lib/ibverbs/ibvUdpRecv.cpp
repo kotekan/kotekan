@@ -227,14 +227,19 @@ void ibvUdpRecv::main_thread() {
 
     if (!out_of_buffer_path.empty())
         stats_thread = std::thread(&ibvUdpRecv::track_out_of_buffer, this);
-    while (!stop_thread) {
+    bool post_failed = false;
+    while (!stop_thread && !post_failed) {
         const int polled = poll_completions();
         while (frames_to_post > 0) {
-            if (!post_frame(post_id))
-                return;
+            // A failed post is a shutdown: leave through the loop exit so stats_thread joins.
+            post_failed = !post_frame(post_id);
+            if (post_failed)
+                break;
             post_id++;
             frames_to_post--;
         }
+        if (post_failed)
+            break;
         if (polled > 0 || !event_mode)
             continue;
         // Nothing arrived: arm the CQ, poll once more, then sleep on the completion channel
