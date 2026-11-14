@@ -37,10 +37,12 @@ in a control run). --scale-r0 adds the check that a slot running in a record aft
 dequantises, by GnssN2RecordAssemble's rule (scale_r0 restates it, so it changes with it), to the
 replica energy the pack reduced from its float synthesis (P lane), both for a slot dark at record
 0 and for one whose position among the running slots moved since record 0; the run exits 2 while
-either fails. The psi_sync_build runs give no shifted cases, so only --async-build runs whose
-seeds ramp or reseed check that the pack keeps its scale rows by slot, not by job; a pack that
-scales each record by its own energy fails only the controls, by the energy's change within the
-frame. digests.json records the run's arguments and the half's cpu_affinity.
+either fails. The psi_sync_build runs give no shifted cases, so they pass a pack that keeps its
+scale rows by job, not by slot; only --async-build runs whose seeds ramp or reseed check that, and
+how many shifted cases they give depends on the builder's timing, so --min-shifted N fails a run
+with fewer. A pack that scales each record by its own energy fails only the controls, by the
+energy's change within the frame. digests.json records the run's arguments and the half's
+cpu_affinity.
 
 compare reports which (row, kind) digests differ between two runs over their digest frames
 (--all-frames: every digested frame). It fails unless both runs have the same rows and frames,
@@ -788,7 +790,7 @@ def run(a):
     out["coverage"] = coverage(frames, a.reseed_at)
     timing["frame_ms"] = 1e3 * timing["frames_s"] / (n_total - n_pre)
     if a.scale_r0:
-        out["scale_r0"] = summarize_r0(r0, a.r0_tol)
+        out["scale_r0"] = summarize_r0(r0, a.r0_tol, a.min_shifted)
     with open(os.path.join(a.outdir, "digests.json"), "w") as f:
         json.dump(out, f, indent=1)
     if not a.keep:
@@ -847,10 +849,10 @@ def psi_log(path):
     return keep
 
 
-def summarize_r0(r0, tol):
+def summarize_r0(r0, tol, min_shifted=0):
     """Per kind: cases, failures beyond @p tol, the worst error and examples. The verdict is
-    the gate's: every dark_r0 and shifted case within tol, with controls, all within tol, to show
-    the tolerance holds."""
+    the gate's: every dark_r0 and shifted case within tol, at least @p min_shifted shifted cases,
+    with controls, all within tol, to show the tolerance holds."""
     out = {"tolerance": tol}
     for kind in ("dark_r0", "shifted", "control"):
         v = [t for t in r0 if t[2] == kind]
@@ -888,6 +890,8 @@ def summarize_r0(r0, tol):
         out["verdict"] = "no cases"
     elif out["dark_r0"]["n_failing"] or out["shifted"]["n_failing"]:
         out["verdict"] = "fail"
+    elif out["shifted"]["n"] < min_shifted:
+        out["verdict"] = "too few shifted cases"
     else:
         out["verdict"] = "pass"
     return out
@@ -1033,6 +1037,12 @@ def main():
     )
     p.add_argument("--scale-r0", action="store_true", help="run the [scale-r0] check")
     p.add_argument("--r0-tol", type=float, default=0.1)
+    p.add_argument(
+        "--min-shifted",
+        type=int,
+        default=0,
+        help="[scale-r0] fails below this many shifted cases",
+    )
     p.add_argument("--no-synth", action="store_true", help="no synth copy-out")
     p.add_argument("--half-cores", type=int, nargs="+", help="cpu_affinity of the half")
     p.add_argument("--launcher", help="command prefix, e.g. an nsys profile line")
