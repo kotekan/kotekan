@@ -32,12 +32,18 @@
  *         @buffer_metadata none
  *
  * @conf dst_port               Int. The UDP destination port every packet must carry.
- * @conf header_size            Int. See udp_slot_geometry; at least 50.
+ * @conf header_size            Int. See udp_slot_geometry; at least seq_offset + 8.
  * @conf header_slot            Int. See udp_slot_geometry.
  * @conf payload_size           Int. See udp_slot_geometry.
  * @conf payload_slot           Int. See udp_slot_geometry.
+ * @conf seq_offset             Int, default 42 (the udp_app_header). Byte offset of the uint64
+ *                              sequence number in the header slot; 50 for CRS packets.
+ * @conf seq_stride             Int, default 1. Sequence increment between consecutive packets;
+ *                              samples_per_packet for CRS packets. Gaps count lost packets in
+ *                              strides.
  * @conf payload_check_interval Int, default 64. Verify the payload of one packet in this many;
- *                              0 verifies none.
+ *                              0 verifies none. The pattern is udpPacketGen's: set 0 for any
+ *                              other generator.
  * @conf fatal_on_bad_packet    Bool, default true.
  * @conf report_interval        Int, default 100. Log the counters every this many frames.
  * @conf num_frames             Int, default -1 (forever). Frames to check before exiting kotekan.
@@ -71,6 +77,8 @@ private:
     Buffer* payload_buf;
     const udp_slot_geometry geometry;
     uint16_t dst_port;
+    size_t seq_offset;
+    uint64_t seq_stride;
     size_t payload_check_interval;
     bool fatal_on_bad_packet;
     int report_interval;

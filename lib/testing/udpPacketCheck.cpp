@@ -15,6 +15,7 @@
 #include <arpa/inet.h> // for htons
 #include <functional>  // for bind
 #include <stdexcept>   // for invalid_argument
+#include <string.h>    // for memcpy
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -39,11 +40,16 @@ udpPacketCheck::udpPacketCheck(Config& config, const std::string& unique_name,
     reordered_packets_counter(Metrics::instance().add_counter(
         "kotekan_udp_packet_check_reordered_packets_total", unique_name)) {
 
-    if (geometry.header_size < sizeof(udp_packet_headers) + sizeof(udp_app_header))
-        throw std::invalid_argument(fmt::format(
-            fmt("{:s}: header_size {:d} has no room for the {:d} byte application "
-                "header after the {:d} byte Ethernet/IP/UDP headers"),
-            unique_name, geometry.header_size, sizeof(udp_app_header), sizeof(udp_packet_headers)));
+    seq_offset = config.get_default<size_t>(unique_name, "seq_offset", sizeof(udp_packet_headers));
+    seq_stride = config.get_default<uint64_t>(unique_name, "seq_stride", 1);
+    if (seq_offset < sizeof(udp_packet_headers)
+        || geometry.header_size < seq_offset + sizeof(uint64_t))
+        throw std::invalid_argument(
+            fmt::format(fmt("{:s}: header_size {:d} has no room for a sequence number at "
+                            "seq_offset {:d}"),
+                        unique_name, geometry.header_size, seq_offset));
+    if (seq_stride == 0)
+        throw std::invalid_argument(fmt::format(fmt("{:s}: seq_stride cannot be 0"), unique_name));
     dst_port = config.get<uint16_t>(unique_name, "dst_port");
     payload_check_interval = config.get_default<size_t>(unique_name, "payload_check_interval", 64);
     fatal_on_bad_packet = config.get_default<bool>(unique_name, "fatal_on_bad_packet", true);
@@ -120,19 +126,19 @@ std::string udpPacketCheck::check_packet(const uint8_t* header, const uint8_t* p
         return fmt::format(fmt("UDP destination port {:d}, expected {:d}"), ntohs(h->udp.dest_port),
                            dst_port);
 
-    const uint64_t seq =
-        reinterpret_cast<const udp_app_header*>(header + sizeof(udp_packet_headers))->seq;
+    uint64_t seq;
+    memcpy(&seq, header + seq_offset, sizeof(seq));
     if (!have_seq) {
         have_seq = true;
-        expected_seq = seq + 1;
+        expected_seq = seq + seq_stride;
     } else if (seq == expected_seq) {
-        expected_seq++;
+        expected_seq += seq_stride;
     } else if (seq > expected_seq) {
         seq_gaps++;
         seq_gaps_counter.inc();
-        lost_packets += seq - expected_seq;
-        lost_packets_counter.inc(seq - expected_seq);
-        expected_seq = seq + 1;
+        lost_packets += (seq - expected_seq) / seq_stride;
+        lost_packets_counter.inc((seq - expected_seq) / seq_stride);
+        expected_seq = seq + seq_stride;
     } else {
         reordered_packets++;
         reordered_packets_counter.inc();
@@ -141,7 +147,7 @@ std::string udpPacketCheck::check_packet(const uint8_t* header, const uint8_t* p
     if (payload_check_interval == 0 || packet_index % payload_check_interval != 0)
         return "";
     // udpPacketGen filled this payload for the slot its sequence number maps to.
-    const size_t gen_slot = seq % geometry.packets_per_frame;
+    const size_t gen_slot = (seq / seq_stride) % geometry.packets_per_frame;
     for (size_t k = 0; k < geometry.payload_size; k++) {
         if (payload[k] != ((gen_slot + k) & 0xff))
             return fmt::format(fmt("payload byte {:d} is {:#04x}, expected {:#04x} (seq {:d}, "

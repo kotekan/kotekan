@@ -1,0 +1,71 @@
+---
+#
+# Simulates a D-engine: crsPacketGen -> ibvUdpSend, two ADCs of 12-bit samples in CRS packets
+# on UDP ports 10000 and 10001. Pair it with crs_dengine_recv.yaml on the receiving node.
+#
+# Needs CAP_NET_RAW on the kotekan binary after every build:
+#     sudo setcap cap_net_raw+ep <build>/kotekan/kotekan
+# and buffer_depth * 3 free 2 MB huge pages for the payload buffer. See
+# docs/sphinx/compiling/ibverbs.rst.
+#
+# The addresses below are the lab pair cobalt (sender) -> spark (receiver). At the real
+# D-engine rate (3.2 Gsps x 12 bit x 2 ADCs) set rate_limit_kbps: 77900000; 0 sends at
+# line rate (~2 Mpps, 1.28x real time).
+#
+type: config
+log_level: INFO
+
+cpu_affinity: [2, 3]
+
+telescope:
+    name: fake
+
+interface: ens2f0np0
+src_mac: "10:70:fd:53:05:06"
+src_ip: 10.0.0.2
+dst_mac: "30:c5:99:3f:09:1e"
+dst_ip: 10.0.0.1
+src_port: 4000
+
+# CRS packets: 64 byte headers, 4096 12-bit samples in 6144 payload bytes, 6208 on the wire.
+header_size: 64
+header_slot: 128
+payload_size: 6144
+payload_slot: 6144
+packets_per_frame: 1024
+buffer_depth: 32
+samples_per_packet: 4096
+num_adcs: 2
+queue_depth: 8192
+
+header_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: packets_per_frame * header_slot
+payload_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: packets_per_frame * payload_slot
+    use_hugepages: true
+    numa_node: 0
+
+gen:
+    kotekan_stage: crsPacketGen
+    cpu_affinity: [2]
+    header_buf: header_buffer
+    payload_buf: payload_buffer
+    dst_port_base: 10000
+    # ADC a carries a tone of tone_bin[a] cycles per packet: F-engine output bin
+    # tone_bin[a] * fft_length / samples_per_packet.
+    tone_bin: [5, 9]
+    tone_amplitude: [1000, 1000]
+    noise_rms: 20
+    num_frames: -1
+
+send:
+    kotekan_stage: ibvUdpSend
+    cpu_affinity: [3]
+    header_buf: header_buffer
+    payload_buf: payload_buffer
+    # Packet pacing in kbit/s, 0 for the full link rate.
+    rate_limit_kbps: 77900000
