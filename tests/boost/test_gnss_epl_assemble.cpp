@@ -12,8 +12,8 @@
 using namespace gnss_gpu;
 
 namespace {
-constexpr int N_REC = 2, N_PRN = 2, N_CHAN = 2, N_ELEM = 16, N_LIVE = 16, HOPS = 4;
-constexpr int N_TILE = 1; // one synth tile row (lanes 16..31) x one live tile column
+constexpr int N_REC = 2, N_PRN = 2, N_CHAN = 2, N_ELEM = 32, N_LIVE = 32, HOPS = 4;
+constexpr int N_TILE = 2; // one synth tile row (lanes 32..47) x two live tile columns
 constexpr size_t TILE = 512;
 
 // A control block with every slot running, distinct energies per (job, channel).
@@ -62,11 +62,12 @@ BOOST_AUTO_TEST_CASE(wide_gather_matches_compact) {
     assemble_epl({ctl.data()}, tc, out_c.data(), nb, N_PRN, LANES_FULL, N_ELEM, N_LIVE, HOPS);
     BOOST_CHECK(out_w == out_c);
 
-    // Record 1, PRN slot 0, the P row, channel 1, element 5: the tile entry of lane P (synth
-    // input N_ELEM + ROW_P) and element 5, over the pack scale of record 0's P energy.
-    const int r = 1, p = 0, c = 1, e = 5, lane = ROW_P;
+    // Record 1, PRN slot 0, the P row, channel 1, element 21: the entry of lane P (synth input
+    // N_ELEM + ROW_P) and element 21 in the channel's second tile, over the pack scale of record
+    // 0's P energy.
+    const int r = 1, p = 0, c = 1, e = 21, lane = ROW_P;
     const int32_t* v = &wide[((size_t)r * FG_TOTAL + FG_OFFSET + c) * N_TILE * TILE
-                             + 32 * ((N_ELEM + lane) & 15) + 2 * e];
+                             + (e >> 4) * TILE + 32 * ((N_ELEM + lane) & 15) + 2 * (e & 15)];
     const double* en = (const double*)(ctl.data() + off_corr(N_PRN));
     const double s =
         7.0 / (3.0 * std::sqrt(en[(size_t)(p * ROWS_PLAIN + ROW_P) * N_CHAN + c] / HOPS));
