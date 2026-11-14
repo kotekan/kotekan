@@ -65,6 +65,7 @@ add_library(
     pulsarNetworkProcess.cpp
     bufferMerge.cpp
     crsWindowAlign.cpp
+    crsHeaderGen.cpp
     bufferCopy.cpp
     bufferSwitch.cpp
     bufferDelay.cpp

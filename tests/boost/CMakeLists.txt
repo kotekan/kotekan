@@ -489,3 +489,14 @@ add_executable(test_crsWindowAlign test_crsWindowAlign.cpp
                                    ${KOTEKAN_SOURCE_DIR}/lib/stages/crsWindowAlign.cpp)
 target_link_libraries(test_crsWindowAlign PRIVATE kotekan_core kotekan_metadata kotekan_utils
                                                   libexternal)
+
+# test_fEngineSimulate - the CPU reference F-engine's quantize and scale math
+if(FFTW_FOUND)
+    add_executable(test_fEngineSimulate test_fEngineSimulate.cpp
+                                        ${KOTEKAN_SOURCE_DIR}/lib/testing/fEngineSimulate.cpp)
+    target_include_directories(test_fEngineSimulate PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/testing
+                                                            ${KOTEKAN_SOURCE_DIR}/lib/stages)
+    target_include_directories(test_fEngineSimulate SYSTEM PRIVATE ${FFTW_INCLUDES})
+    target_link_libraries(test_fEngineSimulate PRIVATE kotekan_core kotekan_metadata kotekan_utils
+                                                       libexternal ${FFTW_LIBRARIES})
+endif()
