@@ -1,0 +1,8 @@
+{#-
+  local_freq.j2
+  The number of frequency IDs each X-engine GPU processes. pathfinder.j2 sizes the pipeline
+  with it and recv.j2 sizes the DTV products it receives, so both import it from here.
+  Must be divisible by 4 because pl_mask shapes use num_local_freq/4.
+  This file renders to nothing and is not a config by itself.
+-#}
+{% set num_local_freq = 384 %}
