@@ -149,6 +149,22 @@ def test_mutations(cfg, head, base, d):
     _, lines = run("unchanged", lambda c: None)
     check(lines == [], "an unchanged config, rewritten, diffs empty: %s" % lines[:3])
 
+    inject = [
+        x for x in cfg["gnss0_n2dual"]["commands"] if x.get("name") == "cudaGnssInject"
+    ][0]
+    for where, block in (("an inject command", inject), ("the root", cfg)):
+        block["psi_sync_build"] = True
+        try:
+            snap_of(cfg, head, d)
+            refused = ""
+        except ValueError as e:
+            refused = str(e)
+        del block["psi_sync_build"]
+        check(
+            "psi_sync_build" in refused,
+            "snapshot refuses psi_sync_build set on %s: %r" % (where, refused),
+        )
+
     def rename(c):
         c["gnss0_gal_e5a_assemble"] = c.pop("gnss0_gal_e5a_n2assemble")
 

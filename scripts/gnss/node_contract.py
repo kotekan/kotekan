@@ -28,6 +28,9 @@ The facets:
              records is listed under its own name with its (negative) timeout
   census     what elem_shared_ref, lane_relay, gen_fleet, viscap_read and gnss_fleet.stage_chain
              find in the config, each by its own code
+
+snapshot refuses a config that sets a test-only key (TEST_ONLY) anywhere: such a key must never
+reach a node.
 """
 import argparse
 import fnmatch
@@ -58,6 +61,8 @@ INJECT = (
     ("GET", "get_prns_endpoint"),
     ("POST", "set_prns_endpoint"),
 )
+# psi_sync_build: cudaGnssChordTrack waits for every Psi build on the GPU thread.
+TEST_ONLY = ("psi_sync_build",)
 PER_CHAIN = re.compile(r"_(inject|n2assemble|n2combine)/[^/]+$")
 IN_KEYS = ("in_buf", "in_bufs", "tiles_buf", "ctl_buf", "buf")
 OUT_KEYS = ("out_buf", "out_bufs", "cube_buf")
@@ -378,8 +383,25 @@ def census(cfg_path, node, host=None):
     }
 
 
+def test_only_keys(node, path=""):
+    """'path: key' for every TEST_ONLY key set in the tree, in blocks and in lists of blocks
+    (a cudaProcess's commands)."""
+    out = []
+    if isinstance(node, dict):
+        out += ["%s: %s" % (path or "/", k) for k in TEST_ONLY if k in node]
+        for k, v in node.items():
+            out += test_only_keys(v, "%s/%s" % (path, k))
+    elif isinstance(node, list):
+        for i, v in enumerate(node):
+            out += test_only_keys(v, "%s/%d" % (path, i))
+    return out
+
+
 def snapshot(cfg_path, node, host):
     cfg = load(cfg_path)
+    bad = test_only_keys(cfg)
+    if bad:
+        raise ValueError("%s sets test-only keys: %s" % (cfg_path, ", ".join(bad)))
     return {
         "node": node,
         "host": host,
