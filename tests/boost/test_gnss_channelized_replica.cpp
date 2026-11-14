@@ -603,11 +603,11 @@ BOOST_AUTO_TEST_CASE(sbas_l1_sym_is_two_ca_periods) {
 }
 
 namespace {
-// Whether /set_prns takes @p prn for @p signal (cudaGnssChordTrack.cpp).
+// Whether /set_prns takes @p prn for @p signal, in a one-slot map (cudaGnssChordTrack.cpp).
 bool set_prns_takes(const char* signal, int prn) {
     const gnss::SignalDescriptor* s = gnss::signal_by_name(signal);
     BOOST_REQUIRE_MESSAGE(s != nullptr, "unknown signal");
-    return prn >= gnss::min_prn(*s) && prn <= gnss::max_prn(*s);
+    return gnss::prn_map_error(*s, {prn}).empty();
 }
 } // namespace
 
@@ -639,4 +639,10 @@ BOOST_AUTO_TEST_CASE(set_prns_takes_the_sbas_prns_on_sbas_signals_only) {
         BOOST_CHECK_MESSAGE(gnss::min_prn(*s) == 1, name);
         BOOST_CHECK_MESSAGE(gnss::max_prn(*s) == (name == "GW_1202" ? 2047 : 63), name);
     }
+    // A map is refused whole: one PRN out of range, or one PRN in two slots.
+    const gnss::SignalDescriptor& l5 = *gnss::signal_by_name("SBAS_L5_I_MC");
+    BOOST_CHECK(gnss::prn_map_error(l5, {131, 133, 135, 121, 123, 136}).empty());
+    BOOST_CHECK_EQUAL(gnss::prn_map_error(l5, {131, 133, 135, 121, 123, 32}),
+                      "PRN 32 at slot 5 is outside 120..158");
+    BOOST_CHECK_EQUAL(gnss::prn_map_error(l5, {131, 133, 131}), "PRN 131 appears in slots 0 and 2");
 }

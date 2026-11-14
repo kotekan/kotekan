@@ -102,11 +102,9 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
                     n_rec, gnss_gpu::MAX_REC);
 
     const std::string signame = config.get<std::string>(unique_name, "signal");
-    const gnss::SignalDescriptor* sig = gnss::signal_by_name(signame);
+    sig = gnss::signal_by_name(signame);
     if (!sig)
         FATAL_ERROR("cudaGnssChordTrack: unknown signal '{:s}'", signame);
-    min_prn = gnss::min_prn(*sig);
-    max_prn = gnss::max_prn(*sig);
 
     // The despread's channels are dense, 0..n_chan-1, and all covered. The replica for local
     // channel c is synthesized at the centre frequency of global bin channel_ids[c]; CHORD's
@@ -273,17 +271,7 @@ void cudaGnssChordTrackState::set_prns_callback(kotekan::connectionInstance& con
                 "wire frame in the pipeline, so a resize is a fleet-wide re-plumb and a node "
                 "restart, not a swap. Send exactly one PRN per slot.";
     if (err.empty())
-        for (size_t i = 0; i < want.size() && err.empty(); ++i) {
-            if (want[i] < min_prn || want[i] > max_prn)
-                err = "PRN " + std::to_string(want[i]) + " at slot " + std::to_string(i)
-                      + " is outside " + std::to_string(min_prn) + ".." + std::to_string(max_prn);
-            for (size_t j = 0; j < i && err.empty(); ++j)
-                if (want[j] == want[i])
-                    // A duplicate would put one satellite in two slots, and the broker would
-                    // fold both copies into its per-satellite state as independent measurements.
-                    err = "PRN " + std::to_string(want[i]) + " appears in slots "
-                          + std::to_string(j) + " and " + std::to_string(i);
-        }
+        err = gnss::prn_map_error(*sig, want);
     if (!err.empty()) {
         conn.send_error(err, kotekan::HTTP_RESPONSE::BAD_REQUEST);
         return;

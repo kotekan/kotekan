@@ -12,7 +12,10 @@
 #ifndef GNSS_SIGNAL_HPP
 #define GNSS_SIGNAL_HPP
 
-#include <string> // for string (name lookup)
+#include "gpsCACode.hpp" // for SBAS_PRN_MIN, SBAS_PRN_MAX
+
+#include <string> // for string
+#include <vector> // for vector
 
 namespace gnss {
 
@@ -871,9 +874,14 @@ inline const SignalDescriptor* signal_by_name(const std::string& name) {
     return nullptr;
 }
 
+/// Whether @p s is an SBAS signal (an SBAS_* descriptor).
+inline bool is_sbas(const SignalDescriptor& s) {
+    return std::string(s.name).rfind("SBAS_", 0) == 0;
+}
+
 /// The lowest PRN /set_prns takes for a signal (see max_prn).
 inline int min_prn(const SignalDescriptor& s) {
-    return std::string(s.name).rfind("SBAS_", 0) == 0 ? 120 : 1;
+    return is_sbas(s) ? gps::SBAS_PRN_MIN : 1;
 }
 
 /// The highest PRN /set_prns takes for a signal. SBAS signals take 120..158, the SBAS rows of
@@ -881,10 +889,26 @@ inline int min_prn(const SignalDescriptor& s) {
 /// satellites by G2' phase, 1..2047. The other signals take 1..63, BeiDou's range and the widest
 /// GNSS table; a PRN outside a narrower generator's range is refused when the swap applies.
 inline int max_prn(const SignalDescriptor& s) {
-    const std::string name(s.name);
-    if (name == "GW_1202")
+    if (std::string(s.name) == "GW_1202")
         return 2047;
-    return name.rfind("SBAS_", 0) == 0 ? 158 : 63;
+    return is_sbas(s) ? gps::SBAS_PRN_MAX : 63;
+}
+
+/// Why /set_prns refuses @p want, one PRN per slot, on signal @p s, or "" if it takes it.
+inline std::string prn_map_error(const SignalDescriptor& s, const std::vector<int>& want) {
+    for (size_t i = 0; i < want.size(); ++i) {
+        if (want[i] < min_prn(s) || want[i] > max_prn(s))
+            return "PRN " + std::to_string(want[i]) + " at slot " + std::to_string(i)
+                   + " is outside " + std::to_string(min_prn(s)) + ".."
+                   + std::to_string(max_prn(s));
+        for (size_t j = 0; j < i; ++j)
+            if (want[j] == want[i])
+                // A duplicate would put one satellite in two slots, and the broker would fold
+                // both copies into its per-satellite state as independent measurements.
+                return "PRN " + std::to_string(want[i]) + " appears in slots " + std::to_string(j)
+                       + " and " + std::to_string(i);
+    }
+    return "";
 }
 
 } // namespace gnss

@@ -143,7 +143,7 @@ public:
     // Geometry. n_prn is immutable; @c prns is not (see above).
     std::vector<int> prns;
     int n_prn = 0, n_chan = 0, n_elem = 0;
-    int min_prn = 1, max_prn = 63; ///< the PRNs /set_prns takes (gnss::min_prn, gnss::max_prn)
+    const gnss::SignalDescriptor* sig = nullptr; ///< the signal; /set_prns checks its PRNs
     int hops_per_record = 0, n_hops_frame = 0, fft_len = 0;
     double sample_rate = 0.0, f_offset_hz = 0.0, dll_spacing = 0.0;
     bool epl_from_prompt = false;
