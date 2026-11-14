@@ -107,6 +107,12 @@ target_link_libraries(test_gnss_fleet_trim PRIVATE libexternal kotekan_stages ko
                                                    kotekan_utils kotekan_core kotekan_metadata)
 target_include_directories(test_gnss_fleet_trim PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
+# One chain's telemetry packing (gnss::TelemChain) across windows, without buffers.
+add_executable(test_gnss_telem_chain test_gnss_telem_chain.cpp)
+target_link_libraries(test_gnss_telem_chain PRIVATE libexternal kotekan_stages kotekan_libs
+                                                    kotekan_utils kotekan_core kotekan_metadata)
+target_include_directories(test_gnss_telem_chain PRIVATE ../../lib/stages ../../lib/stages/gnss)
+
 # Channelized despread: sim signal -> PFB analysis (reference DFT) -> per-channel correlate-and-sum,
 # checked against the full-band matched filter. No FFTW.
 add_executable(

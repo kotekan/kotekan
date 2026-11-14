@@ -401,6 +401,7 @@ struct ChainRun {
     json cube_pow;
     json cmb_rows = json::array(); // cmb_slot_rows of each emit
     int telem_bad = 0;
+    int telem_bad_meta = 0;
 };
 
 /// One emit's records per slot: [digest of the record with its arc id zeroed, arc id].
@@ -546,6 +547,9 @@ void capture(ChainRun* R, int kind) {
                 std::memcpy(&th, f, sizeof(th));
                 if (th.present != (1u << R->s->n_rec) - 1u)
                     ++R->telem_bad;
+                const GnssChanMetadata* m = get_gnss_chan_metadata(b, id);
+                if (m == nullptr || m->sample_seq != th.wstart0)
+                    ++R->telem_bad_meta;
             }
         }
         if (!(kind == EPL && R->idx == 0 && n >= R->sc->proj_live_frame))
@@ -1010,6 +1014,7 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
         d.live[pre]["cube_pow"] = R->cube_pow;
         d.live[pre]["telem_frames"] = R->count[TELEM].load();
         d.live[pre]["telem_bad_present"] = R->telem_bad;
+        d.live[pre]["telem_bad_meta"] = R->telem_bad_meta;
         if (R->idx == 1)
             d.pins["B2_epl"] = R->pin_epl;
         d.slots[pre]["own"]["cmb"] = R->cmb_rows;
@@ -1473,6 +1478,7 @@ BOOST_AUTO_TEST_CASE(live) {
         const json& L = d.live.at(s.pre);
         BOOST_CHECK_EQUAL(L.value("telem_frames", 0), sc.n_frames);
         BOOST_CHECK_EQUAL(L.value("telem_bad_present", -1), 0);
+        BOOST_CHECK_EQUAL(L.value("telem_bad_meta", -1), 0);
         // The zero-amplitude sky must fail every one of these.
         BOOST_CHECK_MESSAGE(!cal_live(z, s, &why), "zero_amp passed: " << why);
         BOOST_CHECK_MESSAGE(!combiner_live(z, s, &why), "zero_amp passed: " << why);
