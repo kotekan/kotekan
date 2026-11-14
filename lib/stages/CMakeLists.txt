@@ -185,6 +185,7 @@ if(FFTW_FOUND)
                 gnss/GnssN2RecordAssemble.cpp
                 gnss/gnssEplAssemble.cpp
                 gnss/GnssGpuRecordAssemble.cpp
+                gnss/gnssRecordChain.cpp
                 gnss/GnssChordDequantize.cpp
                 gnss/GnssChanAlignMerge.cpp
                 gnss/GnssN2Project.cpp

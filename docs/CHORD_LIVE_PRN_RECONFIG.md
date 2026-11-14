@@ -50,7 +50,7 @@ C58 in means choosing something to drop. The broker says so and changes nothing:
 
 `gnss_gpu::PrnCtl` grew a `uint16_t prn`, taken from padding so `sizeof(PrnCtl)` stays 80 and
 no generated buffer changes size. Every producer stamps it **for every slot**, including slots
-with no seed, and `GnssGpuRecordAssemble::follow_frame_prns` adopts it at the top of each
+with no seed, and `gnss::RecordChain::follow_frame_prns` adopts it at the top of each
 frame.
 
 This is the load-bearing decision. The alternative — a second `/set_prns` on the assembler,
@@ -77,7 +77,7 @@ Reset, in one place per owner:
 | `GnssCudaDespread::set_prn` | device code row, Phi cache, carrier-NCO accumulator, `last_ang0`/`last_phi_ddop` |
 | `cudaGnssChordTrackState::apply_prn_swaps` | seed, trim, trim diagnostics, power EMAs |
 | each command instance | its own per-slot Doppler history (via `slot_gen`) |
-| `GnssGpuRecordAssemble::follow_frame_prns` | element cal, NCO phase, arc continuity, open spectrum windows |
+| `gnss::RecordChain::follow_frame_prns` | element cal, NCO phase, arc continuity, open spectrum windows |
 | `GnssChannelizedSearch::apply_prn_swaps` | replica cache, refine engines' code tables, detection, Doppler + overlay hints |
 
 ### 4. Where a swap lands
