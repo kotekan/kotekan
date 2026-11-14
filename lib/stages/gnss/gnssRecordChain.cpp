@@ -1,6 +1,5 @@
 #include "gnssRecordChain.hpp"
 
-#include "gnssClock.hpp" // for steady_now_s
 #include "gnssRecord.hpp"
 #include "gnssSharedPin.hpp" // for ref_offset, pin_rotation
 
@@ -18,9 +17,14 @@ using kotekan::Config;
 
 namespace gnss {
 
+double steady_now_s() {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
+
 RecordChain::RecordChain(Config& config, const std::string& cfg_path, const std::string& name,
-                         ProjBoard& board, ChanPower& chan_power) :
-    _name(name), _board(board), _chan_power(chan_power) {
+                         ProjBoard& board, ChanPower& chan_power, double (*clock_s)()) :
+    _name(name), _board(board), _chan_power(chan_power), _clock_s(clock_s) {
     set_log_level(config.get<std::string>(cfg_path, "log_level"));
     set_log_prefix(name);
     _prns = config.get<std::vector<int>>(cfg_path, "prns");
@@ -571,7 +575,7 @@ void RecordChain::set_sat_geometry_callback(kotekan::connectionInstance& conn,
         return;
     }
     try {
-        const double now_s = gnss::steady_now_s();
+        const double now_s = _clock_s();
         // "_bore": [sep_deg, t_utc], the broker's nearest-to-boresight separation pooled over
         // every constellation (a satellite of another system leaks into this band just the
         // same). It gates the shared model's learning (see _elem_shared_freeze_deg).
@@ -628,7 +632,7 @@ int RecordChain::follow_frame_prns(const void* pctl_v, int n_prn) {
             _cal_shadow[(size_t)p] = _cal[(size_t)p];
             _cal_sim[(size_t)p] = -1.0;
             shared_reset_prn((size_t)p);
-            proj_reset_slot((size_t)p, gnss::steady_now_s());
+            proj_reset_slot((size_t)p, _clock_s());
             if ((size_t)p < _anchor_warned.size())
                 _anchor_warned[(size_t)p] = 0;
         }
@@ -840,7 +844,7 @@ int64_t RecordChain::assemble_record(int r, float* out) {
     // siblings. k = 0 unless armed and a source is in force.
     if (_proj_ready && _proj_mode.load() != 0)
         proj_prepare_record(corr, &pctl[(size_t)r * n_prn], n_chan, _n_elements, wstart, utc,
-                            gnss::steady_now_s());
+                            _clock_s());
     else
         _proj_k_rec = 0;
     int proj_src = 0; // the OR of the basis sources over this instance's channels
@@ -916,7 +920,7 @@ int64_t RecordChain::assemble_record(int r, float* out) {
                 }
             } else {
                 std::lock_guard<std::mutex> lk(_steer_mtx);
-                const double now_s = gnss::steady_now_s();
+                const double now_s = _clock_s();
                 if (_steer.warm((int)p, now_s)) {
                     // Evaluate the track at this record's time (the data clock:
                     // records lag the wall clock by the pipeline depth).
@@ -980,7 +984,7 @@ int64_t RecordChain::assemble_record(int r, float* out) {
         // the current table, for up to elem_dir_hold_s (_lane_ok 2).
         if (lane_rec && (++_lane_cnt[p] % _lane_every) == 0) {
             gnss::ProjBoard& board = _board;
-            const double now_s = gnss::steady_now_s();
+            const double now_s = _clock_s();
             std::fill(_lane_ok.begin(), _lane_ok.end(), 0);
             for (int ch = 0; ch < n_chan; ++ch) {
                 if (!((c.chan_mask >> ch) & 1ULL))
@@ -2214,7 +2218,7 @@ void RecordChain::shared_hold(size_t p) {
     const int n = _n_elements;
     if (p >= _cal.size())
         return;
-    const double now_s = gnss::steady_now_s();
+    const double now_s = _clock_s();
     if (now_s - _g_shared_t >= 1.0) {
         shared_consensus(now_s);
         shared_apply(now_s);
@@ -2272,7 +2276,7 @@ void RecordChain::shared_pol_update(size_t p, const std::complex<double>* g_prom
     // Transit: hold every coefficient too. The sub-beams reject leakage by the half-array's
     // gain, but a boresight transit is 20-30 dB above a weak satellite and the coefficient's
     // EMA (elem_sum_pol_tau_s) is short.
-    if (shared_frozen(gnss::steady_now_s()))
+    if (shared_frozen(_clock_s()))
         return;
     const int h = n / 2;
     cd b0(0.0, 0.0), b1(0.0, 0.0);
@@ -2298,7 +2302,7 @@ void RecordChain::get_elem_cal_callback(kotekan::connectionInstance& conn) {
     out["shared_warm"] = _g_shared_warm;
     out["shared_n"] = _g_shared_n;
     {
-        const double now_s = gnss::steady_now_s();
+        const double now_s = _clock_s();
         out["shared_frozen"] = now_s < _freeze_until;
         out["form_frozen"] = gnss::formation_frozen(now_s, _bore_post_t.load(),
                                                     _bore_sep_deg.load(), _elem_shared_form_deg);

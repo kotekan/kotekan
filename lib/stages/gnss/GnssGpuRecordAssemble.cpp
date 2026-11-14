@@ -14,11 +14,12 @@ using kotekan::Stage;
 REGISTER_KOTEKAN_STAGE(GnssGpuRecordAssemble);
 
 GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& unique_name,
-                                             bufferContainer& buffer_container) :
+                                             bufferContainer& buffer_container,
+                                             double (*clock_s)()) :
     Stage(config, unique_name, buffer_container,
           std::bind(&GnssGpuRecordAssemble::main_thread, this)),
     _chain(config, unique_name, unique_name, gnss::ProjBoard::instance(),
-           gnss::ChanPower::instance()) {
+           gnss::ChanPower::instance(), clock_s) {
     in_buf = get_buffer("in_buf");
     in_buf->register_consumer(unique_name);
     out_buf = get_buffer("out_buf");

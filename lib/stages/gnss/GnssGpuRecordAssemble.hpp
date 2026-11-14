@@ -34,8 +34,10 @@
  */
 class GnssGpuRecordAssemble : public kotekan::Stage {
 public:
+    /// @p clock_s is the chain's clock (gnss::RecordChain); tests pass their own.
     GnssGpuRecordAssemble(kotekan::Config& config, const std::string& unique_name,
-                          kotekan::bufferContainer& buffer_container);
+                          kotekan::bufferContainer& buffer_container,
+                          double (*clock_s)() = gnss::steady_now_s);
     void main_thread() override;
 
 private:

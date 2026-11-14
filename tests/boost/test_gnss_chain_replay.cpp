@@ -26,7 +26,6 @@
 #include "buffer.hpp"                // for Buffer
 #include "bufferContainer.hpp"       // for bufferContainer
 #include "gnssChanPower.hpp"         // for ChanPower
-#include "gnssClock.hpp"             // for steady_now_hook
 #include "gnssGpuChain.hpp"          // for FrameHdr, PrnCtl, off_*
 #include "gnssProjSubspace.hpp"      // for ProjBoard
 #include "gnssRecord.hpp"            // for frame_floats, record_stride, cube_frame_bytes
@@ -849,7 +848,6 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
     const unsigned short port = kotekan::restServer::instance().port();
     g_frame_s = (double)cs[0].n_rec * cs[0].hops_per_record * cs[0].fft_len / cs[0].sample_rate;
     g_clock_step = sc.mut == Mutation::clock_step_50;
-    gnss::steady_now_hook = &replay_clock;
     const Sky sky = sky_for(sc);
 
     auto pool = metadataPool::create(64 * (int)cs.size(), 64, "pool", "GnssChanMetadata");
@@ -911,7 +909,7 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
         R->stages.emplace_back(
             new GnssN2RecordAssemble(config, "/" + s.pre + "_n2assemble_tiles", bc));
         R->stages.emplace_back(
-            new GnssGpuRecordAssemble(config, assembler_name(s, R->idx, sc), bc));
+            new GnssGpuRecordAssemble(config, assembler_name(s, R->idx, sc), bc, &replay_clock));
         R->cmb = new GnssCoherentCombiner(config, "/" + s.pre + "_n2combine", bc);
         R->stages.emplace_back(R->cmb);
         R->stages.emplace_back(new GnssTelemPack(config, "/" + s.pre + "_telem_pack", bc));

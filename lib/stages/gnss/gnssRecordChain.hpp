@@ -27,6 +27,9 @@
 
 namespace gnss {
 
+/// The steady clock in seconds, the production clock of a RecordChain.
+double steady_now_s();
+
 /**
  * @class RecordChain
  * @brief The record assembly of one GPU tracking chain (see GnssGpuRecordAssemble), without
@@ -35,12 +38,13 @@ namespace gnss {
  * Per input frame the host calls begin_frame(), then assemble_record() for each of its
  * records, and after each record moves any completed cube window out with take_cube_window().
  * The config is read at @c cfg_path; @c name prefixes the log lines, REST paths, board owners
- * and metric labels. A one-row host passes its unique_name as both.
+ * and metric labels. A one-row host passes its unique_name as both. @c clock_s is the clock of
+ * every freshness and cadence decision (steady_now_s, or a test's own).
  */
 class RecordChain : public kotekan::kotekanLogging {
 public:
     RecordChain(kotekan::Config& config, const std::string& cfg_path, const std::string& name,
-                ProjBoard& board, ChanPower& chan_power);
+                ProjBoard& board, ChanPower& chan_power, double (*clock_s)());
 
     /// FATAL unless @p out_buf's frames hold one record per slot, and the comb block with
     /// chan_export.
@@ -82,6 +86,7 @@ private:
     const std::string _name;
     ProjBoard& _board;
     ChanPower& _chan_power;
+    double (*const _clock_s)();
     /// The current frame (begin_frame).
     gnss_gpu::FrameHdr _hdr;
     const int64_t* _winstart = nullptr;
