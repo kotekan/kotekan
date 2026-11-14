@@ -483,3 +483,9 @@ add_executable(test_ProcessPacketMask test_ProcessPacketMask.cpp
                                       ${KOTEKAN_SOURCE_DIR}/lib/stages/ProcessPacketMask.cpp)
 target_link_libraries(test_ProcessPacketMask PRIVATE kotekan_core kotekan_metadata kotekan_utils
                                                      libexternal)
+
+# test_crsWindowAlign - FFT window assembly from CRS header slots: alignment, loss, realignment
+add_executable(test_crsWindowAlign test_crsWindowAlign.cpp
+                                   ${KOTEKAN_SOURCE_DIR}/lib/stages/crsWindowAlign.cpp)
+target_link_libraries(test_crsWindowAlign PRIVATE kotekan_core kotekan_metadata kotekan_utils
+                                                  libexternal)
