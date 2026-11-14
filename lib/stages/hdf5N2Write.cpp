@@ -371,7 +371,8 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         }
         _check_create_attribute(*file, "main_array_grid_indices", grid_indices);
         _check_create_attribute(*file, "feed_positions_m", feed_positions);
-        _check_create_attribute(*file, "dish_coelev_deg", telescope.get_dish_coelev_deg());
+        if (telescope.phase_center_is_set())
+            _check_create_attribute(*file, "dish_coelev_deg", telescope.get_dish_coelev_deg());
         _check_create_attribute(*file, "num_dishes", telescope.get_num_dishes());
         _check_create_attribute(*file, "num_file_f",
                                 telescope.num_science_freqs()); // "science-case" frequencies only
