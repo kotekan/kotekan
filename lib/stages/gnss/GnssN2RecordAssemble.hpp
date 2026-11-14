@@ -36,7 +36,7 @@
  * frame, so this stage recomputes s from the control block's record-0 energy and emits
  * corr = V/s with the record's own E_R, the units the GPU despread reports. For the P_HEAD
  * lane the pack divides that energy by the record's m_head, not hops_per_record, so the s
- * recomputed here differs from the pack's (see main_thread).
+ * recomputed here differs from the pack's (see gnss_gpu::assemble_epl).
  *
  * Cadence. cudaCorrelatorDual integrates sub_integration_ntime = hops_per_record, so Tc
  * equals the number of records and each tile slice maps 1:1 onto a record the injector

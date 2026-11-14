@@ -183,6 +183,7 @@ if(FFTW_FOUND)
                 gnss/GnssChannelizedSearch.cpp
                 gnss/GnssChordVoltageTap.cpp
                 gnss/GnssN2RecordAssemble.cpp
+                gnss/gnssEplAssemble.cpp
                 gnss/GnssGpuRecordAssemble.cpp
                 gnss/GnssChordDequantize.cpp
                 gnss/GnssChanAlignMerge.cpp

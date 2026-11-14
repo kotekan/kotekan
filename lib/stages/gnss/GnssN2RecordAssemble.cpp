@@ -2,13 +2,12 @@
 
 #include "GnssChanMetadata.hpp"
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE
+#include "gnssEplAssemble.hpp"
 #include "gnssGpuChain.hpp"
 #include "kotekanLogging.hpp"
 #include "visUtil.hpp"
 
-#include <cmath>
 #include <cstdint>
-#include <cstring>
 #include <functional>
 
 using kotekan::bufferContainer;
@@ -99,14 +98,6 @@ void GnssN2RecordAssemble::main_thread() {
             break;
 
         const auto* ihdr = (const gnss_gpu::FrameHdr*)ctl;
-        const auto* iwin = (const int64_t*)(ctl + gnss_gpu::off_winstart());
-        const auto* ictl = (const gnss_gpu::PrnCtl*)(ctl + gnss_gpu::off_prnctl());
-        const size_t ctl_off_energy =
-            gnss_gpu::off_prnctl() + sizeof(gnss_gpu::PrnCtl) * gnss_gpu::MAX_REC * _n_prn;
-        const auto* ienergy = (const double*)(ctl + ctl_off_energy);
-
-        const int n_rec = ihdr->n_rec;
-        const int n_chan = ihdr->n_chan;
         // The producer's lane count is in the frame; a mismatch would read P's tile as E's.
         if (gnss_gpu::lanes_per_slot_of(ihdr->lanes_per_slot) != _lanes_per_slot)
             FATAL_ERROR("GnssN2RecordAssemble: the control block says {:d} lanes per slot, this "
@@ -114,122 +105,20 @@ void GnssN2RecordAssemble::main_thread() {
                         "carry the same lanes_per_slot",
                         gnss_gpu::lanes_per_slot_of(ihdr->lanes_per_slot), _lanes_per_slot);
 
-        // Only the header, the window starts and PrnCtl are zeroed: the frame is sized for
-        // MAX_REC records, and nothing reads a row past n_jobs. Every row below n_jobs is written
-        // whole, for every channel and element, which needs the frame to have this stage's shape.
+        // Every row below n_jobs is written whole, for every channel and element, which needs
+        // the frame to have this stage's shape.
         if (ihdr->n_prn != _n_prn || ihdr->n_chan != _n_gnss_chan
             || ihdr->n_rec != _n_hops_frame / _hops_per_record || ihdr->n_rec > gnss_gpu::MAX_REC)
             FATAL_ERROR("GnssN2RecordAssemble: the control block is {:d} PRN x {:d} chan x {:d} "
                         "records, this stage {:d} x {:d} x {:d} (at most {:d} records)",
                         ihdr->n_prn, ihdr->n_chan, ihdr->n_rec, _n_prn, _n_gnss_chan,
                         _n_hops_frame / _hops_per_record, gnss_gpu::MAX_REC);
-        std::memset(out, 0, gnss_gpu::off_corr(_n_prn));
-        auto* ohdr = (gnss_gpu::FrameHdr*)out;
-        auto* owin = (int64_t*)(out + gnss_gpu::off_winstart());
-        auto* octl = (gnss_gpu::PrnCtl*)(out + gnss_gpu::off_prnctl());
-        auto* ocorr = (double*)(out + gnss_gpu::off_corr(_n_prn)); // [job][chan][elem] x2
-        auto* oenergy =
-            (double*)(out + gnss_gpu::off_energy(_n_prn, n_chan, gnss_gpu::ROWS_PLAIN, _n_live));
-
-        // One output record per sub-integration: with sub_integration_ntime = hops_per_record
-        // the N^2 emits n_rec visibilities per frame, one per record the injector synthesised
-        // (see the class note).
-        ohdr->n_rec = n_rec;
-        ohdr->n_prn = _n_prn;
-        ohdr->n_chan = n_chan;
-        ohdr->n_rows_spec = gnss_gpu::ROWS_PLAIN;
-        ohdr->seq0 = ihdr->seq0;
-        ohdr->utc0 = ihdr->utc0;
-
-        const size_t tile_slice = (size_t)_n_gnss_chan * _n_tile * 512; // one sub-integration
-        int n_out_jobs = 0;
-        for (int r = 0; r < n_rec; ++r) {
-            owin[r] = iwin[r];
-            for (int p = 0; p < _n_prn; ++p) {
-                const gnss_gpu::PrnCtl& in0 = ictl[(size_t)r * _n_prn + p];
-                gnss_gpu::PrnCtl& oc = octl[(size_t)r * _n_prn + p];
-                // Copy the PRN before the run check: a dark slot would otherwise ship 0 ("not
-                // stamped"), and the assembler must learn that a slot changed satellite while
-                // dark, since that is when it drops the old satellite's element cal. Only the PRN
-                // is copied, so a dark slot keeps run = 0 from the memset above.
-                oc.prn = in0.prn;
-                if (!in0.run)
-                    continue;
-                oc = in0;
-                oc.job0 = n_out_jobs * gnss_gpu::ROWS_PLAIN;
-
-                // Rows in lane order, P first: under LANES_PROMPT the E and L rows are formed
-                // from the finished P row, so it must be in the frame before they are written.
-                static constexpr int ROW_ORDER[gnss_gpu::ROWS_PLAIN] = {
-                    gnss_gpu::ROW_P, gnss_gpu::ROW_PH, gnss_gpu::ROW_E, gnss_gpu::ROW_L};
-                for (int ti = 0; ti < gnss_gpu::ROWS_PLAIN; ++ti) {
-                    const int t = ROW_ORDER[ti];
-                    const int lr = gnss_gpu::lane_of_row(_lanes_per_slot, t);
-                    const size_t orow = (size_t)(oc.job0 + t);
-                    if (lr < 0) {
-                        // No lane for this trial: the prompt row rotated per channel by the
-                        // kernel's rotation, corr_E = corr_P e^{-i rot}, corr_L = corr_P
-                        // e^{+i rot} (PrnCtl::rot and the sign convention there), with the
-                        // kernel's own E/L energy rows, which equal the prompt's on this path.
-                        const size_t prow = (size_t)(oc.job0 + gnss_gpu::ROW_P);
-                        const double sgn = (t == gnss_gpu::ROW_E) ? -1.0 : 1.0;
-                        for (int c = 0; c < n_chan && c < _n_gnss_chan; ++c) {
-                            oenergy[orow * n_chan + c] =
-                                ienergy[(size_t)(in0.job0 + t) * n_chan + c];
-                            const double cr = std::cos(sgn * (double)in0.rot[c]);
-                            const double ci = std::sin(sgn * (double)in0.rot[c]);
-                            for (int e = 0; e < _n_live; ++e) {
-                                const size_t pi = ((prow * n_chan + c) * (size_t)_n_live + e) * 2;
-                                const size_t oi = ((orow * n_chan + c) * (size_t)_n_live + e) * 2;
-                                const double re = ocorr[pi], im = ocorr[pi + 1];
-                                ocorr[oi + 0] = re * cr - im * ci;
-                                ocorr[oi + 1] = re * ci + im * cr;
-                            }
-                        }
-                        continue;
-                    }
-                    const int lane = _lanes_per_slot * p + lr;
-                    const int gi = _num_elements + lane, ihi = gi >> 4, ilo = gi & 15;
-
-                    for (int c = 0; c < n_chan && c < _n_gnss_chan; ++c) {
-                        // The gathered tiles are compacted: tile k of channel c lives at
-                        // c*_n_tile + k, not at its full-triangle offset.
-                        const int32_t* slice =
-                            tiles + (size_t)r * tile_slice + (size_t)c * _n_tile * 512;
-
-                        // The pack's scale is frozen frame-wide at record 0's energy
-                        // (cudaGnssInject), so read s from record 0's rows for this PRN; the
-                        // active PRN set is fixed per frame, so those rows exist. This matches the
-                        // pack for the E, P and L lanes; the pack takes the P_HEAD lane's rms over
-                        // its m_head hops instead of hops_per_record.
-                        const double e0 = ienergy[(size_t)(ictl[p].job0 + t) * n_chan + c];
-                        const double rms =
-                            (e0 > 0.0) ? std::sqrt(e0 / (double)_hops_per_record) : 0.0;
-                        const double s = (rms > 0.0) ? 7.0 / (3.0 * rms) : 0.0;
-
-                        // Absolute units, not just the right ratio: the combiner uses energy as
-                        // an ML combining weight, so it must be the physical replica energy. Emit
-                        // this record's E_R as-is and divide the correlation by s (record 0's).
-                        const double e_rec = ienergy[(size_t)(in0.job0 + t) * n_chan + c];
-                        oenergy[orow * n_chan + c] = e_rec;
-
-                        for (int e = 0; e < _n_live; ++e) {
-                            const int jhi = e >> 4, jlo = e & 15;
-                            const int mix_k = (ihi - _na16) * _nlive16 + jhi;
-                            const int32_t* tv = slice + (size_t)mix_k * 512 + 32 * ilo + 2 * jlo;
-                            // The replica is conjugated in the pack, so V needs no conjugate
-                            // here (see the class note).
-                            const size_t oi = ((orow * n_chan + c) * (size_t)_n_live + e) * 2;
-                            const double inv_s = (s > 0.0) ? 1.0 / s : 0.0;
-                            ocorr[oi + 0] = (double)tv[0] * inv_s;
-                            ocorr[oi + 1] = (double)tv[1] * inv_s;
-                        }
-                    }
-                }
-                ++n_out_jobs;
-            }
-        }
-        ohdr->n_jobs = n_out_jobs * gnss_gpu::ROWS_PLAIN;
+        const gnss_gpu::TilesView tv{tiles, (size_t)_n_gnss_chan * _n_tile * 512, 0, _n_gnss_chan,
+                                     _n_tile};
+        const int n_out_jobs =
+            gnss_gpu::assemble_epl({ctl}, tv, out, _out_buf->frame_size, _n_prn, _lanes_per_slot,
+                                   _num_elements, _n_live, _hops_per_record);
+        const auto* ohdr = (const gnss_gpu::FrameHdr*)out;
 
         // Carry the control block's metadata (the time reference) through.
         auto in_meta = std::dynamic_pointer_cast<GnssChanMetadata>(_ctl_buf->metadata[ctl_id]);
@@ -241,7 +130,7 @@ void GnssN2RecordAssemble::main_thread() {
 
         if ((++n_frames & 0xFF) == 1)
             INFO("GnssN2RecordAssemble: seq0 {:d}, {:d} job groups -> {:d} rows over {:d} records",
-                 (long long)ohdr->seq0, n_out_jobs, (int)ohdr->n_jobs, n_rec);
+                 (long long)ohdr->seq0, n_out_jobs, (int)ohdr->n_jobs, (int)ohdr->n_rec);
 
         _out_buf->mark_frame_full(unique_name, out_id++);
         _ctl_buf->mark_frame_empty(unique_name, ctl_id++);
