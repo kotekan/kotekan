@@ -201,10 +201,10 @@ class SearchTest(unittest.TestCase):
 
 class DbTest(unittest.TestCase):
     @staticmethod
-    def window(start, end, sats):
+    def window(start, end, sats, lobe_channels=64):
         return dict(
             complete=True,
-            lobe_channels=64,
+            lobe_channels=lobe_channels,
             utc_start=start,
             utc_end=end,
             satellites=sats,
@@ -243,12 +243,26 @@ class DbTest(unittest.TestCase):
                 "12:31:20.000",
                 [dict(sat="DIGUI-1", detected=False, sep_min_window=0.5)],
             ),
+            self.window(
+                "2026-11-02T14:00:00.000Z",
+                "14:01:20.000",
+                [dict(sat="DIGUI-4", detected=False, sep_min_window=1.0)],
+                lobe_channels=56,
+            ),
+            self.window(
+                "2026-11-02T15:00:00.000Z",
+                "15:01:20.000",
+                [dict(sat="DIGUI-5", detected=False, sep_min_window=1.0)],
+                lobe_channels=0,
+            ),
         ]
         with tempfile.NamedTemporaryFile("w", suffix=".jsonl") as fh:
             fh.write("".join(json.dumps(r) + "\n" for r in logs))
             fh.flush()
             passes, skipped = gdb.read_passes(db, [fh.name], 4.0)
-        self.assertEqual(skipped, {"incomplete": 0, "no_sky": 1, "far_miss": 1})
+        self.assertEqual(skipped, {"incomplete": 1, "no_sky": 1, "far_miss": 1})
+        self.assertIn("DIGUI-4", passes)
+        self.assertNotIn("DIGUI-5", passes)
         gdb.update(db, passes, {}, {"DIGUI-2": 2})
         s = db["satellites"]
         self.assertNotIn("DIGUI-3", s)

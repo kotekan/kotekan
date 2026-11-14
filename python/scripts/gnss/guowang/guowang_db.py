@@ -8,7 +8,7 @@ conclusive pass, with its history:
 
 - status: "transmitting" (its code was found on its newest conclusive pass) or "no_transmission"
   (no 1202 code on its newest conclusive pass). A pass is conclusive when it is a complete
-  beam-dump window outside the no_sky periods and either the code was found (any separation) or
+  beam-dump window with at least 56 of the 64 lobe channels, outside the no_sky periods, and either the code was found (any separation) or
   the satellite passed within silent_max_sep_deg of the boresight, where every transmitting
   satellite is found. A miss farther out says nothing and is not counted.
 - the code reference, once the code has been found: g2_phase, theta_us, carrier_minus_tle_ppb,
@@ -57,6 +57,7 @@ DB_PATH = os.path.join(
 )
 SCHEMA = "chord-gnss-guowang-1202-db/1"
 SILENT_MAX_SEP_DEG = 4.0
+MIN_LOBE_CHANNELS = 56  # of the lobe's 64: a window with fewer counts for nothing
 CODE_FIELDS = (
     "g2_phase",
     "theta_us",
@@ -153,7 +154,8 @@ def window_mid(rec):
 
 def read_passes(db, logs, silent_max_sep):
     """{sat: {utc: [utc, sep, found]}} of the conclusive passes in gw_reduce reduce_log.jsonl files,
-    and the count of inconclusive ones (complete windows only, no_sky windows dropped)."""
+    and the count of inconclusive ones (complete windows with MIN_LOBE_CHANNELS of the lobe only, no_sky
+    windows dropped)."""
     out, skipped = {}, {"incomplete": 0, "no_sky": 0, "far_miss": 0}
     for path in logs:
         try:
@@ -166,7 +168,7 @@ def read_passes(db, logs, silent_max_sep):
                 if not line.strip():
                     continue
                 rec = json.loads(line)
-                if not rec.get("complete") or rec.get("lobe_channels", 0) < 64:
+                if not rec.get("complete") or rec.get("lobe_channels", 0) < MIN_LOBE_CHANNELS:
                     skipped["incomplete"] += 1
                     continue
                 t = window_mid(rec)
