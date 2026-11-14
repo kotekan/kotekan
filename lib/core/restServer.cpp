@@ -469,6 +469,15 @@ void restServer::register_post_callback(string endpoint,
     INFO_NON_OO("restServer: Adding POST endpoint: {:s}", endpoint);
 }
 
+bool restServer::has_callback(string endpoint) {
+    if (endpoint.substr(0, 1) != "/") {
+        endpoint = fmt::format(fmt("/{:s}"), endpoint);
+    }
+
+    std::shared_lock<std::shared_timed_mutex> lock(callback_map_lock);
+    return get_callbacks.count(endpoint) || json_callbacks.count(endpoint);
+}
+
 void restServer::drain_endpoint(const std::string& endpoint) {
     // All callbacks run on the libevent dispatch thread. If we are that
     // thread, any running callback is this call's own caller (e.g. a /stop
