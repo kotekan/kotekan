@@ -29,6 +29,9 @@
  * This task performs the factorization of the visibility matrix into
  * ``num_ev`` eigenvectors and eigenvalues and stores them in reserve space
  * in the ``N2Buffer``. They are stored in descending order of the eigenvalue.
+ * Each eigenvector is phased so that its element for the first input the mask
+ * keeps (not in `exclude_inputs`, and not flagged when `mask_flagged_inputs` is
+ * set) is real and non-negative.
  *
  * This is performed by using a subspace iteration method with an augmented
  * Rayleigh-Ritz step and a progressive matrix completion of masked values.

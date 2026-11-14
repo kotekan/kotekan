@@ -834,6 +834,53 @@ BOOST_AUTO_TEST_CASE(sky_masked_fill_is_self_consistent) {
     BOOST_CHECK_LT(std::sqrt(residual_norm / scale), 1e-3);
 }
 
+// The data in the masked entries never reaches the decomposition: replacing it, here
+// with loud noise on the excluded inputs and the diagonal bands, leaves the result the
+// same to the last bit. This is what masks out a loud excluded input or the
+// autocorrelation excess.
+BOOST_AUTO_TEST_CASE(sky_masked_data_is_ignored) {
+    std::mt19937 rng(7);
+    const auto A = sky_matrix({{100, 30, 10, 3}, 0.1f, sky_excluded}, rng);
+    const auto W = sky_mask();
+    DynamicHermitian<cfloat> B = A;
+    std::normal_distribution<float> gauss(0.0f, 10.0f);
+    for (size_t j = 0; j < sky_elements; j++)
+        for (size_t i = 0; i <= j; i++)
+            if (W(i, j) == 0.0f)
+                B(i, j) = cfloat(gauss(rng), i == j ? 0.0f : gauss(rng));
+    check_identical(sky_solve(A, W), sky_solve(B, W));
+}
+
+// Each eigenvector's phase is fixed by the first input the mask keeps. With the first
+// inputs excluded, their elements are rounding noise and cannot fix it, and the
+// eigenvectors from two different starting subspaces still agree.
+BOOST_AUTO_TEST_CASE(sky_phase_reference_skips_excluded_inputs) {
+    const std::vector<size_t> excluded = {0, 1};
+    const size_t reference = 2;
+    std::mt19937 rng(8);
+    const auto A = sky_matrix({{100, 30, 10, 3}, 0.1f, excluded}, rng);
+    DynamicHermitian<float> W;
+    fill_mask(W, sky_elements, excluded, {}, sky_bands, 0);
+
+    const auto a = sky_solve(A, W);
+    std::mt19937 other_rng(eigen_subspace_seed + 1);
+    EigenMaskedSubspaceSolver<cfloat> solver;
+    solver.solve(A, W, sky_num_ev, sky_tol_eval, sky_tol_evec, sky_max_iterations, sky_num_ev_conv,
+                 sky_krylov, sky_subspace, other_rng);
+    const auto& b = solver.evecs();
+
+    for (size_t l = 0; l < sky_num_ev; l++) {
+        for (const auto& V : {a.evecs, b}) {
+            BOOST_CHECK_GT(V(reference, l).real(), 0.0f);
+            BOOST_CHECK_SMALL(V(reference, l).imag(), 1e-6f);
+        }
+        float diff = 0.0f;
+        for (size_t i = 0; i < sky_elements; i++)
+            diff += std::norm(a.evecs(i, l) - b(i, l));
+        BOOST_CHECK_LT(std::sqrt(diff), 1e-2f);
+    }
+}
+
 // The products, the refill and the residual are split over blaze's threads, and the
 // split must not change the result beyond rounding. Without OpenMP the thread count
 // cannot be set and the two solves are the same.
