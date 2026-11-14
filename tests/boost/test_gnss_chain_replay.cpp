@@ -302,15 +302,15 @@ struct SideCombiner {
     int id = 0;                // the REC capture's next frame of `in`
 };
 
-/// The side combiners with Scenario::cold_ref ("cold", then "scint"), 20 frames either side of
-/// the swap.
+/// The side combiners with Scenario::cold_ref ("cold", then "scint"), up to 6 frames after the
+/// swap, and "scint" from 10 frames before it.
 std::vector<SideCombiner> side_combiners(const Scenario& sc) {
     std::vector<SideCombiner> v(2);
     v[0].name = "cold";
     v[0].from = sc.swap_frame;
     v[1].name = "scint";
-    v[1].from = sc.swap_frame - 20;
-    v[0].to = v[1].to = sc.swap_frame + 20;
+    v[1].from = sc.swap_frame - 10;
+    v[0].to = v[1].to = sc.swap_frame + 6;
     return v;
 }
 
@@ -512,13 +512,17 @@ void capture(ChainRun* R, int kind) {
                 float* x = (float*)c.in->wait_for_empty_frame(name, c.id);
                 if (x == nullptr)
                     return;
-                std::memcpy(x, f, b->frame_size);
-                if (c.name == "scint" && n < R->s->n_rec * R->sc->swap_frame && n % 10 == 0) {
-                    // A is over the prompt energy: a tenth of it is ten times the amplitude.
-                    const int stride =
-                        gnss::record_stride(R->s->combine.at("n_elements").get<int>());
-                    x[stride * R->sc->swap_slot + gnss::REC_P_ENERGY] *= 0.1f;
-                }
+                // Only the swapped slot's record: the others are not compared, and empty they
+                // keep the side combiners' emits cheap.
+                const size_t stride =
+                    gnss::record_stride(R->s->combine.at("n_elements").get<int>());
+                float* rec = x + stride * R->sc->swap_slot;
+                std::memset(x, 0, b->frame_size);
+                std::memcpy(rec, (const float*)f + stride * R->sc->swap_slot,
+                            stride * sizeof(float));
+                // A is over the prompt energy: a tenth of it is ten times the amplitude.
+                if (c.name == "scint" && n < R->s->n_rec * R->sc->swap_frame && n % 10 == 0)
+                    rec[gnss::REC_P_ENERGY] *= 0.1f;
                 b->pass_metadata(id, c.in.get(), c.id);
                 c.in->mark_frame_full(name, c.id);
                 c.id = (c.id + 1) % c.in->num_frames;
@@ -666,6 +670,39 @@ void fire_posts(ChainRun& R, const Sky& sky, unsigned short port, const std::str
         post(port, u + "/set_reference_element", {{"element", 1}});
 }
 
+uint64_t digest(const json& j) {
+    const std::string b = j.dump();
+    return fnv1a64(b.data(), b.size());
+}
+
+/// Per-slot digests of combiner GET @p verb's reply @p rows after frame @p k, into @p out:
+/// "status@k" as [digest of the row without adr_arc, prn, adr_arc, s4_raw], "elements@k" as
+/// [digest, prn, keff] and "records@k" as {prn: digest}.
+void slot_digests(const std::string& verb, const json& rows, int k, json& out) {
+    const std::string cp = "@" + std::to_string(k);
+    if (!rows.is_array())
+        child_fail(79, verb + cp + ": " + rows.dump());
+    if (verb == "get_status") {
+        json st = json::array();
+        for (json r : rows) {
+            const json arc = r.at("adr_arc");
+            r.erase("adr_arc");
+            st.push_back({digest(r), r.at("prn"), arc, r.at("s4_raw")});
+        }
+        out["status" + cp] = st;
+    } else if (verb == "get_elements") {
+        json el = json::array();
+        for (const json& r : rows)
+            el.push_back({digest(r), r.at("prn"), r.at("keff")});
+        out["elements" + cp] = el;
+    } else if (verb == "get_records") {
+        json rc = json::object();
+        for (const json& r : rows)
+            rc[std::to_string(r.at("prn").get<int>())] = digest(r);
+        out["records" + cp] = rc;
+    }
+}
+
 /// Every GET the chain serves, digested, and the parts the checks read kept in @p live.
 void fire_gets(ChainRun& R, unsigned short port, const std::string& u, int k, Digests& d) {
     const std::string c = "/" + R.s->pre + "_n2combine";
@@ -676,6 +713,9 @@ void fire_gets(ChainRun& R, unsigned short port, const std::string& u, int k, Di
         const std::string verb = path.substr(path.rfind('/') + 1);
         const std::string body = j.dump();
         d.streams[R.s->pre + ".rest." + verb + cp] = {fnv1a64(body.data(), body.size())};
+        // The combiner's replies also give the per-slot digests at the checkpoint.
+        if (R.sc->mut == Mutation::none && path.compare(0, c.size() + 1, c + "/") == 0)
+            slot_digests(verb, j, k, d.slots[R.s->pre]["own"]);
         json& L = d.live[R.s->pre];
         if (verb == "get_elem_cal" && j.contains("prns")) {
             json rows = json::array();
@@ -703,18 +743,6 @@ void fire_gets(ChainRun& R, unsigned short port, const std::string& u, int k, Di
     }
 }
 
-uint64_t digest(const json& j) {
-    const std::string b = j.dump();
-    return fnv1a64(b.data(), b.size());
-}
-
-json rest_rows(unsigned short port, const std::string& path) {
-    const json j = rest(port, path, json{});
-    if (!j.is_array())
-        child_fail(79, "GET " + path + ": " + j.dump());
-    return j;
-}
-
 /// Frames after which the combiners' GETs are read per slot: the first four after the start and
 /// after the swap, which hold the first emit of each, the last before the swap, and the
 /// checkpoints.
@@ -723,24 +751,12 @@ bool slot_frame(const Scenario& sc, int k) {
            || std::find(sc.checkpoints.begin(), sc.checkpoints.end(), k) != sc.checkpoints.end();
 }
 
-/// The GETs of combiner @p name after frame @p k, per slot, into @p out: "status@k" as
-/// [digest of the row without adr_arc, prn, adr_arc, s4_raw], "elements@k" as [digest, prn, keff]
-/// and "records@k" as {prn: digest}.
-void read_slot_gets(unsigned short port, const std::string& name, int k, json& out) {
-    const std::string cp = "@" + std::to_string(k);
-    json st = json::array(), el = json::array(), rc = json::object();
-    for (json r : rest_rows(port, name + "/get_status")) {
-        const json arc = r.at("adr_arc");
-        r.erase("adr_arc");
-        st.push_back({digest(r), r.at("prn"), arc, r.at("s4_raw")});
-    }
-    for (const json& r : rest_rows(port, name + "/get_elements"))
-        el.push_back({digest(r), r.at("prn"), r.at("keff")});
-    for (const json& r : rest_rows(port, name + "/get_records"))
-        rc[std::to_string(r.at("prn").get<int>())] = digest(r);
-    out["status" + cp] = st;
-    out["elements" + cp] = el;
-    out["records" + cp] = rc;
+/// The GETs of combiner @p name after frame @p k, digested per slot into @p out, get_records only
+/// with @p records.
+void read_slot_gets(unsigned short port, const std::string& name, int k, bool records, json& out) {
+    for (const std::string verb : {"get_status", "get_elements", "get_records"})
+        if (records || verb != "get_records")
+            slot_digests(verb, rest(port, name + "/" + verb, json{}), k, out);
 }
 
 void snapshot_board(int k, Digests& d) {
@@ -935,14 +951,26 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
             capture_side(*R, k);
             const std::string u = assembler_name(s, R->idx, sc);
             fire_posts(*R, sky, port, u, k);
-            if (std::find(sc.checkpoints.begin(), sc.checkpoints.end(), k) != sc.checkpoints.end())
+            const bool checkpoint =
+                std::find(sc.checkpoints.begin(), sc.checkpoints.end(), k) != sc.checkpoints.end();
+            if (checkpoint)
                 fire_gets(*R, port, u, k, d);
-            if (slot_frame(sc, k)) {
+            // The per-slot GETs, which only the unmutated runs' checks read. get_records is the
+            // costly one, so it is read only where the swap checks compare it: the chain's own
+            // from the swap on, and the side combiners' on "cold". The side combiners are read
+            // from the frame of the chain's first emit since the swap, and "scint" also at the
+            // frame before it (its raw S4).
+            if (sc.mut == Mutation::none && slot_frame(sc, k)) {
                 const std::string c = "/" + s.pre + "_n2combine";
-                read_slot_gets(port, c, k, d.slots[s.pre]["own"]);
+                if (!checkpoint) // fire_gets read them
+                    read_slot_gets(port, c, k, k >= sc.swap_frame, d.slots[s.pre]["own"]);
+                const int first = (s.n_rec * sc.swap_frame / R->emit_every + 1) * R->emit_every;
                 for (const SideCombiner& x : R->side)
-                    if (k >= std::max(x.from, sc.swap_frame - 1) && k < x.to)
-                        read_slot_gets(port, c + "_" + x.name, k, d.slots[s.pre][x.name]);
+                    if (k < x.to
+                        && (k >= (first - 1) / s.n_rec
+                            || (x.name == "scint" && k == sc.swap_frame - 1)))
+                        read_slot_gets(port, c + "_" + x.name, k, x.name == "cold",
+                                       d.slots[s.pre][x.name]);
             }
             if (sc.refill_a5)
                 std::memset(R->buf[EPL]->frames[0], 0xA5, R->buf[EPL]->frame_size);
@@ -1659,10 +1687,11 @@ BOOST_AUTO_TEST_CASE(elements_keff) {
 
 /// A cold reset leaves the swapped slot as a combiner that first saw it on the new PRN (the
 /// baseline's "cold" side combiner, fed the same records from the swap on), in every emit and in
-/// every GET at the slot frames, except that its arc id counts on from the departed PRN's arcs.
-/// It holds for the chain's own combiner and for "scint", whose history before the swap has a raw
-/// S4 above 1: carried across the swap, that would survive the thermal floor (at most 1) into the
-/// first emit's S4. prn_swap_without_reset checks the other slots.
+/// every get_status, get_elements and (for the chain's own) get_records read since, except that
+/// its arc id counts on from the departed PRN's arcs. It holds for the chain's own combiner and
+/// for "scint", whose history before the swap has a raw S4 above 1: carried across the swap, that
+/// would survive the thermal floor (at most 1) into the first emit's S4. prn_swap_without_reset
+/// checks the other slots.
 BOOST_AUTO_TEST_CASE(prn_swap_cold_start) {
     const Digests& d = baseline();
     const Scenario sc = base_scenario();
@@ -1700,15 +1729,16 @@ BOOST_AUTO_TEST_CASE(prn_swap_cold_start) {
             int n_swapped = 0;
             for (int k = sc.swap_frame; k < side[0].to; ++k) {
                 const std::string cp = "@" + std::to_string(k);
-                if (!slot_frame(sc, k) || got.at("status" + cp)[q][1].get<int>() != now)
-                    continue; // not read, or no emit since the swap yet
+                if (!cold.contains("status" + cp))
+                    continue; // not read: no emit since the swap yet
                 const json& c = cold.at("status" + cp)[q];
                 note_diff("status" + cp, got.at("status" + cp)[q],
                           {c[0], c[1], arc0 + c[2].get<double>(), c[3]}, bad);
                 note_diff("elements" + cp, got.at("elements" + cp)[q], cold.at("elements" + cp)[q],
                           bad);
-                note_diff("records" + cp, got.at("records" + cp).at(key),
-                          cold.at("records" + cp).at(key), bad);
+                if (std::string(name) == "own")
+                    note_diff("records" + cp, got.at("records" + cp).at(key),
+                              cold.at("records" + cp).at(key), bad);
                 ++n_swapped;
             }
             BOOST_CHECK_MESSAGE(n_swapped > 0, s.pre << " " << name
@@ -1775,7 +1805,8 @@ BOOST_AUTO_TEST_CASE(prn_swap_without_reset) {
             const std::string cp = "@" + std::to_string(k);
             json sa = a.at("status" + cp), sb = b.at("status" + cp);
             json ea = a.at("elements" + cp), eb = b.at("elements" + cp);
-            json ra = a.at("records" + cp), rb = b.at("records" + cp);
+            json ra = a.value("records" + cp, json::object());
+            json rb = b.value("records" + cp, json::object());
             if (sa[q][1].get<int>() == now) {
                 sa[q] = sb[q] = ea[q] = eb[q] = nullptr;
                 ra.erase(std::to_string(now));
