@@ -21,9 +21,21 @@ void gpu_unpack12(const uint64_t* lut, int num_packets, int samples_per_packet, 
                                              (float2*)out);
 }
 
+__device__ static uint8_t encode(float vr, float vi, float g, const float* __restrict__ gains,
+                                 float* __restrict__ stats, size_t k) {
+    if (stats)
+        stats[k] += vr * vr + vi * vi;
+    if (gains)
+        g *= gains[k];
+    const int re = max(-7, min(7, __float2int_rn(g * vr)));
+    const int im = max(-7, min(7, __float2int_rn(g * vi)));
+    return (uint8_t)(((re + 8) << 4) | (im + 8));
+}
+
 __global__ static void untangle_quantize(const float2* __restrict__ spec, size_t m,
                                          const float2* __restrict__ w_hi,
-                                         const float2* __restrict__ w_lo, float scale,
+                                         const float2* __restrict__ w_lo, float scale, float gain,
+                                         const float* __restrict__ gains, float* __restrict__ stats,
                                          uint8_t* __restrict__ out) {
     for (size_t k = blockIdx.x * (size_t)blockDim.x + threadIdx.x; k < m;
          k += (size_t)gridDim.x * blockDim.x) {
@@ -37,19 +49,19 @@ __global__ static void untangle_quantize(const float2* __restrict__ spec, size_t
         const float2 wh = w_hi[k >> 12];
         const float2 wl = w_lo[k & 4095];
         const float2 w = make_float2(wh.x * wl.x - wh.y * wl.y, wh.x * wl.y + wh.y * wl.x);
-        const float xr = er + w.x * our - w.y * oui;
-        const float xi = ei + w.x * oui + w.y * our;
-        const int re = max(-7, min(7, __float2int_rn(scale * xr)));
-        const int im = max(-7, min(7, __float2int_rn(scale * xi)));
-        out[k] = (uint8_t)(((re + 8) << 4) | (im + 8));
+        const float xr = scale * (er + w.x * our - w.y * oui);
+        const float xi = scale * (ei + w.x * oui + w.y * our);
+        out[k] = encode(xr, xi, gain, gains, stats, k);
     }
 }
 
 void gpu_untangle_quantize(const float2* spec, size_t m, const float2* w_hi, const float2* w_lo,
-                           float scale, uint8_t* out, cudaStream_t stream) {
+                           float scale, float gain, const float* gains, float* stats, uint8_t* out,
+                           cudaStream_t stream) {
     const size_t want = (m + 255) / 256;
     const int blocks = want < 4096 ? (int)want : 4096;
-    untangle_quantize<<<blocks, 256, 0, stream>>>(spec, m, w_hi, w_lo, scale, out);
+    untangle_quantize<<<blocks, 256, 0, stream>>>(spec, m, w_hi, w_lo, scale, gain, gains, stats,
+                                                  out);
 }
 
 // ---- fp16 four-step kernels. All three work in 32x32 tiles with (32, 8) threads: smem
@@ -119,7 +131,8 @@ void gpu_twiddle_transpose(const __half2* in, size_t m1, size_t m2, const float2
 
 __global__ static void quantize_fourstep(const __half2* __restrict__ spec, size_t m1, size_t m2,
                                          const float2* __restrict__ w_hi,
-                                         const float2* __restrict__ w_lo, float scale,
+                                         const float2* __restrict__ w_lo, float scale, float gain,
+                                         const float* __restrict__ gains, float* __restrict__ stats,
                                          uint8_t* __restrict__ out) {
     __shared__ __half2 fwd[32][33];
     __shared__ __half2 par[32][33];
@@ -148,16 +161,16 @@ __global__ static void quantize_fourstep(const __half2* __restrict__ spec, size_
         const float our = 0.5f * (zk.y + zmk.y);
         const float oui = 0.5f * (zmk.x - zk.x);
         const float2 w = twiddle_hilo(w_hi, w_lo, k);
-        const float xr = er + w.x * our - w.y * oui;
-        const float xi = ei + w.x * oui + w.y * our;
-        const int re = max(-7, min(7, __float2int_rn(scale * xr)));
-        const int im = max(-7, min(7, __float2int_rn(scale * xi)));
-        out[k] = (uint8_t)(((re + 8) << 4) | (im + 8));
+        const float xr = scale * (er + w.x * our - w.y * oui);
+        const float xi = scale * (ei + w.x * oui + w.y * our);
+        out[k] = encode(xr, xi, gain, gains, stats, k);
     }
 }
 
 void gpu_quantize_fourstep(const __half2* spec, size_t m1, size_t m2, const float2* w_hi,
-                           const float2* w_lo, float scale, uint8_t* out, cudaStream_t stream) {
+                           const float2* w_lo, float scale, float gain, const float* gains,
+                           float* stats, uint8_t* out, cudaStream_t stream) {
     dim3 grid(m1 / 32, m2 / 32), block(32, 8);
-    quantize_fourstep<<<grid, block, 0, stream>>>(spec, m1, m2, w_hi, w_lo, scale, out);
+    quantize_fourstep<<<grid, block, 0, stream>>>(spec, m1, m2, w_hi, w_lo, scale, gain, gains,
+                                                  stats, out);
 }

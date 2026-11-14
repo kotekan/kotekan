@@ -22,12 +22,15 @@ void gpu_unpack12(const uint64_t* lut, int num_packets, int samples_per_packet, 
  * W = exp(-2 pi i / fft_length)), bins 0..m-1 (DC kept, Nyquist dropped), byte k =
  * offset-encoded 4+4 of scale * X[k] (round to nearest even, clamp +-7, real in the high
  * nibble). The twiddle W^k is w_hi[k >> 12] * w_lo[k & 4095]: w_lo[j] = W^j (4096 entries),
- * w_hi[j] = W^(4096 j) ((m + 4095) / 4096 entries), both computed on the host in double.
- * out may be host memory (coherent on the DGX Spark); scale folds the 2 / fft_length
- * spectrum convention and the gain together.
+ * w_hi[j] = W^(4096 j) (one entry per 4096 roots), both computed on the host in double.
+ * out may be host memory (coherent on the DGX Spark). scale carries the spectrum convention
+ * (and, on the four-step path, the m1 the twiddle pass divided out); the quantized value is
+ * gain * gains[k] * scale * X[k], with gains an optional per-bin table. stats, when given,
+ * accumulates |scale * X[k]|^2 per bin - the pre-gain power the auto-gain mode averages.
  */
 void gpu_untangle_quantize(const float2* spec, size_t m, const float2* w_hi, const float2* w_lo,
-                           float scale, uint8_t* out, cudaStream_t stream);
+                           float scale, float gain, const float* gains, float* stats, uint8_t* out,
+                           cudaStream_t stream);
 
 // The fp16 four-step path: m = m1 * m2 (both multiples of 32), z viewed as A[a][b] with
 // time index a * m2 + b. The twiddle tables of all three kernels index roots of unity of
@@ -57,6 +60,7 @@ void gpu_twiddle_transpose(const __half2* in, size_t m1, size_t m2, const float2
  * gpu_untangle_quantize; scale must also fold in the m1 the twiddle pass divided out.
  */
 void gpu_quantize_fourstep(const __half2* spec, size_t m1, size_t m2, const float2* w_hi,
-                           const float2* w_lo, float scale, uint8_t* out, cudaStream_t stream);
+                           const float2* w_lo, float scale, float gain, const float* gains,
+                           float* stats, uint8_t* out, cudaStream_t stream);
 
 #endif // FENGINE_KERNELS_HPP

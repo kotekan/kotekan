@@ -46,11 +46,23 @@
  * @buffer out_payload_buf  One quantized spectrum per frame
  *         @buffer_format fft_length / 2 bytes, int4x2_swapped_withoffset
  *         @buffer_metadata none
+ * @buffer gain_buf         Optional: per-bin gain tables from fEngineGains. The stage
+ *                          waits for the first table before processing and picks up a new
+ *                          frame between windows.
+ *         @buffer_format fft_length / 2 float32
+ *         @buffer_metadata none
+ * @buffer stats_buf        Optional: per-bin power accumulated over stats_windows windows,
+ *                          for the auto-gain mode.
+ *         @buffer_format fft_length / 2 float32
+ *         @buffer_metadata none
  *
  * @conf fft_length         Int. Samples per window; a multiple of samples_per_packet, at
  *                          most 2^28.
  * @conf samples_per_packet Int, default 4096.
- * @conf gain               Float, default 1.0. Applied to every bin before quantization.
+ * @conf gain               Float, default 1.0. Scalar gain; multiplies the gain_buf table
+ *                          when one is configured.
+ * @conf stats_windows      Int, default 64. With stats_buf, windows accumulated per stats
+ *                          frame.
  * @conf gpu_id             Int, default 0.
  * @conf fft_precision      String, default "fp32". "fp16" runs the four-step path: the
  *                          fft_length/2-point transform becomes two batched fp16 cuFFTs
@@ -78,6 +90,9 @@ private:
     Buffer* payload_buf;
     Buffer* noise_buf;
     Buffer* out_buf;
+    Buffer* gain_buf;
+    Buffer* stats_buf;
+    uint32_t stats_windows;
 
     uint64_t fft_length;
     uint32_t samples_per_packet;
