@@ -635,6 +635,8 @@ json rest(unsigned short port, const std::string& path, const json& body) {
         restClient::instance().make_request_blocking(path, body, "127.0.0.1", port, 0, 10);
     if (!r.first)
         return json{{"_error", r.second}};
+    if (r.second.empty()) // send_empty_reply
+        return json();
     json j = json::parse(r.second, nullptr, false);
     if (j.is_discarded())
         return json{{"_error", "unparsable reply"}};
@@ -662,6 +664,15 @@ void fire_posts(ChainRun& R, const Sky& sky, unsigned short port, const std::str
             g[std::to_string(prn)] = {az, el, 0.0, 0.0, utc};
         }
         post(port, u + "/set_sat_geometry", g);
+    }
+    if (k == sc.gain_frame && s.assemble.value("elem_sum", false)) {
+        json gain = json::array();
+        for (int e = 0; e < s.assemble.at("n_elements").get<int>(); ++e) {
+            const std::complex<double> g =
+                sky.gain_e[(size_t)e % sky.gain_e.size()] * std::polar(1.0 + 0.02 * e, -0.2);
+            gain.push_back({g.real(), g.imag()});
+        }
+        post(port, u + "/set_elem_gain", {{"gain", gain}});
     }
     if (k == sc.shared_ref_frame) {
         json ref = json::array();

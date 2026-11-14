@@ -57,7 +57,7 @@ enum class Mutation {
 struct Scenario {
     int n_frames = 120, swap_frame = 40, swap_slot = 2, proj_live_frame = 45, reanchor_frame = 55,
         reanchor_slot = 1, dark_r0_frame = 70, dark_r0_slot = 3, ref_elem_frame = 90,
-        shared_ref_frame = 30, geom_every = 24;
+        shared_ref_frame = 30, gain_frame = 15, geom_every = 24;
     std::vector<int> checkpoints{29, 59, 89, 119};
     Mutation mut = Mutation::none;
     bool refill_a5 = true;
@@ -160,6 +160,18 @@ inline std::vector<gnss::ElemSteer::cf> steer_of(const ChainSpec& s, int prn) {
     return tab;
 }
 
+/// NCO slope of @p slot at absolute record @p k, Hz.
+inline double nco_hz(int slot, int64_t k) {
+    return 350.0 + 60.0 * slot + 25.0 * (double)(k % 5);
+}
+
+/// Carrier phase of @p slot's planted signal at absolute record @p k, cycles. write_ctl's f_nco and
+/// dcyc advance the assembler's NCO by exactly this phase's step, so the derotated prompt keeps
+/// only the arc's starting phase.
+inline double carrier_cyc(int slot, int64_t k) {
+    return 0.37 * slot + 0.0113 * (slot + 1) * (double)(k % 1000) + 0.05 * (double)((k * k) % 11);
+}
+
 /// Writes the control block of @p frame into @p f (@p bytes, the n2ctl frame size), as
 /// cudaGnssInject does: the whole block zeroed, every slot's PRN stamped, job0 numbered
 /// compactly over the frame's running (record, slot) pairs, and the energy rows after
@@ -173,6 +185,7 @@ inline void write_ctl(uint8_t* f, size_t bytes, const ChainSpec& s, const Sky& s
     auto* pctl = (PrnCtl*)(f + off_prnctl());
     auto* en = (double*)(f + off_prnctl() + sizeof(PrnCtl) * MAX_REC * s.n_prn);
     const int64_t rec0 = REC_BASE + (int64_t)s.n_rec * frame;
+    const double dt = (double)s.hops_per_record * s.fft_len / s.sample_rate;
     hdr->n_rec = s.n_rec;
     hdr->n_prn = s.n_prn;
     hdr->n_chan = s.n_chan;
@@ -198,13 +211,15 @@ inline void write_ctl(uint8_t* f, size_t bytes, const ChainSpec& s, const Sky& s
             c.fcar_report = (float)(1000.0 + 37.0 * p);
             c.n_owned = (float)s.n_chan;
             c.cp_seed = 40900.5 + 3.0 * p + 0.25 * ((rec0 + r) % 8);
-            c.f_nco = 0.0;
+            const int64_t k = rec0 + r;
+            c.f_nco = nco_hz(p, k);
             c.chan_mask = (s.n_chan >= 64) ? ~0ULL : ((1ULL << s.n_chan) - 1ULL);
-            c.ctrim_hz = 0.0;
+            c.ctrim_hz = 0.6 + 0.2 * p + 0.15 * (double)(k % 3);
             c.ang0 = 0.1 * p;
-            c.phi_ddop = 0.0;
+            c.phi_ddop = 0.003 * (p + 1) + 0.001 * (double)(k % 4);
             c.fcar = 1.17645e9 + c.fcar_report;
-            c.dcyc = 0.0;
+            c.dcyc =
+                carrier_cyc(p, k) - carrier_cyc(p, k - 1) - 0.5 * (nco_hz(p, k - 1) + c.f_nco) * dt;
             for (int ch = 0; ch < s.n_chan && ch < MAX_ROT_CHAN; ++ch)
                 c.rot[ch] = (float)(0.05 * (ch + 1) + 0.01 * p);
             for (int t = 0; t < ROWS_PLAIN; ++t)
@@ -258,6 +273,7 @@ struct Noise {
 /// (amp g_e conj(D_ce) f_t + n), quantized by the slot's own energy as lround(s V). D is the
 /// steering phasor the assembler applies, so the steered sum over elements is coherent; f_t is 1
 /// for the prompt, 0.5 for its head segment and 0.7 for the E and L lanes of a LANES_FULL chain.
+/// The planted term turns with the slot's carrier_cyc(), which the assembler's NCO removes.
 inline void write_tiles(int32_t* t, size_t n_i32, const ChainSpec& s, const Sky& sky,
                         const Scenario& sc, int frame) {
     using namespace gnss_gpu;
@@ -273,6 +289,7 @@ inline void write_tiles(int32_t* t, size_t n_i32, const ChainSpec& s, const Sky&
         for (int r = 0; r < s.n_rec; ++r) {
             if (!runs(s, sc, sky, frame, r, p))
                 continue;
+            const std::complex<double> car = std::polar(1.0, 2.0 * M_PI * carrier_cyc(p, rec0 + r));
             for (int c = 0; c < s.n_chan; ++c) {
                 const double qs = pack_scale(s, energy(s, p, c));
                 Noise nz(sky.seed, s.pre, p, rec0 + r, c);
@@ -287,7 +304,7 @@ inline void write_tiles(int32_t* t, size_t n_i32, const ChainSpec& s, const Sky&
                         if (planted) {
                             const gnss::ElemSteer::cf d = D[(size_t)c * s.n_live + e];
                             v += sky.amp * f * sky.gain_e[(size_t)e]
-                                 * std::conj(std::complex<double>(d.real(), d.imag()));
+                                 * std::conj(std::complex<double>(d.real(), d.imag())) * car;
                         }
                         const size_t i = tile_index(s, r, c, lane, e);
                         t[i] = (int32_t)std::lround(qs * sq * v.real());
