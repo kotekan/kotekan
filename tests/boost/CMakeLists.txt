@@ -209,6 +209,12 @@ if(FFTW_FOUND)
                                                               ../../lib/stages/gnss)
     target_compile_definitions(test_gnss_chain_replay
                                PRIVATE REPLAY_BUILD_TYPE="${CMAKE_BUILD_TYPE}")
+
+    # The row contract of the GNSS host stages and their REST registration.
+    add_executable(test_gnss_host_rows test_gnss_host_rows.cpp)
+    target_link_libraries(test_gnss_host_rows PRIVATE libexternal kotekan_stages kotekan_libs
+                                                      kotekan_utils kotekan_core kotekan_metadata)
+    target_include_directories(test_gnss_host_rows PRIVATE ../../lib/stages ../../lib/stages/gnss)
 endif()
 
 # frameID / modulo<int>: reduce-on-write, the 2^32 wrap that skips buffer slots

@@ -72,6 +72,9 @@ struct Scenario {
     /// new PRN with no history, and "scint" from before it with the amplitude x10 in every tenth
     /// record before swap_frame, a history far from the chain's own that the swap must clear.
     bool cold_ref = false;
+    /// true: every chain's assembler, combiner and telemetry pack run as rows of one host stage
+    /// each (a `chains:` block), instead of as one stage per chain.
+    bool rows = false;
 };
 
 /// Record index of frame 0's first record: a multiple of every window length the chains use

@@ -69,6 +69,7 @@ add_library(
     # the broker host, which has no F-engine, GPU or FFTW.
     gnss/GnssTelemPack.cpp
     gnss/gnssTelemChain.cpp
+    gnss/gnssHostRows.cpp
     gnss/GnssTelemGather.cpp
     # The fleet code loop runs in the gather instance beside GnssTelemGather (the only place
     # with the whole fleet at frame rate), so it is in the same no-FFTW block.

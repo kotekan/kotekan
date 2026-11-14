@@ -12,10 +12,13 @@
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "gnssCombinerChain.hpp" // for CombinerChain
+#include "gnssHostRows.hpp"      // for HostRow
 #include "gnssRecord.hpp"        // for RECORD_FLOATS + slot names (the record schema)
 
 #include <atomic>  // for atomic
+#include <cstddef> // for size_t
 #include <cstdint> // for uint64_t
+#include <deque>   // for deque
 #include <string>  // for string
 #include <vector>  // for vector
 
@@ -28,7 +31,10 @@
  * amplitude @f$ \hat A = G / E @f$. The broker combines across nodes. The output uses the
  * combiner record layout of gnssRecord.hpp.
  *
- * The integration itself is a gnss::CombinerChain; this stage moves its frames.
+ * The integration itself is a gnss::CombinerChain; this stage moves its frames. With a
+ * @c chains block it hosts one chain per row (see gnss::host_rows), each with its own buffers and
+ * thread, under the REST paths, buffer client names and metric labels of the one-row stage
+ * `<key>_n2combine` it replaces, and serves the rows at `<unique_name>/chains`.
  *
  * Temporal integration is an exponential moving average with time constant
  * K = @c integration_length records (alpha = 1/K), updated every record and emitted every K/10
@@ -77,6 +83,8 @@
  * @conf bit_export          Bool (default false). Publish nav_obs in get_status.
  * @conf reset_on_prn_change Bool (default true). When a slot's records carry a new PRN (a live
  *                           swap), its state restarts cold, as GnssGpuRecordAssemble's does.
+ * @conf chains              Map (optional). One row per entry; each sets ROW_KEYS itself, alone
+ *                           sets ROW_ONLY_KEYS, and reads every other key from this block.
  *
  * @buffer in_bufs A list of one buffer: the node's records (gnssRecord.hpp tracker layout: a
  *                 RECORD_FLOATS header plus n_elements element blocks per PRN).
@@ -94,24 +102,36 @@ public:
 
     static constexpr int RECORD_UTC_SLOT = gnss::RECORD_UTC_SLOT;
 
-    /// Input records folded in, each with the emit it completed; a test reads it to wait for
-    /// the stage to go idle.
-    uint64_t records_done() const {
-        return _records_done.load();
+    /// Keys each row of a @c chains block must set itself.
+    static const std::vector<std::string> ROW_KEYS;
+    /// Keys only a row of a @c chains block may set.
+    static const std::vector<std::string> ROW_ONLY_KEYS;
+
+    /// Input records row @p row has folded in, each with the emit it completed; a test reads it
+    /// to wait for the stage to go idle.
+    uint64_t records_done(size_t row = 0) const {
+        return _rows[row].records_done.load();
     }
-    /// The last emit's records when there is no out_buf (n_prn x record stride floats). Stable
-    /// only while the stage waits for input.
-    const std::vector<float>& scratch() const {
-        return _scratch;
+    /// Row @p row's last emit when it has no out_buf (n_prn x record stride floats). Stable
+    /// only while the row waits for input.
+    const std::vector<float>& scratch(size_t row = 0) const {
+        return _rows[row].scratch;
     }
 
 private:
-    Buffer* in_buf;
-    Buffer* out_buf; ///< nullptr when the config has no out_buf
-    /// The emit's records when there is no out_buf.
-    std::vector<float> _scratch;
-    std::atomic<uint64_t> _records_done{0};
-    gnss::CombinerChain _chain;
+    struct Row {
+        Row(kotekan::Config& config, const gnss::HostRow& row);
+        Buffer* in_buf = nullptr;
+        Buffer* out_buf = nullptr; ///< nullptr when the config has no out_buf
+        /// The emit's records when there is no out_buf.
+        std::vector<float> scratch;
+        std::atomic<uint64_t> records_done{0};
+        gnss::CombinerChain chain;
+    };
+    const std::vector<gnss::HostRow> _host_rows;
+    std::deque<Row> _rows;
+
+    void run_row(size_t row);
 };
 
 #endif // GNSS_COHERENT_COMBINER_HPP

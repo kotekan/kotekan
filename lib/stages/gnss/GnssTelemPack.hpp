@@ -5,9 +5,12 @@
 #include "Stage.hpp"
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
+#include "gnssHostRows.hpp"
 #include "gnssTelemChain.hpp"
 #include "visUtil.hpp" // for frameID
 
+#include <cstddef>
+#include <deque>
 #include <string>
 #include <vector>
 
@@ -37,7 +40,10 @@
  * take each row's PRN from the first filled record slot and apply it to every slot: only the
  * slots whose record arrived carry rows.
  *
- * The packing itself is a gnss::TelemChain; this stage moves its frames.
+ * The packing itself is a gnss::TelemChain; this stage moves its frames. With a @c chains block
+ * it hosts one chain per row (see gnss::host_rows), each with its own buffers and thread, under
+ * the buffer client names of the one-row stage `<key>_telem_pack` it replaces, and serves the
+ * rows at `<unique_name>/chains`.
  *
  * @par buffers
  * @buffer in_buf  tracker record frames (one per record; GnssChanMetadata::sample_seq = wstart)
@@ -64,6 +70,8 @@
  * @conf chan_export       Bool, must be true (default true).
  * @conf channel_ids       Int list. freq_id of each comb column, sent in every frame header;
  *                           n_chan entries.
+ * @conf chains            Map (optional). One row per entry; each sets ROW_KEYS itself and reads
+ *                           every other key from this block.
  */
 class GnssTelemPack : public kotekan::Stage {
 public:
@@ -72,15 +80,23 @@ public:
     ~GnssTelemPack() override = default;
     void main_thread() override;
 
+    /// Keys each row of a @c chains block must set itself.
+    static const std::vector<std::string> ROW_KEYS;
+
 private:
-    Buffer* in_buf;
-    Buffer* out_buf;
+    struct Row {
+        Row(kotekan::Config& config, const gnss::HostRow& row);
+        Buffer* in_buf = nullptr;
+        Buffer* out_buf = nullptr;
+        gnss::TelemChain chain;
+    };
+    const std::vector<gnss::HostRow> _host_rows;
+    std::deque<Row> _rows;
 
-    gnss::TelemChain _chain;
-
-    /// Write the accumulated window out and reset. No-op if nothing is open.
+    void run_row(size_t row);
+    /// Write row @p row's accumulated window out and reset. No-op if nothing is open.
     /// Returns false if the output buffer shut down (the caller must exit).
-    bool flush(frameID& out_id);
+    bool flush(size_t row, frameID& out_id);
 };
 
 #endif // GNSS_TELEM_PACK_HPP

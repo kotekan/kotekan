@@ -14,7 +14,8 @@
 // also runs each chain's PRN swap references (Scenario::cold_ref), and the zero-amplitude
 // control run; GNSS_REPLAY_FULL=1 adds the determinism, mutation and prefill
 // controls, a run whose combiners have no out_buf and one whose combiners keep slot state across
-// a PRN swap.
+// a PRN swap. Every run also replays the chains as rows of three host stages (Scenario::rows),
+// which must give the baseline's digests.
 
 #include "Config.hpp"                // for Config
 #include "GnssChanMetadata.hpp"      // for GnssChanMetadata, get_gnss_chan_metadata
@@ -316,6 +317,41 @@ std::vector<SideCombiner> side_combiners(const Scenario& sc) {
     return v;
 }
 
+/// The host stages of Scenario::rows, for chains on GPU @p gpu.
+std::string records_host(int gpu) {
+    return "/gnss" + std::to_string(gpu) + "_records";
+}
+std::string combine_host(int gpu) {
+    return "/gnss" + std::to_string(gpu) + "_combine";
+}
+std::string telem_host(int gpu) {
+    return "/gnss" + std::to_string(gpu) + "_telem";
+}
+
+/// One host block with a `chains:` row per entry of @p blocks (chain prefix -> its one-row
+/// block): a key equal in every block and in neither @p row_keys nor @p row_only_keys is set once
+/// on the host, every other key in each row.
+json host_block(const std::map<std::string, json>& blocks, const std::vector<std::string>& row_keys,
+                const std::vector<std::string>& row_only_keys) {
+    auto per_row = [&](const std::string& k) {
+        return std::find(row_keys.begin(), row_keys.end(), k) != row_keys.end()
+               || std::find(row_only_keys.begin(), row_only_keys.end(), k) != row_only_keys.end();
+    };
+    json host = json::object();
+    for (const auto& [k, v] : blocks.begin()->second.items()) {
+        bool uniform = !per_row(k);
+        for (const auto& [pre, b] : blocks)
+            uniform = uniform && b.contains(k) && b.at(k) == v;
+        if (uniform)
+            host[k] = v;
+    }
+    for (const auto& [pre, b] : blocks)
+        for (const auto& [k, v] : b.items())
+            if (!host.contains(k))
+                host["chains"][pre][k] = v;
+    return host;
+}
+
 /// One kotekan config holding every chain's four blocks, with the harness's buffer names.
 json build_config(const std::vector<ChainSpec>& cs, const Scenario& sc,
                   const std::vector<int>& cpus) {
@@ -323,6 +359,7 @@ json build_config(const std::vector<ChainSpec>& cs, const Scenario& sc,
     cfg["log_level"] = "warn";
     cfg["cpu_affinity"] = cpus;
     cfg["samples_per_data_set"] = cs[0].n_rec * cs[0].hops_per_record;
+    std::map<std::string, json> rows_as, rows_cb, rows_tp;
     for (size_t i = 0; i < cs.size(); ++i) {
         const ChainSpec& s = cs[i];
         json ad = s.adapter, as = s.assemble, cb = s.combine, tp = s.telem;
@@ -344,9 +381,15 @@ json build_config(const std::vector<ChainSpec>& cs, const Scenario& sc,
         for (json* b : {&ad, &as, &cb, &tp})
             (*b)["cpu_affinity"] = cpus;
         cfg[s.pre + "_n2assemble_tiles"] = ad;
-        cfg[assembler_name(s, (int)i, sc).substr(1)] = as;
-        cfg[s.pre + "_n2combine"] = cb;
-        cfg[s.pre + "_telem_pack"] = tp;
+        if (sc.rows) {
+            rows_as[s.pre] = as;
+            rows_cb[s.pre] = cb;
+            rows_tp[s.pre] = tp;
+        } else {
+            cfg[assembler_name(s, (int)i, sc).substr(1)] = as;
+            cfg[s.pre + "_n2combine"] = cb;
+            cfg[s.pre + "_telem_pack"] = tp;
+        }
         if (!sc.cold_ref)
             continue;
         for (const SideCombiner& x : side_combiners(sc)) {
@@ -355,6 +398,13 @@ json build_config(const std::vector<ChainSpec>& cs, const Scenario& sc,
             c["in_bufs"] = {buf_name(s, "n2rec_" + x.name + "_buf")};
             cfg[s.pre + "_n2combine_" + x.name] = c;
         }
+    }
+    if (sc.rows) {
+        cfg[records_host(cs[0].gpu).substr(1)] = host_block(
+            rows_as, GnssGpuRecordAssemble::ROW_KEYS, GnssGpuRecordAssemble::ROW_ONLY_KEYS);
+        cfg[combine_host(cs[0].gpu).substr(1)] = host_block(rows_cb, GnssCoherentCombiner::ROW_KEYS,
+                                                            GnssCoherentCombiner::ROW_ONLY_KEYS);
+        cfg[telem_host(cs[0].gpu).substr(1)] = host_block(rows_tp, GnssTelemPack::ROW_KEYS, {});
     }
     return cfg;
 }
@@ -390,6 +440,7 @@ struct ChainRun {
     std::unique_ptr<Buffer> ctl, tiles, buf[N_KIND];
     std::vector<std::unique_ptr<kotekan::Stage>> stages;
     GnssCoherentCombiner* cmb = nullptr;
+    size_t cmb_row = 0; ///< the chain's row of cmb
     std::vector<SideCombiner> side;
     std::vector<uint64_t> hashes[N_KIND];
     std::atomic<int> count[N_KIND];
@@ -578,7 +629,8 @@ bool quiescent(ChainRun& R, int k) {
     return R.ctl->is_frame_empty(0) && R.tiles->is_frame_empty(0) && R.buf[EPL]->is_frame_empty(0)
            && R.buf[REC]->get_num_full_frames() == 0 && R.buf[CUBE]->get_num_full_frames() == 0
            && R.count[EPL].load() == k + 1 && R.count[REC].load() == n_rec * (k + 1)
-           && R.count[TELEM].load() == k + 1 && R.cmb->records_done() == (uint64_t)n_rec * (k + 1)
+           && R.count[TELEM].load() == k + 1
+           && R.cmb->records_done(R.cmb_row) == (uint64_t)n_rec * (k + 1)
            && (!R.sc->combiner_out_buf || R.count[CMB].load() == n_rec * (k + 1) / R.emit_every)
            && sides_quiescent(R, k);
 }
@@ -598,7 +650,7 @@ void capture_scratch(ChainRun& R, int k) {
     const int n = R.count[CMB].load();
     if (!scratch_emit(R, R.s->n_rec * (k + 1), n, k))
         return;
-    const std::vector<float>& f = R.cmb->scratch();
+    const std::vector<float>& f = R.cmb->scratch(R.cmb_row);
     R.hashes[CMB].push_back(fnv1a64(f.data(), f.size() * sizeof(float)));
     R.cmb_rows.push_back(cmb_slot_rows(*R.s, f.data()));
     R.count[CMB].store(n + 1);
@@ -617,7 +669,7 @@ void wait_quiescent(ChainRun& R, int k) {
             child_fail(71, fmt::format("{:s} not quiescent 30 s after frame {:d}: epl {:d} rec "
                                        "{:d} combined {:d} cmb {:d} telem {:d}",
                                        R.s->pre, k, R.count[EPL].load(), R.count[REC].load(),
-                                       R.cmb->records_done(), R.count[CMB].load(),
+                                       R.cmb->records_done(R.cmb_row), R.count[CMB].load(),
                                        R.count[TELEM].load()));
         std::this_thread::sleep_for(std::chrono::microseconds(200));
     }
@@ -909,15 +961,31 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
 
     kotekan::Config config;
     config.update_config(build_config(cs, sc, cpus));
+    std::vector<std::unique_ptr<kotekan::Stage>> hosts;
+    GnssCoherentCombiner* cmb_host = nullptr;
+    if (sc.rows) {
+        hosts.emplace_back(
+            new GnssGpuRecordAssemble(config, records_host(cs[0].gpu), bc, &replay_clock));
+        cmb_host = new GnssCoherentCombiner(config, combine_host(cs[0].gpu), bc);
+        hosts.emplace_back(cmb_host);
+        hosts.emplace_back(new GnssTelemPack(config, telem_host(cs[0].gpu), bc));
+    }
     for (auto& R : runs) {
         const ChainSpec& s = *R->s;
         R->stages.emplace_back(
             new GnssN2RecordAssemble(config, "/" + s.pre + "_n2assemble_tiles", bc));
-        R->stages.emplace_back(
-            new GnssGpuRecordAssemble(config, assembler_name(s, R->idx, sc), bc, &replay_clock));
-        R->cmb = new GnssCoherentCombiner(config, "/" + s.pre + "_n2combine", bc);
-        R->stages.emplace_back(R->cmb);
-        R->stages.emplace_back(new GnssTelemPack(config, "/" + s.pre + "_telem_pack", bc));
+        if (sc.rows) {
+            // The host's rows are in key order.
+            R->cmb = cmb_host;
+            for (const auto& c : cs)
+                R->cmb_row += c.pre < s.pre;
+        } else {
+            R->stages.emplace_back(new GnssGpuRecordAssemble(config, assembler_name(s, R->idx, sc),
+                                                             bc, &replay_clock));
+            R->cmb = new GnssCoherentCombiner(config, "/" + s.pre + "_n2combine", bc);
+            R->stages.emplace_back(R->cmb);
+            R->stages.emplace_back(new GnssTelemPack(config, "/" + s.pre + "_telem_pack", bc));
+        }
         for (SideCombiner& c : R->side) {
             c.cmb = new GnssCoherentCombiner(config, "/" + s.pre + "_n2combine_" + c.name, bc);
             R->stages.emplace_back(c.cmb);
@@ -937,6 +1005,8 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
                 power.push_back(1.0 + 0.001 * (f % 97) + 0.01 * e);
         gnss::ChanPower::instance().publish(fids, power, ne);
     }
+    for (auto& h : hosts)
+        h->start();
     for (auto& R : runs) {
         for (auto& st : R->stages)
             st->start();
@@ -1020,6 +1090,24 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
         d.slots[pre]["own"]["cmb"] = R->cmb_rows;
         for (const SideCombiner& x : R->side)
             d.slots[pre][x.name]["cmb"] = x.rows;
+    }
+    // Each host lists its rows, in key order, with the one-row stage each stands for.
+    if (sc.rows) {
+        std::vector<std::string> pres;
+        for (const auto& s : cs)
+            pres.push_back(s.pre);
+        std::sort(pres.begin(), pres.end());
+        for (const auto& [host, suffix] : std::vector<std::pair<std::string, std::string>>{
+                 {records_host(cs[0].gpu), "_n2assemble"},
+                 {combine_host(cs[0].gpu), "_n2combine"},
+                 {telem_host(cs[0].gpu), "_telem_pack"}}) {
+            json want = json::array();
+            for (const auto& p : pres)
+                want.push_back({{"name", p}, {"stage", "/" + p + suffix}});
+            const json got = rest(port, host + "/chains", json{});
+            if (got != want)
+                child_fail(80, host + "/chains: " + got.dump() + ", not " + want.dump());
+        }
     }
     // The REST surface under the chains' stage names.
     {
@@ -1532,6 +1620,20 @@ BOOST_AUTO_TEST_CASE(combiner_without_out_buf) {
         BOOST_CHECK_MESSAGE(!d.streams.at(s.pre + ".cmb").empty(), s.pre << ": no combiner emit");
         BOOST_CHECK(base.slots.at(s.pre).at("own") == d.slots.at(s.pre).at("own"));
     }
+}
+
+/// The assemblers, combiners and telemetry packs hosted as rows of one stage each give the
+/// baseline's digests, endpoints, checks and per-slot reads.
+BOOST_AUTO_TEST_CASE(rows) {
+    const Digests& base = baseline();
+    Scenario sc = base_scenario();
+    sc.cold_ref = true;
+    sc.rows = true;
+    const Digests d = run_scenario(chains(), sc);
+    BOOST_CHECK_MESSAGE(changed(base, d).empty(), "as rows: " << join(changed(base, d)));
+    BOOST_CHECK(base.live == d.live);
+    BOOST_CHECK(base.pins == d.pins);
+    BOOST_CHECK(base.slots == d.slots);
 }
 
 BOOST_AUTO_TEST_CASE(identity) {
