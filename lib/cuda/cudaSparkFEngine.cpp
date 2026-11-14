@@ -171,6 +171,29 @@ void cudaSparkFEngine::main_thread() {
 
     // The twiddle pass divides fp16 intermediates by m1 to stay in range; fold it back here.
     const float scale = (float)(2.0 / (double)fft_length) * gain * (fp16 ? (float)m1 : 1.0f);
+
+    // Run every kernel and plan once on zeroed scratch: the first executions JIT and load
+    // lazily, and that stall must land before packets are flowing, not on window one.
+    {
+        uint8_t* scratch = fp16 ? (uint8_t*)d_a : (uint8_t*)d_time;
+        std::vector<uint64_t> warm_lut(num_packets, (uint64_t)(uintptr_t)scratch);
+        CHECK_CUDA_ERROR(cudaMemcpy(d_lut, warm_lut.data(), num_packets * sizeof(uint64_t),
+                                    cudaMemcpyHostToDevice));
+        if (fp16) {
+            gpu_unpack12_fp16_t(d_lut, samples_per_packet, m1, m2, d_a, stream);
+            CHECK_CUFFT(cufftXtExec(plan, d_a, d_b, CUFFT_FORWARD));
+            gpu_twiddle_transpose(d_b, m1, m2, d_whi, d_wlo, 1.0f / m1, d_a, stream);
+            CHECK_CUFFT(cufftXtExec(plan2, d_a, d_b, CUFFT_FORWARD));
+            gpu_quantize_fourstep(d_b, m1, m2, d_whi, d_wlo, scale, (uint8_t*)d_a, stream);
+        } else {
+            gpu_unpack12(d_lut, num_packets, samples_per_packet, d_time, stream);
+            CHECK_CUFFT(
+                cufftExecC2C(plan, (cufftComplex*)d_time, (cufftComplex*)d_spec, CUFFT_FORWARD));
+            gpu_untangle_quantize(d_spec, m, d_whi, d_wlo, scale, (uint8_t*)d_time, stream);
+        }
+        CHECK_CUDA_ERROR(cudaStreamSynchronize(stream));
+    }
+
     frameID job_id(job_buf), out_id(out_buf), acq_id(payload_buf), rel_id(payload_buf);
     uint64_t acquired = 0, released = 0;
 

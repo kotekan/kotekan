@@ -10,6 +10,7 @@
 
 #include <stdint.h> // for uint32_t, uint64_t
 #include <string>   // for string
+#include <vector>   // for vector
 
 /**
  * @class fEngineCheck
@@ -29,6 +30,14 @@
  * windows were bad and the exact tone value was seen, TEST_FAILED otherwise (udpPacketCheck
  * pattern).
  *
+ * With wire_mode the frames instead hold arrival-order packets from an ibvUdpRecv, where the
+ * output streams of several ADCs interleave and frames do not align to windows. Every packet
+ * is then checked on its own: the tail (checksum flag included), the cookie, link_id <
+ * num_adcs, stream_id < fft_length / 2 / payload_size, a per-ADC non-decreasing seq_number,
+ * and its payload slice of the spectrum — the ADC's tone bin when this stream_id carries it,
+ * zeros elsewhere. tone_bins and expected_reals give one entry per ADC; a bad packet counts
+ * toward max_bad_windows, and num_windows counts complete windows of packets per ADC.
+ *
  * @par Buffers
  * @buffer header_buf   Header slots from crsHeaderGen, consumed in lockstep with payload_buf
  *         @buffer_format packets_per_frame slots of header_slot bytes
@@ -47,8 +56,15 @@
  * @conf expected_real   Int. Quantized real part of the tone bin in a loss-free window.
  * @conf tolerance       Int, default 1. Allowed deviation of every bin component.
  * @conf num_windows     Int, default -1 (forever). Windows to check before exiting kotekan.
- * @conf max_bad_windows Int, default 0. With num_windows, bad windows allowed before
- *                       TEST_FAILED.
+ * @conf max_bad_windows Int, default 0. With num_windows, bad windows (or, in wire_mode, bad
+ *                       packets) allowed before TEST_FAILED.
+ * @conf wire_mode       Bool, default false. Arrival-order per-packet checking behind an
+ *                       ibvUdpRecv.
+ * @conf num_adcs        Int, default 1. Wire mode: ADCs sharing the port.
+ * @conf fft_length      Int. Wire mode: the F-engine's window length, for the packet count
+ *                       per window.
+ * @conf tone_bins       List of int. Wire mode: each ADC's tone bin.
+ * @conf expected_reals  List of int. Wire mode: each ADC's expected quantized tone real part.
  *
  * @par Metrics
  * @metric kotekan_fengine_check_windows_total     Windows checked.
@@ -66,6 +82,8 @@ public:
 private:
     /// Checks one window; returns true when every header and bin check passed.
     bool check_window(const uint8_t* headers, const uint8_t* payload);
+    /// Wire mode: checks one packet; returns true when it passed.
+    bool check_packet(const uint8_t* header, const uint8_t* payload);
 
     Buffer* header_buf;
     Buffer* payload_buf;
@@ -77,11 +95,19 @@ private:
     int tolerance;
     int num_windows;
     int64_t max_bad_windows;
+    bool wire_mode;
+    uint32_t num_adcs;
+    uint32_t packets_per_window = 0;
+    std::vector<int> tone_bins;
+    std::vector<int> expected_reals;
 
     bool have_seq = false;
     uint64_t expected_seq = 0;
     bool saw_exact = false;
     int64_t bad_windows = 0;
+    std::vector<uint64_t> packets_seen;
+    std::vector<uint64_t> last_window;
+    std::vector<bool> saw_exact_adc;
 
     kotekan::prometheus::Counter& windows_counter;
     kotekan::prometheus::Counter& bad_windows_counter;

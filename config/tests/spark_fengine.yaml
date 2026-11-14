@@ -7,7 +7,7 @@
 # Needs CAP_NET_RAW on the kotekan binary after every build:
 #     sudo setcap cap_net_raw+ep <build>/kotekan/kotekan
 # and, per chain, (payload num_frames * 3 + out num_frames * fft_length / 2^21) free 2 MB huge
-# pages (~750 at 128M points) plus the CUDA buffers (~0.6 GB per chain at 128M). Build with
+# pages (~850 at 128M points) plus the CUDA buffers (~0.6 GB per chain at 128M). Build with
 # -DUSE_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=121. See docs/sphinx/compiling/ibverbs.rst.
 #
 # Watch it with: curl -s localhost:12048/metrics | grep -E 'crs_window_align|spark_fengine'
@@ -46,11 +46,11 @@ bins_per_packet: 8192
 
 header_buffer_adc0:
     kotekan_buffer: standard
-    num_frames: 2 * fft_length / samples_per_packet / packets_per_frame + 16
+    num_frames: 2 * fft_length / samples_per_packet / packets_per_frame + 32
     frame_size: packets_per_frame * header_slot
 payload_buffer_adc0:
     kotekan_buffer: standard
-    num_frames: 2 * fft_length / samples_per_packet / packets_per_frame + 16
+    num_frames: 2 * fft_length / samples_per_packet / packets_per_frame + 32
     frame_size: packets_per_frame * payload_slot
     use_hugepages: true
     numa_node: 0
@@ -125,11 +125,11 @@ send_adc0:
 
 header_buffer_adc1:
     kotekan_buffer: standard
-    num_frames: 2 * fft_length / samples_per_packet / packets_per_frame + 16
+    num_frames: 2 * fft_length / samples_per_packet / packets_per_frame + 32
     frame_size: packets_per_frame * header_slot
 payload_buffer_adc1:
     kotekan_buffer: standard
-    num_frames: 2 * fft_length / samples_per_packet / packets_per_frame + 16
+    num_frames: 2 * fft_length / samples_per_packet / packets_per_frame + 32
     frame_size: packets_per_frame * payload_slot
     use_hugepages: true
     numa_node: 0
