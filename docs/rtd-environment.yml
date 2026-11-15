@@ -10,9 +10,10 @@ dependencies:
     - pip
     - cmake
     - doxygen
-    - sphinx
-    - sphinx_rtd_theme
-    - breathe>=4.35
+  # The versions of the Ubuntu 24.04 packages in the Docker image
+    - sphinx=7.2.6
+    - sphinx_rtd_theme=2.0.0
+    - breathe=4.35.0
   # Feature libraries
     - pkg-config
     - gdal
