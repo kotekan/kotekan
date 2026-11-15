@@ -71,8 +71,10 @@
  *                          scales by 1/m1), halving the memory traffic. Needs fft_length a
  *                          power of two of at least 2^11 and samples_per_packet a multiple
  *                          of 64.
- * @conf fft_impl           String, default "cufft". "tensor" (fp16 only, fft_length up to
- *                          2^27) replaces the two batched cuFFTs with the tensor-core
+ * @conf fft_impl           String, default "cufft". "tensor" (fft_length up to 2^27)
+ *                          runs the four-step split on tensor cores: fp16 data on fp16
+ *                          mma, or, with fft_precision fp32, fp32 data on TF32 mma (fp32
+ *                          storage and accumulation, TF32-rounded multiplies) in place of
  *                          kernel of tensorFFT.hpp, same layout and semantics.
  *
  * @par Metrics
@@ -104,6 +106,7 @@ private:
     int32_t gpu_id;
     bool fp16;
     bool tensor;
+    bool fourstep = false;
     size_t m1 = 0, m2 = 0;
 
     std::shared_ptr<cudaDeviceInterface> device;

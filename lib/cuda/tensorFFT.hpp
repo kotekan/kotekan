@@ -21,4 +21,13 @@
  */
 void gpu_tensor_fft(const __half2* in, __half2* out, size_t n, size_t batch, cudaStream_t stream);
 
+/**
+ * The same transform on fp32 data with TF32 tensor cores ("fp32 mode": m16n8k8 mma on
+ * tf32-rounded operands, fp32 accumulators, fp32 storage between stages). Each mma input
+ * rounds to TF32's 10-bit mantissa, but twiddles and inter-stage values stay fp32, so the
+ * composite error sits well below the fp16 path's. Needs 66 KiB of dynamic shared memory
+ * per CTA (one per SM); built for accuracy comparison, not tuned for speed.
+ */
+void gpu_tensor_fft_f32(const float2* in, float2* out, size_t n, size_t batch, cudaStream_t stream);
+
 #endif // TENSOR_FFT_HPP

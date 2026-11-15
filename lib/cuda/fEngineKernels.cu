@@ -65,12 +65,28 @@ void gpu_untangle_quantize(const float2* spec, size_t m, const float2* w_hi, con
                                                   out);
 }
 
-// ---- fp16 four-step kernels. All three work in 32x32 tiles with (32, 8) threads: smem
-// staging turns the transposed access of one side into coalesced rows on both sides.
+// ---- Four-step kernels, templated on the complex storage type (__half2 for the fp16
+// path, float2 for the TF32 tensor path). All three work in 32x32 tiles with (32, 8)
+// threads: smem staging turns the transposed access of one side into coalesced rows on
+// both sides.
 
-__global__ static void unpack12_fp16_t(const uint64_t* __restrict__ lut, int sp, size_t m1,
-                                       size_t m2, __half2* __restrict__ out) {
-    __shared__ __half2 tile[32][33];
+__device__ static inline float2 tofloat2(const __half2 v) {
+    return __half22float2(v);
+}
+__device__ static inline float2 tofloat2(const float2 v) {
+    return v;
+}
+__device__ static inline void store2(__half2& d, float a, float b) {
+    d = __floats2half2_rn(a, b);
+}
+__device__ static inline void store2(float2& d, float a, float b) {
+    d = make_float2(a, b);
+}
+
+template<typename T2>
+__global__ static void unpack12_t(const uint64_t* __restrict__ lut, int sp, size_t m1, size_t m2,
+                                  T2* __restrict__ out) {
+    __shared__ T2 tile[32][33];
     const size_t a0 = blockIdx.x * 32; // index along m1
     const size_t b0 = blockIdx.y * 32; // index along m2
     for (int l = threadIdx.y; l < 32; l += 8) {
@@ -83,7 +99,7 @@ __global__ static void unpack12_fp16_t(const uint64_t* __restrict__ lut, int sp,
         const unsigned b_0 = base[3 * c], b_1 = base[3 * c + 1], b_2 = base[3 * c + 2];
         const int v0 = (int)((b_0 | ((b_1 & 0xf) << 8)) ^ 0x800) - 0x800;
         const int v1 = (int)(((b_1 >> 4) | (b_2 << 4)) ^ 0x800) - 0x800;
-        tile[l][c] = __floats2half2_rn(v0 * (1.0f / 2048.0f), v1 * (1.0f / 2048.0f));
+        store2(tile[l][c], v0 * (1.0f / 2048.0f), v1 * (1.0f / 2048.0f));
     }
     __syncthreads();
     for (int r = threadIdx.y; r < 32; r += 8)
@@ -93,7 +109,13 @@ __global__ static void unpack12_fp16_t(const uint64_t* __restrict__ lut, int sp,
 void gpu_unpack12_fp16_t(const uint64_t* lut, int samples_per_packet, size_t m1, size_t m2,
                          __half2* out, cudaStream_t stream) {
     dim3 grid(m1 / 32, m2 / 32), block(32, 8);
-    unpack12_fp16_t<<<grid, block, 0, stream>>>(lut, samples_per_packet, m1, m2, out);
+    unpack12_t<<<grid, block, 0, stream>>>(lut, samples_per_packet, m1, m2, out);
+}
+
+void gpu_unpack12_f32_t(const uint64_t* lut, int samples_per_packet, size_t m1, size_t m2,
+                        float2* out, cudaStream_t stream) {
+    dim3 grid(m1 / 32, m2 / 32), block(32, 8);
+    unpack12_t<<<grid, block, 0, stream>>>(lut, samples_per_packet, m1, m2, out);
 }
 
 __device__ static float2 twiddle_hilo(const float2* __restrict__ w_hi,
@@ -103,11 +125,11 @@ __device__ static float2 twiddle_hilo(const float2* __restrict__ w_hi,
     return make_float2(wh.x * wl.x - wh.y * wl.y, wh.x * wl.y + wh.y * wl.x);
 }
 
-__global__ static void twiddle_transpose(const __half2* __restrict__ in, size_t m1, size_t m2,
-                                         const float2* __restrict__ w_hi,
-                                         const float2* __restrict__ w_lo, float inv_m1,
-                                         __half2* __restrict__ out) {
-    __shared__ __half2 tile[32][33];
+template<typename T2>
+__global__ static void
+twiddle_transpose(const T2* __restrict__ in, size_t m1, size_t m2, const float2* __restrict__ w_hi,
+                  const float2* __restrict__ w_lo, float inv_m1, T2* __restrict__ out) {
+    __shared__ T2 tile[32][33];
     const size_t k0 = blockIdx.x * 32; // index along m1 (k1)
     const size_t b0 = blockIdx.y * 32; // index along m2 (b)
     for (int l = threadIdx.y; l < 32; l += 8)
@@ -117,10 +139,10 @@ __global__ static void twiddle_transpose(const __half2* __restrict__ in, size_t 
     for (int r = threadIdx.y; r < 32; r += 8) {
         const size_t k1 = k0 + r;
         const size_t b = b0 + threadIdx.x;
-        const float2 v = __half22float2(tile[threadIdx.x][r]);
+        const float2 v = tofloat2(tile[threadIdx.x][r]);
         const float2 w = twiddle_hilo(w_hi, w_lo, 2 * ((k1 * b) & mask));
-        out[k1 * m2 + b] =
-            __floats2half2_rn(inv_m1 * (v.x * w.x - v.y * w.y), inv_m1 * (v.x * w.y + v.y * w.x));
+        store2(out[k1 * m2 + b], inv_m1 * (v.x * w.x - v.y * w.y),
+               inv_m1 * (v.x * w.y + v.y * w.x));
     }
 }
 
@@ -130,13 +152,20 @@ void gpu_twiddle_transpose(const __half2* in, size_t m1, size_t m2, const float2
     twiddle_transpose<<<grid, block, 0, stream>>>(in, m1, m2, w_hi, w_lo, inv_m1, out);
 }
 
-__global__ static void quantize_fourstep(const __half2* __restrict__ spec, size_t m1, size_t m2,
+void gpu_twiddle_transpose_f32(const float2* in, size_t m1, size_t m2, const float2* w_hi,
+                               const float2* w_lo, float inv_m1, float2* out, cudaStream_t stream) {
+    dim3 grid(m1 / 32, m2 / 32), block(32, 8);
+    twiddle_transpose<<<grid, block, 0, stream>>>(in, m1, m2, w_hi, w_lo, inv_m1, out);
+}
+
+template<typename T2>
+__global__ static void quantize_fourstep(const T2* __restrict__ spec, size_t m1, size_t m2,
                                          const float2* __restrict__ w_hi,
                                          const float2* __restrict__ w_lo, float scale, float gain,
                                          const float* __restrict__ gains, float* __restrict__ stats,
                                          uint8_t* __restrict__ out) {
-    __shared__ __half2 fwd[32][33];
-    __shared__ __half2 par[32][33];
+    __shared__ T2 fwd[32][33];
+    __shared__ T2 par[32][33];
     const size_t k10 = blockIdx.x * 32;
     const size_t k20 = blockIdx.y * 32;
     for (int l = threadIdx.y; l < 32; l += 8) {
@@ -155,8 +184,8 @@ __global__ static void quantize_fourstep(const __half2* __restrict__ spec, size_
         const size_t k1 = k10 + threadIdx.x;
         const size_t k2 = k20 + r;
         const size_t k = k2 * m1 + k1;
-        const float2 zk = __half22float2(fwd[threadIdx.x][r]);
-        const float2 zmk = __half22float2(par[threadIdx.x][r]);
+        const float2 zk = tofloat2(fwd[threadIdx.x][r]);
+        const float2 zmk = tofloat2(par[threadIdx.x][r]);
         const float er = 0.5f * (zk.x + zmk.x);
         const float ei = 0.5f * (zk.y - zmk.y);
         const float our = 0.5f * (zk.y + zmk.y);
@@ -171,6 +200,14 @@ __global__ static void quantize_fourstep(const __half2* __restrict__ spec, size_
 void gpu_quantize_fourstep(const __half2* spec, size_t m1, size_t m2, const float2* w_hi,
                            const float2* w_lo, float scale, float gain, const float* gains,
                            float* stats, uint8_t* out, cudaStream_t stream) {
+    dim3 grid(m1 / 32, m2 / 32), block(32, 8);
+    quantize_fourstep<<<grid, block, 0, stream>>>(spec, m1, m2, w_hi, w_lo, scale, gain, gains,
+                                                  stats, out);
+}
+
+void gpu_quantize_fourstep_f32(const float2* spec, size_t m1, size_t m2, const float2* w_hi,
+                               const float2* w_lo, float scale, float gain, const float* gains,
+                               float* stats, uint8_t* out, cudaStream_t stream) {
     dim3 grid(m1 / 32, m2 / 32), block(32, 8);
     quantize_fourstep<<<grid, block, 0, stream>>>(spec, m1, m2, w_hi, w_lo, scale, gain, gains,
                                                   stats, out);

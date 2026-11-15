@@ -62,9 +62,7 @@ cudaSparkFEngine::cudaSparkFEngine(Config& config, const std::string& unique_nam
             fmt::format(fmt("{:s}: fft_impl must be \"cufft\" or \"tensor\", not \"{:s}\""),
                         unique_name, impl));
     tensor = impl == "tensor";
-    if (tensor && !fp16)
-        throw std::invalid_argument(
-            fmt::format(fmt("{:s}: fft_impl tensor requires fft_precision fp16"), unique_name));
+    fourstep = fp16 || tensor;
     if (tensor && fft_length > (1ull << 27))
         throw std::invalid_argument(fmt::format(
             fmt("{:s}: fft_impl tensor supports fft_length up to 2^27 (sub-FFTs up to 8192)"),
@@ -87,12 +85,13 @@ cudaSparkFEngine::cudaSparkFEngine(Config& config, const std::string& unique_nam
                 "needs {:d}"),
             unique_name, job_buf->frame_size, num_packets, fft_window_job_size(num_packets)));
 
-    if (fp16) {
+    if (fourstep) {
         const size_t m = fft_length / 2;
         if ((fft_length & (fft_length - 1)) != 0 || samples_per_packet % 64 != 0 || m < 1024)
             throw std::invalid_argument(
-                fmt::format(fmt("{:s}: fp16 needs a power-of-two fft_length of at least 2^11 "
-                                "and samples_per_packet a multiple of 64"),
+                fmt::format(fmt("{:s}: the four-step paths (fp16 or fft_impl tensor) need a "
+                                "power-of-two fft_length of at least 2^11 and "
+                                "samples_per_packet a multiple of 64"),
                             unique_name));
         int log2m = 0;
         while ((1ull << log2m) < m)
@@ -148,11 +147,16 @@ void cudaSparkFEngine::main_thread() {
     float2* d_wlo = nullptr;
     __half2* d_a = nullptr;
     __half2* d_b = nullptr;
+    float2* d_a32 = nullptr;
+    float2* d_b32 = nullptr;
     // The four-step twiddle indexes W^(2 (b k1 mod m)), up to order fft_length.
     const size_t hi_entries = (fft_length + 4095) / 4096;
-    if (fp16) {
+    if (fourstep && fp16) {
         CHECK_CUDA_ERROR(cudaMalloc(&d_a, m * sizeof(__half2)));
         CHECK_CUDA_ERROR(cudaMalloc(&d_b, m * sizeof(__half2)));
+    } else if (fourstep) {
+        CHECK_CUDA_ERROR(cudaMalloc(&d_a32, m * sizeof(float2)));
+        CHECK_CUDA_ERROR(cudaMalloc(&d_b32, m * sizeof(float2)));
     } else {
         CHECK_CUDA_ERROR(cudaMalloc(&d_time, fft_length * sizeof(float)));
         CHECK_CUDA_ERROR(cudaMalloc(&d_spec, m * sizeof(float2)));
@@ -187,10 +191,10 @@ void cudaSparkFEngine::main_thread() {
             cudaMemcpy(d_wlo, wlo.data(), 4096 * sizeof(float2), cudaMemcpyHostToDevice));
     }
 
-    // fp32: one plan over m. fp16: batched sub-FFTs over the m1 x m2 four-step split,
-    // which fft_impl tensor runs with gpu_tensor_fft instead of cuFFT plans.
+    // One cuFFT plan over m for the plain fp32 path; batched fp16 sub-FFT plans over the
+    // m1 x m2 four-step split for fp16 cufft; no plans at all with fft_impl tensor.
     cufftHandle plan = 0, plan2 = 0;
-    if (fp16 && !tensor) {
+    if (fourstep && fp16 && !tensor) {
         long long n1 = m1, n2 = m2;
         size_t ws;
         CHECK_CUFFT(cufftCreate(&plan));
@@ -200,27 +204,30 @@ void cudaSparkFEngine::main_thread() {
         CHECK_CUFFT(cufftXtMakePlanMany(plan2, 1, &n2, nullptr, 1, n2, CUDA_C_16F, nullptr, 1, n2,
                                         CUDA_C_16F, m1, &ws, CUDA_C_16F));
         CHECK_CUFFT(cufftSetStream(plan2, stream));
-    } else if (!fp16) {
+    } else if (!fourstep) {
         CHECK_CUFFT(cufftPlan1d(&plan, (int)m, CUFFT_C2C, 1));
     }
     if (plan)
         CHECK_CUFFT(cufftSetStream(plan, stream));
     INFO("FFT of {:d} points ({:d} packets) on GPU {:d}, {:s}{:s}, scale {:g}", fft_length,
          num_packets, gpu_id,
-         fp16 ? (tensor ? "fp16 tensor four-step " : "fp16 four-step ") : "fp32",
-         fp16 ? fmt::format(fmt("{:d}x{:d}"), m1, m2) : "", 2.0 / (double)fft_length * gain);
+         fourstep ? (fp16 ? (tensor ? "fp16 tensor four-step " : "fp16 four-step ")
+                          : "tf32 tensor four-step ")
+                  : "fp32",
+         fourstep ? fmt::format(fmt("{:d}x{:d}"), m1, m2) : "", 2.0 / (double)fft_length * gain);
 
-    // The twiddle pass divides fp16 intermediates by m1 to stay in range; fold it back here.
-    const float scale = (float)(2.0 / (double)fft_length) * (fp16 ? (float)m1 : 1.0f);
+    // The twiddle pass divides four-step intermediates by m1 (fp16 needs the range; the
+    // tf32 path keeps the same semantics); fold it back here.
+    const float scale = (float)(2.0 / (double)fft_length) * (fourstep ? (float)m1 : 1.0f);
 
     // Run every kernel and plan once on zeroed scratch: the first executions JIT and load
     // lazily, and that stall must land before packets are flowing, not on window one.
     {
-        uint8_t* scratch = fp16 ? (uint8_t*)d_a : (uint8_t*)d_time;
+        uint8_t* scratch = fourstep ? (fp16 ? (uint8_t*)d_a : (uint8_t*)d_a32) : (uint8_t*)d_time;
         std::vector<uint64_t> warm_lut(num_packets, (uint64_t)(uintptr_t)scratch);
         CHECK_CUDA_ERROR(cudaMemcpy(d_lut, warm_lut.data(), num_packets * sizeof(uint64_t),
                                     cudaMemcpyHostToDevice));
-        if (fp16) {
+        if (fourstep && fp16) {
             gpu_unpack12_fp16_t(d_lut, samples_per_packet, m1, m2, d_a, stream);
             if (tensor)
                 gpu_tensor_fft(d_a, d_b, m1, m2, stream);
@@ -233,6 +240,13 @@ void cudaSparkFEngine::main_thread() {
                 CHECK_CUFFT(cufftXtExec(plan2, d_a, d_b, CUFFT_FORWARD));
             gpu_quantize_fourstep(d_b, m1, m2, d_whi, d_wlo, scale, gain, nullptr, nullptr,
                                   (uint8_t*)d_a, stream);
+        } else if (fourstep) {
+            gpu_unpack12_f32_t(d_lut, samples_per_packet, m1, m2, d_a32, stream);
+            gpu_tensor_fft_f32(d_a32, d_b32, m1, m2, stream);
+            gpu_twiddle_transpose_f32(d_b32, m1, m2, d_whi, d_wlo, 1.0f / m1, d_a32, stream);
+            gpu_tensor_fft_f32(d_a32, d_b32, m2, m1, stream);
+            gpu_quantize_fourstep_f32(d_b32, m1, m2, d_whi, d_wlo, scale, gain, nullptr, nullptr,
+                                      (uint8_t*)d_a32, stream);
         } else {
             gpu_unpack12(d_lut, num_packets, samples_per_packet, d_time, stream);
             CHECK_CUFFT(
@@ -303,7 +317,7 @@ void cudaSparkFEngine::main_thread() {
         const double start = current_time();
         CHECK_CUDA_ERROR(cudaMemcpyAsync(d_lut, fft_window_lut(job), num_packets * sizeof(uint64_t),
                                          cudaMemcpyHostToDevice, stream));
-        if (fp16) {
+        if (fourstep && fp16) {
             gpu_unpack12_fp16_t(d_lut, samples_per_packet, m1, m2, d_a, stream);
             if (tensor)
                 gpu_tensor_fft(d_a, d_b, m1, m2, stream);
@@ -316,6 +330,13 @@ void cudaSparkFEngine::main_thread() {
                 CHECK_CUFFT(cufftXtExec(plan2, d_a, d_b, CUFFT_FORWARD));
             gpu_quantize_fourstep(d_b, m1, m2, d_whi, d_wlo, scale, gain, d_gains, d_stats,
                                   out_frame, stream);
+        } else if (fourstep) {
+            gpu_unpack12_f32_t(d_lut, samples_per_packet, m1, m2, d_a32, stream);
+            gpu_tensor_fft_f32(d_a32, d_b32, m1, m2, stream);
+            gpu_twiddle_transpose_f32(d_b32, m1, m2, d_whi, d_wlo, 1.0f / m1, d_a32, stream);
+            gpu_tensor_fft_f32(d_a32, d_b32, m2, m1, stream);
+            gpu_quantize_fourstep_f32(d_b32, m1, m2, d_whi, d_wlo, scale, gain, d_gains, d_stats,
+                                      out_frame, stream);
         } else {
             gpu_unpack12(d_lut, num_packets, samples_per_packet, d_time, stream);
             CHECK_CUFFT(
@@ -352,8 +373,8 @@ void cudaSparkFEngine::main_thread() {
         CHECK_CUFFT(cufftDestroy(plan));
     if (plan2)
         CHECK_CUFFT(cufftDestroy(plan2));
-    CHECK_CUDA_ERROR(cudaFree(fp16 ? (void*)d_a : (void*)d_time));
-    CHECK_CUDA_ERROR(cudaFree(fp16 ? (void*)d_b : (void*)d_spec));
+    CHECK_CUDA_ERROR(cudaFree(fourstep ? (fp16 ? (void*)d_a : (void*)d_a32) : (void*)d_time));
+    CHECK_CUDA_ERROR(cudaFree(fourstep ? (fp16 ? (void*)d_b : (void*)d_b32) : (void*)d_spec));
     CHECK_CUDA_ERROR(cudaFree(d_lut));
     if (d_gains)
         CHECK_CUDA_ERROR(cudaFree(d_gains));

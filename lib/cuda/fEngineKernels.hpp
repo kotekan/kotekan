@@ -64,4 +64,13 @@ void gpu_quantize_fourstep(const __half2* spec, size_t m1, size_t m2, const floa
                            const float2* w_lo, float scale, float gain, const float* gains,
                            float* stats, uint8_t* out, cudaStream_t stream);
 
+// The same three four-step passes on float2 data, for the TF32 tensor path.
+void gpu_unpack12_f32_t(const uint64_t* lut, int samples_per_packet, size_t m1, size_t m2,
+                        float2* out, cudaStream_t stream);
+void gpu_twiddle_transpose_f32(const float2* in, size_t m1, size_t m2, const float2* w_hi,
+                               const float2* w_lo, float inv_m1, float2* out, cudaStream_t stream);
+void gpu_quantize_fourstep_f32(const float2* spec, size_t m1, size_t m2, const float2* w_hi,
+                               const float2* w_lo, float scale, float gain, const float* gains,
+                               float* stats, uint8_t* out, cudaStream_t stream);
+
 #endif // FENGINE_KERNELS_HPP
