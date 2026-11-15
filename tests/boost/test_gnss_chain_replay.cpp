@@ -681,6 +681,37 @@ void capture_scratch(ChainRun& R, int k) {
     R.count[CMB].store(n + 1);
 }
 
+/// With Scenario::fold: a frame released is the GPU's to overwrite, so the feeder fills each with
+/// 0xA5 as soon as the assembler releases it, whichever comes first. An assembler that reads one
+/// after releasing it reads this instead.
+void refill_released(ChainRun& R, int k) {
+    Buffer* const bufs[2] = {R.ctl.get(), R.tiles.get()};
+    bool done[2] = {false, false};
+    const auto t0 = std::chrono::steady_clock::now();
+    while (!done[0] || !done[1]) {
+        for (int i = 0; i < 2; ++i)
+            if (!done[i] && bufs[i]->is_frame_empty(0)) {
+                std::memset(bufs[i]->frames[0], 0xA5, bufs[i]->frame_size);
+                done[i] = true;
+            }
+        std::this_thread::yield();
+        if (std::chrono::steady_clock::now() - t0 > std::chrono::seconds(30))
+            child_fail(
+                71, fmt::format("{:s}: tiles or ctl frame {:d} not released in 30 s", R.s->pre, k));
+    }
+}
+
+/// With Scenario::fold, fails unless the released tiles and ctl frames still hold refill_released's
+/// 0xA5: in production cudaOutputData's next frame lands there.
+void check_released(const ChainRun& R, int k) {
+    for (const Buffer* b : {R.ctl.get(), R.tiles.get()})
+        for (size_t j = 0; j < b->frame_size; ++j)
+            if (b->frames[0][j] != 0xA5)
+                child_fail(81, fmt::format("{:s}: {:s} byte {:d} written after frame {:d} was "
+                                           "released",
+                                           R.s->pre, b->buffer_name, j, k));
+}
+
 /// With Scenario::fold, digests the assembler's own epl frame of frame @p k.
 void capture_fold(ChainRun& R, int k) {
     take_epl(R, R.as->epl_frame(R.as_row), k);
@@ -1070,6 +1101,8 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
         g_frame.store(k);
         for (auto& R : runs) {
             const ChainSpec& s = *R->s;
+            if (sc.fold && k > 0)
+                check_released(*R, k - 1);
             uint8_t* ctl = R->ctl->wait_for_empty_frame("feeder", 0);
             int32_t* tiles = (int32_t*)R->tiles->wait_for_empty_frame("feeder", 0);
             if (ctl == nullptr || tiles == nullptr)
@@ -1094,13 +1127,8 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
                                    + (sc.mut == Mutation::seq0_skew_B3 && R->idx == 1 && k >= 3));
             R->ctl->mark_frame_full("feeder", 0);
             R->tiles->mark_frame_full("feeder", 0);
-            // A frame released is the GPU's to overwrite: an assembler that reads one after
-            // releasing it reads this instead.
-            if (sc.fold) {
-                std::memset(R->ctl->wait_for_empty_frame("feeder", 0), 0xA5, R->ctl->frame_size);
-                std::memset(R->tiles->wait_for_empty_frame("feeder", 0), 0xA5,
-                            R->tiles->frame_size);
-            }
+            if (sc.fold)
+                refill_released(*R, k);
             wait_quiescent(*R, k);
             if (sc.fold)
                 capture_fold(*R, k);
@@ -1197,6 +1225,10 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
         d.strings["endpoints"] = all;
         d.streams["endpoints"] = {fnv1a64(all.data(), all.size())};
     }
+
+    if (sc.fold)
+        for (auto& R : runs)
+            check_released(*R, sc.n_frames - 1);
 
     json out = {{"streams", d.streams},
                 {"strings", d.strings},
