@@ -98,6 +98,7 @@ class GnssCoherentCombiner : public kotekan::Stage {
 public:
     GnssCoherentCombiner(kotekan::Config& config, const std::string& unique_name,
                          kotekan::bufferContainer& buffer_container);
+    ~GnssCoherentCombiner() override;
     void main_thread() override;
 
     static constexpr int RECORD_UTC_SLOT = gnss::RECORD_UTC_SLOT;
@@ -130,6 +131,8 @@ private:
     };
     const std::vector<gnss::HostRow> _host_rows;
     std::deque<Row> _rows;
+    /// The REST paths this host registered.
+    std::vector<std::string> _rest_paths;
 
     void run_row(size_t row);
 };

@@ -215,6 +215,13 @@ if(FFTW_FOUND)
     target_link_libraries(test_gnss_host_rows PRIVATE libexternal kotekan_stages kotekan_libs
                                                       kotekan_utils kotekan_core kotekan_metadata)
     target_include_directories(test_gnss_host_rows PRIVATE ../../lib/stages ../../lib/stages/gnss)
+    # kotekanMode needs the telescopes that kotekan_utils registers.
+    if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+        target_link_libraries(test_gnss_host_rows PRIVATE -Wl,-all_load kotekan_utils)
+    else()
+        target_link_libraries(test_gnss_host_rows PRIVATE -Wl,--whole-archive kotekan_utils
+                                                          -Wl,--no-whole-archive)
+    endif()
 endif()
 
 # frameID / modulo<int>: reduce-on-write, the 2^32 wrap that skips buffer slots

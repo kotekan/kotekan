@@ -77,7 +77,7 @@ class GnssTelemPack : public kotekan::Stage {
 public:
     GnssTelemPack(kotekan::Config& config, const std::string& unique_name,
                   kotekan::bufferContainer& buffer_container);
-    ~GnssTelemPack() override = default;
+    ~GnssTelemPack() override;
     void main_thread() override;
 
     /// Keys each row of a @c chains block must set itself.
@@ -92,6 +92,8 @@ private:
     };
     const std::vector<gnss::HostRow> _host_rows;
     std::deque<Row> _rows;
+    /// The REST paths this host registered.
+    std::vector<std::string> _rest_paths;
 
     void run_row(size_t row);
     /// Write row @p row's accumulated window out and reset. No-op if nothing is open.

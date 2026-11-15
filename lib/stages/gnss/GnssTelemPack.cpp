@@ -29,7 +29,11 @@ GnssTelemPack::GnssTelemPack(Config& config, const std::string& unique_name,
         row.out_buf->register_producer(hr.name);
         row.chain.check_bufs(row.in_buf, row.out_buf);
     }
-    gnss::rest_register_chains(unique_name, _host_rows);
+    gnss::rest_register_chains(unique_name, _host_rows, _rest_paths);
+}
+
+GnssTelemPack::~GnssTelemPack() {
+    gnss::release_host(_host_rows, _rest_paths);
 }
 
 bool GnssTelemPack::flush(size_t i, frameID& out_id) {

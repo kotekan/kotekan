@@ -47,6 +47,7 @@ public:
     GnssGpuRecordAssemble(kotekan::Config& config, const std::string& unique_name,
                           kotekan::bufferContainer& buffer_container,
                           double (*clock_s)() = gnss::steady_now_s);
+    ~GnssGpuRecordAssemble() override;
     void main_thread() override;
 
     /// Keys each row of a @c chains block must set itself.
@@ -70,6 +71,8 @@ private:
     };
     const std::vector<gnss::HostRow> _host_rows;
     std::deque<Row> _rows;
+    /// The REST paths this host registered.
+    std::vector<std::string> _rest_paths;
 
     void run_row(size_t row);
     /// Pack row @p row's completed window into its cube_buf and mark it full, or count it

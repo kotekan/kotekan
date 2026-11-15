@@ -1,6 +1,7 @@
 #include "gnssHostRows.hpp"
 
-#include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO, ERROR_NON_OO, FatalError
+#include "kotekanLogging.hpp"    // for FATAL_ERROR_NON_OO, ERROR_NON_OO, FatalError
+#include "prometheusMetrics.hpp" // for Metrics
 
 #include <mutex>     // for mutex, lock_guard
 #include <pthread.h> // for pthread_setaffinity_np
@@ -17,7 +18,7 @@ namespace gnss {
 namespace {
 /// Serialises the check and the registration of rest_register_unique, and guards row_names.
 std::mutex host_lock;
-/// The row names host_rows has handed out.
+/// The row names host_rows has handed out and release_host has not taken back.
 std::set<std::string> row_names;
 
 void run_row(const std::function<void(size_t)>& run, size_t row) {
@@ -61,31 +62,50 @@ std::vector<HostRow> host_rows(Config& config, const std::string& unique_name,
 }
 
 void rest_register_unique(const std::string& path,
-                          std::function<void(connectionInstance&)> callback) {
+                          std::function<void(connectionInstance&)> callback,
+                          std::vector<std::string>& paths) {
     restServer& rest = restServer::instance();
     std::lock_guard<std::mutex> lock(host_lock);
     if (rest.has_callback(path))
         FATAL_ERROR_NON_OO("REST endpoint {:s} is already registered", path);
     rest.register_get_callback(path, callback);
+    paths.push_back(path);
 }
 
 void rest_register_unique(const std::string& path,
-                          std::function<void(connectionInstance&, json&)> callback) {
+                          std::function<void(connectionInstance&, json&)> callback,
+                          std::vector<std::string>& paths) {
     restServer& rest = restServer::instance();
     std::lock_guard<std::mutex> lock(host_lock);
     if (rest.has_callback(path))
         FATAL_ERROR_NON_OO("REST endpoint {:s} is already registered", path);
     rest.register_post_callback(path, callback);
+    paths.push_back(path);
 }
 
-void rest_register_chains(const std::string& unique_name, const std::vector<HostRow>& rows) {
+void rest_register_chains(const std::string& unique_name, const std::vector<HostRow>& rows,
+                          std::vector<std::string>& paths) {
     if (rows[0].key.empty())
         return;
     json reply = json::array();
     for (const HostRow& row : rows)
         reply.push_back({{"name", row.key}, {"stage", row.name}});
-    rest_register_unique(unique_name + "/chains",
-                         [reply](connectionInstance& conn) { conn.send_json_reply(reply); });
+    rest_register_unique(
+        unique_name + "/chains", [reply](connectionInstance& conn) { conn.send_json_reply(reply); },
+        paths);
+}
+
+void release_host(const std::vector<HostRow>& rows, const std::vector<std::string>& paths) {
+    restServer& rest = restServer::instance();
+    for (const std::string& path : paths) {
+        rest.remove_get_callback(path);
+        rest.remove_json_callback(path);
+    }
+    std::lock_guard<std::mutex> lock(host_lock);
+    for (const HostRow& row : rows) {
+        kotekan::prometheus::Metrics::instance().remove_stage_metrics(row.name);
+        row_names.erase(row.name);
+    }
 }
 
 void run_rows(size_t n_rows, const std::vector<int>& cpus, const std::function<void(size_t)>& run) {

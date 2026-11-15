@@ -43,12 +43,16 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         }
         for (const auto& v : row.chain.rest_verbs()) {
             if (v.get)
-                gnss::rest_register_unique(hr.name + "/" + v.verb, v.get);
+                gnss::rest_register_unique(hr.name + "/" + v.verb, v.get, _rest_paths);
             else
-                gnss::rest_register_unique(hr.name + "/" + v.verb, v.post);
+                gnss::rest_register_unique(hr.name + "/" + v.verb, v.post, _rest_paths);
         }
     }
-    gnss::rest_register_chains(unique_name, _host_rows);
+    gnss::rest_register_chains(unique_name, _host_rows, _rest_paths);
+}
+
+GnssGpuRecordAssemble::~GnssGpuRecordAssemble() {
+    gnss::release_host(_host_rows, _rest_paths);
 }
 
 void GnssGpuRecordAssemble::main_thread() {

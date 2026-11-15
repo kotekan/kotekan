@@ -1,8 +1,9 @@
 #define BOOST_TEST_MODULE "test_gnss_host_rows"
 
 // The row contract of the GNSS host stages (gnss::host_rows) and their REST registration
-// (gnss::rest_register_unique). Each FATAL is checked in a forked child, since FATAL_ERROR raises
-// SIGTERM and the row names and REST endpoints are process-wide.
+// (gnss::rest_register_unique), and their release when a host is destroyed. Each case runs in a
+// forked child, since FATAL_ERROR raises SIGTERM and the row names and REST endpoints are
+// process-wide.
 
 #include "Config.hpp"                // for Config
 #include "GnssCoherentCombiner.hpp"  // for GnssCoherentCombiner
@@ -11,15 +12,18 @@
 #include "bufferContainer.hpp"       // for bufferContainer
 #include "gnssHostRows.hpp"          // for host_rows, rest_register_unique
 #include "kotekanLogging.hpp"        // for FatalError
+#include "kotekanMode.hpp"           // for kotekanMode
 #include "restServer.hpp"            // for restServer, connectionInstance
 
 #include "json.hpp" // for json
 
 #include <boost/test/included/unit_test.hpp>
+#include <chrono>
 #include <csignal>
 #include <functional>
 #include <string>
 #include <sys/wait.h>
+#include <thread>
 #include <unistd.h>
 #include <vector>
 
@@ -99,6 +103,48 @@ void check_row_keys(const std::vector<std::string>& row_keys) {
 
 void noop_get(connectionInstance&) {}
 void noop_post(connectionInstance&, json&) {}
+
+/// Starts @p cfg twice in this process, stopping and deleting the first run as /stop does. Each
+/// run must serve every one of @p paths, and none may be left once it is deleted.
+void start_stop_start(const json& cfg, const std::vector<std::string>& paths) {
+    kotekan::Config config;
+    config.update_config(cfg);
+    kotekan::restServer& rest = kotekan::restServer::instance();
+    for (int run = 0; run < 2; ++run) {
+        kotekan::kotekanMode* mode = new kotekan::kotekanMode(config);
+        mode->initalize_stages();
+        mode->start_stages();
+        for (const auto& p : paths) {
+            const auto t0 = std::chrono::steady_clock::now();
+            while (!rest.has_callback(p)) {
+                if (std::chrono::steady_clock::now() - t0 > std::chrono::seconds(10))
+                    throw FatalError("run " + std::to_string(run) + " does not serve " + p);
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+        }
+        mode->stop_stages();
+        mode->join();
+        delete mode;
+        for (const auto& p : paths)
+            if (rest.has_callback(p))
+                throw FatalError("run " + std::to_string(run) + " left " + p);
+    }
+}
+
+/// A config with buffers @p bufs of one record each and the combiner block @p host at /<name>.
+json combiner_config(const std::vector<std::string>& bufs, const std::string& name,
+                     const json& host) {
+    json cfg = {{"log_level", "warn"},
+                {"cpu_affinity", {0}},
+                {"telescope", {{"num_polarizations", 2}, {"num_dishes", 2}}}};
+    for (const auto& b : bufs)
+        cfg[b] = {{"kotekan_buffer", "standard"}, {"num_frames", 2}, {"frame_size", 1 << 20}};
+    cfg[name] = host;
+    cfg[name]["kotekan_stage"] = "GnssCoherentCombiner";
+    cfg[name]["n_elements"] = 1;
+    cfg[name]["fft_len"] = 16384;
+    return cfg;
+}
 
 } // namespace
 
@@ -189,19 +235,24 @@ BOOST_AUTO_TEST_CASE(duplicate_row_name_is_fatal) {
 
 BOOST_AUTO_TEST_CASE(duplicate_rest_path_is_fatal) {
     // Two hosts registering one path, as GET then GET and as GET then POST.
+    BOOST_CHECK_EQUAL(
+        fatal_of([] {
+            std::vector<std::string> paths;
+            gnss::rest_register_unique("/gnss0_a_n2combine/get_status", noop_get, paths);
+            gnss::rest_register_unique("/gnss0_b_n2combine/get_status", noop_get, paths);
+        }),
+        "");
+    BOOST_CHECK_EQUAL(
+        fatal_of([] {
+            std::vector<std::string> paths;
+            gnss::rest_register_unique("/gnss0_a_n2combine/get_status", noop_get, paths);
+            gnss::rest_register_unique("/gnss0_a_n2combine/get_status", noop_get, paths);
+        }),
+        "REST endpoint /gnss0_a_n2combine/get_status is already registered");
     BOOST_CHECK_EQUAL(fatal_of([] {
-                          gnss::rest_register_unique("/gnss0_a_n2combine/get_status", noop_get);
-                          gnss::rest_register_unique("/gnss0_b_n2combine/get_status", noop_get);
-                      }),
-                      "");
-    BOOST_CHECK_EQUAL(fatal_of([] {
-                          gnss::rest_register_unique("/gnss0_a_n2combine/get_status", noop_get);
-                          gnss::rest_register_unique("/gnss0_a_n2combine/get_status", noop_get);
-                      }),
-                      "REST endpoint /gnss0_a_n2combine/get_status is already registered");
-    BOOST_CHECK_EQUAL(fatal_of([] {
-                          gnss::rest_register_unique("/gnss0_a_n2assemble/x", noop_get);
-                          gnss::rest_register_unique("/gnss0_a_n2assemble/x", noop_post);
+                          std::vector<std::string> paths;
+                          gnss::rest_register_unique("/gnss0_a_n2assemble/x", noop_get, paths);
+                          gnss::rest_register_unique("/gnss0_a_n2assemble/x", noop_post, paths);
                       }),
                       "REST endpoint /gnss0_a_n2assemble/x is already registered");
 }
@@ -216,6 +267,28 @@ BOOST_AUTO_TEST_CASE(has_callback) {
                           if (!rest.has_callback("/hc/get") || !rest.has_callback("hc/get")
                               || !rest.has_callback("/hc/post") || rest.has_callback("/hc"))
                               throw FatalError("lookup");
+                      }),
+                      "");
+}
+
+// Deleting a host releases its row names, REST paths and row metrics, so that the same config
+// starts again in the same process after a /stop, as kotekan in daemon mode does.
+BOOST_AUTO_TEST_CASE(host_restarts_in_one_process) {
+    BOOST_CHECK_EQUAL(fatal_of([] {
+                          start_stop_start(
+                              combiner_config({"rec_buf"}, "gnss0_t_n2combine",
+                                              {{"in_bufs", {"rec_buf"}}, {"n_prn", 1}}),
+                              {"/gnss0_t_n2combine/get_status"});
+                      }),
+                      "");
+    const json rows = {{"chains",
+                        {{"gnss0_a", {{"in_bufs", {"rec_a"}}, {"n_prn", 1}}},
+                         {"gnss0_b", {{"in_bufs", {"rec_b"}}, {"n_prn", 1}}}}}};
+    BOOST_CHECK_EQUAL(fatal_of([&] {
+                          start_stop_start(
+                              combiner_config({"rec_a", "rec_b"}, "gnss0_combine", rows),
+                              {"/gnss0_a_n2combine/get_status", "/gnss0_b_n2combine/get_status",
+                               "/gnss0_combine/chains"});
                       }),
                       "");
 }

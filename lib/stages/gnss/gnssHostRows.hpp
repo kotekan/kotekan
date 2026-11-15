@@ -33,26 +33,37 @@ struct HostRow {
  * one, each entry `chains: {<key>: {...}}` is a row with cfg_path `<unique_name>/chains/<key>`,
  * named `/<key><suffix>`, the name of the one-row host it replaces. A row reads the keys it does
  * not set from the host block, so each key in @p row_keys must be set in every row itself, and a
- * key in @p row_only_keys must not be set on the host block. Each row name may be used once per
- * process. Any violation is FATAL.
+ * key in @p row_only_keys must not be set on the host block. A row name may be held by one host
+ * at a time, until release_host. Any violation is FATAL.
  */
 std::vector<HostRow> host_rows(kotekan::Config& config, const std::string& unique_name,
                                const std::string& suffix, const std::vector<std::string>& row_keys,
                                const std::vector<std::string>& row_only_keys);
 
-/// Register a GET callback at @p path, FATAL if @p path already has a callback.
+/// Register a GET callback at @p path and add @p path to @p paths, FATAL if @p path already has
+/// a callback.
 void rest_register_unique(const std::string& path,
-                          std::function<void(kotekan::connectionInstance&)> callback);
-/// Register a POST callback at @p path, FATAL if @p path already has a callback.
+                          std::function<void(kotekan::connectionInstance&)> callback,
+                          std::vector<std::string>& paths);
+/// Register a POST callback at @p path and add @p path to @p paths, FATAL if @p path already has
+/// a callback.
 void rest_register_unique(
     const std::string& path,
-    std::function<void(kotekan::connectionInstance&, nlohmann::json&)> callback);
+    std::function<void(kotekan::connectionInstance&, nlohmann::json&)> callback,
+    std::vector<std::string>& paths);
 
-/// With a @c chains block, register GET `<unique_name>/chains`, which lists @p rows.
-void rest_register_chains(const std::string& unique_name, const std::vector<HostRow>& rows);
+/// With a @c chains block, register GET `<unique_name>/chains`, which lists @p rows, and add it
+/// to @p paths.
+void rest_register_chains(const std::string& unique_name, const std::vector<HostRow>& rows,
+                          std::vector<std::string>& paths);
+
+/// Release what a host claimed, for its destructor: remove its REST @p paths, waiting for any
+/// request in flight on them, then the metrics and row names of its @p rows, so that a new host
+/// may take them.
+void release_host(const std::vector<HostRow>& rows, const std::vector<std::string>& paths);
 
 /// Call @p run for each of @p n_rows rows, row 0 on the calling thread and every other row on a
-/// thread of its own bound to @p cpus, and return once every call has.
+/// thread of its own bound to @p cpus at its start, and return once every call has.
 void run_rows(size_t n_rows, const std::vector<int>& cpus, const std::function<void(size_t)>& run);
 
 } // namespace gnss
