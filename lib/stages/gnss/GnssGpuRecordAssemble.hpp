@@ -5,11 +5,14 @@
 #include "Stage.hpp"
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
+#include "gnssEplAssemble.hpp"
 #include "gnssHostRows.hpp"
 #include "gnssRecordChain.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <deque>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -28,7 +31,14 @@
  * client names, metric labels and board owners of the one-row stage `<key>_n2assemble` it
  * replaces, and serves the rows at `<unique_name>/chains`.
  *
+ * A row reads its gnssGpuChain frames from @c in_buf (GnssN2RecordAssemble's output), or, with
+ * @c tiles_buf and @c ctl_buf, assembles each one itself from the tiles and the control block
+ * into its own frame, as GnssN2RecordAssemble does, and releases both before its first record.
+ *
  * @conf in_buf   gnssGpuChain frames from the cudaProcess chain
+ * @conf tiles_buf, ctl_buf  instead of in_buf: GnssN2RecordAssemble's inputs, with its
+ *                num_elements, num_synth, lanes_per_slot and hops_per_record, and fft_len, the
+ *                hop length in samples. Each tiles frame must start on its control block's seq0.
  * @conf out_buf  tracker records: n_prn * record_stride floats, plus the per-channel block
  *                with chan_export
  * @conf prns     initial slot -> PRN map; its length must equal the frame's n_prn
@@ -50,6 +60,12 @@ public:
     ~GnssGpuRecordAssemble() override;
     void main_thread() override;
 
+    /// Row @p row's own gnssGpuChain frame when it reads tiles_buf and ctl_buf, else null. Stable
+    /// only while the row waits for input.
+    uint8_t* epl_frame(size_t row) {
+        return _rows[row].epl.get();
+    }
+
     /// Keys each row of a @c chains block must set itself.
     static const std::vector<std::string> ROW_KEYS;
     /// Keys only a row of a @c chains block may set.
@@ -59,6 +75,15 @@ private:
     struct Row {
         Row(kotekan::Config& config, const gnss::HostRow& row, double (*clock_s)());
         Buffer* in_buf = nullptr;
+        int in_id = 0;
+        /// With tiles_buf and ctl_buf: their shape, and the frame assembled from them.
+        Buffer* tiles_buf = nullptr;
+        Buffer* ctl_buf = nullptr;
+        int tiles_id = 0, ctl_id = 0;
+        gnss_gpu::EplShape epl_shape{};
+        int64_t fft_len = 0;
+        std::unique_ptr<uint8_t[]> epl;
+        size_t epl_bytes = 0;
         Buffer* out_buf = nullptr;
         /// Push leg: each completed window is pushed to cube_buf with its address (chain, window
         /// index, wstart). It never blocks the tracker: if the next frame is not empty (safe to
@@ -75,6 +100,9 @@ private:
     std::vector<std::string> _rest_paths;
 
     void run_row(size_t row);
+    /// Assemble row @p row's next frame from its tiles and control block and release both.
+    /// Returns the frame, or null when shutting down.
+    const uint8_t* next_epl_frame(size_t row);
     /// Pack row @p row's completed window into its cube_buf and mark it full, or count it
     /// dropped if the next frame is not empty.
     void emit_cube_window(size_t row);

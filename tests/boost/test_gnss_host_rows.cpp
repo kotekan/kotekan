@@ -177,6 +177,26 @@ BOOST_AUTO_TEST_CASE(row_missing_key_is_fatal) {
     check_row_keys<GnssTelemPack>(GnssTelemPack::ROW_KEYS);
 }
 
+// A record row reads in_buf, or tiles_buf and ctl_buf, each set at its own path.
+BOOST_AUTO_TEST_CASE(record_row_input) {
+    const json none = json::object();
+    const json both = {{"in_buf", "x"}, {"tiles_buf", "x"}, {"ctl_buf", "x"}};
+    const json tiles = {{"tiles_buf", "x"}};
+    const json ctl = {{"ctl_buf", "x"}};
+    for (const json& in : {none, both, tiles, ctl}) {
+        json row = keys_block(GnssGpuRecordAssemble::ROW_KEYS);
+        row.update(in);
+        json host = keys_block(GnssGpuRecordAssemble::ROW_KEYS);
+        host["chains"] = {{"gnss0_a", row}};
+        BOOST_CHECK_EQUAL(fatal_of([&] { construct<GnssGpuRecordAssemble>(config_with(host)); }),
+                          "/gnss0_a_n2assemble: set in_buf, or tiles_buf and ctl_buf");
+    }
+    // A one-row stage's own block is its row.
+    json one = keys_block(GnssGpuRecordAssemble::ROW_KEYS);
+    BOOST_CHECK_EQUAL(fatal_of([&] { construct<GnssGpuRecordAssemble>(config_with(one)); }),
+                      "/host: set in_buf, or tiles_buf and ctl_buf");
+}
+
 BOOST_AUTO_TEST_CASE(row_only_key_on_host_is_fatal) {
     for (const auto& k : GnssGpuRecordAssemble::ROW_ONLY_KEYS) {
         json host = keys_block(GnssGpuRecordAssemble::ROW_KEYS);

@@ -2,6 +2,7 @@
 
 #include "GnssChanMetadata.hpp"
 #include "StageFactory.hpp"
+#include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata
 #include "gnssChanPower.hpp"    // for ChanPower
 #include "gnssProjSubspace.hpp" // for ProjBoard
 #include "visUtil.hpp"          // for frameID
@@ -12,11 +13,11 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(GnssGpuRecordAssemble);
 
-const std::vector<std::string> GnssGpuRecordAssemble::ROW_KEYS = {"in_buf", "out_buf", "prns",
-                                                                  "channel_ids"};
+const std::vector<std::string> GnssGpuRecordAssemble::ROW_KEYS = {"out_buf", "prns", "channel_ids"};
 const std::vector<std::string> GnssGpuRecordAssemble::ROW_ONLY_KEYS = {
-    "beam_cube_chain", "cube_buf", "elem_sum_shared_ref", "lane_transfer_freq_ids",
-    "record_cp_mod_chips"};
+    "beam_cube_chain",     "cube_buf", "ctl_buf",
+    "elem_sum_shared_ref", "in_buf",   "lane_transfer_freq_ids",
+    "record_cp_mod_chips", "tiles_buf"};
 
 GnssGpuRecordAssemble::Row::Row(Config& config, const gnss::HostRow& row, double (*clock_s)()) :
     chain(config, row.cfg_path, row.name, gnss::ProjBoard::instance(), gnss::ChanPower::instance(),
@@ -29,9 +30,39 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
           std::bind(&GnssGpuRecordAssemble::main_thread, this)),
     _host_rows(gnss::host_rows(config, unique_name, "_n2assemble", ROW_KEYS, ROW_ONLY_KEYS)) {
     for (const gnss::HostRow& hr : _host_rows) {
+        // Exact paths: a row must not take its input from the host block or the root.
+        const bool in = config.exists(hr.cfg_path, "in_buf");
+        const bool tiles = config.exists(hr.cfg_path, "tiles_buf");
+        if (in == tiles || tiles != config.exists(hr.cfg_path, "ctl_buf"))
+            FATAL_ERROR("{:s}: set in_buf, or tiles_buf and ctl_buf", hr.name);
         Row& row = _rows.emplace_back(config, hr, clock_s);
-        row.in_buf = buffer_container.get_buffer(config.get<std::string>(hr.cfg_path, "in_buf"));
-        row.in_buf->register_consumer(hr.name);
+        if (in) {
+            row.in_buf =
+                buffer_container.get_buffer(config.get<std::string>(hr.cfg_path, "in_buf"));
+            row.in_buf->register_consumer(hr.name);
+        } else {
+            row.tiles_buf =
+                buffer_container.get_buffer(config.get<std::string>(hr.cfg_path, "tiles_buf"));
+            row.tiles_buf->register_consumer(hr.name);
+            row.ctl_buf =
+                buffer_container.get_buffer(config.get<std::string>(hr.cfg_path, "ctl_buf"));
+            row.ctl_buf->register_consumer(hr.name);
+            const int hops_per_record = config.get<int>(hr.cfg_path, "hops_per_record");
+            row.epl_shape = {
+                config.get<int>(hr.cfg_path, "num_elements"),
+                config.get_default<int>(hr.cfg_path, "num_synth", 128),
+                config.get<int>(hr.cfg_path, "n_elements"),
+                (int)config.get<std::vector<int>>(hr.cfg_path, "channel_ids").size(),
+                (int)config.get<std::vector<int>>(hr.cfg_path, "prns").size(),
+                config.get_default<int>(hr.cfg_path, "lanes_per_slot", gnss_gpu::LANES_FULL),
+                hops_per_record,
+                config.get<int>(hr.cfg_path, "samples_per_data_set") / hops_per_record};
+            row.epl_shape.check(hr.name, row.tiles_buf->frame_size);
+            row.fft_len = config.get<int64_t>(hr.cfg_path, "fft_len");
+            row.epl_bytes = gnss_gpu::frame_bytes(row.epl_shape.n_prn, row.epl_shape.n_chan,
+                                                  gnss_gpu::ROWS_PLAIN, row.epl_shape.n_live);
+            row.epl.reset(new uint8_t[row.epl_bytes]);
+        }
         row.out_buf = buffer_container.get_buffer(config.get<std::string>(hr.cfg_path, "out_buf"));
         row.out_buf->register_producer(hr.name);
         row.chain.check_out_buf(row.out_buf);
@@ -65,10 +96,11 @@ void GnssGpuRecordAssemble::run_row(size_t i) {
     const std::string& name = _host_rows[i].name;
     Buffer* in_buf = row.in_buf;
     Buffer* out_buf = row.out_buf;
-    frameID frame_in(in_buf), frame_out(out_buf);
+    frameID frame_out(out_buf);
 
     while (!stop_thread) {
-        const uint8_t* in = in_buf->wait_for_full_frame(name, frame_in);
+        const uint8_t* in =
+            in_buf ? in_buf->wait_for_full_frame(name, row.in_id) : next_epl_frame(i);
         if (in == nullptr)
             return;
         const int n_rec = row.chain.begin_frame(in);
@@ -85,9 +117,39 @@ void GnssGpuRecordAssemble::run_row(size_t i) {
             out_buf->mark_frame_full(name, frame_out);
             frame_out++;
         }
-        in_buf->mark_frame_empty(name, frame_in);
-        frame_in++;
+        if (in_buf) {
+            in_buf->mark_frame_empty(name, row.in_id);
+            row.in_id = (row.in_id + 1) % in_buf->num_frames;
+        }
     }
+}
+
+const uint8_t* GnssGpuRecordAssemble::next_epl_frame(size_t i) {
+    Row& row = _rows[i];
+    const std::string& name = _host_rows[i].name;
+    const uint8_t* ctl = row.ctl_buf->wait_for_full_frame(name, row.ctl_id);
+    if (ctl == nullptr)
+        return nullptr;
+    const int32_t* tiles = (const int32_t*)row.tiles_buf->wait_for_full_frame(name, row.tiles_id);
+    if (tiles == nullptr)
+        return nullptr;
+    // cudaOutputData fills both from one GPU frame, the tiles with the correlator's metadata: its
+    // first hop must be the control block's.
+    const std::shared_ptr<chordMetadata> meta = get_chord_metadata(row.tiles_buf, row.tiles_id);
+    if (!meta || !meta->has_fpga_seq_num())
+        FATAL_ERROR("{:s}: tiles frame {:d} carries no CHORD metadata with a sequence number", name,
+                    row.tiles_id);
+    const int64_t seq0 = ((const gnss_gpu::FrameHdr*)ctl)->seq0;
+    if (meta->get_fpga_seq_num() * row.fft_len != seq0)
+        FATAL_ERROR("{:s}: the tiles frame starts at hop {:d}, its control block at sample {:d} "
+                    "(hop {:d} at fft_len {:d}): the two buffers are out of step",
+                    name, meta->get_fpga_seq_num(), seq0, seq0 / row.fft_len, row.fft_len);
+    row.epl_shape.assemble(name, ctl, tiles, row.epl.get(), row.epl_bytes);
+    row.ctl_buf->mark_frame_empty(name, row.ctl_id);
+    row.ctl_id = (row.ctl_id + 1) % row.ctl_buf->num_frames;
+    row.tiles_buf->mark_frame_empty(name, row.tiles_id);
+    row.tiles_id = (row.tiles_id + 1) % row.tiles_buf->num_frames;
+    return row.epl.get();
 }
 
 void GnssGpuRecordAssemble::emit_cube_window(size_t i) {
