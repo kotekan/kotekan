@@ -42,7 +42,7 @@
     ("fine_support", "int32", "384, 2", '"F", "S"', "1, 1", 11035),
     ("fine_powers", "uint64", "2, 3, 256", '"F", "W", "B"', "1, 1, 1", 11037),
 ] %}
-{% set dtv_sent = dtv_products if dtv_calibration_mode|default(false) else dtv_products[:1] %}
+{% set dtv_sent = dtv_products if dtv_calibration_mode|default(false) else dtv_products|selectattr("0", "equalto", "mask")|list %}
 
 ---
 {% include "common.j2" %}

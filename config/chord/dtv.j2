@@ -24,7 +24,7 @@
     ("fine_support", "int32", "num_local_freq, 2", '"F", "S"', "1, 1", 11035),
     ("fine_powers", "uint64", "2, 3, 256", '"F", "W", "B"', "1, 1, 1", 11037),
 ] %}
-{% set dtv_sent = dtv_products if dtv_calibration_mode|default(false) else dtv_products[:1] %}
+{% set dtv_sent = dtv_products if dtv_calibration_mode|default(false) else dtv_products|selectattr("0", "equalto", "mask")|list %}
 {% for n in numa_halves %}
 {% for product, value_type, extents, dimnames, dimscalings, port in dtv_products %}
 {% for suffix, rows, depth in [("", 1, "host_side_buffer_depth"),
