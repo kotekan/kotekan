@@ -410,6 +410,8 @@ json build_config(const std::vector<ChainSpec>& cs, const Scenario& sc,
         std::swap(gpu_rows[0]["ctl_offset"], gpu_rows[1]["ctl_offset"]);
     if (sc.mut == Mutation::fg_offset_swap_AB)
         std::swap(gpu_rows[0]["fg_offset"], gpu_rows[1]["fg_offset"]);
+    if (sc.mut == Mutation::row_swap_AB)
+        std::swap(gpu_rows[0], gpu_rows[1]);
     for (size_t i = 0; i < cs.size(); ++i) {
         const ChainSpec& s = cs[i];
         json ad = s.adapter, as = s.assemble, cb = s.combine, tp = s.telem;
@@ -1932,13 +1934,13 @@ BOOST_AUTO_TEST_CASE(gpu_rows) {
 }
 
 /// A row FATALs on another row's control block: chain A's and B's rows swapping their ctl_offset
-/// or their fg_offset, which shape checks cannot see between rows of one shape, or B's block
-/// carrying another row's tag.
+/// or their fg_offset, which shape checks cannot see between rows of one shape, B's block
+/// carrying another row's tag, or A and B swapping their whole rows, tag included.
 BOOST_AUTO_TEST_CASE(gpu_rows_refuse_a_mismatch) {
     const std::string A = "/" + chains()[0].pre + "_n2assemble: ";
     const std::string B = "/" + chains()[1].pre + "_n2assemble: ";
-    for (const Mutation m :
-         {Mutation::ctl_offset_swap_AB, Mutation::fg_offset_swap_AB, Mutation::row_tag_B3}) {
+    for (const Mutation m : {Mutation::ctl_offset_swap_AB, Mutation::fg_offset_swap_AB,
+                             Mutation::row_tag_B3, Mutation::row_swap_AB}) {
         Scenario sc = base_scenario();
         sc.fold = true;
         sc.gpu_rows = true;
@@ -1961,8 +1963,11 @@ BOOST_AUTO_TEST_CASE(gpu_rows_refuse_a_mismatch) {
                          || (m != Mutation::row_tag_B3 && msg.compare(0, A.size(), A) == 0);
         const bool same_shape =
             chains()[0].n_prn == chains()[1].n_prn && chains()[0].n_chan == chains()[1].n_chan;
-        const bool why = msg.find("carries row tag") != std::string::npos
-                         || (!same_shape && msg.find("are not inside") != std::string::npos);
+        const bool why =
+            m == Mutation::row_swap_AB
+                ? msg.find("is another chain's row") != std::string::npos
+                : msg.find("carries row tag") != std::string::npos
+                      || (!same_shape && msg.find("are not inside") != std::string::npos);
         BOOST_CHECK_MESSAGE(rc == 70 && who && why,
                             "mutation " << (int)m << ": child exit " << rc << ", " << msg);
         BOOST_TEST_MESSAGE("mutation " << (int)m << ": " << msg);

@@ -57,10 +57,11 @@ enum class Mutation {
     n_prn_B3,
     n_chan_B3,
     lanes_B3,
-    /// With Scenario::gpu_rows: chain A's and B's assemblers swap their gnss_row ctl_offset, or
-    /// fg_offset; from frame 3 B's control block carries the next row's tag.
+    /// With Scenario::gpu_rows: chain A's and B's assemblers swap their gnss_row ctl_offset,
+    /// fg_offset or whole entry; from frame 3 B's control block carries the next row's tag.
     ctl_offset_swap_AB,
     fg_offset_swap_AB,
+    row_swap_AB,
     row_tag_B3
 };
 

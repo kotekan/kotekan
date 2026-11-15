@@ -138,6 +138,9 @@ void GnssGpuRecordAssemble::run_row(size_t i) {
 void GnssGpuRecordAssemble::read_gpu_row(Config& config, const gnss::HostRow& hr, Row& row) {
     const gnss_gpu::GpuRow g =
         gnss_gpu::gpu_row(config.get<nlohmann::json>(hr.cfg_path, "gnss_row"));
+    // The tag names the chain the row was cut for; tie it to this row's own name.
+    if (hr.name != "/" + g.name + "_n2assemble")
+        FATAL_ERROR("{:s}: gnss_row {:s} is another chain's row", hr.name, g.name);
     gnss_gpu::EplShape& sh = row.epl_shape;
     if ((int)g.channels.size() != sh.n_chan || g.n_prn != sh.n_prn || g.lanes != sh.num_synth
         || g.ctl_bytes != gnss_gpu::ctl_bytes(sh.n_prn, sh.n_chan))
