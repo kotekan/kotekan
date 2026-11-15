@@ -58,7 +58,9 @@ static_assert(sizeof(bufferFrameHeader) == 12, "bufferFrameHeader should be 12 b
  * @par buffers
  * @buffer buf The buffer to send to the remote server.
  *        @buffer_format any
- *        @buffer_metadata any
+ *        @buffer_metadata any. Every frame must carry a metadata object (a frame
+ *                         without one is a FATAL_ERROR), and a buffer without a
+ *                         metadata_pool is refused at start.
  *
  * @conf server_ip       String, the IP address of the server to send data too.
  * @conf server_port     Int, default 11024. The port number on the remote server.
@@ -126,7 +128,8 @@ private:
     /// (once per connection). Must match use_frame_desc on the receiver.
     bool use_frame_desc;
 
-    /// Serialized list of current config tracker hashes
+    /// Tracker hash as last signalled to the receiver. A differing current
+    /// hash, or the first frame of a connection, sets config_tracker_update.
     std::string config_tracker_combined_hash;
 
     /**

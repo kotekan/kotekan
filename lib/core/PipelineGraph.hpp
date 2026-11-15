@@ -12,6 +12,7 @@
 
 #include "json.hpp" // for json
 
+#include <cstddef>  // for ptrdiff_t
 #include <deque>    // for deque
 #include <map>      // for map
 #include <set>      // for set
@@ -36,6 +37,23 @@ std::string human_bytes(size_t bytes);
  * @c human_bytes() uses binary units for anything in memory.
  */
 std::string human_rate(double bytes_per_second);
+
+/**
+ * @brief Formats an array's type and shape for a graph label, e.g.
+ *        `int8 Tbf:4 × P:2 × D:64`.
+ *
+ * Shared by host buffers (from their frame descriptor) and device memory (from
+ * the descriptor a command registered, or the metadata on the array), so the
+ * two read the same.
+ *
+ * @param type_name  The element type, as type_to_string() spells it.
+ * @param extents    One extent per dimension.
+ * @param dimnames   One name per dimension, "" where unnamed (the bare extent is
+ *                   printed); may be shorter than @p extents.
+ */
+std::string array_layout_line(const std::string& type_name,
+                              const std::vector<std::ptrdiff_t>& extents,
+                              const std::vector<std::string>& dimnames);
 
 /**
  * @brief How busy a buffer is, for the reader who is looking for the blockage.
@@ -131,6 +149,10 @@ struct GraphNode {
 
     /// Graphviz node attributes (shape, style, color, ...) other than the label.
     std::map<std::string, std::string> attrs;
+
+    /// Set on a buffer whose data flow another node already draws (a host ring
+    /// tracking a GPU region), so its producer/consumer edges are left out.
+    bool flow_drawn_elsewhere = false;
 
     /// Convenience: append a label line, ignoring empty strings.
     GraphNode& add_line(const std::string& line);

@@ -9,12 +9,14 @@
 #include "DataType.hpp"
 #include "NDArrayBuffer.hpp"
 #include "NDArrayRingBuffer.hpp"
+#include "UpchannelizationSchedule.hpp"
 #include "bufferContainer.hpp"
 #include "chordMetadata.hpp"
 #include "cudaCommand.hpp"
 #include "cudaDeviceInterface.hpp"
 #include "cudaUtils.hpp"
 #include "div.hpp"
+#include "upchannelizeReference.hpp"
 
 #include <algorithm>
 #include <array>
@@ -110,6 +112,17 @@ private:
 
     // How many frequencies we will process
     const int Fmin, Fmax;
+
+    // The largest upchannelization factor used in this run. All upchannelizers of a run label
+    // their output with the same time offset `T_offset = (M-1) * max_upchannelization_factor / 2`
+    // (in input samples), rounded up to a multiple of `upchan_output_alignment`, so that their
+    // outputs are aligned in time. See `wait_on_precondition`.
+    const int max_upchannelization_factor;
+    const std::int64_t output_alignment;
+    // Output time offset relative to the input, in input samples
+    const std::ptrdiff_t T_offset;
+    // Number of input samples we skip at startup
+    const std::ptrdiff_t T_skip;
 
     // T_min: T_min
     static constexpr const char* T_min_quantity = "T_min";
@@ -321,6 +334,10 @@ cudaUpchannelizer_hirax_U32_K4::cudaUpchannelizer_hirax_U32_K4(Config& config,
     cudaCommand(config, unique_name, host_buffers, device, instance_num, no_cuda_command_state,
                 "Upchannelizer_hirax_U32_K4", "Upchannelizer_hirax_U32_K4.ptx"),
     Fmin(config.get<int>(unique_name, "Fmin")), Fmax(config.get<int>(unique_name, "Fmax")),
+    max_upchannelization_factor(config.get<int>(unique_name, "max_upchannelization_factor")),
+    output_alignment(upchan_output_alignment(config, unique_name)),
+    T_offset(upchan_output_offset(config, unique_name)),
+    T_skip(T_offset - (cuda_number_of_taps - 1) * std::ptrdiff_t(cuda_upchannelization_factor) / 2),
 
     poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
 
@@ -341,6 +358,18 @@ cudaUpchannelizer_hirax_U32_K4::cudaUpchannelizer_hirax_U32_K4(Config& config,
 
     did_set_metadata(false), dummy() // avoid trailing comma
 {
+    if (!(max_upchannelization_factor >= cuda_upchannelization_factor
+          && (cuda_number_of_taps - 1) * max_upchannelization_factor % 2 == 0))
+        FATAL_ERROR(
+            "Kernel Upchannelizer_hirax_U32_K4 has upchannelization factor {:d} and {:d} taps; "
+            "max_upchannelization_factor={:d} must not be smaller, and "
+            "(taps-1)*max_upchannelization_factor must be even",
+            int(cuda_upchannelization_factor), int(cuda_number_of_taps),
+            max_upchannelization_factor);
+    // `T_offset` is calculated with the default number of taps
+    static_assert(cuda_number_of_taps == kotekan::upchan_default_num_taps);
+    assert(T_skip >= 0);
+
     // Register host memory
     CHECK_CUDA_ERROR(cudaHostRegister(
         host_info_buffer.data(), host_info_buffer.size() * sizeof *host_info_buffer.data(), 0));
@@ -361,8 +390,11 @@ cudaUpchannelizer_hirax_U32_K4::cudaUpchannelizer_hirax_U32_K4(Config& config,
             "--gpu-name=sm_86",
             "--verbose",
         };
-        device.build_ptx("lib/cuda/generated/Upchannelizer_hirax_U32_K4.ptx", {kernel_symbol}, opts,
-                         "Upchannelizer_hirax_U32_K4_");
+        const char* const kernel_code =
+#include "Upchannelizer_hirax_U32_K4.ptx"
+            ;
+        device.build_ptx(kernel_code, "lib/cuda/generated/Upchannelizer_hirax_U32_K4.ptx",
+                         {kernel_symbol}, opts, "Upchannelizer_hirax_U32_K4_");
     }
 }
 
@@ -392,9 +424,21 @@ int cudaUpchannelizer_hirax_U32_K4::wait_on_precondition() {
             return errcode;
     }
 
-    // Wait for data to be available in input ringbuffer
     const std::ptrdiff_t T_ringbuf = E_buffer.get_ndarray().extent(0);
     const std::ptrdiff_t T_read_max = T_ringbuf / 4;
+
+    // Output sample `tbar` is calculated from the `M * U` input samples starting at `U * tbar`.
+    // Timestamps point to the beginning of a sample, so the output sample centred on this
+    // window begins at input sample `U * tbar + (M-1) * U / 2`. To align the outputs of all
+    // upchannelizers of a run we skip `T_skip` input samples once, at startup, so that every
+    // upchannelizer's output begins at input sample `T_offset`, independent of `U`.
+    {
+        const int errcode = E_buffer.skip_at_start(T_skip);
+        if (errcode < 0)
+            return errcode;
+    }
+
+    // Wait for data to be available in input ringbuffer
     std::ptrdiff_t T_read = -1;
     {
         const int errcode = E_buffer.wait_and_claim_readable([&](const std::ptrdiff_t T_available) {
@@ -515,7 +559,20 @@ cudaUpchannelizer_hirax_U32_K4::execute(cudaPipelineState& /*pipestate*/,
                 "dimension of its output buffer Ebar has extent {:d}",
                 Ebar_nfreq, Ebar_meta->dim[Ebar_rank - 1 - Ebar_index_Fbar]);
 
-        // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
+        // Output sample `tbar` begins at input sample `T_offset + U * tbar` (see
+        // `wait_on_precondition`). We set the metadata only once since we use a ring buffer.
+        if (E_meta->has_fpga_seq_num()) {
+            const std::int64_t Ebar_fpga_seq_num =
+                E_meta->get_fpga_seq_num() + T_offset * E_time_downsampling_fpga;
+            if (Ebar_fpga_seq_num % output_alignment != 0)
+                FATAL_ERROR("Kernel Upchannelizer_hirax_U32_K4: the output begins at "
+                            "fpga_seq_num={:d}, which is not a multiple of "
+                            "upchan_output_alignment={:d}. The input begins at {:d}; its "
+                            "alignment (e.g. the dpdk alignment) must be a multiple of "
+                            "upchan_output_alignment.",
+                            Ebar_fpga_seq_num, output_alignment, E_meta->get_fpga_seq_num());
+            Ebar_meta->set_fpga_seq_num(Ebar_fpga_seq_num);
+        }
     } // if !did_set_metadata
 
     if (!Ebar_buffer.has_metadata())

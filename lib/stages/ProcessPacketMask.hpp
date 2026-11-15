@@ -1,10 +1,11 @@
 #ifndef PROCESS_PACKET_MASK_HPP
 #define PROCESS_PACKET_MASK_HPP
 
-#include "Config.hpp"          // for Config
-#include "Stage.hpp"           // for Stage
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "buffer.hpp"            // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "prometheusMetrics.hpp" // for Counter, MetricFamily
 
 #include <cstdint> // for uint32_t, uint64_t
 #include <string>  // for string
@@ -43,6 +44,30 @@
  * @conf time_short     Int. Number of short time samples (default: 16).
  * @conf element_short  Int. Number of short element samples (default: 8).
  * @conf num_source_ids Int. Number of source IDs in the receipt bitmap.
+ * @conf missing_source_ids Array of UInt32. Default empty. Output slots with no CRS board
+ *                      behind them; they are marked fully received and are not counted
+ *                      in the packet-loss metrics.
+ * @conf crs_board_remap Array of UInt32. Default empty (identity). Raw source_id of the
+ *                      board in each output slot. Used only to label the per-board metric.
+ *                      Set it at the config root so this stage and the
+ *                      crs16BoardCaptureWorker instances read the same list.
+ *
+ * @par Metrics
+ * @metric kotekan_processpacketmask_lost_packets_total
+ *         Packets missing from the combined receipt bitmap.
+ * @metric kotekan_processpacketmask_expected_packets_total
+ *         Packets expected in the combined receipt bitmap, from boards not listed in
+ *         missing_source_ids.
+ * @metric kotekan_processpacketmask_lost_samples_total
+ *         Time samples flagged in the pl_mask, summed over frequencies. A lost packet flags
+ *         time_short samples in each of the 4 x 48 frequencies of its 4-stream group.
+ * @metric kotekan_processpacketmask_samples_total
+ *         Time samples covered by the pl_mask, summed over frequencies.
+ * @metric kotekan_processpacketmask_crs_board_lost_packets_total
+ *         Packets missing from the combined receipt bitmap, labelled by the raw source_id
+ *         of the CRS board.
+ * @metric kotekan_processpacketmask_crs_board_expected_packets_total
+ *         Packets expected from each CRS board, labelled by its raw source_id.
  *
  * @author Andre Renard
  */
@@ -89,10 +114,22 @@ private:
     std::vector<uint32_t> missing_source_ids;
     uint64_t missing_source_id_mask[2];
 
+    /// Raw CRS source_id of the board in each output slot
+    std::vector<uint32_t> crs_board_remap;
+
     /// Long-term packet loss counters
     uint64_t total_packets_received = 0;
     uint64_t total_packets_missing = 0;
     uint64_t total_frames_processed = 0;
+
+    /// Prometheus metrics to export
+    kotekan::prometheus::Counter& lost_packets_metric;
+    kotekan::prometheus::Counter& expected_packets_metric;
+    kotekan::prometheus::Counter& lost_samples_metric;
+    kotekan::prometheus::Counter& samples_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& crs_board_lost_packets_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>&
+        crs_board_expected_packets_metric;
 };
 
 #endif // PROCESS_PACKET_MASK_HPP

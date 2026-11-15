@@ -11,6 +11,12 @@ if("${USE_CUDA}" STREQUAL "AUTO" OR "${USE_CUDA}" STREQUAL "ON")
     include(CheckLanguage)
     check_language(CUDA)
     if(CMAKE_CUDA_COMPILER)
+        # Choose Ampere and Ada before CMake initializes the compiler's architecture default.
+        if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES AND "$ENV{CUDAARCHS}" STREQUAL "")
+            set(CMAKE_CUDA_ARCHITECTURES
+                "86;89"
+                CACHE STRING "CUDA architectures to build")
+        endif()
         enable_language(CUDA)
         find_package(CUDAToolkit)
         if(CUDAToolkit_FOUND)

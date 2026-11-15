@@ -201,7 +201,7 @@ void testDataGen::main_thread() {
     int32_t* frame32 = nullptr;
     int64_t* frame64 = nullptr;
     uint64_t* frameu64 = nullptr;
-    uint64_t seq_num = samples_per_data_set * _first_frame_index;
+    uint64_t seq_num = samples_per_data_set * static_cast<uint64_t>(_first_frame_index);
     bool finished_seeding_constant = false;
     struct timeval now;
 #if KOTEKAN_FLOAT16

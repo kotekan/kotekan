@@ -49,7 +49,8 @@ Buffer types
 
 ``kotekan_buffer`` selects the buffer type. Every buffer block takes
 ``log_level`` (usually inherited) and optionally ``metadata_pool`` and
-``numa_node``. Frame-oriented buffers (all types except ``ring``) also
+``numa_node`` (the node the frames, and the buffer object itself, are
+allocated on). Frame-oriented buffers (all types except ``ring``) also
 require ``num_frames``, plus the optional allocation tunables
 ``use_hugepages`` (off), ``mlock_frames`` (on), ``zero_new_frames`` (on),
 ``zero_value`` (0), and ``cpu_affinity`` (unset). ``peek_hold`` (off) keeps
@@ -118,7 +119,8 @@ Type-specific parameters are required unless marked *optional*:
      - - ``ring_buffer_size`` -- ring capacity in bytes (the API speaks of
          abstract *elements*, but all current users count bytes); the
          buffer manages access only, the memory is owned elsewhere
-     - none
+     - *optional:* ``value_type``, ``extents``, and the label fields as for
+       ``ndarray``; the descriptor covers the whole ring (see below)
 
 For new pipelines, prefer ``ndarray`` (or ``N2`` for correlation products)
 wherever a frame is a typed array: the descriptor documents the shape in
@@ -150,6 +152,26 @@ shared field-validation helper, because the checks stages need (e.g. dimension
 type, buffer size divisibility, etc) are too varied to fold into one. A stage
 should read a descriptor and check any specific properties it depends on,
 completing any labels the config omitted to minimize repetition.
+
+Ring buffer descriptors
+-----------------------
+
+A ``ring`` buffer's descriptor describes the whole ring, not a frame: the
+extent of the slowest dimension is the ring's capacity along that dimension,
+and the descriptor's byte size equals ``ring_buffer_size``. The read and write
+positions are not part of it. A ring gets its descriptor from up to three
+sources, which are reconciled like any other descriptor, so a mismatch is fatal
+at startup:
+
+- the config, declared with the same keys as an ``ndarray`` buffer (optional);
+- every ``NDArrayRingBuffer`` that a GPU command uses on the ring;
+- ``cudaCopyToRingbuffer``, from the descriptor of its input buffer, with the
+  slowest dimension extended to the ring's capacity.
+
+``cudaCopyFromRingbuffer`` requires the descriptor: it describes its output
+frames as the ring's layout with the slowest dimension cut to one frame. A ring
+that none of these sources describes must therefore declare its descriptor in
+the config.
 
 Rationale
 ---------

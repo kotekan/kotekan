@@ -185,7 +185,7 @@ struct chordMetadataFormat {
 
     // Time sampling -- the factor by which the time samples have been
     // downsampled relative to FPGA samples.
-    int32_t time_downsampling_fpga;
+    int64_t time_downsampling_fpga;
 
     char name[CHORD_META_MAX_NAME]; // "E", "J", "I", etc
     // chordDataType type;

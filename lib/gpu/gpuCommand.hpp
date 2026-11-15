@@ -8,12 +8,14 @@
 #define GPU_COMMAND_H
 
 #include "Config.hpp"          // for Config
+#include "FrameDesc.hpp"       // for FrameDesc
 #include "bufferContainer.hpp" // for bufferContainer
 #include "kotekanLogging.hpp"  // for kotekanLogging
 #include "visUtil.hpp"         // for StatTracker
 
 #include "fmt.hpp" // for format, format_string
 
+#include <map>      // for map
 #include <memory>   // for allocator, shared_ptr
 #include <stdint.h> // for int32_t, int64_t
 #include <string>   // for string, basic_string
@@ -148,7 +150,7 @@ public:
      * @param graph       The graph being built.
      * @param mem_prefix  Prefix turning a GPU memory name into its node id (see
      *                    @c gpuProcess::gpu_mem_node_prefix), since GPU memory
-     *                    names are local to one gpuProcess.
+     *                    names are local to one device.
      */
     virtual void add_graph_details(kotekan::PipelineGraph& graph,
                                    const std::string& mem_prefix) const {
@@ -217,14 +219,40 @@ protected:
     /// For get_gpu_buffers: a list of GPU buffers used by this command.
     std::vector<std::tuple<std::string, bool, bool, bool>> gpu_buffers_used;
 
+    /// For get_gpu_buffer_desc: the frame descriptors registered with them.
+    std::map<std::string, std::shared_ptr<const kotekan::FrameDesc>> gpu_buffer_descs;
+
+    /// For get_gpu_buffer_signal: the signal rings registered with them.
+    std::map<std::string, std::string> gpu_buffer_signals;
+
 public:
     struct gpu_buffer_descriptor {
         std::string name;
         bool is_array;
         bool does_read;
         bool does_write;
+        /// The array layout of the memory, when the command declares one (the
+        /// NDArray wrappers do); drawn on its node in the pipeline graph.
+        std::shared_ptr<const kotekan::FrameDesc> frame_desc = nullptr;
+        /// For a ring region: the host RingBuffer whose cursors track it, so
+        /// the pipeline graph can draw the two as a pair. Empty otherwise.
+        std::string signal_buffer = "";
     };
     void register_gpu_buffer_user(const gpu_buffer_descriptor& desc);
+
+    /// The frame descriptor registered for a GPU memory name, or null when the
+    /// command declared none for it.
+    std::shared_ptr<const kotekan::FrameDesc> get_gpu_buffer_desc(const std::string& name) const {
+        auto it = gpu_buffer_descs.find(name);
+        return it == gpu_buffer_descs.end() ? nullptr : it->second;
+    }
+
+    /// The host RingBuffer registered as the signal of a GPU ring region, or ""
+    /// when the command registered none for that name.
+    std::string get_gpu_buffer_signal(const std::string& name) const {
+        auto it = gpu_buffer_signals.find(name);
+        return it == gpu_buffer_signals.end() ? std::string() : it->second;
+    }
 };
 
 #endif // GPU_COMMAND_H

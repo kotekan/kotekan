@@ -65,6 +65,21 @@ const char* const graph_device_fill = "#fdf4ea";
 const char* const graph_device_line = "#dcbf9a";
 const char* const graph_full_line = "#c0392b";
 
+std::string array_layout_line(const std::string& type_name,
+                              const std::vector<std::ptrdiff_t>& extents,
+                              const std::vector<std::string>& dimnames) {
+    std::string layout;
+    for (size_t d = 0; d < extents.size(); d++) {
+        if (!layout.empty())
+            layout += " × ";
+        if (d < dimnames.size() && !dimnames[d].empty())
+            layout += fmt::format("{:s}:{:d}", dimnames[d], extents[d]);
+        else
+            layout += fmt::format("{:d}", extents[d]);
+    }
+    return fmt::format("{:s} {:s}", type_name, layout);
+}
+
 std::string leaf_name(const std::string& unique_name) {
     const size_t slash = unique_name.find_last_of('/');
     if (slash == std::string::npos || slash + 1 == unique_name.size())

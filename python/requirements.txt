@@ -1,4 +1,6 @@
 numpy>=1.15.1
+astropy
+mpmath
 msgpack>=0.6.1
 click
 h5py

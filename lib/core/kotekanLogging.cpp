@@ -1,15 +1,21 @@
 #include "kotekanLogging.hpp"
 
-#include "errors.h" // for __enable_syslog, get_log_level_string, __err_msg, MAX_LOG_MSG_LEN
+#include "errors.h" // for MAX_LOG_MSG_LEN, get_log_level_string, __enable_syslog
 
-#include "fmt.hpp" // for compile_string_to_view, vformat, fmt
+#include "fmt.hpp" // for compile_string_to_view, vformat, vformat_to_n, fmt
 
+#include <cstring>     // for strcpy
+#include <mutex>       // for mutex, lock_guard
 #include <stdexcept>   // for runtime_error
 #include <stdio.h>     // for stderr
 #include <strings.h>   // for strcasecmp
 #include <type_traits> // for underlying_type
 
 namespace kotekan {
+
+// A plain array, not a std::string, so that it outlives static destruction for late FATAL_ERRORs
+static char error_message[MAX_LOG_MSG_LEN] = "not set";
+static std::mutex error_message_mutex;
 
 kotekanLogging::kotekanLogging() {
     _member_log_level = 3;
@@ -76,11 +82,16 @@ logLevel kotekanLogging::get_log_level() const {
 
 void kotekanLogging::vset_error_message(const fmt::basic_string_view<char> format,
                                         fmt::format_args args) {
-    // Note: We should protect `__err_msg` with a lock
-    auto result = fmt::format_to_n(__err_msg, MAX_LOG_MSG_LEN - 1, fmt::vformat(format, args));
-    char* next = result.out;
-    // Ensure NUL termination
-    *next = '\0';
+    char msg[MAX_LOG_MSG_LEN];
+    auto result = fmt::vformat_to_n(msg, MAX_LOG_MSG_LEN - 1, format, args);
+    *result.out = '\0';
+    std::lock_guard<std::mutex> lock(error_message_mutex);
+    strcpy(error_message, msg);
+}
+
+std::string kotekanLogging::get_error_message() {
+    std::lock_guard<std::mutex> lock(error_message_mutex);
+    return error_message;
 }
 
 } // namespace kotekan

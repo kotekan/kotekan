@@ -1,0 +1,200 @@
+{#-
+  dtv.j2, included by pathfinder.j2. The detector always runs, and needs the bundle.
+  dtv_apply_mask and dtv_write_enabled set the starting values of /dtv_mask_enabled
+  (apply the DTV mask to N2) and /dtv_write_enabled (send the products to the recv node).
+  The detector zeroes the inputs flagged by bufferBadInputs, the RFI antennas too.
+  Disable /rfi_first_stage_enabled for a DTV-only first-stage mask.
+  Profiles bind by receiver_channel_id against each NUMA half's coarse_freq.
+  Every bound channel must be calibrated; halves without matches emit zero masks/powers.
+  See docs/sphinx/user/modules/pilotproxy.rst for bundle setup and runtime controls.
+-#}
+{% set dtv_runtime_bundle_dir = dtv_runtime_bundle_dir|default("data/pilotproxy_bundle") %}
+
+# One frame per 8192-sample block: mask, target/lower/upper powers
+# (sums of 256 fine powers), per-frequency fine support, and the fine powers of the
+# bound channels (a half binds one or two). NDArrayTimeConcat packs
+# dtv_blocks_per_frame blocks (~43 s) into one _concat frame, which is sent to the recv
+# node (recv.j2, which must use the same shapes and ports) and written there as one file.
+{% set dtv_blocks_per_frame = 1024 %}
+{% set dtv_products = [
+    ("mask", "int8", "num_local_freq", '"F"', "1", 11031),
+    ("powers", "uint64", "num_local_freq, 3", '"F", "W"', "1, 1", 11033),
+    ("fine_support", "int32", "num_local_freq, 2", '"F", "S"', "1, 1", 11035),
+    ("fine_powers", "uint64", "2, 3, 256", '"F", "W", "B"', "1, 1, 1", 11037),
+] %}
+{% for n in numa_halves %}
+{% for product, value_type, extents, dimnames, dimscalings, port in dtv_products %}
+{% for suffix, rows, depth in [("", 1, "host_side_buffer_depth"),
+                               ("_concat", dtv_blocks_per_frame, "buffer_depth"),
+                               ("_send", dtv_blocks_per_frame, "buffer_depth")] %}
+host_dtv_{{ product }}{{ suffix }}_buffer{{ n.sfx }}:
+    kotekan_buffer: ndarray
+    num_frames: {{ depth }}
+    value_type: {{ value_type }}
+    extents: [{{ rows }}, {{ extents }}]
+    quantity_name: "dtv_{{ product }}"
+    dimnames: ["T", {{ dimnames }}]
+    dimscalings: [8192, {{ dimscalings }}]
+    metadata_pool: main_pool
+{%- if n.id %}
+    numa_node: {{ n.id }}
+{%- endif %}
+
+{% endfor %}
+{% endfor %}
+{% endfor %}
+# POST {"enabled": ...} to switch the mask or recording until the next restart. Mask updates
+# also require valid_at_time_ns (0: next frame). DtvRfiMask and N2Accumulate both apply a
+# mask update from the first frame starting at or after that time, and N2Accumulate
+# records the fraction of each bin the mask was on (frac_dtv_mask_enabled).
+dtv_mask_enabled:
+    kotekan_update_endpoint: json
+    enabled: {{ dtv_apply_mask|default(false)|lower }}
+    valid_at_time_ns: 0
+
+dtv_write_enabled:
+    kotekan_update_endpoint: json
+    enabled: {{ dtv_write_enabled|default(false)|lower }}
+
+run_dtv_detector:
+{% for n in numa_halves %}
+    gpu_{{ n.id }}:
+        kotekan_stage: cudaProcess
+        gpu_id: {{ n.id }}
+        # Use a private stream triple even when pathfinder shares base 0.
+        cuda_stream_base: {{ 13 * stream_base_step if stream_base_step else 1 }}
+        cpu_affinity: {{ n.gpu_cpus }}
+        in_buffers:
+            host_voltage_ringbuffer: host_voltage_ringbuffer{{ n.sfx }}
+            host_bf_mask_ringbuffer: host_bf_mask_ringbuffer{{ n.sfx }}
+        out_buffers:
+            host_dtv_mask: host_dtv_mask_buffer{{ n.sfx }}
+            host_dtv_powers: host_dtv_powers_buffer{{ n.sfx }}
+            host_dtv_fine_support: host_dtv_fine_support_buffer{{ n.sfx }}
+            host_dtv_fine_powers: host_dtv_fine_powers_buffer{{ n.sfx }}
+        commands:
+        - name: cudaPilotProxyDetector
+          num_frequencies: num_local_freq
+          voltage_name: voltage
+          detector_window_samples: 64
+          dtv_mask_name: dtv_mask
+          dtv_powers_name: dtv_powers
+          dtv_fine_support_name: dtv_fine_support
+          dtv_fine_powers_name: dtv_fine_powers
+          dtv_fine_powers_rows: 2
+          pilot_profiles_path: {{ dtv_runtime_bundle_dir }}/pilot_profiles.json
+          weights_path: {{ dtv_runtime_bundle_dir }}/weights.bin
+          bf_mask_name: bf_mask
+        - name: cudaSyncOutput
+        - name: cudaOutputData
+          gpu_mem: dtv_mask_buffer
+          out_buf: host_dtv_mask
+        - name: cudaOutputData
+          gpu_mem: dtv_powers_buffer
+          out_buf: host_dtv_powers
+        - name: cudaOutputData
+          gpu_mem: dtv_fine_support_buffer
+          out_buf: host_dtv_fine_support
+        - name: cudaOutputData
+          gpu_mem: dtv_fine_powers_buffer
+          out_buf: host_dtv_fine_powers
+{% endfor %}
+
+# Blocks missing from a window are rows of 0xFF bytes: -1 masks and fine support,
+# the largest uint64 powers.
+concat_dtv:
+{% for n in numa_halves %}
+{% for p in dtv_products %}
+    {{ p[0] }}_{{ n.id }}:
+        kotekan_stage: NDArrayTimeConcat
+        cpu_affinity: {{ n.other_cpus }}
+        in_buf: host_dtv_{{ p[0] }}_buffer{{ n.sfx }}
+        out_buf: host_dtv_{{ p[0] }}_concat_buffer{{ n.sfx }}
+{% endfor %}
+{% endfor %}
+
+# Turning writes off and on again takes effect at the next whole frame.
+switch_dtv_write:
+{% for n in numa_halves %}
+{% for p in dtv_products %}
+    {{ p[0] }}_{{ n.id }}:
+        kotekan_stage: bufferSwitch
+        cpu_affinity: {{ n.other_cpus }}
+        in_bufs:
+          - enabled: host_dtv_{{ p[0] }}_concat_buffer{{ n.sfx }}
+        out_buf: host_dtv_{{ p[0] }}_send_buffer{{ n.sfx }}
+        updatable_config: /dtv_write_enabled
+{% endfor %}
+{% endfor %}
+
+send_dtv:
+{% for n in numa_halves %}
+{% for p in dtv_products %}
+    {{ p[0] }}_{{ n.id }}:
+        kotekan_stage: bufferSend
+        cpu_affinity: {{ n.other_cpus }}
+        use_frame_desc: true
+        buf: host_dtv_{{ p[0] }}_send_buffer{{ n.sfx }}
+        server_ip: 10.222.0.51
+        server_port: {{ p[5] }}
+        reconnect_time: 10
+        drop_frames: true
+{% endfor %}
+{% endfor %}
+
+# Merged mask in SK format, plus its GPU ring.
+{% for n in numa_halves %}
+host_dtv_RFImask_buffer{{ n.sfx }}:
+    kotekan_buffer: ndarray
+    peek_hold: true
+    num_frames: host_side_buffer_depth
+    value_type: uint1x8
+    extents: [samples_per_data_set / 1024, num_local_freq, 128]
+    zero_new_frames: true
+    zero_value: 0xFF
+    metadata_pool: main_pool
+{%- if n.id %}
+    numa_node: {{ n.id }}
+{%- endif %}
+
+host_dtv_RFImask_ringbuffer{{ n.sfx }}:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * num_local_freq * samples_per_data_set / 8
+    metadata_pool: main_pool
+{%- if n.id %}
+    numa_node: {{ n.id }}
+{%- endif %}
+
+{% endfor %}
+merge_dtv_mask:
+{% for n in numa_halves %}
+    half_{{ n.id }}:
+        kotekan_stage: DtvRfiMask
+        cpu_affinity: {{ n.other_cpus }}
+        num_times: samples_per_data_set
+        rfi_buf: host_rfi_RFImask_buffer{{ n.sfx }}
+        dtv_buf: host_dtv_mask_buffer{{ n.sfx }}
+        fine_support_buf: host_dtv_fine_support_buffer{{ n.sfx }}
+        out_buf: host_dtv_RFImask_buffer{{ n.sfx }}
+        enabled_updatable_config: /dtv_mask_enabled
+{% endfor %}
+
+run_send_dtv_RFImask:
+{% for n in numa_halves %}
+    gpu_{{ n.id }}:
+        kotekan_stage: cudaProcess
+        gpu_id: {{ n.id }}
+        cuda_stream_base: {{ 14 * stream_base_step }}
+        cpu_affinity: {{ n.gpu_cpus }}
+        in_buffers:
+            host_dtv_RFImask_buffer: host_dtv_RFImask_buffer{{ n.sfx }}
+        out_buffers:
+            host_dtv_RFImask_ringbuffer: host_dtv_RFImask_ringbuffer{{ n.sfx }}
+        commands:
+        - name: cudaCopyToRingbuffer
+          input_size: num_local_freq * samples_per_data_set / 8
+          ring_buffer_size: buffer_depth * input_size
+          in_buf: host_dtv_RFImask_buffer
+          signal_buf: host_dtv_RFImask_ringbuffer
+          gpu_mem_output: dtv_RFImask_buffer
+{% endfor %}

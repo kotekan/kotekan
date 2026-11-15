@@ -198,6 +198,14 @@ public:
     void start(const std::string& bind_address = "0.0.0.0", u_short port = PORT_REST_SERVER);
 
     /**
+     * @brief Start the server on several addresses at once, all on @p port.
+     *
+     * Requests on every address go to the same callbacks. The wildcard address
+     * cannot be combined with others, since the later binds would fail.
+     */
+    void start(const std::vector<std::string>& bind_addresses, u_short port);
+
+    /**
      * @brief Quiesce request handling ahead of process teardown.
      *
      * Stop dispatching to registered endpoint callbacks and block until any

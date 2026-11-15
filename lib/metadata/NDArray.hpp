@@ -8,10 +8,9 @@
 #include <array>         // for array
 #include <cassert>       // for assert
 #include <cstddef>       // for ptrdiff_t, size_t
-#include <functional>    // for function
 #include <iostream>      // for ostream
 #include <iterator>      // for pair
-#include <memory>        // for shared_ptr
+#include <memory>        // for shared_ptr, unique_ptr
 #include <tuple>         // for tuple
 #include <utility>       // for pair
 #include <vector>        // for vector
@@ -149,8 +148,8 @@ private:
     // Pointer to the array data
     T* m_data;
 
-    // Has a target if we own the data and need to deallocate them
-    std::function<void()> m_cleanup;
+    // Set if we own the data
+    std::unique_ptr<T[]> m_owned_data;
 
     // Quantity_Name
     Symbol m_quantity_name;
@@ -187,7 +186,8 @@ public:
     describe(const Symbol quantity_name, const std::array<std::ptrdiff_t, D>& extents,
              const std::array<Symbol, D>& dimnames,
              const std::array<std::ptrdiff_t, D>& dimscalings) {
-        return std::make_shared<NDArray<T, D>>(quantity_name, extents, dimnames, dimscalings);
+        return std::make_shared<NDArray<T, D>>(quantity_name, extents, dimnames, dimscalings,
+                                               nullptr);
     }
 
     /// Construct from extents and dimension names
@@ -209,18 +209,13 @@ public:
             const std::array<std::ptrdiff_t, D>& dimscalings) :
         NDArray(quantity_name, extents, dimnames, dimscalings, nullptr) {
         // We allocate the array without initializing its elements
-        m_data = new T[m_size];
-        m_cleanup = [&]() { delete[] m_data; };
-    }
-
-    virtual ~NDArray() {
-        if (m_cleanup)
-            m_cleanup();
+        m_owned_data.reset(new T[m_size]);
+        m_data = m_owned_data.get();
     }
 
     // // Set the (non-owning) pointer to the first element
     // void set_data(T* data) {
-    //     assert(!m_cleanup);
+    //     assert(!m_owned_data);
     //     m_data = data;
     // }
 

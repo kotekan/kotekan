@@ -26,9 +26,9 @@
  *
  * Given a packet loss (PL) mask and voltage (E, complex) time series, S0/1/2 are defined as:
  *
- * S0 = \sum_{t \in t_rfi} PL[t]
- * S1 = \sum_{t \in t_rfi} PL[t] x |E[t]|^2
- * S2 = \sum_{t \in t_rfi} PL[t] x |E[t]|^4
+ * @f[ S_0 = \sum_{t \in t_{\mathrm{rfi}}} \mathrm{PL}[t] @f]
+ * @f[ S_1 = \sum_{t \in t_{\mathrm{rfi}}} \mathrm{PL}[t] \, |E[t]|^2 @f]
+ * @f[ S_2 = \sum_{t \in t_{\mathrm{rfi}}} \mathrm{PL}[t] \, |E[t]|^4 @f]
  *
  * `t_rfi` is a downsampled time variable, covering `downsampling_factor` fast time samples `t`.
  *

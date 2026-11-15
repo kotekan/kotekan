@@ -158,19 +158,34 @@ bool restServer::canBindToAddress(const std::string& address, const u_short port
 }
 
 void restServer::start(const std::string& bind_address, u_short port) {
+    start(std::vector<std::string>{bind_address}, port);
+}
 
-    // Check if bind_address and port are valid.
-    if (!isValidAddress(bind_address)) {
-        ERROR_NON_OO("Invalid bind address: {:s}", bind_address);
+void restServer::start(const std::vector<std::string>& bind_addresses, u_short port) {
+    if (bind_addresses.empty()) {
+        ERROR_NON_OO("restServer: no bind address given");
+        exit(1);
+    }
+    for (const std::string& bind_address : bind_addresses) {
+        if (bind_addresses.size() > 1 && bind_address == "0.0.0.0") {
+            ERROR_NON_OO("restServer: the wildcard address 0.0.0.0 cannot be combined with "
+                         "other bind addresses");
+            exit(1);
+        }
+        // Check if bind_address and port are valid.
+        if (!isValidAddress(bind_address)) {
+            ERROR_NON_OO("Invalid bind address: {:s}", bind_address);
+        }
+        // Check if we can bind to the address and port.
+        // This does not start the server, but checks if the address is available.
+        if (!canBindToAddress(bind_address, port)) {
+            ERROR_NON_OO("Cannot bind to address: {:s}:{:d}", bind_address, port);
+        }
     }
 
-    // Check if we can bind to the address and port.
-    // This does not start the server, but checks if the address is available.
-    if (!canBindToAddress(bind_address, port)) {
-        ERROR_NON_OO("Cannot bind to address: {:s}:{:d}", bind_address, port);
-    }
-
-    this->_bind_address = bind_address;
+    this->_bind_address = bind_addresses.at(0);
+    for (std::size_t i = 1; i < bind_addresses.size(); ++i)
+        this->_bind_address += "," + bind_addresses.at(i);
     this->_port = port;
 
     // Initialize libevent and bind the socket synchronously, so that by
@@ -212,24 +227,26 @@ void restServer::start(const std::string& bind_address, u_short port) {
     evhttp_set_allowed_methods(ev_server, EVHTTP_REQ_GET | EVHTTP_REQ_POST | EVHTTP_REQ_OPTIONS);
     evhttp_set_gencb(ev_server, handle_request, (void*)this);
 
-    struct evhttp_bound_socket* ev_sock =
-        evhttp_bind_socket_with_handle(ev_server, _bind_address.c_str(), _port);
-    if (ev_sock == nullptr) {
-        ERROR_NON_OO("restServer: Failed to bind to {:s}:{:d}", _bind_address, _port);
-        exit(1);
-    }
-
-    // If port was set to 0, find the OS-assigned port now.
-    if (_port == 0) {
-        evutil_socket_t sock = evhttp_bound_socket_get_fd(ev_sock);
-        struct sockaddr_in sin;
-        socklen_t len = sizeof(sin);
-        if (getsockname(sock, (struct sockaddr*)&sin, &len) == -1) {
-            ERROR_NON_OO("restServer: Failed getting socket name ({:s}:{:d})", _bind_address,
-                         _port);
+    for (const std::string& bind_address : bind_addresses) {
+        struct evhttp_bound_socket* ev_sock =
+            evhttp_bind_socket_with_handle(ev_server, bind_address.c_str(), _port);
+        if (ev_sock == nullptr) {
+            ERROR_NON_OO("restServer: Failed to bind to {:s}:{:d}", bind_address, _port);
             exit(1);
         }
-        _port = ntohs(sin.sin_port);
+        // If port was set to 0, find the OS-assigned port now. The later addresses then
+        // bind to the same port.
+        if (_port == 0) {
+            evutil_socket_t sock = evhttp_bound_socket_get_fd(ev_sock);
+            struct sockaddr_in sin;
+            socklen_t len = sizeof(sin);
+            if (getsockname(sock, (struct sockaddr*)&sin, &len) == -1) {
+                ERROR_NON_OO("restServer: Failed getting socket name ({:s}:{:d})", bind_address,
+                             _port);
+                exit(1);
+            }
+            _port = ntohs(sin.sin_port);
+        }
     }
 
     using namespace std::placeholders;

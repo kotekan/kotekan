@@ -1,13 +1,15 @@
 #include "StageFactory.hpp"
 
 #include "Config.hpp"         // for Config
-#include "kotekanLogging.hpp" // for ERROR_NON_OO, DEBUG_NON_OO
+#include "kotekanLogging.hpp" // for ERROR_NON_OO, INFO_NON_OO, DEBUG_NON_OO
+#include "numaPolicy.hpp"     // for ScopedNumaPolicy, numa_node_of_cpus
 
 #include "fmt.hpp" // for compile_string_to_view, format, fmt
 
 #include <json.hpp>  // for basic_json, json, iter_impl
 #include <stdexcept> // for runtime_error
 #include <utility>   // for pair
+#include <vector>    // for vector
 
 
 using nlohmann::json;
@@ -77,6 +79,23 @@ Stage* StageFactory::create(const string& name, Config& config, const string& un
         throw std::runtime_error("Tried to instantiate a stage we don't know about!");
     }
     StageMaker* maker = i->second;
+
+    // Place the stage object, and everything its constructor allocates, on the
+    // NUMA node of the cores its threads are pinned to. The thread building
+    // the pipeline is not pinned, so without this the stage's memory would
+    // land wherever that thread happened to be running. cpu_affinity is what
+    // places a stage, as numa_node is what places a buffer; a numa_node in
+    // scope of a stage is not consulted. A stage without cpu_affinity is left
+    // unplaced here, and its constructor then reports the missing key.
+    const int numa_node = numa_node_of_cpus(
+        config.get_default<std::vector<int>>(unique_name, "cpu_affinity", {}), unique_name);
+    ScopedNumaPolicy bind_memory(numa_node);
+    if (bind_memory.active())
+        INFO_NON_OO("Creating kotekan_stage {:s} ({:s}) with its memory on numa_node {:d}",
+                    unique_name, name, numa_node);
+    else
+        DEBUG_NON_OO("Creating kotekan_stage {:s} ({:s}) without NUMA memory placement",
+                     unique_name, name);
     return maker->create(config, unique_name, host_buffers);
 }
 

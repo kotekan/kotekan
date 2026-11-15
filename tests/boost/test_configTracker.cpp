@@ -1,7 +1,8 @@
 #define BOOST_TEST_MODULE "test_configTracker"
 
-#include "configTracker.hpp" // for ConfigTracker
-#include "restServer.hpp"    // for restServer, connectionInstance
+#include "configTracker.hpp"         // for ConfigTracker
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
+#include "restServer.hpp"            // for restServer, connectionInstance
 
 #include "json.hpp" // for json_ref, basic_json<>::object_t, json
 
@@ -38,6 +39,9 @@ constexpr const char* kCmake = "CMAKE_BUILD_TYPE=Release";
 } // namespace
 
 BOOST_FIXTURE_TEST_SUITE(ConfigTrackerTests, ConfigFixture)
+
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(set_local_config) {
     auto& tracker = ConfigTracker::instance();
@@ -225,6 +229,35 @@ BOOST_AUTO_TEST_CASE(upstream_config_info_lookup) {
 
     // Same host, different port is a different entry.
     BOOST_CHECK(!tracker.getUpstreamConfigInfo("10.6.0.1", 54322).has_value());
+}
+
+BOOST_AUTO_TEST_CASE(require_matching_telescope) {
+    auto& tracker = ConfigTracker::instance();
+    const json telescope = {{"name", "CHORDTelescope"}, {"num_dishes", 2}};
+    json local = kSampleJson1;
+    local["telescope"] = telescope;
+    tracker.setLocalConfig(local, kVersion, kBranch, kCommit, kCmake);
+
+    // The same block passes; the rest of the peer's config does not matter.
+    json peer = kSampleJson2;
+    peer["telescope"] = telescope;
+    BOOST_CHECK_NO_THROW(tracker.requireMatchingTelescope("127.0.0.1", 8080, peer));
+
+    // A differing block, or none at all, is fatal.
+    peer["telescope"]["num_dishes"] = 3;
+    BOOST_CHECK_THROW(tracker.requireMatchingTelescope("127.0.0.1", 8080, peer),
+                      std::runtime_error);
+    BOOST_CHECK_THROW(tracker.requireMatchingTelescope("127.0.0.1", 8080, kSampleJson2),
+                      std::runtime_error);
+}
+
+BOOST_AUTO_TEST_CASE(require_matching_telescope_without_local_block) {
+    // Nothing to enforce when our own config has no telescope block.
+    auto& tracker = ConfigTracker::instance();
+    tracker.setLocalConfig(kSampleJson1, kVersion, kBranch, kCommit, kCmake);
+    json peer = kSampleJson2;
+    peer["telescope"] = {{"name", "CHORDTelescope"}};
+    BOOST_CHECK_NO_THROW(tracker.requireMatchingTelescope("127.0.0.1", 8080, peer));
 }
 
 BOOST_AUTO_TEST_CASE(fpga_check_without_registration) {

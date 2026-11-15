@@ -120,11 +120,11 @@ void basebandReadout::main_thread() {
 
                 DEBUG("Initialize baseband metrics for freq_id: {:d}/{:d}", freq_id,
                       stream_freq_idx);
-                readout_counter.labels({std::to_string(freq_id), "done"});
-                readout_counter.labels({std::to_string(freq_id), "error"});
-                readout_counter.labels({std::to_string(freq_id), "no_data"});
-                readout_sent_frame_counter.labels({std::to_string(freq_id)});
-                readout_dropped_frame_counter.labels({std::to_string(freq_id)});
+                readout_counter.labels({std::to_string(freq_id), "done"}).inc(0);
+                readout_counter.labels({std::to_string(freq_id), "error"}).inc(0);
+                readout_counter.labels({std::to_string(freq_id), "no_data"}).inc(0);
+                readout_sent_frame_counter.labels({std::to_string(freq_id)}).inc(0);
+                readout_dropped_frame_counter.labels({std::to_string(freq_id)}).inc(0);
                 readout_in_progress_metric.labels({std::to_string(freq_id)}).set(0);
 
                 basebandReadoutManager* mgr =

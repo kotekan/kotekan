@@ -77,8 +77,7 @@ cudaCorrelator::cudaCorrelator(Config& config, const std::string& unique_name,
     voltage.register_consumer();
     rfi_RFImask.register_consumer();
 
-    // Add Graphviz entries for the GPU buffers used by this kernel
-    gpu_buffers_used.push_back(std::make_tuple(_n2k_correlation_name, true, false, true));
+    n2k_correlation.register_producer();
 
     set_command_type(gpuCommandType::KERNEL);
     set_name("cudaCorrelator");

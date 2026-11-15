@@ -19,6 +19,7 @@
 #include <cstdint>  // for int64_t, int32_t, uint64_t, uint32_t
 #include <iosfwd>   // for ostream
 #include <json.hpp> // for json
+#include <mutex>    // for mutex
 #include <string>   // for string
 #include <time.h>   // for timespec
 #include <vector>   // for vector
@@ -173,10 +174,28 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  *                                          the buffers.
  * @conf    do_fringestop                   bool    Whether to fringestop incoming correlations.
  *                                          Default: False
+ * @conf    fringestop_updatable_config     String  Optional path to an updatable config block
+ *                                          with fields `enabled` (bool) and `valid_at_time_ns`
+ *                                          (int64, instrument time). Overrides do_fringestop;
+ *                                          a change takes effect at the first accumulation bin
+ *                                          starting at or after valid_at_time_ns. Only one
+ *                                          change is pending at a time; a new post replaces
+ *                                          a pending one.
  * @conf    input_order                     String. Ordering of data in input correlation matrix.
  *                                          Default: Telescope::fiducial_element_order()
  * @conf    output_order                    String. Ordering of data in ouput correlation matrix.
  *                                          Default: Telescope::fiducial_element_order()
+ * @conf    rfi_first_stage_enabled_updatable_config  String. Optional path to the updatable
+ *                                          config block that switches first-stage (GPU) RFI
+ *                                          excision, the block cudaRFISKtilde subscribes to.
+ *                                          Used to count the FPGA ticks of each output frame
+ *                                          during which excision was on. Without this key the
+ *                                          count is the whole frame.
+ * @conf    dtv_mask_enabled_updatable_config  String. Optional path to the updatable config
+ *                                          block that switches the DTV mask, the block
+ *                                          DtvRfiMask subscribes to. Used to count the FPGA
+ *                                          ticks of each output frame during which the mask
+ *                                          was applied. Without this key the count is zero.
  */
 class N2Accumulate : public kotekan::Stage {
 public:
@@ -243,6 +262,7 @@ public:
      * Helper function to keep code a bit more readable.
      *
      * @param in_frame_id The input frame ID.
+     * @param in_rfiframemask_frame_id The input RFI frame mask ID.
      * @param out_frame_id The output frame ID.
      * @return bool True if successful, false otherwise.
      */
@@ -250,6 +270,11 @@ public:
                           frameID& out_frame_id);
 
 private:
+    /// Queue an update from the `rfi_first_stage_enabled_updatable_config` block
+    bool receive_rfi_first_stage_enabled(nlohmann::json& update);
+    /// Queue an update from the `dtv_mask_enabled_updatable_config` block
+    bool receive_dtv_mask_enabled(nlohmann::json& update);
+
     // Buffers to read/write
     Buffer* in_buf;               /// Buffer containing input correlations
     Buffer* in_counts_buf;        /// Buffer containing input counts
@@ -277,10 +302,33 @@ private:
 
     const int _num_workers; ///< number of OpenMP threads to use to process data
 
-    const bool _do_fringestop; ///< Whether to fringestop
+    bool _do_fringestop; ///< Whether to fringestop the current accumulation bin
+    /// Updatable config path for the fringestop setting; empty if not set
+    const std::string _fringestop_config_path;
+    /// Pending fringestop setting from updatable config; applied at a bin start
+    std::mutex _fringestop_mutex;
+    bool _next_do_fringestop;
+    int64_t _next_fringestop_valid_at_seq;
+    /// configUpdater callback: store the next fringestop setting and its valid-at seq
+    bool receive_fringestop_enabled(nlohmann::json& json);
+    /// Apply a pending fringestop setting to the bin starting at @c bin_start_seq
+    void update_fringestop(int64_t bin_start_seq);
     const N2VarianceMode _variance_mode;
     const bool _debug_accum_mode;
     const bool _profile_info;
+    const std::string _rfi_first_stage_config_path;
+    /// First-stage RFI excision state, tracked in step with cudaRFISKtilde; `_next_*` hold a
+    /// pending update
+    std::mutex _rfi_first_stage_mutex;
+    bool _rfi_first_stage_enabled;
+    bool _next_rfi_first_stage_enabled;
+    int64_t _next_rfi_first_stage_valid_at_seq;
+    const std::string _dtv_mask_config_path;
+    /// DTV mask state, tracked in step with DtvRfiMask; `_next_*` hold a pending update
+    std::mutex _dtv_mask_mutex;
+    bool _dtv_mask_enabled;
+    bool _next_dtv_mask_enabled;
+    int64_t _next_dtv_mask_valid_at_seq;
 
 
     // Some derived parameters
@@ -316,6 +364,10 @@ private:
     /// AND a bad feed mask frame (@c _num_elements bytes, input order) into @c _accum_bad_feed_mask
     void fold_bad_feed_mask_into_accum(const uint8_t* bad_feed_mask);
     int64_t _vis_samples_in_out_frame;
+    /// FPGA ticks of the current bin during which first-stage RFI excision was enabled
+    uint64_t _n_rfi_first_stage_enabled_ticks;
+    /// FPGA ticks of the current bin during which the DTV mask was applied
+    uint64_t _n_dtv_mask_enabled_ticks;
     uint64_t _accum_fpga_start_tick;
     int64_t _accum_bin_idx;
 

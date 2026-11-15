@@ -6,7 +6,7 @@ CHORD pathfinder visibility files
 
 This page describes the :ref:`hdf5N2Write <hdf5N2Write>` output as
 configured for the CHORD pathfinder receiver
-(``config/chord_pathfinder_recv.j2``). It supplements the generic format
+(``config/chord/recv.j2``). It supplements the generic format
 reference, :ref:`n2_vis_file_format`, with this deployment's array sizes,
 binning, compression settings, and pipeline-specific caveats.
 

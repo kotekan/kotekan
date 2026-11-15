@@ -1,0 +1,102 @@
+{
+  "detector_contract_sha256": "b2c503e2edc7b96ab69f4d27b7b8fa2345df5201185f893b43e49b4cf2f5041e",
+  "input_coordinate_system": "post_nyquist_zone_normalized",
+  "input_preprocessing": {
+    "time_reverse_detector_windows_before_kernel": true
+  },
+  "profiles": [
+    {
+      "chime_channel_id": 614,
+      "chord_channel_id": null,
+      "coarse_channel_center_hz": 560156250.0,
+      "coarse_channel_index": 613,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 165551,
+        "anchor_bin": 202,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x5555555555555555",
+          "0x5555555555555555",
+          "0x0000015555555555",
+          "0x5555500000000000"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-09 CHIME baseband, archive knees of record"
+          ],
+          "source_product_sha256": [
+            "69264a6fc52d2e610c4125e83a3316a1d0119dd82288296cc0963a83dfba0f68"
+          ],
+          "null_quantile": 0.99,
+          "note": "Word from plan, floor from control channel. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 1.0024384488319042,
+      "physical_channel": 29,
+      "pilot_frequency_hz": 560309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 12713,
+      "positive_excess_half_threshold_num": 6372,
+      "receiver_channel_id": 614,
+      "receiver_channel_id_namespace": "chime_freq_id",
+      "reference_norm_sum_sq": 12713,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 6372,
+      "weight_bank_index": 0,
+      "weight_bank_nbytes": 384,
+      "weight_bank_offset_bytes": 0
+    },
+    {
+      "chime_channel_id": 521,
+      "chord_channel_id": null,
+      "coarse_channel_center_hz": 596484375.0,
+      "coarse_channel_index": 520,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 46014410,
+        "anchor_bin": 111,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x5555555555555555",
+          "0x0000000000005555",
+          "0x5555555555550000",
+          "0x5555555555555555"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-09 CHIME baseband, archive knees of record"
+          ],
+          "source_product_sha256": [
+            "69264a6fc52d2e610c4125e83a3316a1d0119dd82288296cc0963a83dfba0f68"
+          ],
+          "null_quantile": 0.99,
+          "note": "Word from plan, floor from control channel. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 0.9974882260596546,
+      "physical_channel": 35,
+      "pilot_frequency_hz": 596309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 12740,
+      "positive_excess_half_threshold_num": 6354,
+      "receiver_channel_id": 521,
+      "receiver_channel_id_namespace": "chime_freq_id",
+      "reference_norm_sum_sq": 12740,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 6354,
+      "weight_bank_index": 1,
+      "weight_bank_nbytes": 384,
+      "weight_bank_offset_bytes": 384
+    }
+  ],
+  "receiver_channel_id_namespace": "chime_freq_id",
+  "receiver_profile_id": "chime_dtv_fengine",
+  "schema_version": "pilotproxy_runtime_pilot_profiles_v1",
+  "weight_coordinate_system": "post_nyquist_zone_normalization",
+  "weights_sha256": "a91a2f30d5922fc15f1091bdcaff452aba2a632177e5c61854158bb7ae51a578"
+}

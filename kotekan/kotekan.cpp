@@ -2,7 +2,7 @@
 #include "StageFactory.hpp"       // for StageFactoryRegistry, StageMaker
 #include "backtrace.hpp"          // for request_backtraces
 #include "basebandApiManager.hpp" // for basebandApiManager
-#include "errors.h"               // for ReturnCode, get_error_message, __enable_syslog, exit_k...
+#include "errors.h"               // for ReturnCode, __enable_syslog, exit_kotekan, get_exit_...
 #include "kotekanLogging.hpp"     // for logLevel, ERROR_NON_OO, INFO_NON_OO, FATAL_ERROR_NON_OO
 #include "kotekanMode.hpp"        // for kotekanMode
 #include "kotekanTrackers.hpp"    // for KotekanTrackers
@@ -215,7 +215,7 @@ void print_help() {
     printf("usage: kotekan [opts]\n\n");
     printf("Options:\n");
     printf("    --config (-c) [file]           The local JSON config file to use.\n");
-    printf("    --bind-address (-b) [ip:port]  The IP address and port to bind"
+    printf("    --bind-address (-b) [ip[,ip...]:port]  The IPv4 address(es) and port to bind"
            " (default 0.0.0.0:12048)\n");
     printf("    --syslog (-s)                  Send a copy of the output to syslog.\n");
     printf("    --no-stderr (-n)               Disables output to std error if syslog (-s) is "
@@ -785,17 +785,35 @@ int main(int argc, char** argv) {
     Config config;
 
     restServer& rest_server = restServer::instance();
-    std::vector<std::string> address_parts = regex_split(bind_address, ":");
-    if (address_parts.at(0) == "" || address_parts.size() != 2) {
-        ERROR_NON_OO("The bind address {:s} is not valid, it should be in the form ipv4:port",
+    // ipv4[,ipv4...]:port, e.g. 127.0.0.1,10.1.2.3:12048 to serve localhost and one interface
+    const std::size_t colon = bind_address.rfind(':');
+    if (colon == std::string::npos || colon == 0 || colon + 1 == bind_address.size()) {
+        ERROR_NON_OO("The bind address {:s} is not valid, it should be in the form "
+                     "ipv4[,ipv4...]:port",
                      bind_address.c_str());
         exit(-1);
     }
+    const std::vector<std::string> bind_addresses = regex_split(bind_address.substr(0, colon), ",");
+    // The port must be a whole number in 0..65535: stoi would accept "12048x" and wrap 70000.
+    const std::string port_str = bind_address.substr(colon + 1);
+    std::size_t parsed = 0;
+    unsigned long port = 0;
+    try {
+        port = std::stoul(port_str, &parsed);
+    } catch (const std::exception&) {
+        parsed = 0;
+    }
+    if (parsed != port_str.size() || port > 65535) {
+        ERROR_NON_OO("The bind port {:s} is not valid, it should be a number from 0 to 65535",
+                     port_str.c_str());
+        exit(-1);
+    }
+    const int bind_port = int(port);
     // The validation modes must never bind the REST port: the whole point is to
     // be runnable on a node that already has a kotekan instance on it.
     const bool validate_only = check_config || dry_run;
     if (!validate_only)
-        rest_server.start(address_parts.at(0), std::stoi(address_parts.at(1)));
+        rest_server.start(bind_addresses, bind_port);
 
     if (string(config_file_name) != "none") {
         std::lock_guard<std::mutex> lock(kotekan_state_lock);
@@ -993,7 +1011,7 @@ int main(int argc, char** argv) {
                 INFO_NON_OO("Attempting to stop and join kotekan_stages...");
                 kotekan_mode->stop_stages();
                 kotekan_mode->join();
-                if (string(get_error_message()) != "not set") {
+                if (kotekanLogging::get_error_message() != "not set") {
                     KotekanTrackers::instance().dump_trackers();
                 }
                 delete kotekan_mode;
@@ -1007,8 +1025,9 @@ int main(int argc, char** argv) {
     INFO_NON_OO("kotekan shutdown with status: {:s}", get_exit_code_string(exit_code));
 
     // Print error message if there is one.
-    if (string(get_error_message()) != "not set") {
-        INFO_NON_OO("Fatal error message was: {:s}", get_error_message());
+    const string error_message = kotekanLogging::get_error_message();
+    if (error_message != "not set") {
+        INFO_NON_OO("Fatal error message was: {:s}", error_message);
     }
 
     closelog();

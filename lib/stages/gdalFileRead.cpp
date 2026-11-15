@@ -229,7 +229,12 @@ public:
                     const auto time_downsampling_fpga_shape =
                         time_downsampling_fpga->GetDimensionsSize();
                     assert(time_downsampling_fpga_shape.empty());
-                    meta->set_time_downsampling_fpga(time_downsampling_fpga->ReadAsInt());
+                    std::int64_t time_downsampling_fpga_value;
+                    if (!time_downsampling_fpga->Read(nullptr, nullptr, nullptr, nullptr,
+                                                      GDALExtendedDataType::Create(GDT_Int64),
+                                                      &time_downsampling_fpga_value))
+                        FATAL_ERROR("Cannot read attribute time_downsampling_fpga");
+                    meta->set_time_downsampling_fpga(time_downsampling_fpga_value);
                     assert(meta->get_time_downsampling_fpga() > 0);
                 }
             }

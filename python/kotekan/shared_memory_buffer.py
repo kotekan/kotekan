@@ -187,7 +187,7 @@ class SharedMemoryReader:
 
     def __del__(self):
         if hasattr(self, "semaphore"):
-            self.semaphore.release()
+            self.semaphore.close()
 
         if hasattr(self, "shared_mem_file"):
             os.close(self.shared_mem_file.fd)

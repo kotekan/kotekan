@@ -49,16 +49,6 @@ host_upchan_hfb_U128_gain_buffer:
 
 # Voltages
 
-host_upchan_hfb_U128_voltage_buffer:
-    kotekan_buffer: ndarray
-    num_frames: buffer_depth
-    # frame_size: num_dishes * num_polarizations * (upchan_hfb_upchan_U128_max_num_channels * 128) * (num_times / 128)
-    value_type: int4x2_swapped_withoffset
-    extents: [num_times / 128, upchan_hfb_upchan_U128_max_num_channels * 128, num_polarizations, num_dishes]
-    quantity_name: "Ebar"
-    dimnames: ["Tbar", "Fbar", "P", "D"]
-    dimscalings: [128, 1, 1, 1]
-    metadata_pool: main_pool
 host_upchan_hfb_U128_voltage_ringbuffer:
     kotekan_buffer: ring
     ring_buffer_size: buffer_depth * num_dishes * num_polarizations * (upchan_hfb_upchan_U128_max_num_channels * 128) * (num_times / 128)
@@ -68,21 +58,16 @@ host_upchan_hfb_U128_voltage_ringbuffer:
 
 # Stages
 
+# upchan.jl scales its window by 1/U, so that a tone at a fine-channel centre keeps its
+# amplitude, while noise shrinks by 0.892/sqrt(U). A gain of 0.8 sqrt(U) takes F-engine noise
+# of 2.8 LSB to 2 LSB at the int4 output, leaving headroom for RFI. Such a tone is then
+# multiplied by 0.81 sqrt(U).
 run_set_upchan_hfb_U128_gain:
     kotekan_stage: setUpchanGain
     upchannelization_schedule_name: /upchan_hfb
     upchan_factor: 128
     upchan_max_num_channels: upchan_hfb_upchan_U128_max_num_channels
-    upchan_gain: [
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    ]
+    upchan_gain: [{{ ([(0.8 * 128 ** 0.5) | round(4)] * 128) | join(', ') }}]
     upchan_gain_buffer: host_upchan_hfb_U128_gain_buffer
     metadata_source:
 {% for id in range(16) %}   # num_frequencies = 16
@@ -90,6 +75,8 @@ run_set_upchan_hfb_U128_gain:
 {% endfor %}
 
 run_upchan_hfb_U128:
+    # The HFB chain aligns its outputs with its own largest upchannelization factor
+    max_upchannelization_factor: 128
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
@@ -115,17 +102,14 @@ run_upchan_hfb_U128:
 
 # Packet loss mask
 
-host_upchan_hfb_U128_expanded_pl_mask_buffer:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: (64 / 8) * (num_dishes / 8) * num_polarizations * upchan_hfb_upchan_U128_max_num_channels * (num_times / 64 / 128)
-    metadata_pool: main_pool
 host_upchan_hfb_U128_expanded_pl_mask_ringbuffer:
     kotekan_buffer: ring
     ring_buffer_size: buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * upchan_hfb_upchan_U128_max_num_channels * (num_times / 64 / 128)
     metadata_pool: main_pool
 
 run_upchan_pl_hfb_U128:
+    # Must match the HFB voltage chain (run_upchan_hfb_U128)
+    max_upchannelization_factor: 128
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0

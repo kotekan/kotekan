@@ -33,9 +33,19 @@ Allocating input data...
     Ttildemax: 42
 Setting up input data...
 freq = 103
+time = 69
 polr = 0
-time = 869
-Evalue = -20 - 32im
+p0 = 441
+q0 = 0
+Δp = 338
+Δq = 0
+Wgain = -0.16475205f0 - 0.52966106f0im
+polr = 1
+p0 = 148
+q0 = 0
+Δp = 275
+Δq = 7
+Wgain = -0.3336474f0 + 0.5334988f0im
 Copying data from CPU to GPU...
 Running kernel...
 Copying data back from GPU to CPU...

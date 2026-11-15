@@ -1,5 +1,0 @@
-**************
-frbPostProcess
-**************
-
-.. doxygenclass:: frbPostProcess

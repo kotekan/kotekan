@@ -56,17 +56,13 @@ extern int _global_log_level;
 // If set to 1 use printf instead of syslog
 extern int __enable_syslog;
 
-// to store error messages before exiting with error code
 #define MAX_LOG_MSG_LEN 1024
-extern char __err_msg[MAX_LOG_MSG_LEN];
 
 void internal_logging_f(int log, const char* format, ...);
 void exit_kotekan(enum ReturnCode code);
 enum ReturnCode get_exit_code();
 const char* get_log_level_string(int log);
 char* get_exit_code_string(enum ReturnCode code);
-char* get_error_message();
-void set_error_message_f(const char* format, ...);
 
 
 // These macros check if the given value evaluates to True and if so report an error and exit

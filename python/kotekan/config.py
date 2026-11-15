@@ -18,6 +18,41 @@ except ImportError:
     pass
 
 
+def render_jinja(file_name_full, jinja_options=None):
+    """
+    Render a ".j2" config template to YAML text.
+
+    Includes resolve relative to the template's directory.
+
+    Parameters
+    ----------
+    file_name_full: str
+        Full path to the template.
+    jinja_options: str
+        Add extra jinja variables (JSON format)
+
+    Returns
+    -------
+    str
+        The rendered YAML
+    """
+    if jinja2 is None:
+        raise ImportError("jinja2 is required for processing '.j2' files")
+
+    directory, file_name = os.path.split(file_name_full)
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(directory),
+        autoescape=jinja2.select_autoescape(),
+    )
+    template = env.get_template(file_name)
+
+    options_dict = {}
+    if jinja_options:
+        options_dict = json.loads(str(jinja_options))
+
+    return template.render(options_dict)
+
+
 def load_config_file(file_name_full, return_dict=False, dump=False, jinja_options=None):
     """
     Load configuration file to json.
@@ -54,7 +89,6 @@ def load_config_file(file_name_full, return_dict=False, dump=False, jinja_option
         If the file is .j2 and cannot be parsed by jinja2.
     """
     file_ext = os.path.splitext(file_name_full)[1]
-    directory, file_name = os.path.split(file_name_full)
 
     if yaml is None:
         raise ImportError("yaml is required for parsing configuration files.")
@@ -102,23 +136,7 @@ def load_config_file(file_name_full, return_dict=False, dump=False, jinja_option
             sys.stderr.write(yaml.dump(config_yaml) + "\n")
 
     else:
-        if jinja2 is None:
-            raise ImportError("jinja2 is required for processing '.j2' files")
-
-        # Load the template
-        env = jinja2.Environment(
-            loader=jinja2.FileSystemLoader(directory),
-            autoescape=jinja2.select_autoescape(),
-        )
-        template = env.get_template(file_name)
-
-        # Parse the optional variables (if any)
-        options_dict = {}
-        if jinja_options:
-            options_dict = json.loads(str(jinja_options))
-
-        # Convert to yaml
-        config_yaml_raw = template.render(options_dict)
+        config_yaml_raw = render_jinja(file_name_full, jinja_options)
 
         # Dump the rendered yaml file if requested
         if dump:

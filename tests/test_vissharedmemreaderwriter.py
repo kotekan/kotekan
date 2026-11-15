@@ -164,7 +164,7 @@ def check_visraw(visraw):
     num_freq = len(params_fakevis["freq_ids"])
     num_ev = params["num_ev"]
     num_elements = params["num_elements"]
-    valid = visraw.valid_frames.astype(np.bool)
+    valid = visraw.valid_frames.astype(bool)
 
     num_time = visraw.num_time
     assert visraw.num_freq == len(params_fakevis["freq_ids"])

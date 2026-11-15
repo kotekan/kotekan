@@ -44,9 +44,10 @@ Common keys (unless noted otherwise):
   <metadata_config>` block. If omitted, the buffer carries no metadata.
 - ``numa_node`` (default ``0``), ``use_hugepages`` (default ``false``), ``mlock_frames`` (default
   ``true``), ``zero_new_frames`` (default ``true``), ``cpu_affinity`` (pin the zeroing helper
-  threads), and ``log_level`` mirror the values on stages. ``zero_new_frames`` only zeros memory
-  when it is first allocated; reused frames are not cleared unless a stage calls ``zero_frames()``
-  or explicitly writes over the data.
+  threads), and ``log_level`` mirror the values on stages. The frames, and the buffer object
+  itself, are allocated on ``numa_node``; see :ref:`memory placement <numa_placement>` under
+  Stages. ``zero_new_frames`` only zeros memory when it is first allocated; reused frames are not
+  cleared unless a stage calls ``zero_frames()`` or explicitly writes over the data.
 - ``peek_hold`` (default ``false``, frame-based buffers only): keep the newest full frame around —
   its recycling is deferred until the next frame is marked full — so the ``/buffer_frame``
   endpoint always has a frame to serve even when consumers drain frames quickly. Requires
@@ -135,7 +136,8 @@ Dataset manager & config tracker
 --------------------------------
 
 - The dataset manager tracks dataset IDs and their states across stages, and is typically used in CHIME
-pipelines. Commonly used config parameters include (under ``dataset_manager``):
+  pipelines. Commonly used config parameters include (under ``dataset_manager``):
+
   - ``use_dataset_broker`` (bool): sync states with the central broker (comet); must be set when
     broker coordination is desired.
   - ``ds_broker_host`` / ``ds_broker_port``: broker address/port (default 127.0.0.1:12050 when
@@ -145,6 +147,7 @@ pipelines. Commonly used config parameters include (under ``dataset_manager``):
   - REST: ``/dataset-manager/force-update`` forces re-registration with the broker.
   - Metrics: ``kotekan_datasetbroker_error_count`` (broker comms errors), plus per-stage dataset
     metrics (see writer/transform stages).
+
 - The Config Tracker is intended as a more lightweight replacement for the dataset manager.
   It stores snapshots of this node's own (local) config and configs from upstream peers, and
   optionally a combined ``{"config": ..., "timing": ...}`` snapshot fetched from an upstream
@@ -183,6 +186,25 @@ pipelines. Commonly used config parameters include (under ``dataset_manager``):
 
 Stages
 ------
+
+Stages are declared by adding ``kotekan_stage`` to a block. A few keys are read by every stage,
+usually inherited from an enclosing section or the root of the config:
+
+- ``cpu_affinity``: the CPU cores the stage's threads are pinned to. It also decides the NUMA
+  node the stage's memory is allocated on; see below.
+- ``log_level``: the stage's log level.
+- ``join_timeout`` (default ``60``): seconds to wait for the stage's thread to exit at shutdown
+  before kotekan aborts.
+
+.. _numa_placement:
+
+**Memory placement.** Kotekan is usually run with the kernel's automatic NUMA balancing disabled
+(``numa_balancing=0``), so a page stays on the node it was first allocated on. A buffer's frames,
+and the buffer object itself, are allocated on the buffer's ``numa_node``. A stage, and everything
+its constructor allocates, is placed on the NUMA node of the cores in its ``cpu_affinity``; a
+``numa_node`` in scope of a stage is not consulted. If the cores span more than one node, kotekan
+logs a warning and uses the node of the first core listed. Placement needs a build with libnuma
+(``-DUSE_NUMA=ON``, the default) and is skipped entirely in a ``-DNO_MEMLOCK=ON`` build.
 
 .. toctree::
     :glob:

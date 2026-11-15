@@ -9,6 +9,10 @@ on:
     branches:
       - develop
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   build-docker-on-merge:
     # Only run if the PR was actually merged (not just closed)

@@ -8,6 +8,10 @@ log_level: debug2   # info
 cpu_affinity: [0, 1, 2, 3, 4, 5, 6, 7]
 buffer_depth: 4
 
+# The largest upchannelization factor used in this run. All upchannelizers delay their
+# output so that it is aligned in time with that of the largest factor.
+max_upchannelization_factor: 32
+
 frame_arrival_period: 2.56e-6 * num_times
 
 sizeof_int16: 2

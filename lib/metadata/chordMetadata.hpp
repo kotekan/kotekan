@@ -10,6 +10,7 @@
 #include <cassert>    // for assert
 #include <cstddef>    // for size_t, ptrdiff_t
 #include <cstdint>    // for int32_t, uint32_t, int64_t, uint64_t
+#include <limits>     // for numeric_limits
 #include <memory>     // for shared_ptr, __shared_ptr_access, allocator, static_pointer...
 #include <mutex>      // for mutex, lock_guard
 #include <sstream>    // for basic_ostream, operator<<, basic_ostringstream, basic_ostr...
@@ -141,9 +142,14 @@ public:
         return s.str();
     }
 
-    void set_array_dimension(int dim, int size, const std::string& name, int64_t scaling) {
+    void set_array_dimension(int dim, std::ptrdiff_t size, const std::string& name,
+                             int64_t scaling) {
         set_dimension_name(dim, name); // checks the range of `dim` before we index anything
-        this->dim[dim] = size;
+        if (size < 0 || size > std::numeric_limits<int>::max())
+            FATAL_ERROR("set_array_dimension: extent {:d} of dimension {:d} ({:s}) is out of "
+                        "range [0, {:d}]",
+                        size, dim, name, std::numeric_limits<int>::max());
+        this->dim[dim] = int(size);
         this->dim_scaling[dim] = scaling;
     }
 
@@ -262,7 +268,7 @@ public:
     // not the spacing of individual time samples. The spacing of
     // individual samples is `dim_scaling` of the innermost time axis,
     // and the two are equal only when the time axis is not split.
-    void set_time_downsampling_fpga(const int time_downsampling_fpga) {
+    void set_time_downsampling_fpga(const int64_t time_downsampling_fpga) {
         std::lock_guard<std::mutex> lock(this->lock);
         metadata[jsonMetadata::TIME_DOWNSAMPLING_FPGA] = time_downsampling_fpga;
     }
@@ -272,9 +278,9 @@ public:
         return metadata.contains(jsonMetadata::TIME_DOWNSAMPLING_FPGA);
     }
 
-    int get_time_downsampling_fpga() const {
+    int64_t get_time_downsampling_fpga() const {
         std::lock_guard<std::mutex> lock(this->lock);
-        return metadata.at(jsonMetadata::TIME_DOWNSAMPLING_FPGA);
+        return metadata.at(jsonMetadata::TIME_DOWNSAMPLING_FPGA).template get<int64_t>();
     }
 
     void set_frame_counter(const int frame_counter) {

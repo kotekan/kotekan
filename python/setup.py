@@ -22,7 +22,7 @@ setup(
     long_description=long_description,
     url="http://github.com/kotekan/kotekan/",
     packages=find_packages(),
-    py_modules=["_version"],
+    python_requires=">=3.12",
     install_requires=requirements,
     entry_points="""
         [console_scripts]
@@ -30,5 +30,4 @@ setup(
         polyco-tools=kotekan.scripts.polyco_tools:cli
         baseband-archiver=kotekan.scripts.baseband_archiver:cli
     """,
-    scripts=["scripts/rfi_receiver/rfi_receiver.py"],
 )

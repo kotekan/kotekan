@@ -1,5 +1,7 @@
 #define BOOST_TEST_MODULE "test_metadataObject"
 
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
+
 #include <boost/test/included/unit_test.hpp>
 #include <chordMetadata.hpp>
 #include <cmath>
@@ -8,6 +10,9 @@
 #include <stdexcept>
 
 using namespace kotekan;
+
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(test_chordMetadata) {
     std::cout << "Testing chordMetadata class...\n";
@@ -52,7 +57,8 @@ BOOST_AUTO_TEST_CASE(test_chordMetadata) {
     };
     meta0.set_freq_upchan_index(freq_upchan_index);
 
-    meta0.set_time_downsampling_fpga(47);
+    // Larger than INT_MAX: about 24 hours of CHORD FPGA samples
+    meta0.set_time_downsampling_fpga(16875000000);
 
     timeval tv = {17863, 341};
     meta0.set_first_packet_recv_time(tv);

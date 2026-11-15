@@ -12,6 +12,10 @@ on:
         default: 'develop'
         type: string
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   manual-build-docker:
     uses: ./.github/workflows/build_push_docker.yaml

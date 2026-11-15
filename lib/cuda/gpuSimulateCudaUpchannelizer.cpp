@@ -1,15 +1,16 @@
-#include "Config.hpp"                // for Config
-#include "DataType.hpp"              // for int4x2_swapped_withoffset_t, float16_t, cint8
-#include "NDArrayBuffer.hpp"         // for NDArrayBuffer, buffer_type_t
-#include "NDArrayRingBuffer.hpp"     // for NDArrayRingBuffer, read_descriptor_t
-#include "bufferContainer.hpp"       // for bufferContainer
-#include "chordMetadata.hpp"         // for chordMetadata
-#include "cudaCommand.hpp"           // for cudaCommand, REGISTER_CUDA_COMMAND
-#include "cudaDeviceInterface.hpp"   // for cudaDeviceInterface
-#include "cudaUtils.hpp"             // for CHECK_CUDA_ERROR
-#include "div.hpp"                   // for div_noremainder, round_down
-#include "kotekanLogging.hpp"        // for FATAL_ERROR, INFO
-#include "upchannelizeReference.hpp" // for upchannelize_reference, upchan_window
+#include "Config.hpp"                   // for Config
+#include "DataType.hpp"                 // for int4x2_swapped_withoffset_t, float16_t, cint8
+#include "NDArrayBuffer.hpp"            // for NDArrayBuffer, buffer_type_t
+#include "NDArrayRingBuffer.hpp"        // for NDArrayRingBuffer, read_descriptor_t
+#include "UpchannelizationSchedule.hpp" // for upchan_output_alignment
+#include "bufferContainer.hpp"          // for bufferContainer
+#include "chordMetadata.hpp"            // for chordMetadata
+#include "cudaCommand.hpp"              // for cudaCommand, REGISTER_CUDA_COMMAND
+#include "cudaDeviceInterface.hpp"      // for cudaDeviceInterface
+#include "cudaUtils.hpp"                // for CHECK_CUDA_ERROR
+#include "div.hpp"                      // for div_noremainder, round_down, round_up
+#include "kotekanLogging.hpp"           // for FATAL_ERROR, INFO
+#include "upchannelizeReference.hpp"    // for upchannelize_reference, upchan_window
 
 #include <algorithm>          // for min
 #include <array>              // for array
@@ -24,7 +25,7 @@
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::div_noremainder, kotekan::round_down;
+using kotekan::div_noremainder, kotekan::round_down, kotekan::round_up;
 
 /**
  * @class gpuSimulateCudaUpchannelizer
@@ -89,6 +90,14 @@ using kotekan::div_noremainder, kotekan::round_down;
  *                                    @c buffer_depth: 1 -- see the warning below.
  * @conf  upchannelization_factor  Int.  @f$U@f$.
  * @conf  num_taps              Int.  PFB taps @f$M@f$, default 4.
+ * @conf  max_upchannelization_factor  Int.  The largest upchannelization factor
+ *                                    @f$U_\mathrm{max}@f$ used in this run. Every
+ *                                    upchannelizer's output begins at input sample
+ *                                    @f$(M-1) U_\mathrm{max} / 2@f$, so that the outputs of all
+ *                                    upchannelization factors are aligned in time; see
+ *                                    @c wait_on_precondition.
+ * @conf  upchan_output_alignment  Int.  Optional. Round the output start up to a multiple
+ *                                    of this many FPGA samples.
  * @conf  granularity_number_of_timesamples  Int.  Time samples processed per call, default
  *                                    256. Affects only chunking, not the result.
  * @conf  max_times_per_iteration  Int.  Cap on the input samples read per call, default 0
@@ -139,6 +148,11 @@ private:
     const int _ring_num_times;
     const int _upchannelization_factor;
     const int _num_taps;
+    const int _max_upchannelization_factor;
+    /// Output time offset relative to the input, in input samples
+    const std::ptrdiff_t _T_offset;
+    /// Number of input samples we skip at startup
+    const std::ptrdiff_t _T_skip;
     const int _granularity;
     const int _max_times_per_iteration;
     const int _Fmin;
@@ -178,6 +192,10 @@ gpuSimulateCudaUpchannelizerT<OutT>::gpuSimulateCudaUpchannelizerT(Config& confi
     _ring_num_times(config.get<int>(unique_name, "ring_num_times")),
     _upchannelization_factor(config.get<int>(unique_name, "upchannelization_factor")),
     _num_taps(config.get_default<int>(unique_name, "num_taps", kotekan::upchan_default_num_taps)),
+    _max_upchannelization_factor(config.get<int>(unique_name, "max_upchannelization_factor")),
+    _T_offset(round_up(std::ptrdiff_t(_num_taps - 1) * _max_upchannelization_factor / 2,
+                       upchan_output_alignment(config, unique_name))),
+    _T_skip(_T_offset - std::ptrdiff_t(_num_taps - 1) * _upchannelization_factor / 2),
     _granularity(config.get_default<int>(unique_name, "granularity_number_of_timesamples", 256)),
     _max_times_per_iteration(config.get_default<int>(unique_name, "max_times_per_iteration", 0)),
     _Fmin(config.get<int>(unique_name, "Fmin")), _Fmax(config.get<int>(unique_name, "Fmax")),
@@ -208,6 +226,12 @@ gpuSimulateCudaUpchannelizerT<OutT>::gpuSimulateCudaUpchannelizerT(Config& confi
         FATAL_ERROR("upchannelization_factor must be positive, not {:d}", _upchannelization_factor);
     if (!(_num_taps >= 1))
         FATAL_ERROR("num_taps must be positive, not {:d}", _num_taps);
+    if (!(_max_upchannelization_factor >= _upchannelization_factor
+          && (_num_taps - 1) * _max_upchannelization_factor % 2 == 0
+          && (_num_taps - 1) * _upchannelization_factor % 2 == 0))
+        FATAL_ERROR("Upchannelization factor {:d} with {:d} taps: max_upchannelization_factor={:d} "
+                    "must not be smaller, and (taps-1)*U must be even for both",
+                    _upchannelization_factor, _num_taps, _max_upchannelization_factor);
     // The ring bookkeeping subtracts a whole number of output samples as overlap.
     if (_granularity % _upchannelization_factor != 0)
         FATAL_ERROR("granularity_number_of_timesamples ({:d}) must be a multiple of the "
@@ -251,14 +275,26 @@ int gpuSimulateCudaUpchannelizerT<OutT>::wait_on_precondition() {
             return errcode;
     }
 
-    // Wait for data to be available in the input ring buffer. This mirrors the generated
-    // kernel exactly: the two must claim and release the same elements, or swapping one for
-    // the other in a config would change where the output lands.
+    // This mirrors the generated kernel exactly: the two must claim and release the same
+    // elements, or swapping one for the other in a config would change where the output lands.
     const std::ptrdiff_t T_ringbuf = E_buffer.get_ndarray().extent(0);
     const std::ptrdiff_t T_read_max =
         _max_times_per_iteration > 0
             ? std::min<std::ptrdiff_t>(_max_times_per_iteration, T_ringbuf / 4)
             : T_ringbuf / 4;
+
+    // Output sample `tbar` is calculated from the `M * U` input samples starting at `U * tbar`.
+    // Timestamps point to the beginning of a sample, so the output sample centred on this
+    // window begins at input sample `U * tbar + (M-1) * U / 2`. To align the outputs of all
+    // upchannelizers of a run we skip `_T_skip` input samples once, at startup, so that every
+    // upchannelizer's output begins at input sample `_T_offset`, independent of `U`.
+    {
+        const int errcode = E_buffer.skip_at_start(_T_skip);
+        if (errcode < 0)
+            return errcode;
+    }
+
+    // Wait for data to be available in the input ring buffer
     std::ptrdiff_t T_read = -1;
     {
         const int errcode = E_buffer.wait_and_claim_readable([&](const std::ptrdiff_t T_available) {
@@ -348,7 +384,11 @@ void gpuSimulateCudaUpchannelizerT<OutT>::set_metadata_once() {
                     "output buffer Ebar has extent {:d}",
                     Ebar_nfreq, Ebar_meta->dim[1]);
 
-    // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`.
+    // Output sample `tbar` begins at input sample `_T_offset + U * tbar` (see
+    // `wait_on_precondition`). We set the metadata only once since we use a ring buffer.
+    if (E_meta->has_fpga_seq_num())
+        Ebar_meta->set_fpga_seq_num(E_meta->get_fpga_seq_num()
+                                    + _T_offset * E_meta->get_time_downsampling_fpga());
 }
 
 template<typename OutT>
@@ -409,12 +449,13 @@ cudaEvent_t gpuSimulateCudaUpchannelizerT<OutT>::execute(cudaPipelineState& /*pi
     // wrong alignment would silently shift every output sample by a few coarse times, which is
     // exactly the kind of error this stage exists to catch in the real kernel.
     //
-    // First, the input and output heads advance together: every call claims a whole number of
-    // output samples' worth of input, so T_min == U * Tbar_min holds from the very first call.
-    if (T_min != std::ptrdiff_t(U) * Tbar_min)
+    // First, the input and output heads advance together: after skipping `_T_skip` input
+    // samples at startup, every call claims a whole number of output samples' worth of input,
+    // so T_min == _T_skip + U * Tbar_min holds from the very first call.
+    if (T_min != _T_skip + std::ptrdiff_t(U) * Tbar_min)
         FATAL_ERROR("Input ring is at sample {:d} but the output ring is at {:d}, which with "
                     "U={:d} should correspond to input sample {:d}",
-                    T_min, Tbar_min, U, std::ptrdiff_t(U) * Tbar_min);
+                    T_min, Tbar_min, U, _T_skip + std::ptrdiff_t(U) * Tbar_min);
     // Second, the last output reaches exactly T_max, so we neither read past the claimed span
     // nor leave part of it unused.
     if (std::ptrdiff_t(U) * (Tbar_length - 1) + std::ptrdiff_t(M) * U != T_length)

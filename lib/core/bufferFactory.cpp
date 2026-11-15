@@ -8,6 +8,7 @@
 #include "buffer.hpp"         // for GenericBuffer, Buffer
 #include "kotekanLogging.hpp" // for INFO_NON_OO, WARN_NON_OO
 #include "metadata.hpp"       // for metadataPool
+#include "numaPolicy.hpp"     // for ScopedNumaPolicy
 #include "ringbuffer.hpp"     // for RingBuffer
 #include "visBuffer.hpp"      // for VisFrameView
 
@@ -71,6 +72,12 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
     int32_t numa_node = config.get_default<int32_t>(location, "numa_node", 0);
     std::string s_log_level = config.get<std::string>(location, "log_level");
 
+    // Place the buffer object, its frame descriptor, and everything else built
+    // here on the same NUMA node as the frames. The thread building the
+    // pipeline is not pinned, so without this they would land wherever it
+    // happened to be running.
+    ScopedNumaPolicy bind_memory(numa_node);
+
     std::shared_ptr<metadataPool> pool;
     if (metadataPool_name != "none") {
         if (metadataPools.count(metadataPool_name) != 1) {
@@ -133,6 +140,10 @@ GenericBuffer* bufferFactory::new_buffer(const string& type_name, const string& 
                     "metadata pool {:s} on numa_node {:d}",
                     type_name, name, ringbuf_size, metadataPool_name, numa_node);
         buf = new RingBuffer(ringbuf_size, pool, name, type_name);
+
+        // A ring may declare its frame descriptor like an `ndarray` buffer
+        if (config.exists(location, "value_type"))
+            buf->ensure_frame_desc(GenericNDArray::from_config(config, location));
 
         // Ring buffers are not peekable yet, so peek_hold would otherwise be
         // read by nothing and leave the buffer quietly unpeekable.

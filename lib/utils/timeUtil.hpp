@@ -167,8 +167,8 @@ std::string format_as(const EOP& eop);
  * @brief   Comparison function for searching/sorting an EOP table. Compares
  *          EOP based on t_inst, orders chronologically.
  *
- * @params  eop1    First EOP to compare.
- * @params  eop2    Second EOP to compare.
+ * @param  eop1    First EOP to compare.
+ * @param  eop2    Second EOP to compare.
  **/
 inline bool EOP_comp_time(const EOP& eop1, const EOP& eop2) {
     return eop1.t_inst_ns < eop2.t_inst_ns;
@@ -179,8 +179,8 @@ inline bool EOP_comp_time(const EOP& eop1, const EOP& eop2) {
  *          EOP based on t_ut1, orders by increasing rotation. Will produce the
  *          same order as t_inst, unless something is apocalyptically wrong.
  *
- * @params  eop1    First EOP to compare.
- * @params  eop2    Second EOP to compare.
+ * @param  eop1    First EOP to compare.
+ * @param  eop2    Second EOP to compare.
  **/
 inline bool EOP_comp_ut1(const EOP& eop1, const EOP& eop2) {
     return eop1.t_ut1_ns < eop2.t_ut1_ns;

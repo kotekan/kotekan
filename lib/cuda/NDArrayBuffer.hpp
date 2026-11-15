@@ -139,17 +139,30 @@ public:
         return buffer_name_device;
     }
 
-    // TODO: Distinguish between input and output buffers, then register automatically
-    void register_consumer() {
-        if (get_instance_num() == 0)
-            cuda_command.register_gpu_buffer_user(
-                {.name = buffer_name, .is_array = true, .does_read = true, .does_write = false});
+    /// The array layout as a descriptor, for the pipeline graph.
+    std::shared_ptr<const kotekan::FrameDesc> frame_desc() const {
+        return kotekan::GenericNDArray::describe(ndarray.get_value_datatype(),
+                                                 ndarray.get_quantity_name(), ndarray.get_extents(),
+                                                 ndarray.get_dimnames(), ndarray.get_dimscalings());
     }
 
-    void register_producer() {
+    // TODO: Distinguish between input and output buffers, then register automatically
+    void register_consumer() const {
         if (get_instance_num() == 0)
-            cuda_command.register_gpu_buffer_user(
-                {.name = buffer_name, .is_array = true, .does_read = false, .does_write = true});
+            cuda_command.register_gpu_buffer_user({.name = buffer_name_device,
+                                                   .is_array = !is_do_once,
+                                                   .does_read = true,
+                                                   .does_write = false,
+                                                   .frame_desc = frame_desc()});
+    }
+
+    void register_producer() const {
+        if (get_instance_num() == 0)
+            cuda_command.register_gpu_buffer_user({.name = buffer_name_device,
+                                                   .is_array = !is_do_once,
+                                                   .does_read = false,
+                                                   .does_write = true,
+                                                   .frame_desc = frame_desc()});
     }
 
     // NDArray:

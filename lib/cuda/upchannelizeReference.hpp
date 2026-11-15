@@ -30,7 +30,7 @@
 
 namespace kotekan {
 
-/// Number of PFB taps used by the CHORD upchannelizer (`julia/kernels/upchan.jl:92`).
+/// Number of PFB taps used by the CHORD upchannelizer (`julia/kernels/upchan_taps.jl`).
 constexpr int upchan_default_num_taps = 4;
 
 /**

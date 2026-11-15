@@ -1,7 +1,9 @@
 #include "UpchannelizationSchedule.hpp"
 
-#include "Telescope.hpp"     // for Telescope, freq_id_t
-#include "chordMetadata.hpp" // for chordMetadata, get_chord_metadata
+#include "Telescope.hpp"             // for Telescope, freq_id_t
+#include "chordMetadata.hpp"         // for chordMetadata, get_chord_metadata
+#include "div.hpp"                   // for round_up
+#include "upchannelizeReference.hpp" // for upchan_default_num_taps
 
 #include "fmt.hpp" // for compile_string_to_view
 
@@ -282,4 +284,27 @@ std::optional<std::vector<int>> wait_for_coarse_freq(const std::vector<Buffer*>&
         metadata_source->unregister_consumer(unique_name);
     }
     return coarse_freq;
+}
+
+std::int64_t upchan_output_offset(kotekan::Config& config, const std::string& unique_name) {
+    const int max_upchannelization_factor =
+        config.get<int>(unique_name, "max_upchannelization_factor");
+    if (!(max_upchannelization_factor >= 1
+          && (kotekan::upchan_default_num_taps - 1) * max_upchannelization_factor % 2 == 0))
+        FATAL_ERROR_NON_OO("{:s}: max_upchannelization_factor={:d} must be positive, and "
+                           "(taps-1)*max_upchannelization_factor must be even (taps={:d})",
+                           unique_name, max_upchannelization_factor,
+                           kotekan::upchan_default_num_taps);
+    const std::int64_t offset =
+        std::int64_t(kotekan::upchan_default_num_taps - 1) * max_upchannelization_factor / 2;
+    return kotekan::round_up(offset, upchan_output_alignment(config, unique_name));
+}
+
+std::int64_t upchan_output_alignment(kotekan::Config& config, const std::string& unique_name) {
+    const std::int64_t alignment =
+        config.get_default<std::int64_t>(unique_name, "upchan_output_alignment", 1);
+    if (!(alignment >= 1))
+        FATAL_ERROR_NON_OO("{:s}: upchan_output_alignment={:d} must be positive", unique_name,
+                           alignment);
+    return alignment;
 }

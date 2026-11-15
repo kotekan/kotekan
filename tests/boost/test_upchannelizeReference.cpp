@@ -1,5 +1,6 @@
 #define BOOST_TEST_MODULE "test_upchannelizeReference"
 
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 #include "upchannelizeReference.hpp"
 
 #include <algorithm>
@@ -55,6 +56,8 @@ run(const int U, const int num_times_out, const std::function<std::complex<float
 ////////////////////////////////////////////////////////////////////////////////
 // The window function
 ////////////////////////////////////////////////////////////////////////////////
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 // Re-derive the window straight from eqn. (11) / `Wkernel` and require an exact match.
 BOOST_AUTO_TEST_CASE(window_matches_the_formula) {

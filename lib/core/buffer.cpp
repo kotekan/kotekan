@@ -17,11 +17,12 @@
 
 // IWYU pragma: no_include <asm/mman-common.h>
 // IWYU pragma: no_include <asm/mman.h>
-#include "PipelineGraph.hpp"  // for human_bytes
+#include "PipelineGraph.hpp"  // for human_bytes, array_layout_line
 #include "errors.h"           // for CHECK_ERROR_F, ERROR_F, CHECK_MEM_F, DEBUG2_F
 #include "kotekanLogging.hpp" // for DEBUG2, DEBUG, ERROR, WARN, FATAL_ERROR, logLevel, INFO
 #include "metadata.hpp"       // for metadataObject, metadataPool
 #include "nt_memset.h"        // for nt_memset
+#include "numaPolicy.hpp"     // for ScopedNumaPolicy
 #include "util.h"             // for e_time
 
 #include "fmt.hpp" // for compile_string_to_view, format, fmt
@@ -31,7 +32,7 @@
 #include <time.h> // for timespec
 #ifdef WITH_NUMA
 #include <numa.h>   // for bitmask, numa_allocate_nodemask, numa_bitmask_free, numa_b...
-#include <numaif.h> // for set_mempolicy, MPOL_BIND, mbind, MPOL_DEFAULT, MPOL_MF_STRICT
+#include <numaif.h> // for mbind, MPOL_BIND, MPOL_MF_STRICT
 #endif
 
 // It is assumed this is a power of two in the code.
@@ -51,12 +52,11 @@ GenericBuffer::GenericBuffer(const std::string& _buffer_name, const std::string&
 
 GenericBuffer::~GenericBuffer() {}
 
-bool GenericBuffer::set_metadata(int ID, std::shared_ptr<metadataObject> meta) {
+void GenericBuffer::set_metadata(int ID, std::shared_ptr<metadataObject> meta) {
     assert(ID >= 0);
     assert(ID < num_frames);
     buffer_lock lock(mutex);
     metadata[ID] = meta;
-    return true;
 }
 
 void GenericBuffer::register_consumer(const std::string& name) {
@@ -145,8 +145,7 @@ void GenericBuffer::pass_metadata(int from_ID, GenericBuffer* to_buf, int to_ID)
         return;
     }
     std::shared_ptr<metadataObject> metadata_container = metadata[from_ID];
-    bool set = to_buf->set_metadata(to_ID, metadata_container);
-    assert(set);
+    to_buf->set_metadata(to_ID, metadata_container);
 }
 
 void GenericBuffer::copy_metadata(int from_ID, GenericBuffer* to_buf, int to_ID) {
@@ -257,7 +256,20 @@ std::vector<std::string> GenericBuffer::dot_label_lines(const kotekan::GraphOpti
     std::string type_line = buffer_type;
     if (metadata_pool)
         type_line += fmt::format(fmt(" · {:s}"), metadata_pool->type_name);
-    return {buffer_name, type_line};
+    std::vector<std::string> lines = {buffer_name, type_line};
+
+    // The array layout, when the buffer has one. This is the shape the data
+    // actually has at run time, so nothing here has to be inferred from the
+    // config or from the kernel sources.
+    auto array = get_frame_desc<kotekan::GenericNDArray>();
+    if (array) {
+        std::vector<std::string> dimnames;
+        for (const kotekan::Symbol& dimname : array->get_dimnames())
+            dimnames.push_back(dimname ? dimname.get_string() : std::string());
+        lines.push_back(kotekan::array_layout_line(type_to_string(array->get_value_datatype()),
+                                                   array->get_extents(), dimnames));
+    }
+    return lines;
 }
 
 Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
@@ -266,10 +278,9 @@ Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
                bool zero_new_frames, uint8_t zero_value) :
     GenericBuffer(_buffer_name, _buffer_type, pool, num_frames), frame_size(len),
     // By default don't zero buffers at the end of their use.
-    _zero_frames(false), frames(num_frames, nullptr), frames_desc(nullptr),
-    is_full(num_frames, false), peek_in_progress(num_frames, 0),
-    peek_deferred_empty(num_frames, false), last_arrival_time(0), use_hugepages(_use_hugepages),
-    mlock_frames(_mlock_frames), numa_node(_numa_node) {
+    _zero_frames(false), frames(num_frames, nullptr), is_full(num_frames, false),
+    peek_in_progress(num_frames, 0), peek_deferred_empty(num_frames, false), last_arrival_time(0),
+    use_hugepages(_use_hugepages), mlock_frames(_mlock_frames), numa_node(_numa_node) {
     assert(num_frames > 0);
 
     // Get the CPU affinity for the zeroing threads from the config
@@ -277,18 +288,10 @@ Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
     for (auto cpu : cpu_affinity)
         CPU_SET(cpu, &_cpu_set_zero);
 
-#if defined(WITH_NUMA) && !defined(WITH_NO_MEMLOCK)
-    // Allocate all memory for a buffer on the NUMA domain its frames are located.
-    struct bitmask* node_mask = numa_allocate_nodemask();
-    numa_bitmask_setbit(node_mask, numa_node);
-    if (set_mempolicy(MPOL_BIND, node_mask ? node_mask->maskp : NULL,
-                      node_mask ? node_mask->size + 1 : 0)
-        < 0) {
-        throw std::runtime_error(
-            fmt::format(fmt("Failed to set memory policy: {:s} {:d}"), strerror(errno), errno));
-    }
-    numa_bitmask_free(node_mask);
-#endif
+    // Allocate everything the constructor creates on the NUMA node the frames
+    // are on. bufferFactory wraps the whole construction in the same policy so
+    // that the object itself is placed too; this covers a Buffer built directly.
+    kotekan::ScopedNumaPolicy bind_memory(numa_node);
 
     if (use_hugepages) {
         // Round up to the nearest huge page size multiple.
@@ -314,14 +317,6 @@ Buffer::Buffer(int num_frames, size_t len, std::shared_ptr<metadataPool> pool,
             frames[i] = (uint8_t*)0xffffffff;
         }
     }
-
-#if defined(WITH_NUMA) && !defined(WITH_NO_MEMLOCK)
-    // Reset the memory policy so that we don't impact other parts of the
-    if (set_mempolicy(MPOL_DEFAULT, nullptr, 0) < 0) {
-        throw std::runtime_error(fmt::format(
-            fmt("Failed to reset memory policy to default: %s (%d)"), strerror(errno), errno));
-    }
-#endif
 }
 
 Buffer::~Buffer() {
@@ -619,26 +614,6 @@ void Buffer::json_description(nlohmann::json& buf_json) {
 
 std::vector<std::string> Buffer::dot_label_lines(const kotekan::GraphOptions& options) {
     std::vector<std::string> lines = GenericBuffer::dot_label_lines(options);
-
-    // The array layout, when the buffer was declared with one. This is the shape
-    // the data actually has at run time, so nothing here has to be inferred from
-    // the config or from the kernel sources.
-    auto array = get_frame_desc<kotekan::GenericNDArray>();
-    if (array) {
-        const std::vector<std::ptrdiff_t> extents = array->get_extents();
-        const std::vector<kotekan::Symbol> dimnames = array->get_dimnames();
-        std::string layout;
-        for (size_t d = 0; d < extents.size(); d++) {
-            if (!layout.empty())
-                layout += " × ";
-            if (d < dimnames.size() && dimnames[d])
-                layout += fmt::format(fmt("{:s}:{:d}"), dimnames[d].get_string(), extents[d]);
-            else
-                layout += fmt::format(fmt("{:d}"), extents[d]);
-        }
-        lines.push_back(
-            fmt::format(fmt("{:s} {:s}"), type_to_string(array->get_value_datatype()), layout));
-    }
 
     lines.push_back(fmt::format(fmt("{:s} ×{:d} frames = {:s}"), kotekan::human_bytes(frame_size),
                                 num_frames, kotekan::human_bytes(frame_size * (size_t)num_frames)));

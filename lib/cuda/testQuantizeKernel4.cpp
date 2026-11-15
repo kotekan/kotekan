@@ -20,6 +20,7 @@
 #include <cassert>    // for assert
 #include <cfloat>     // for FLT_MAX
 #include <cmath>      // for fabs, isfinite, fmax, isnan, fmin, sqrt
+#include <cstdint>    // for uint8_t
 #include <cstdlib>    // for abort
 #include <functional> // for function
 #include <string>     // for allocator, string
@@ -89,8 +90,32 @@ public:
             std::abort();
         };
 
+        // Invent a packet loss mask (true = valid). It does not depend on the beam.
+        const auto valid = [&](const int freq, const int time) -> bool {
+            switch (freq % 5) {
+                case 0:
+                    return true;
+                case 1:
+                    return time % 7 != 0;
+                case 2:
+                    return !(100 <= time % chunk_size && time % chunk_size < 140);
+                case 3:
+                    return time >= chunk_size; // the first chunk is fully masked
+                case 4:
+                    return time % 23 != 0; // masks the not-a-numbers above
+            }
+            std::abort();
+        };
 
         ////////////////////////////////////////////////////////////////////////////////
+
+        // Set packet loss mask; use a larger stride to test it. The 3 extra entries per time are
+        // padding that the quantizer does not read.
+        const int pl_mask_stride = nfreqs + 3;
+        std::vector<std::uint8_t> pl_mask(ntimes * pl_mask_stride, 0xff);
+        for (int time = 0; time < ntimes; ++time)
+            for (int freq = 0; freq < nfreqs; ++freq)
+                pl_mask.at(time * pl_mask_stride + freq) = valid(freq, time);
 
         // Set input
         for (int beam = 0; beam < nbeams; ++beam) {
@@ -109,44 +134,48 @@ public:
 
             for (int beam = 0; beam < nbeams; ++beam) {
                 for (int freq = 0; freq < nfreqs; ++freq) {
-
-                    // Calculate expected result
-                    //
-                    // When comparing to the expected result, two things can go wrong:
-                    // 1. The scale can be zero, or can be close to zero (`scale_may_collapse`)
-                    // 2. The input can contain large numbers, or infinities, or not-a-numbers
-                    //    (`may_overflow`)
-                    //
-                    // We need to handle both cases, and we need to be lenient when comparing when
-                    // this happens. For example, there might be an overflow on the GPU, but not in
-                    // the CPU implementation. This should not be flagged as error.
-                    float sum = 0, sum2 = 0, minval = +FLT_MAX, maxval = -FLT_MAX;
-                    bool may_overflow = false;
-                    for (int time = 0; time < chunk_size; ++time) {
-                        const float x = f(beam, freq, time);
-                        sum += x;
-                        sum2 += x * x;
-                        minval = isnan(minval) || isnan(x) ? 0.0f / 0.0f : fmin(minval, x);
-                        maxval = isnan(maxval) || isnan(x) ? 0.0f / 0.0f : fmax(maxval, x);
-                        // Allow the respective float16 calculations to overflow
-                        may_overflow |= !isfinite(x) || fabs(x) >= 2048.0f;
-                    }
-                    may_overflow |= !isfinite(sum) || fabs(sum) >= 2048.0f || !isfinite(sum2)
-                                    || fabs(sum2) >= 2048.0f;
-                    // Allow the scale to be inaccurate when all inputs are close together
-                    const bool scale_may_collapse = fabs(maxval - minval) < 10 * epsilon;
-                    const float mean = sum / chunk_size;
-                    const float stddev = sqrt(fmax(0.0f, sum2 / chunk_size - mean * mean));
-                    const int int4_range = 15; // avoid -8
-                    float expected_offset = mean;
-                    float expected_scale = 2 * stddev_cutoff * stddev / int4_range;
-                    if (!isfinite(expected_offset) || !isfinite(expected_scale)) {
-                        may_overflow = true;
-                        expected_offset = 0.0f;
-                        expected_scale = 0.0f;
-                    }
-
                     for (int chunk = 0; chunk < nchunks; ++chunk) {
+
+                        // Calculate expected result from the valid samples
+                        //
+                        // When comparing to the expected result, two things can go wrong:
+                        // 1. The scale can be zero, or can be close to zero (`scale_may_collapse`)
+                        // 2. The input can contain large numbers, or infinities, or not-a-numbers
+                        //    (`may_overflow`)
+                        //
+                        // We need to handle both cases, and we need to be lenient when comparing
+                        // when this happens. For example, there might be an overflow on the GPU,
+                        // but not in the CPU implementation. This should not be flagged as error.
+                        int count = 0;
+                        float sum = 0, sum2 = 0, minval = +FLT_MAX, maxval = -FLT_MAX;
+                        bool may_overflow = false;
+                        for (int time = 0; time < chunk_size; ++time) {
+                            if (!valid(freq, chunk * chunk_size + time))
+                                continue;
+                            const float x = f(beam, freq, time);
+                            ++count;
+                            sum += x;
+                            sum2 += x * x;
+                            minval = isnan(minval) || isnan(x) ? 0.0f / 0.0f : fmin(minval, x);
+                            maxval = isnan(maxval) || isnan(x) ? 0.0f / 0.0f : fmax(maxval, x);
+                            // Allow the respective float16 calculations to overflow
+                            may_overflow |= !isfinite(x) || fabs(x) >= 2048.0f;
+                        }
+                        may_overflow |= !isfinite(sum) || fabs(sum) >= 2048.0f || !isfinite(sum2)
+                                        || fabs(sum2) >= 2048.0f;
+                        // Allow the scale to be inaccurate when all inputs are close together
+                        const bool scale_may_collapse = fabs(maxval - minval) < 10 * epsilon;
+                        const float mean = sum / count;
+                        const float stddev = sqrt(fmax(0.0f, sum2 / count - mean * mean));
+                        const int int4_range = 15; // avoid -8
+                        float expected_offset = mean;
+                        float expected_scale = 2 * stddev_cutoff * stddev / int4_range;
+                        if (!isfinite(expected_offset) || !isfinite(expected_scale)) {
+                            may_overflow = count > 0;
+                            expected_offset = 0.0f;
+                            expected_scale = 0.0f;
+                        }
+
                         const float offset =
                             offsetscale.at(2 * chunk + 2 * nchunks * (freq + nfreqs * beam) + 0);
                         const float scale =
@@ -194,6 +223,15 @@ public:
                                 const int i = i01[time - time2];
                                 const float x = i == -8 ? 0.0f / 0.0f : offset + scale * i;
 
+                                // Masked values are encoded as -8
+                                if (!valid(freq, time)) {
+                                    if (i != -8)
+                                        FATAL_ERROR("Found masked value encoded as {}: beam {}, "
+                                                    "freq {}, time {}",
+                                                    i, beam, freq, time);
+                                    continue;
+                                }
+
                                 bool isgood = false;
 
                                 // Allow the value to be clamped
@@ -211,6 +249,12 @@ public:
                                     isgood = true;
                                 if (scale_may_collapse && scale == 0.0f && i != -8
                                     && !isnan(expected_x))
+                                    isgood = true;
+                                // If all values are close together, then the scale is tiny compared
+                                // to the offset, and float16 rounding dominates the error
+                                if (scale_may_collapse && i != -8 && !isnan(expected_x)
+                                    && fabs(x - expected_x)
+                                           <= epsilon * fmax(1.0f, fabs(expected_x)))
                                     isgood = true;
                                 if (!isgood)
                                     FATAL_ERROR("Found inaccurate value: "
@@ -236,7 +280,8 @@ public:
 
         // Quantize on the CPU
         INFO("Testing on CPU...");
-        cpu_quantize4(input.data(), offsetscale.data(), beams.data(),                 //
+        cpu_quantize4(input.data(), pl_mask.data(), pl_mask_stride,                   //
+                      offsetscale.data(), beams.data(),                               //
                       ntimes, nfreqs, nbeams, ntimes, ntimes * nfreqs,                //
                       2 * nchunks, nfreqs, nbeams, 2 * nchunks, 2 * nchunks * nfreqs, //
                       ntimes / 2, nfreqs, nbeams, ntimes / 2, ntimes / 2 * nfreqs,    //
@@ -251,6 +296,8 @@ public:
         // Allocate memory on the GPU
         float16_t* gpu_input;
         CHECK_CUDA_ERROR(cudaMalloc(&gpu_input, input.size() * sizeof *input.data()));
+        std::uint8_t* gpu_pl_mask;
+        CHECK_CUDA_ERROR(cudaMalloc(&gpu_pl_mask, pl_mask.size() * sizeof *pl_mask.data()));
         float16_t* gpu_offsetscale;
         CHECK_CUDA_ERROR(
             cudaMalloc(&gpu_offsetscale, offsetscale.size() * sizeof *offsetscale.data()));
@@ -264,6 +311,9 @@ public:
         // Copy input and poisoned outputs to GPU
         CHECK_CUDA_ERROR(cudaMemcpy(gpu_input, input.data(), input.size() * sizeof *input.data(),
                                     cudaMemcpyHostToDevice));
+        CHECK_CUDA_ERROR(cudaMemcpy(gpu_pl_mask, pl_mask.data(),
+                                    pl_mask.size() * sizeof *pl_mask.data(),
+                                    cudaMemcpyHostToDevice));
         CHECK_CUDA_ERROR(cudaMemcpy(gpu_offsetscale, offsetscale.data(),
                                     offsetscale.size() * sizeof *offsetscale.data(),
                                     cudaMemcpyHostToDevice));
@@ -272,7 +322,8 @@ public:
 
         // Quantize on the GPU
         INFO("Testing on GPU...");
-        gpu_quantize4(gpu_input, gpu_offsetscale, gpu_beams,                          //
+        gpu_quantize4(gpu_input, gpu_pl_mask, pl_mask_stride,                         //
+                      gpu_offsetscale, gpu_beams,                                     //
                       ntimes, nfreqs, nbeams, ntimes, ntimes * nfreqs,                //
                       2 * nchunks, nfreqs, nbeams, 2 * nchunks, 2 * nchunks * nfreqs, //
                       ntimes / 2, nfreqs, nbeams, ntimes / 2, ntimes / 2 * nfreqs,    //

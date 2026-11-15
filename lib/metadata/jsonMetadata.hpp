@@ -34,7 +34,7 @@ const std::string RIGHT_ASCENSION("RIGHT_ASCENSION"); // an array of float of si
 const std::string DECLINATION("DECLINATION");         // an array of float of size MAX_NUM_BEAMS
 const std::string SCALING("SCALING");                 // an array of uint32 of size MAX_NUM_BEAMS
 const std::string FPGA_SEQ_NUM("FPGA_SEQ_NUM");       // an uint64
-const std::string TIME_DOWNSAMPLING_FPGA("TIME_DOWNSAMPLING_FPGA"); // an int
+const std::string TIME_DOWNSAMPLING_FPGA("TIME_DOWNSAMPLING_FPGA"); // an int64
 // frequencies -- integer (0-8192) identifier for FPGA coarse frequencies
 // This is the FPGA frequency channel index, indexed by the local coarse frequency channel.
 // TODO: this should really be a freq_id_t array

@@ -20,7 +20,6 @@ add_library(
     monitorBuffer.cpp
     networkInputPowerStream.cpp
     parseReorderDefault.cpp
-    pyPlotN2.cpp
     rawFileRead.cpp
     rawFileWrite.cpp
     waitingForMaxFrames.cpp
@@ -44,7 +43,6 @@ add_library(
     simpleAutocorr.cpp
     SampleAutocorr.cpp
     SimpleCrosscorr.cpp
-    SpawnProcess.cpp
     freqSplit.cpp
     FreqSubset.cpp
     prodSubset.cpp
@@ -54,7 +52,6 @@ add_library(
     visAccumulate.cpp
     visCompression.cpp
     timeDownsample.cpp
-    frbPostProcess.cpp
     basebandReadout.cpp
     BasebandWriter.cpp
     BaseWriter.cpp
@@ -64,7 +61,7 @@ add_library(
     VisWriter.cpp
     HFBRawReader.cpp
     restInspectFrame.cpp
-    frbNetworkProcess.cpp
+    frbNetworkSend.cpp
     pulsarNetworkProcess.cpp
     bufferMerge.cpp
     bufferCopy.cpp
@@ -118,6 +115,8 @@ add_library(
     dropAllFrames.cpp
     N2FrameToVisFrame.cpp
     RfiMaskSum.cpp
+    DtvRfiMask.cpp
+    NDArrayTimeConcat.cpp
     RfiFrameMask.cpp
     RfiSKMetrics.cpp
     CountLostPLSamplesScalar.cpp

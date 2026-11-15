@@ -2,13 +2,23 @@
 # Compare the FRB2 beamforming weights calculated on the CPU (calcFRB2Weights) and on the
 # GPU (cudaCalcFRB2Weights). The setup is CHIME-like (frb1_swap_MN, a tall dish grid), but
 # scaled down so that the CPU stage finishes quickly.
+#
+# The weights are a stream, one matrix per frb2_weights_lifetime_in_samples. The GPU writes
+# them into a ring buffer of frb2_weights_ring_depth matrices, which is copied back to the
+# host for the comparison. Several matrices are compared, so that the ring buffer wraps
+# around, and two GPU command instances (buffer_depth) take turns.
 
 type: config
 log_level: info
 cpu_affinity: []
 num_components: 2
 num_polarizations: 2
-buffer_depth: 1
+buffer_depth: 2
+frame_arrival_period: 1.0 # only used for GPU utilization statistics
+
+# The weights are valid for this many FPGA samples (arbitrary here)
+frb2_weights_lifetime_in_samples: 1000
+frb2_weights_ring_depth: 2
 
 # Dishes
 num_dishes: 128
@@ -24,10 +34,15 @@ frb2_num_beams: frb2_num_beams_x * frb2_num_beams_y
 # Upchannelization schedule: 4 coarse channels, each upchannelized by 8
 frequency_channels: &frequency_channels [1000, 2000, 3000, 4000]
 upchan_factors: [8]
+# The largest upchannelization factor. setFRBBeams starts its stream where the upchannelizers'
+# output would begin.
+max_upchannelization_factor: 8
 # ranges are [min, max)
 upchan_channel_ranges:
     8: [0, 8192]
 frb2_num_frequencies: 32
+# Bytes per weights matrix
+frb2_weights_size: 2 * frb2_num_frequencies * frb2_num_beams * (2 * num_dishes_x) * (2 * num_dishes_y)
 
 # Telescope
 telescope:
@@ -176,7 +191,7 @@ main_pool:
 # Buffers
 host_frb2_beam_positions_buffer:
     kotekan_buffer: ndarray
-    num_frames: 1
+    num_frames: buffer_depth
     value_type: float32
     extents: [frb2_num_beams, 2]
     quantity_name: "frb2_beam_positions"
@@ -186,7 +201,7 @@ host_frb2_beam_positions_buffer:
 
 host_frb2_beam_ids_buffer:
     kotekan_buffer: ndarray
-    num_frames: 1
+    num_frames: buffer_depth
     value_type: uint64
     extents: [frb2_num_beams]
     quantity_name: "frb2_beam_ids"
@@ -194,24 +209,30 @@ host_frb2_beam_ids_buffer:
     dimscalings: [1]
     metadata_pool: main_pool
 
+# One frame is one weights matrix, covering frb2_weights_lifetime_in_samples samples
 host_frb2_weights_cpu_buffer:
     kotekan_buffer: ndarray
-    num_frames: 1
+    num_frames: buffer_depth
     value_type: float16
-    extents: [frb2_num_frequencies, frb2_num_beams, 2 * num_dishes_x, 2 * num_dishes_y]
+    extents: [1, frb2_num_frequencies, frb2_num_beams, 2 * num_dishes_x, 2 * num_dishes_y]
     quantity_name: "W2"
-    dimnames: ["Fbar", "R", "beamQ", "beamP"]
-    dimscalings: [1, 1, 1, 1]
+    dimnames: ["TW2", "Fbar", "R", "beamQ", "beamP"]
+    dimscalings: [frb2_weights_lifetime_in_samples, 1, 1, 1, 1]
     metadata_pool: main_pool
 
+# The GPU calculates the weights directly into a GPU ring buffer; this is the host copy of it
 host_frb2_weights_gpu_buffer:
     kotekan_buffer: ndarray
-    num_frames: 1
+    num_frames: buffer_depth
     value_type: float16
-    extents: [frb2_num_frequencies, frb2_num_beams, 2 * num_dishes_x, 2 * num_dishes_y]
+    extents: [1, frb2_num_frequencies, frb2_num_beams, 2 * num_dishes_x, 2 * num_dishes_y]
     quantity_name: "W2"
-    dimnames: ["Fbar", "R", "beamQ", "beamP"]
-    dimscalings: [1, 1, 1, 1]
+    dimnames: ["TW2", "Fbar", "R", "beamQ", "beamP"]
+    dimscalings: [frb2_weights_lifetime_in_samples, 1, 1, 1, 1]
+    metadata_pool: main_pool
+host_frb2_weights_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: frb2_weights_ring_depth * frb2_weights_size
     metadata_pool: main_pool
 
 host_dummy_voltage_buffer:
@@ -228,7 +249,8 @@ host_dummy_voltage_buffer:
 
 # The weights stages learn which coarse frequency channels this GPU handles
 # from the metadata of an incoming frame, as they do from the voltage buffer in
-# the real configs. Only the metadata matters here, so one frame is enough.
+# the real configs. Only the metadata matters here, so one frame is enough. The
+# beam positions take their clock (fpga_seq_num) from the same frame.
 run_set_dummy_voltage:
     kotekan_stage: testDataGen
     type: const_offset
@@ -242,8 +264,10 @@ run_set_dummy_voltage:
     out_buf: host_dummy_voltage_buffer
 run_set_frb_beams:
     kotekan_stage: setFRBBeams
+    metadata_source: host_dummy_voltage_buffer
     out_pos_buf: host_frb2_beam_positions_buffer
     out_id_buf: host_frb2_beam_ids_buffer
+    time_downsampling_fpga: frb2_weights_lifetime_in_samples
     mode: grid_degrees
     num_beams: frb2_num_beams
     num_x: frb2_num_beams_x
@@ -261,12 +285,43 @@ run_calc_frb2_weights_cpu:
     num_threads: 4
 
 run_calc_frb2_weights_gpu:
-    kotekan_stage: cudaCalcFRB2Weights
-    frb2_beam_positions: host_frb2_beam_positions_buffer
-    frb2_weights: host_frb2_weights_gpu_buffer
-    metadata_source: host_dummy_voltage_buffer
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_frb2_beam_positions_buffer: host_frb2_beam_positions_buffer
+            host_dummy_voltage_buffer: host_dummy_voltage_buffer
+        out_buffers:
+            host_frb2_weights_ringbuffer: host_frb2_weights_ringbuffer
+        commands:
+            - name: cudaInputData
+              in_buf: host_frb2_beam_positions_buffer
+              gpu_mem: frb2_beam_positions_buffer
+            - name: cudaSyncInput
+            - name: cudaCalcFRB2Weights
+              frb2_beam_positions_name: frb2_beam_positions
+              frb2_weights_name: frb2_weights
+              metadata_source: host_dummy_voltage_buffer
+
+run_recv_frb2_weights_gpu:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_frb2_weights_ringbuffer: host_frb2_weights_ringbuffer
+        out_buffers:
+            host_frb2_weights_gpu_buffer: host_frb2_weights_gpu_buffer
+        commands:
+            - name: cudaCopyFromRingbuffer
+              host_signal: host_frb2_weights_ringbuffer
+              gpu_mem_input: frb2_weights_buffer
+              output_size: frb2_weights_size
+              ring_buffer_size: frb2_weights_ring_depth * frb2_weights_size
+              out_buf: host_frb2_weights_gpu_buffer
 
 run_test_calc_frb2_weights:
     kotekan_stage: testCalcFRB2Weights
     weights_a: host_frb2_weights_cpu_buffer
     weights_b: host_frb2_weights_gpu_buffer
+    # Several frames, so that the ring buffer wraps around
+    num_frames: 3 * frb2_weights_ring_depth

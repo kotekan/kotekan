@@ -356,16 +356,17 @@ public:
         if (dataset.hasAttribute("fpga_seq_num")) {
             std::int64_t fpga_seq_num = dataset.getAttribute("fpga_seq_num").read<std::int64_t>();
             if (frame_index > 0) {
-                const int tds = dataset.hasAttribute("time_downsampling_fpga")
-                                    ? dataset.getAttribute("time_downsampling_fpga").read<int>()
-                                    : 1;
+                const std::int64_t tds =
+                    dataset.hasAttribute("time_downsampling_fpga")
+                        ? dataset.getAttribute("time_downsampling_fpga").read<std::int64_t>()
+                        : 1;
                 fpga_seq_num += frame_index * std::int64_t(frame_dims.at(0)) * tds;
             }
             meta->set_fpga_seq_num(fpga_seq_num);
         }
         if (dataset.hasAttribute("time_downsampling_fpga"))
             meta->set_time_downsampling_fpga(
-                dataset.getAttribute("time_downsampling_fpga").read<int>());
+                dataset.getAttribute("time_downsampling_fpga").read<std::int64_t>());
 
         if (dataset.hasAttribute("coarse_freq"))
             meta->set_coarse_freq(dataset.getAttribute("coarse_freq").read<std::vector<int>>());

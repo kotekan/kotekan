@@ -2,6 +2,7 @@
 #define KOTEKAN_CUDA_COPYTORINGBUFFER_HPP
 
 #include "Config.hpp"              // for Config
+#include "NDArray.hpp"             // for GenericNDArray
 #include "buffer.hpp"              // for Buffer
 #include "bufferContainer.hpp"     // for bufferContainer
 #include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState
@@ -50,6 +51,10 @@ public:
 
 protected:
 private:
+    /// Attach (or check) the ring's descriptor: the input's layout, with the ring's capacity in
+    /// the slowest dimension.
+    void set_ring_frame_desc(const kotekan::GenericNDArray& in_desc);
+
     size_t _input_size;
     size_t _ring_buffer_size;
 

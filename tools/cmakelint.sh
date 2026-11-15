@@ -11,21 +11,37 @@ fi
 
 echo "Checking all cmake files in '$path' and its subdirectories."
 
-# Track whether any issues were found (format changes or lint warnings)
+# Track tool failures, format changes, and lint warnings.
 had_issues=0
+
+for tool in cmake-format cmake-lint; do
+    if ! command -v "$tool" > /dev/null; then
+        echo "Error: required tool '$tool' was not found in PATH." >&2
+        had_issues=1
+    fi
+done
+if [[ $had_issues -ne 0 ]]; then
+    exit 1
+fi
 
 # Run cmakelint on all CMakeList.txt recursively.
 shopt -s globstar
 for file in "$path"/{,**/}CMakeLists.txt; do
     # Format in-place, then check if that file changed
-    cmake-format -c "$path"/tools/cmake_format_config.py -i -- "$file"
+    if ! cmake-format -c "$path"/tools/cmake_format_config.py -i -- "$file"; then
+        echo "cmake-format failed for: $file" >&2
+        had_issues=1
+    fi
     if ! git diff --exit-code -- "$file" > /dev/null; then
         echo "cmake-format applied changes to: $file" >&2
         had_issues=1
     fi
 
     # Capture cmake-lint output; treat any output as an issue
-    lint_out=$(cmake-lint --suppress-decorations -c "$path"/tools/cmake_format_config.py -- "$file" || true)
+    if ! lint_out=$(cmake-lint --suppress-decorations -c "$path"/tools/cmake_format_config.py -- "$file" 2>&1); then
+        echo "cmake-lint failed for: $file" >&2
+        had_issues=1
+    fi
     if [[ -n "$lint_out" ]]; then
         echo "$lint_out"
         had_issues=1
@@ -40,14 +56,20 @@ for file in "$path"/cmake/*.cmake; do
         continue
     fi
     # Format in-place, then check if that file changed
-    cmake-format -c "$path"/tools/cmake_format_config.py -i -- "$file"
+    if ! cmake-format -c "$path"/tools/cmake_format_config.py -i -- "$file"; then
+        echo "cmake-format failed for: $file" >&2
+        had_issues=1
+    fi
     if ! git diff --exit-code -- "$file" > /dev/null; then
         echo "cmake-format applied changes to: $file" >&2
         had_issues=1
     fi
 
     # Capture cmake-lint output; treat any output as an issue
-    lint_out=$(cmake-lint --suppress-decorations -c "$path"/tools/cmake_format_config.py -- "$file" || true)
+    if ! lint_out=$(cmake-lint --suppress-decorations -c "$path"/tools/cmake_format_config.py -- "$file" 2>&1); then
+        echo "cmake-lint failed for: $file" >&2
+        had_issues=1
+    fi
     if [[ -n "$lint_out" ]]; then
         echo "$lint_out"
         had_issues=1

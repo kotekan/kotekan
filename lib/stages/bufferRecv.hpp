@@ -62,6 +62,12 @@ class connInstance;
  * @conf num_threads         Int, default 1.  The number of worker threads to use
  * @conf connection_timeout  Int, default 60.  Number of seconds before timeout on transfer
  * @conf drop_frames         Bool, default true.  Whether to drop frames when buffer fills.
+ * @conf allow_short_frames  Bool, default false.  Accept non-empty frames smaller than
+ *        @c buf's frame size, for producers whose payload records its own length. The rest of
+ *        the frame is zeroed. Otherwise a frame of a different size closes the connection.
+ *        @c buf must not declare a frame shape (no N2 or ndarray buffer type), its metadata
+ *        must not be chordMetadata, and @c use_frame_desc must be false; the stage refuses to
+ *        start otherwise.
  * @conf upstream_rest_port  Int, default: this instance's own REST port. The
  *        REST port to reach a sender on when fetching config-tracker state.
  *        Nothing on the wire carries the sender's REST port, so it has to be
@@ -161,6 +167,9 @@ private:
     /// not here misreads the descriptor bytes as metadata and is only caught at
     /// the next frame header, after one corrupted frame.
     bool use_frame_desc;
+
+    /// Accept non-empty frames smaller than the buffer's frame size.
+    bool allow_short_frames;
 
     static void read_callback(evutil_socket_t fd, short what, void* arg);
     static void accept_connection(evutil_socket_t listener, short event, void* arg);
@@ -276,7 +285,8 @@ public:
     /// Constructor
     connInstance(const std::string& producer_name, Buffer* buf, bufferRecv* buffer_recv,
                  const std::string& client_ip, int port, struct timeval read_timeout,
-                 bool use_config_tracker, bool use_frame_desc, uint16_t upstream_rest_port);
+                 bool use_config_tracker, bool use_frame_desc, bool allow_short_frames,
+                 uint16_t upstream_rest_port);
 
     /// Destructor
     ~connInstance();
@@ -345,6 +355,9 @@ public:
 
     /// Whether to expect a serialized frame descriptor on the wire
     const bool use_frame_desc;
+
+    /// @see bufferRecv::allow_short_frames
+    const bool allow_short_frames;
 
     /// Set once the frame descriptor has been read on this connection; the sender
     /// transmits it only on the first frame, so later frames skip the read.
