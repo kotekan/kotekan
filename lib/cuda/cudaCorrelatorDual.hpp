@@ -65,9 +65,9 @@
  *                             AA tiles are gathered.
  * @conf  gnss_local_channels  List of Int. Local frame channel indices, in
  *                             [0, num_local_freq), of the GNSS comb; not global freq_ids.
- * @conf  gnss_gathers         List of String, not empty. Several chains in one pass: the
- *                             synth axis holds every chain's lanes at its own offset and each
- *                             named gather copies out one buffer. Per name G:
+ * @conf  gnss_gathers         List of String, not empty (or gnss_rows). Several chains in one
+ *                             pass: the synth axis holds every chain's lanes at its own
+ *                             offset and each named gather copies out one buffer. Per name G:
  *                             gather_G_tiles_name (String), gather_G_channels (local, a
  *                             subset of gnss_local_channels; default all), gather_G_lane_base
  *                             and gather_G_lanes (default 0 and num_synth; whole tile rows),
@@ -76,6 +76,11 @@
  *                             gather's rows, for the visibility capture; the tracker never
  *                             reads them). Tile order inside a buffer is the tile list above
  *                             restricted to those rows. The BB block is computed either way.
+ * @conf  gnss_rows            List, instead of gnss_gathers: the GPU half's rows
+ *                             (gnssGpuRows.hpp), usually set on the cudaProcess. One gather
+ *                             copies every row's mixed tiles, rows in list order on one channel
+ *                             axis, into @c gnss_rows_tiles_name, [Tc][Fg_total][Tile][16][16][2];
+ *                             every row must have the same lanes, so Tile is uniform.
  * @conf  gnss_synth_name      String. Name of the synthetic-input GPU array. Default
  *                             "gnss_synth".
  * @conf  gnss_freq_map, gnss_synth_compact, rfi_all_pass

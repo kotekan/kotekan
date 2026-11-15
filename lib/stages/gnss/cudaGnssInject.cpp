@@ -19,21 +19,42 @@ using kotekan::Config;
 
 REGISTER_CUDA_COMMAND_WITH_STATE(cudaGnssInject, cudaGnssChordTrackState);
 
+// The row named by gnss_row, which must not also set the keys the row replaces; or a row with
+// no name.
+static gnss_gpu::GpuRow inject_row(Config& config, const std::string& unique_name) {
+    if (!config.exists(unique_name, "gnss_row"))
+        return {};
+    for (const char* k : {"num_synth", "synth_lane_base", "gnss_local_channels", "gnss_ctl_name"})
+        if (config.exists(unique_name, k))
+            FATAL_ERROR_NON_OO("cudaGnssInject {:s}: {:s} comes from its gnss_rows row",
+                               unique_name, k);
+    const std::string name = config.get<std::string>(unique_name, "gnss_row");
+    for (const gnss_gpu::GpuRow& r : gnss_gpu::gpu_rows(config, unique_name))
+        if (r.name == name)
+            return r;
+    FATAL_ERROR_NON_OO("cudaGnssInject {:s}: gnss_rows has no row {:s}", unique_name, name);
+    return {};
+}
+
 cudaGnssInject::cudaGnssInject(Config& config, const std::string& unique_name,
                                bufferContainer& host_buffers, cudaDeviceInterface& device,
                                int instance_num, std::shared_ptr<cudaCommandState> state) :
     cudaCommand(config, unique_name, host_buffers, device, instance_num, state, "cudaGnssInject",
                 "cudaGnssInject"),
+    _row(inject_row(config, unique_name)),
     _buffer_depth(config.get<int>(unique_name, "buffer_depth")),
     _num_times(config.get<int>(unique_name, "num_times")),
     _num_elements(config.get<int>(unique_name, "num_elements")),
     _num_local_freq(config.get<int>(unique_name, "num_local_freq")),
-    _num_synth(config.get<int>(unique_name, "num_synth")),
+    _num_synth(_row.name.empty() ? config.get<int>(unique_name, "num_synth") : _row.lanes),
     _lanes_per_slot(config.get_default<int>(unique_name, "lanes_per_slot", gnss_gpu::LANES_FULL)),
     _voltage_name(config.get<std::string>(unique_name, "voltage_name")),
     _gnss_synth_name(config.get<std::string>(unique_name, "gnss_synth_name")),
-    _gnss_local_channels(config.get<std::vector<std::int32_t>>(unique_name, "gnss_local_channels")),
-    _synth_lane_base(config.get<int>(unique_name, "synth_lane_base")),
+    _gnss_local_channels(_row.name.empty() ? config.get<std::vector<std::int32_t>>(
+                                                 unique_name, "gnss_local_channels")
+                                           : _row.channels),
+    _synth_lane_base(_row.name.empty() ? config.get<int>(unique_name, "synth_lane_base")
+                                       : _row.lane_base),
     _synth_lane_pitch(config.get<int>(unique_name, "synth_lane_pitch")),
     _gnss_synth_channels(config.get<std::vector<std::int32_t>>(unique_name, "gnss_synth_channels")),
     voltage(_voltage_name, "E",
@@ -99,12 +120,24 @@ cudaGnssInject::cudaGnssInject(Config& config, const std::string& unique_name,
 
     // Control block: the epl layout without corr (see the header), sized for every PRN active
     // in every record (gnss_gpu::max_jobs).
-    _mem_ctl = config.get<std::string>(unique_name, "gnss_ctl_name");
     _ctl_off_energy =
         gnss_gpu::off_prnctl() + sizeof(gnss_gpu::PrnCtl) * gnss_gpu::MAX_REC * S.n_prn;
     _ctl_bytes = _ctl_off_energy
                  + sizeof(double) * gnss_gpu::max_jobs(S.n_prn, gnss_gpu::ROWS_PLAIN) * S.n_chan;
     _ctl_stage.resize(_ctl_bytes);
+    _ctl_array_bytes = _ctl_bytes;
+    if (_row.name.empty()) {
+        _mem_ctl = config.get<std::string>(unique_name, "gnss_ctl_name");
+    } else {
+        if (_row.n_prn != S.n_prn || _row.ctl_bytes != _ctl_bytes)
+            FATAL_ERROR("cudaGnssInject: gnss_rows {:s} has {:d} PRN slots and {:d} control "
+                        "bytes, this chain {:d} and {:d}",
+                        _row.name, _row.n_prn, _row.ctl_bytes, S.n_prn, _ctl_bytes);
+        const gnss_gpu::GpuRow last = gnss_gpu::gpu_rows(config, unique_name).back();
+        _mem_ctl = config.get<std::string>(unique_name, "gnss_rows_ctl_name");
+        _ctl_offset = _row.ctl_offset;
+        _ctl_array_bytes = last.ctl_offset + last.ctl_bytes;
+    }
 
     set_command_type(gpuCommandType::KERNEL);
     INFO("cudaGnssInject: {:d} PRN slots x {:d} lanes into '{:s}' [{:d}][{:d}][{:d}] at lanes "
@@ -193,7 +226,8 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
     }
 
     auto* d_ctl = (char*)device.get_gpu_memory_array(_mem_ctl, pipestate.gpu_frame_id,
-                                                     _gpu_buffer_depth, _ctl_bytes);
+                                                     _gpu_buffer_depth, _ctl_array_bytes)
+                  + _ctl_offset;
 
     const size_t synth_len = (size_t)_num_times * _synth_n_chan * _synth_lane_pitch;
     auto* d_synth = (unsigned char*)device.get_gpu_memory_array(
@@ -229,6 +263,8 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
     hdr->lanes_per_slot = _lanes_per_slot;
     hdr->seq0 = hop0_frame * (long long)S.fft_len;
     hdr->utc0 = S.frame0_utc;
+    if (!_row.name.empty())
+        hdr->_pad1 = _row.tag();
 
     std::vector<int> expired;
     const std::vector<cudaGnssChordTrackState::Seed> seeds = S.snapshot_seeds(expired);

@@ -8,6 +8,7 @@
 #include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
 #include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
 #include "div.hpp"                 // for div_noremainder
+#include "gnssGpuRows.hpp"         // for GpuRow, gpu_rows
 #include "gnssTileSelection.hpp"   // for build_tile_selection
 #include "gpuCommand.hpp"          // for gpuCommandType
 #include "kotekanLogging.hpp"      // for DEBUG, INFO
@@ -49,7 +50,7 @@ static std::vector<int> live_tile_columns(Config& config, const std::string& uni
 // the block-class mask.
 static bool any_gather_aa(Config& config, const std::string& unique_name) {
     const std::vector<std::string> names =
-        config.get<std::vector<std::string>>(unique_name, "gnss_gathers");
+        config.get_default<std::vector<std::string>>(unique_name, "gnss_gathers", {});
     for (const std::string& g : names)
         if (config.get_default<bool>(unique_name, "gather_" + g + "_aa", false))
             return true;
@@ -120,24 +121,34 @@ cudaCorrelatorDual::cudaCorrelatorDual(Config& config, const std::string& unique
     // The gathers, one per name in gnss_gathers and per output buffer, each with its own lane
     // rows and channels.
     const int num_subintegrations = div_noremainder(_num_times, _sub_integration_ntime);
+    // A GPU half's gnss_rows (gnssGpuRows.hpp) replaces gnss_gathers.
+    const bool rows =
+        !config.get_default<nlohmann::json>(unique_name, "gnss_rows", nlohmann::json()).is_null();
+    if (rows && config.exists(unique_name, "gnss_gathers"))
+        throw std::runtime_error("cudaCorrelatorDual: set gnss_gathers or gnss_rows, not both");
     const std::vector<std::string> gnames =
-        config.get<std::vector<std::string>>(unique_name, "gnss_gathers");
-    if (gnames.empty())
+        rows ? std::vector<std::string>{}
+             : config.get<std::vector<std::string>>(unique_name, "gnss_gathers");
+    if (!rows && gnames.empty())
         throw std::runtime_error("cudaCorrelatorDual: gnss_gathers is empty; it must name at "
                                  "least one gather");
-    auto add_gather = [&](const std::string& tiles_name, const std::vector<std::int32_t>& chans,
-                          int lane_base, int n_lanes, bool aa, bool bb) {
+    // Each gather selects whole tile rows inside num_synth.
+    auto select = [&](const std::string& tiles_name, const std::vector<std::int32_t>& chans,
+                      int lane_base, int n_lanes, bool aa, bool bb) {
         if (lane_base < 0 || lane_base % 16 || n_lanes <= 0 || n_lanes % 16
             || lane_base + n_lanes > _num_synth)
             throw std::runtime_error("cudaCorrelatorDual: gather '" + tiles_name + "' lanes ["
                                      + std::to_string(lane_base) + ", "
                                      + std::to_string(lane_base + n_lanes)
                                      + ") are not whole tile rows inside num_synth");
+        return build_tile_selection<int2>(_gnss_local_channels, chans, _num_elements,
+                                          _live_tile_cols, lane_base, n_lanes, aa, bb);
+    };
+    auto add_gather = [&](const std::string& tiles_name, std::vector<int2> sel, int n_chan) {
         Gather g;
         g.name = tiles_name;
-        g.n_chan = (int)chans.size();
-        g.sel = build_tile_selection<int2>(_gnss_local_channels, chans, _num_elements,
-                                           _live_tile_cols, lane_base, n_lanes, aa, bb);
+        g.n_chan = n_chan;
+        g.sel = std::move(sel);
         const int tiles_per_chan = g.n_chan > 0 ? (int)g.sel.size() / g.n_chan : 0;
         const std::array<std::ptrdiff_t, 6> lengths{
             num_subintegrations, g.n_chan, tiles_per_chan, 16, 16, 2};
@@ -153,15 +164,39 @@ cudaCorrelatorDual::cudaCorrelatorDual(Config& config, const std::string& unique
             cudaMemcpy(g.d_sel, g.sel.data(), g.sel.size() * sizeof(int2), cudaMemcpyHostToDevice));
         _gathers.push_back(std::move(g));
     };
+    // gnss_rows: one gather over every row, in list order on one channel axis, so a row's tiles
+    // are channels [fg_offset, fg_offset + its channels) of every Tc slice. The rows must gather
+    // the same tile count per channel.
+    if (rows) {
+        const std::string tiles_name = config.get<std::string>(unique_name, "gnss_rows_tiles_name");
+        const std::vector<gnss_gpu::GpuRow> grows = gnss_gpu::gpu_rows(config, unique_name);
+        std::vector<int2> sel;
+        int n_chan = 0;
+        for (const gnss_gpu::GpuRow& r : grows) {
+            if (r.lanes != grows[0].lanes)
+                throw std::runtime_error("cudaCorrelatorDual: gnss_rows " + r.name + " has "
+                                         + std::to_string(r.lanes)
+                                         + " lanes, unlike the first row: one gather needs one "
+                                           "tile count per channel");
+            const std::vector<int2> s =
+                select(tiles_name, r.channels, r.lane_base, r.lanes, false, false);
+            sel.insert(sel.end(), s.begin(), s.end());
+            n_chan += (int)r.channels.size();
+        }
+        add_gather(tiles_name, std::move(sel), n_chan);
+    }
     for (const std::string& g : gnames) {
         const std::string pre = "gather_" + g + "_";
-        add_gather(config.get<std::string>(unique_name, pre + "tiles_name"),
-                   config.get_default<std::vector<std::int32_t>>(unique_name, pre + "channels",
-                                                                 _gnss_local_channels),
-                   config.get_default<int>(unique_name, pre + "lane_base", 0),
-                   config.get_default<int>(unique_name, pre + "lanes", _num_synth),
-                   config.get_default<bool>(unique_name, pre + "aa", false),
-                   config.get_default<bool>(unique_name, pre + "bb", false));
+        const std::string tiles_name = config.get<std::string>(unique_name, pre + "tiles_name");
+        const std::vector<std::int32_t> chans = config.get_default<std::vector<std::int32_t>>(
+            unique_name, pre + "channels", _gnss_local_channels);
+        add_gather(tiles_name,
+                   select(tiles_name, chans,
+                          config.get_default<int>(unique_name, pre + "lane_base", 0),
+                          config.get_default<int>(unique_name, pre + "lanes", _num_synth),
+                          config.get_default<bool>(unique_name, pre + "aa", false),
+                          config.get_default<bool>(unique_name, pre + "bb", false)),
+                   (int)chans.size());
     }
 
     // Zero-fill (0x88 == 0+0j offset-encoded) every synth frame slot once. The injectors

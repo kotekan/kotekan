@@ -12,6 +12,7 @@
 #include "NDArrayRingBuffer.hpp" // for NDArrayRingBuffer
 #include "cudaCommand.hpp"
 #include "cudaGnssChordTrack.hpp" // for cudaGnssChordTrackState
+#include "gnssGpuRows.hpp"        // for GpuRow
 
 #include <string>
 #include <vector>
@@ -73,6 +74,12 @@
  *                             channels (the correlator's comb, for gnss_synth_compact); must
  *                             contain every gnss_local_channels entry.
  * @conf  gnss_ctl_name        String. Named GPU array for the control block.
+ * @conf  gnss_row             String, instead of num_synth, synth_lane_base,
+ *                             gnss_local_channels and gnss_ctl_name: this chain's row name in
+ *                             the half's gnss_rows (gnssGpuRows.hpp), which gives its lanes and
+ *                             channels. The control block goes at the row's ctl_offset in the
+ *                             half's shared array @c gnss_rows_ctl_name, with the row tag in
+ *                             FrameHdr::_pad1.
  */
 class cudaGnssInject : public cudaCommand {
 public:
@@ -89,6 +96,8 @@ public:
 private:
     cudaGnssChordTrackState* st();
 
+    /// With gnss_row: this chain's row of the half's gnss_rows; else a row with no name.
+    const gnss_gpu::GpuRow _row;
     const std::int32_t _buffer_depth;
     const std::int32_t _num_times;
     const std::int32_t _num_elements; // voltage ring station axis (for the ring declaration)
@@ -118,6 +127,9 @@ private:
     std::string _mem_ctl;
     std::vector<char> _ctl_stage;
     size_t _ctl_bytes = 0;
+    /// The block's place in the _mem_ctl array: the row's ctl_offset and the array's size.
+    size_t _ctl_offset = 0;
+    size_t _ctl_array_bytes = 0;
     /// Byte offset of the energy array within the control block.
     size_t _ctl_off_energy = 0;
 };
