@@ -158,11 +158,15 @@ void EplShape::check(const std::string& who, size_t tiles_frame_size) const {
 
     // The tiles frame is n_rec x n_chan x n_tile x (16x16 complex int32), sized by the config
     // generator. A mismatch means its geometry (n2_tiles_per_chan) and this stage's disagree.
-    const size_t need = (size_t)n_rec * n_chan * n_tile() * 512 * sizeof(int32_t);
+    const int fg = fg_total > 0 ? fg_total : n_chan;
+    if (fg_offset < 0 || fg_offset + n_chan > fg)
+        FATAL_ERROR_NON_OO("{:s}: channels [{:d}, {:d}) are not inside the tiles' {:d}", who,
+                           fg_offset, fg_offset + n_chan, fg);
+    const size_t need = (size_t)n_rec * fg * n_tile() * 512 * sizeof(int32_t);
     if (tiles_frame_size != need)
         FATAL_ERROR_NON_OO("{:s}: tiles_buf frame_size {:d} != {:d} for {:d} rec x {:d} chan x "
                            "{:d} mixed tiles",
-                           who, tiles_frame_size, need, n_rec, n_chan, n_tile());
+                           who, tiles_frame_size, need, n_rec, fg, n_tile());
 }
 
 int EplShape::assemble(const std::string& who, const uint8_t* ctl, const int32_t* tiles,
@@ -181,7 +185,8 @@ int EplShape::assemble(const std::string& who, const uint8_t* ctl, const int32_t
         FATAL_ERROR_NON_OO("{:s}: the control block is {:d} PRN x {:d} chan x {:d} records, this "
                            "stage {:d} x {:d} x {:d} (at most {:d} records)",
                            who, hdr->n_prn, hdr->n_chan, hdr->n_rec, n_prn, n_chan, n_rec, MAX_REC);
-    const TilesView tv{tiles, (size_t)n_chan * n_tile() * 512, 0, n_chan, n_tile()};
+    const int fg = fg_total > 0 ? fg_total : n_chan;
+    const TilesView tv{tiles, (size_t)fg * n_tile() * 512, fg_offset, n_chan, n_tile()};
     return assemble_epl({ctl}, tv, out, out_bytes, n_prn, lanes_per_slot, num_elements, n_live,
                         hops_per_record);
 }

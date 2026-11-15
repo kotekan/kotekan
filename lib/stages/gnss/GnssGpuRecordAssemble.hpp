@@ -6,6 +6,7 @@
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "gnssEplAssemble.hpp"
+#include "gnssGpuRows.hpp"
 #include "gnssHostRows.hpp"
 #include "gnssRecordChain.hpp"
 
@@ -39,6 +40,10 @@
  * @conf tiles_buf, ctl_buf  instead of in_buf: GnssN2RecordAssemble's inputs, with its
  *                num_elements, num_synth, lanes_per_slot and hops_per_record, and fft_len, the
  *                hop length in samples. Each tiles frame must start on its control block's seq0.
+ * @conf gnss_row, fg_total  with tiles_buf and ctl_buf, when they are a GPU half's shared
+ *                arrays: the row's gnss_rows entry (gnssGpuRows.hpp) and the tiles' channel
+ *                count. The row reads its channels at fg_offset and its control block at
+ *                ctl_offset, and FATALs unless that block carries its row tag.
  * @conf out_buf  tracker records: n_prn * record_stride floats, plus the per-channel block
  *                with chan_export
  * @conf prns     initial slot -> PRN map; its length must equal the frame's n_prn
@@ -81,6 +86,10 @@ private:
         Buffer* ctl_buf = nullptr;
         int tiles_id = 0, ctl_id = 0;
         gnss_gpu::EplShape epl_shape{};
+        /// With gnss_row: the block's offset in ctl_buf and the row tag it must carry; else
+        /// 0, the tag of a chain's own control block.
+        size_t ctl_offset = 0;
+        int64_t tag = 0;
         int64_t fft_len = 0;
         std::unique_ptr<uint8_t[]> epl;
         size_t epl_bytes = 0;
@@ -103,6 +112,8 @@ private:
     /// Assemble row @p row's next frame from its tiles and control block and release both.
     /// Returns the frame, or null when shutting down.
     const uint8_t* next_epl_frame(size_t row);
+    /// Take @p row's slice of a GPU half's tiles and control block from its gnss_row.
+    void read_gpu_row(kotekan::Config& config, const gnss::HostRow& hr, Row& row);
     /// Pack row @p row's completed window into its cube_buf and mark it full, or count it
     /// dropped if the next frame is not empty.
     void emit_cube_window(size_t row);

@@ -240,6 +240,16 @@ BOOST_AUTO_TEST_CASE(record_row_input) {
         BOOST_CHECK_EQUAL(fatal_of([&] { construct<GnssGpuRecordAssemble>(config_with(host)); }),
                           "/gnss0_a_n2assemble: set in_buf, or tiles_buf and ctl_buf");
     }
+    // gnss_row and fg_total come together, and only with tiles_buf.
+    for (const json& in : {json{{"tiles_buf", "x"}, {"ctl_buf", "x"}, {"gnss_row", 1}},
+                           json{{"in_buf", "x"}, {"gnss_row", 1}, {"fg_total", 1}}}) {
+        json row = keys_block(GnssGpuRecordAssemble::ROW_KEYS);
+        row.update(in);
+        json host = keys_block(GnssGpuRecordAssemble::ROW_KEYS);
+        host["chains"] = {{"gnss0_a", row}};
+        BOOST_CHECK_EQUAL(fatal_of([&] { construct<GnssGpuRecordAssemble>(config_with(host)); }),
+                          "/gnss0_a_n2assemble: gnss_row and fg_total go together, with tiles_buf");
+    }
     // A one-row stage's own block is its row.
     json one = keys_block(GnssGpuRecordAssemble::ROW_KEYS);
     BOOST_CHECK_EQUAL(fatal_of([&] { construct<GnssGpuRecordAssemble>(config_with(one)); }),

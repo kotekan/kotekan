@@ -14,10 +14,16 @@ using kotekan::Stage;
 REGISTER_KOTEKAN_STAGE(GnssGpuRecordAssemble);
 
 const std::vector<std::string> GnssGpuRecordAssemble::ROW_KEYS = {"out_buf", "prns", "channel_ids"};
-const std::vector<std::string> GnssGpuRecordAssemble::ROW_ONLY_KEYS = {
-    "beam_cube_chain",     "cube_buf", "ctl_buf",
-    "elem_sum_shared_ref", "in_buf",   "lane_transfer_freq_ids",
-    "record_cp_mod_chips", "tiles_buf"};
+const std::vector<std::string> GnssGpuRecordAssemble::ROW_ONLY_KEYS = {"beam_cube_chain",
+                                                                       "cube_buf",
+                                                                       "ctl_buf",
+                                                                       "elem_sum_shared_ref",
+                                                                       "fg_total",
+                                                                       "gnss_row",
+                                                                       "in_buf",
+                                                                       "lane_transfer_freq_ids",
+                                                                       "record_cp_mod_chips",
+                                                                       "tiles_buf"};
 
 GnssGpuRecordAssemble::Row::Row(Config& config, const gnss::HostRow& row, double (*clock_s)()) :
     chain(config, row.cfg_path, row.name, gnss::ProjBoard::instance(), gnss::ChanPower::instance(),
@@ -35,6 +41,9 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
         const bool tiles = config.exists(hr.cfg_path, "tiles_buf");
         if (in == tiles || tiles != config.exists(hr.cfg_path, "ctl_buf"))
             FATAL_ERROR("{:s}: set in_buf, or tiles_buf and ctl_buf", hr.name);
+        if (config.exists(hr.cfg_path, "gnss_row") != config.exists(hr.cfg_path, "fg_total")
+            || (in && config.exists(hr.cfg_path, "gnss_row")))
+            FATAL_ERROR("{:s}: gnss_row and fg_total go together, with tiles_buf", hr.name);
         Row& row = _rows.emplace_back(config, hr, clock_s);
         if (in) {
             row.in_buf =
@@ -57,6 +66,8 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
                 config.get_default<int>(hr.cfg_path, "lanes_per_slot", gnss_gpu::LANES_FULL),
                 hops_per_record,
                 config.get<int>(hr.cfg_path, "samples_per_data_set") / hops_per_record};
+            if (config.exists(hr.cfg_path, "gnss_row"))
+                read_gpu_row(config, hr, row);
             row.epl_shape.check(hr.name, row.tiles_buf->frame_size);
             row.fft_len = config.get<int64_t>(hr.cfg_path, "fft_len");
             row.epl_bytes = gnss_gpu::frame_bytes(row.epl_shape.n_prn, row.epl_shape.n_chan,
@@ -124,12 +135,39 @@ void GnssGpuRecordAssemble::run_row(size_t i) {
     }
 }
 
+void GnssGpuRecordAssemble::read_gpu_row(Config& config, const gnss::HostRow& hr, Row& row) {
+    const gnss_gpu::GpuRow g =
+        gnss_gpu::gpu_row(config.get<nlohmann::json>(hr.cfg_path, "gnss_row"));
+    gnss_gpu::EplShape& sh = row.epl_shape;
+    if ((int)g.channels.size() != sh.n_chan || g.n_prn != sh.n_prn || g.lanes != sh.num_synth
+        || g.ctl_bytes != gnss_gpu::ctl_bytes(sh.n_prn, sh.n_chan))
+        FATAL_ERROR("{:s}: gnss_row {:s} is {:d} channels x {:d} PRN on {:d} lanes with {:d} "
+                    "control bytes, this row {:d} x {:d} on {:d} with {:d}",
+                    hr.name, g.name, g.channels.size(), g.n_prn, g.lanes, g.ctl_bytes, sh.n_chan,
+                    sh.n_prn, sh.num_synth, gnss_gpu::ctl_bytes(sh.n_prn, sh.n_chan));
+    if (g.ctl_offset + g.ctl_bytes > row.ctl_buf->frame_size)
+        FATAL_ERROR("{:s}: control block bytes [{:d}, {:d}) are not inside ctl_buf's {:d}", hr.name,
+                    g.ctl_offset, g.ctl_offset + g.ctl_bytes, row.ctl_buf->frame_size);
+    sh.fg_total = config.get<int>(hr.cfg_path, "fg_total");
+    sh.fg_offset = g.fg_offset;
+    row.ctl_offset = g.ctl_offset;
+    row.tag = g.tag();
+}
+
 const uint8_t* GnssGpuRecordAssemble::next_epl_frame(size_t i) {
     Row& row = _rows[i];
     const std::string& name = _host_rows[i].name;
     const uint8_t* ctl = row.ctl_buf->wait_for_full_frame(name, row.ctl_id);
     if (ctl == nullptr)
         return nullptr;
+    ctl += row.ctl_offset;
+    // In a GPU half's shared array the block must be this row's: shape checks cannot tell two
+    // rows of one shape apart.
+    const int64_t tag = ((const gnss_gpu::FrameHdr*)ctl)->_pad1;
+    if (tag != row.tag)
+        FATAL_ERROR("{:s}: the control block at byte {:d} of ctl_buf carries row tag {:#x}, this "
+                    "row expects {:#x} (magic, chain id, row, fg_offset, 16 bits each)",
+                    name, row.ctl_offset, tag, row.tag);
     const int32_t* tiles = (const int32_t*)row.tiles_buf->wait_for_full_frame(name, row.tiles_id);
     if (tiles == nullptr)
         return nullptr;

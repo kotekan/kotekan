@@ -58,11 +58,15 @@ struct EplShape {
     int lanes_per_slot;
     int hops_per_record;
     int n_rec; ///< records per frame
+    /// The tiles' channel axis when it holds a GPU half's rows (gnssGpuRows.hpp), and this
+    /// chain's first channel on it; 0 and 0 when the tiles are the chain's own.
+    int fg_total = 0;
+    int fg_offset = 0;
 
     /// Mixed tiles per channel, as cudaCorrelatorDual::build_tile_selection gathers them.
     int n_tile() const;
     /// FATAL, naming @p who, unless the injector can pack this shape and @p tiles_frame_size is
-    /// the size of a tiles frame of it.
+    /// the size of a tiles frame of it (of fg_total channels when set).
     void check(const std::string& who, size_t tiles_frame_size) const;
     /// FATAL, naming @p who, unless the control block @p ctl has this shape; then assemble_epl()
     /// from it and @p tiles into @p out. Returns assemble_epl()'s job groups.
