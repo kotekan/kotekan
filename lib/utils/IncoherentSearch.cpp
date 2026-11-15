@@ -17,6 +17,8 @@ const int baseline = 128;
 const int chunk = 256;
 // A normalized sample is limited to this many sigma
 const double sample_clip = 3.0;
+// Stored samples are in units of 1 / sample_scale sigma: int8 reaches 4 sigma
+const double sample_scale = 32.0;
 // A channel is masked when its sigma/mean exceeds mask_threshold times the lower quartile of the
 // channels within mask_neighbours on each side
 const double mask_threshold = 1.25;
@@ -93,7 +95,7 @@ IncoherentSearch::IncoherentSearch(const IncoherentSearchParams& params) :
     // A candidate's samples are still in the buffer when it is closed: band_occupancy relies on it.
     keep = max_delay_all + lookahead + wmax + 2 * chunk + close_after;
     buffer_len = keep + std::max<int64_t>(4096, keep / 4);
-    w.assign((size_t)F * buffer_len, 0.0f);
+    w.assign((size_t)F * buffer_len, 0);
 }
 
 void IncoherentSearch::update_reference() {
@@ -118,8 +120,7 @@ bool IncoherentSearch::add_sample(const float* power) {
     if (ns - base == buffer_len) {
         const int64_t drop = buffer_len - keep;
         for (int c = 0; c < F; ++c)
-            std::memmove(&w[(size_t)c * buffer_len], &w[(size_t)c * buffer_len + drop],
-                         keep * sizeof(float));
+            std::memmove(&w[(size_t)c * buffer_len], &w[(size_t)c * buffer_len + drop], keep);
         base += drop;
     }
     if (ns % ref_interval == 0)
@@ -167,7 +168,8 @@ bool IncoherentSearch::add_sample(const float* power) {
 
     const int64_t col = ns - base;
     for (int c = 0; c < F; ++c) {
-        w[(size_t)c * buffer_len + col] = state[c] == used ? (float)(scratch[c] - zero_dm) : 0.0f;
+        const double v = state[c] == used ? (scratch[c] - zero_dm) * sample_scale : 0.0;
+        w[(size_t)c * buffer_len + col] = (int8_t)std::lround(std::clamp(v, -127.0, 127.0));
         if (state[c] != missing)
             block_sum[c] += scratch[c] - zero_dm;
     }
@@ -196,6 +198,8 @@ void IncoherentSearch::dedisperse_chunk() {
     {
         std::vector<Hit> my_hits;
         std::vector<float> sums(chunk);
+        std::vector<int32_t> totals(chunk);
+        std::vector<int16_t> parts(chunk);
         std::vector<double> prefix(history_len + chunk + 1);
         double my_max = 0;
 #pragma omp for schedule(dynamic, 8) nowait
@@ -205,17 +209,31 @@ void IncoherentSearch::dedisperse_chunk() {
             const int64_t n = ns - max_delay[d] - t0;
             if (n <= 0)
                 continue;
-            float* const s = sums.data();
-            std::fill(s, s + n, 0.0f);
+            // 16-bit partial sums hold up to 258 samples of 127; they are added up in 32 bits.
+            int32_t* const total = totals.data();
+            int16_t* const part = parts.data();
+            std::fill(total, total + n, 0);
+            std::fill(part, part + n, 0);
             const int32_t* const dl = &delay[(size_t)d * F];
+            int in_part = 0;
             for (int c = 0; c < F; ++c) {
                 if (!band_ok[c])
                     continue; // always zero
-                const float* const h = row(c, t0 + dl[c]);
+                const int8_t* const h = row(c, t0 + dl[c]);
 #pragma omp simd
                 for (int64_t k = 0; k < n; ++k)
-                    s[k] += h[k];
+                    part[k] += h[k];
+                if (++in_part == 256) {
+#pragma omp simd
+                    for (int64_t k = 0; k < n; ++k)
+                        total[k] += part[k];
+                    std::fill(part, part + n, 0);
+                    in_part = 0;
+                }
             }
+            float* const s = sums.data();
+            for (int64_t k = 0; k < n; ++k)
+                s[k] = (total[k] + part[k]) / (float)sample_scale;
             next_sum[d] = t0 + n;
             search_dm(d, s, n, prefix, my_hits, my_max);
         }
@@ -352,10 +370,10 @@ void IncoherentSearch::band_occupancy(IncoherentCandidate& cand, const Hit& hit)
         double sum = 0;
         int n = 0;
         for (int c = c0; c < c1; ++c) {
-            const float* const h = row(c, hit.sample + dl[c]);
+            const int8_t* const h = row(c, hit.sample + dl[c]);
             n += h[0] != 0;
             for (int k = 0; k < wd; ++k)
-                sum += h[k];
+                sum += h[k] / sample_scale;
         }
         cand.block_snr[b] = n ? (float)(sum / std::sqrt((double)n * wd)) : 0.0f;
     }

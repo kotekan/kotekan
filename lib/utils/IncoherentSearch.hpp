@@ -121,7 +121,7 @@ private:
     void merge_hits(const std::vector<Hit>& hits);
     void close_events();
     void band_occupancy(IncoherentCandidate& cand, const Hit& hit) const;
-    const float* row(int channel, int64_t sample) const {
+    const int8_t* row(int channel, int64_t sample) const {
         return &w[(size_t)channel * buffer_len + (size_t)(sample - base)];
     }
 
@@ -145,8 +145,10 @@ private:
     std::vector<double> block_sum, drift;
     std::vector<float> scratch;
 
-    // Normalized samples [channel][time], a linear buffer that is shifted down when full
-    std::vector<float> w;
+    // Normalized samples [channel][time] in steps of 1/32 sigma, a linear buffer that is shifted
+    // down when full. The samples are limited to a few sigma, so 8 bits lose nothing, and the
+    // dedispersion is bound by the memory it reads.
+    std::vector<int8_t> w;
     int64_t buffer_len = 0;
     int64_t keep = 0;
     int64_t base = 0; // sample index of column 0
