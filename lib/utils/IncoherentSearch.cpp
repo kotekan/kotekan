@@ -291,8 +291,9 @@ void IncoherentSearch::merge_hits(const std::vector<Hit>& hits) {
             const double ddm = std::abs(dm - p.dms[e.best.dm_index]);
             if (std::abs((double)(hit.sample - e.best.sample)) > 20 + sweep_per_dm * ddm)
                 continue;
-            const bool same_dm = ddm <= std::max(2.0, 0.005 * p.dms[e.best.dm_index]);
-            if (!same_dm && hit.snr >= residue_fraction * e.best.snr)
+            // The same pulse while the two sweeps differ by a few of the widest window
+            const bool same_pulse = sweep_per_dm * ddm <= 4.0 * p.widths.back();
+            if (!same_pulse && hit.snr >= residue_fraction * e.best.snr)
                 continue;
             ++e.num_hits;
             if (!e.reported && hit.snr > e.best.snr)
