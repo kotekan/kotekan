@@ -40,6 +40,8 @@ RUN apt-get update && \
         dpdk-dev \
         file \
         flex \
+        g++ \
+        gcc \
         gdb \
         git \
         graphviz \
@@ -67,6 +69,7 @@ RUN apt-get update && \
         libxtensor-dev \
         libyaml-cpp-dev \
         lld \
+        make \
         pkg-config \
         python3 \
         python3-dev \
