@@ -1,8 +1,8 @@
-.. _gpu_stages:
+.. _gpu_commands:
 
-**********
-GPU stages
-**********
+************
+GPU commands
+************
 
 A ``cudaProcess`` stage runs a list of ``commands`` on one GPU. Each command is
 a ``cudaCommand`` (``lib/cuda``) that queues one kernel or one copy. This page
