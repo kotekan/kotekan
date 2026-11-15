@@ -205,10 +205,44 @@ public:
         return true;
     }
 
+    // gpu_reorder_f32 round trip: bin order -> transform-local -> bin order must be the
+    // identity, and the tone spot-check pins the mapping direction.
+    bool check_reorder(size_t m1, size_t m2) {
+        const size_t m = m1 * m2;
+        std::vector<float> h(m);
+        for (size_t i = 0; i < m; i++)
+            h[i] = (float)(i % 1000003);
+        float *d_a, *d_b;
+        CHECK_CUDA_ERROR(cudaMalloc(&d_a, m * sizeof(float)));
+        CHECK_CUDA_ERROR(cudaMalloc(&d_b, m * sizeof(float)));
+        CHECK_CUDA_ERROR(cudaMemcpy(d_a, h.data(), m * sizeof(float), cudaMemcpyHostToDevice));
+        gpu_reorder_f32(d_a, m1, m2, d_b, nullptr);
+        CHECK_CUDA_ERROR(cudaGetLastError());
+        std::vector<float> local(m);
+        CHECK_CUDA_ERROR(cudaMemcpy(local.data(), d_b, m * sizeof(float), cudaMemcpyDeviceToHost));
+        gpu_reorder_f32(d_b, m2, m1, d_a, nullptr);
+        CHECK_CUDA_ERROR(cudaGetLastError());
+        std::vector<float> back(m);
+        CHECK_CUDA_ERROR(cudaMemcpy(back.data(), d_a, m * sizeof(float), cudaMemcpyDeviceToHost));
+        CHECK_CUDA_ERROR(cudaFree(d_a));
+        CHECK_CUDA_ERROR(cudaFree(d_b));
+        size_t bad = 0, bad_map = 0;
+        for (size_t i = 0; i < m; i++)
+            bad += back[i] != h[i];
+        for (size_t k1 = 0; k1 < m1; k1 += 97)
+            for (size_t k2 = 0; k2 < m2; k2 += 89)
+                bad_map += local[k1 * m2 + k2] != h[k2 * m1 + k1];
+        INFO("reorder m1={:d} m2={:d}: {:d} round-trip mismatches, {:d} mapping mismatches", m1, m2,
+             bad, bad_map);
+        return bad == 0 && bad_map == 0;
+    }
+
     void main_thread() override {
         // Batches large enough that the working set leaves L2, so the timing lines mean
         // something; the production four-step shape is n=8192, batch 8192.
-        bool ok = run_case(32, 65536);
+        bool ok = check_reorder(4096, 2048);
+        ok = check_reorder(512, 256) && ok;
+        ok = run_case(32, 65536) && ok;
         ok = run_case(64, 65536) && ok;
         ok = run_case(256, 32768) && ok;
         ok = run_case(1024, 8192) && ok;

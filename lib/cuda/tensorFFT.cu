@@ -535,8 +535,9 @@ __global__ static void reorder_f32(const float* __restrict__ in, size_t m1, size
     for (int l = threadIdx.y; l < 32; l += 8)
         tile[l][threadIdx.x] = in[(k20 + l) * m1 + k10 + threadIdx.x];
     __syncthreads();
+    // The load's first tile index runs along m2; the store picks (k20 + r, k10 + x).
     for (int r = threadIdx.y; r < 32; r += 8)
-        out[(k10 + threadIdx.x) * m2 + k20 + r] = tile[threadIdx.x][r];
+        out[(k10 + threadIdx.x) * m2 + k20 + r] = tile[r][threadIdx.x];
 }
 
 void gpu_reorder_f32(const float* in, size_t m1, size_t m2, float* out, cudaStream_t stream) {
