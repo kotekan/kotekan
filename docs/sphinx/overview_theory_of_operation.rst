@@ -8,7 +8,7 @@ commands, how frames flow through the device, and the rules a command author or
 config author has to follow. Most of these rules are consequences of the design
 rather than checks in the code, so they are collected here. The host-side buffer
 protocol is covered in :ref:`dev_buffers`; this page assumes you have read it.
-What each command computes is in :ref:`gpu_stages`.
+What each command computes is in :ref:`gpu_commands`.
 
 Host pipeline in one paragraph
 ==============================
@@ -68,7 +68,7 @@ A minimal config looks like this:
                   gpu_mem: correlation_buffer
                   out_buf: corr_out
 
-Three things to notice:
+Things to notice:
 
 - ``in_buffers`` and ``out_buffers`` map a local name to a global buffer. Commands
   refer to buffers by the local name. At startup the stage page-locks every
@@ -91,8 +91,8 @@ Frame life cycle
 ================
 
 ``gpuProcess`` runs two threads. The stage's own ``main_thread`` *queues* work; a
-``results_thread`` *retires* it. Both count GPU frames from zero with the same
-counter, ``gpu_frame_id``, and both index the per-frame slot with
+``results_thread`` *retires* it. Both count GPU frames from zero, a command sees
+that count as ``gpu_frame_id``, and both index the per-frame slot with
 ``gpu_frame_id % buffer_depth``.
 
 For each GPU frame the main thread does, in order:
@@ -106,15 +106,17 @@ For each GPU frame the main thread does, in order:
    place a command may block. Copy-in commands wait for a full host frame;
    copy-out commands wait for an empty one; ring buffer producers and consumers
    claim their region here. A return of ``-1`` means shutdown and ends the loop.
-4. **``execute()``** on every command, in list order, under the device's command
-   mutex. Each command enqueues its copy or kernel launch on a CUDA stream and
-   returns an event recorded after it; nothing should wait for the device here.
-5. **Hand the last event to the slot's signal** and loop.
+4. **``execute()``** on every command, in list order, while the stage holds the
+   queuing lock of every CUDA stream it uses. Each command enqueues its copy or
+   kernel launch on a CUDA stream and returns an event recorded after it;
+   nothing should wait for the device here.
+5. **Signal the slot** with an event that covers the whole frame (see
+   `Streams and ordering`_), and loop.
 
 The results thread, for each frame in the same order:
 
-1. **Wait on the slot's signal**, i.e. ``cudaEventSynchronize`` on the event the last
-   command returned. When it fires, the GPU has finished that frame.
+1. **Wait on the slot's signal**, i.e. ``cudaEventSynchronize`` on that event.
+   When it fires, the GPU has finished that frame.
 2. **``finalize_frame()``** on every command, in list order. This is where a command
    releases what it claimed in its precondition: mark the host input frame empty,
    mark the host output frame full, finish a ring buffer read or write, record
@@ -125,10 +127,11 @@ The results thread, for each frame in the same order:
 Consequences for command authors
 --------------------------------
 
-- **Block only in ``wait_on_precondition``.** ``execute`` runs while the command
-  mutex is held and every later command in this frame, and every frame after
-  it, waits for it to return. A host-side ``cudaDeviceSynchronize``, a blocking
-  buffer wait, or a slow host computation in ``execute`` stalls the whole device.
+- **Block only in ``wait_on_precondition``.** ``execute`` runs while the stage
+  holds its stream locks. Every later command in this frame, every later frame,
+  and every other stage that queues onto one of those streams waits for it to
+  return. A host-side ``cudaDeviceSynchronize``, a blocking buffer wait, or a
+  slow host computation in ``execute`` stalls them all.
 - **Release only in ``finalize_frame``.** Marking an input frame empty in ``execute``
   would let the producer overwrite it while the asynchronous copy is still
   reading it. The same holds for ring buffer regions.
@@ -171,19 +174,26 @@ Streams and ordering
 
 Within one frame the commands are *enqueued* in list order, but they *run* on
 the device asynchronously, and CUDA only orders work within a single stream.
-``cudaProcess`` creates ``num_cuda_streams`` streams, three by default, and a
-command's type picks its default stream:
+A command's type picks its default stream, counted from the stage's
+``cuda_stream_base`` (default 0):
 
-============  ======  ==============================
-Command type  Stream  Default users
-============  ======  ==============================
-``COPY_IN``   0       ``cudaInputData``, ring producers
-``COPY_OUT``  1       ``cudaOutputData``, ring consumers
-``KERNEL``    2       every kernel
-============  ======  ==============================
+============  ==============  =================================
+Command type  Stream          Default users
+============  ==============  =================================
+``COPY_IN``   ``3*base + 0``  ``cudaInputData``, ring producers
+``COPY_OUT``  ``3*base + 1``  ``cudaOutputData``, ring consumers
+``KERNEL``    ``3*base + 2``  every kernel
+============  ==============  =================================
 
-A command can override this with ``cuda_stream`` in its config block; the
-generic ``cudaSyncStream`` barrier has no default and must set it.
+The streams belong to the device, so stages with the same base share them:
+their queuing serialises on the stream locks, and their kernels run in order on
+one stream. Stages that should run independently take different bases.
+
+A command can override its stream with ``cuda_stream`` in its config block,
+which is an absolute stream number. The generic ``cudaSyncStream`` barrier has
+no default and must set it. A stage whose commands use streams above its own
+three must raise ``num_cuda_streams`` (default ``3*base + 3``), or startup
+refuses it.
 
 Dependencies between streams are expressed with events. ``queue_commands`` keeps
 the last event recorded on each stream and passes the table to every ``execute``
@@ -193,10 +203,11 @@ most commands wait for nothing beyond their own stream's order. So by default
 copy-out stream waits for the kernels. The barrier commands supply those edges:
 
 - ``cudaSyncInput`` runs on the kernel stream and waits for the last event on
-  stream 0. Put it after the copy-ins and before the first kernel.
+  the stage's copy-in stream. Put it after the copy-ins and before the first
+  kernel.
 - ``cudaSyncOutput`` runs on the copy-out stream and waits for the last event on
-  every stream numbered 2 and up. Put it after the last kernel and before the
-  copy-outs.
+  the stage's kernel stream and on every higher stream up to
+  ``num_cuda_streams``. Put it after the last kernel and before the copy-outs.
 - ``cudaSyncStream`` is the general form: it waits on a configured list of
   ``source_cuda_streams``.
 
@@ -205,14 +216,13 @@ The canonical command list is therefore: copy-ins, ``cudaSyncInput``, kernels,
 *another* stage needs no ``cudaSyncInput``, because the ring buffer protocol
 already guarantees the data landed before the region was claimable.
 
-One more rule hides in the frame life cycle: **the slot's signal is the event of
-the last command in the list**, not a join of all streams. The frame is
-considered finished when that one event fires. If the last command's event does
-not transitively cover the work on the other streams, the results thread will
-retire the frame early and the slot and its device memory can be reused while
-work is still running. Ending the list with ``cudaSyncOutput`` and a copy-out
-satisfies this; ending it with a kernel on a stream that nothing waits on does
-not.
+The slot's signal covers every stream. When the commands of a frame queued work
+on more than one stream, ``queue_commands`` makes the stream of the last such
+command wait for the last event of each other stream, and signals the slot with
+an event recorded after that. The results thread therefore retires a frame only
+when all of its work is done, whatever the last command in the list is. This
+join orders nothing *within* the frame: a copy-out still needs
+``cudaSyncOutput`` to see the kernel's result.
 
 
 GPU memory
@@ -234,15 +244,20 @@ kinds:
 Rules that follow:
 
 - **The size is fixed by the first request.** A later request under the same
-  name with a different ``len`` logs an error and asserts. Two commands that
-  share a region by name must agree on its size exactly.
-- **Names are per device, not per stage.** Two ``cudaProcess`` stages on the same
-  GPU that both ask for ``voltage_buffer`` get the same memory. This is how
-  stages share data on the device, and it is also how they collide by accident.
+  name with a different ``len`` is a fatal error, and so is mixing the two kinds
+  under one name. Commands that share a region by name must agree on its size
+  exactly.
+- **Names are per device, and a name belongs to one stage.** The first stage to
+  take a region owns it. A second ``cudaProcess`` on the same GPU that asks for
+  the same name is refused with a fatal error. Memory crosses between stages
+  only through a GPU ring buffer, whose two ends declare the share themselves
+  (see `Ring buffers`_). Commands within one stage share regions by name freely.
+- **Claim at startup.** A command that first takes a region in ``execute`` calls
+  ``register_gpu_memory_name`` for it in its constructor, so that a conflict is
+  found at startup, and by ``--dry-run``, not on the first frame.
 - **The reuse distance of an array element is ``buffer_depth`` frames**, which is
   exactly the number of frames that can be in flight, so an element is never
-  overwritten while its frame is still being processed, provided the ordering
-  rule in the previous section holds.
+  overwritten while its frame is still being processed.
 - **Views** (``create_gpu_memory_view``, ``create_gpu_memory_array_view``,
   ``create_gpu_memory_ringbuffer``) expose a sub-range of a region under another
   name without allocating. A view must be created before any command requests
@@ -306,8 +321,9 @@ By convention the three objects for a quantity ``X`` are named:
 - ``X_buffer``: the device region, i.e. the ``get_gpu_memory`` name;
 - ``host_X_ringbuffer``: the ``RingBuffer`` signalling object in the config.
 
-``NDArrayRingBuffer`` and ``NDArrayBuffer`` derive all three names from ``X``, so a
-kernel that uses them must be configured with matching names.
+``NDArrayRingBuffer`` derives all three names from ``X``, and ``NDArrayBuffer``
+the first two, so a kernel that uses them must be configured with matching
+names.
 
 Producer and consumer protocol
 ------------------------------
@@ -351,9 +367,12 @@ Other points that are not obvious from the interface:
   presented again next frame. This is how windowed kernels get their history
   without copying.
 - **Wrap-around is the kernel's problem.** The copy commands split at the wrap
-  point, but a kernel handed a pointer into the ring does not. Kernels in the
-  tree assert that a chunk never straddles the end, which holds when
-  ``ring_buffer_size`` is a multiple of the chunk size. The usual choice is
+  point, but a kernel handed a pointer into the ring does not. The generated
+  kernels (upchannelizer, FRB and baseband beamformers) take wrapped bounds and
+  index modulo the ring length. The hand-written ones (``cudaCorrelator``,
+  ``cudaRFIS012``, ``cudaQuantize4``, ``cudaHFB1Accumulate``, ...) require that
+  a chunk never straddles the end, which holds when ``ring_buffer_size`` is a
+  multiple of the chunk size. The usual choice is
   ``ring_buffer_size = buffer_depth * chunk``.
 - **A ring buffer with no consumer discards data**, silently, as soon as it is
   written.
@@ -376,9 +395,8 @@ the host output frame; kernels do the same for their output arrays. Rules:
 
 - **Set the slot once, from instance 0, on the first frame.** Every instance of
   the producer reads it back to learn the origin sequence number; only instance
-  0 writes it. Writing it on every frame, or from every instance, replaces the
-  object while other stages are reading it, and other threads read it without
-  holding the buffer mutex.
+  0 writes it. Other threads read the object without holding the buffer mutex,
+  so ``NDArrayRingBuffer::set_metadata`` makes a second call a fatal error.
 - **Never modify the slot-0 object in place.** Copy it, then modify the copy.
 - **Start the ring at cursor 0 on the first frame.** The producers assert this
   because the recorded sequence number is tied to element 0.
@@ -403,8 +421,8 @@ scalings, and a reference to the command. It:
 - can poison a region and check for poison, for debugging.
 
 Its life cycle is the command's: claim in ``wait_on_precondition``, use in
-``execute``, release in ``finalize_frame``, and it asserts if these are called out
-of order.
+``execute``, release in ``finalize_frame``, and it raises a fatal error if these
+are called out of order.
 
 
 Connecting stages on one device
@@ -442,7 +460,7 @@ Checklist for a new command
   ``cudaCommand::finalize_frame()``.
 - List the device regions the command reads and writes in ``gpu_buffers_used``,
   or use the ``NDArray*`` helpers which do it, so the pipeline viewer can draw it.
+- If the command first takes a device region in ``execute``, call
+  ``register_gpu_memory_name`` for it in the constructor.
 - If the command reads a ring, decide how much to claim versus read, and derive
   per-frame sequence numbers from the cursor.
-- If the command is last in a list, make sure its end event covers every stream
-  the list used.
