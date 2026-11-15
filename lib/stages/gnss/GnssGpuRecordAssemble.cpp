@@ -15,7 +15,7 @@ REGISTER_KOTEKAN_STAGE(GnssGpuRecordAssemble);
 const std::vector<std::string> GnssGpuRecordAssemble::ROW_KEYS = {"in_buf", "out_buf", "prns",
                                                                   "channel_ids"};
 const std::vector<std::string> GnssGpuRecordAssemble::ROW_ONLY_KEYS = {
-    "cube_buf", "elem_proj_sys", "elem_sum_shared_ref", "lane_transfer_freq_ids",
+    "beam_cube_chain", "cube_buf", "elem_sum_shared_ref", "lane_transfer_freq_ids",
     "record_cp_mod_chips"};
 
 GnssGpuRecordAssemble::Row::Row(Config& config, const gnss::HostRow& row, double (*clock_s)()) :
