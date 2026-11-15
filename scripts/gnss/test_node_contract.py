@@ -11,7 +11,10 @@ and the test exits 77. With GNSS_REPLAY_DUMP=DIR2
 must equal the per-chain endpoints its stages registered. With GNSS_CONTRACT_FOLDED=DIR3 (the
 same node generated with --fold-epl) every folded assembler must carry its adapter's inputs
 and keys, keep its chain's stall budget at 8.75 or more and differ from DIR's only in placement
-and stall.
+and stall. With GNSS_CONTRACT_ROWS=DIR4 (the same node generated with --fold-epl --gpu-rows)
+every assembler and injector must read its row of its half's gnss_rows, and DIR4 must differ
+from DIR3 only in the placement of the tiles and ctl buffers: 60 per-chain ones out, 4 per-half
+ones in, on the half's NUMA node, holding the same bytes.
 """
 import collections
 import copy
@@ -318,6 +321,72 @@ def test_fold(base, cfg, d):
     )
 
 
+def test_rows(fold_dir, rows_dir):
+    fpath, rpath = os.path.join(fold_dir, NAME), os.path.join(rows_dir, NAME)
+    fcfg, rcfg = nc.load(fpath), nc.load(rpath)
+    lines = nc.diff(nc.snapshot(fpath, NODE, NODE), nc.snapshot(rpath, NODE, NODE))
+    facets = {ln[2:].split(":", 1)[0] for ln in lines}
+    check(facets <= {"placement"}, "rows: only placement differs (%s)" % sorted(facets))
+    gone = [ln.split(" ")[3] for ln in lines if ln.startswith("- placement: numa ")]
+    new = [ln for ln in lines if ln.startswith("+ placement: numa ")]
+    want = [
+        "+ placement: numa gnss%d_rows_%s_buf = %d" % (g, k, g)
+        for g in (0, 1)
+        for k in ("ctl", "tiles")
+    ]
+    check(
+        len(gone) == 60
+        and all(re.match(r"gnss\d_\w+_n2(tiles|ctl)_buf$", b) for b in gone)
+        and sorted(new) == sorted(want)
+        and len(lines) == 64,
+        "rows: placement loses the 60 n2tiles and n2ctl buffers and gains the 4 per-half "
+        "ones on their half's node, nothing else (%d out, %s in, %d lines)"
+        % (len(gone), new, len(lines)),
+    )
+
+    def nbytes(cfg, names):
+        return sum(cfg[b]["frame_size"] * cfg[b]["num_frames"] for b in names)
+
+    added = [ln.split(" ")[3] for ln in new]
+    check(
+        nbytes(fcfg, gone) == nbytes(rcfg, added),
+        "rows: the per-half buffers hold the bytes the per-chain ones did (%d, %d)"
+        % (nbytes(fcfg, gone), nbytes(rcfg, added)),
+    )
+    # Each row's assembler carries its half's gnss_rows entry, and each injector names its row
+    # and none of the keys the row replaces.
+    bad = []
+    for g in (0, 1):
+        half = rcfg["gnss%d_n2dual" % g]
+        rows = {r["name"]: r for r in half["gnss_rows"]}
+        fg = sum(len(r["channels"]) for r in rows.values())
+        for c in half["commands"]:
+            if c["name"] != "cudaGnssInject":
+                continue
+            r = rows.get(c.get("gnss_row"))
+            if r is None or {
+                "num_synth",
+                "synth_lane_base",
+                "gnss_local_channels",
+                "gnss_ctl_name",
+            } & set(c):
+                bad.append(c.get("gnss_row"))
+                continue
+            a = rcfg[r["name"] + "_n2assemble"]
+            if (
+                a.get("gnss_row") != r
+                or a.get("fg_total") != fg
+                or a.get("tiles_buf") != "gnss%d_rows_tiles_buf" % g
+                or a.get("ctl_buf") != "gnss%d_rows_ctl_buf" % g
+            ):
+                bad.append(r["name"])
+        if len(rows) != len(
+            [c for c in half["commands"] if c["name"] == "cudaGnssInject"]
+        ):
+            bad.append("gnss%d rows" % g)
+    check(not bad, "rows: every injector and assembler reads its half's row (%s)" % bad)
+
+
 def test_replay(dump):
     """rest_surface of the replay's config against what its stages registered."""
     cpath = os.path.join(dump, "config.json")
@@ -374,6 +443,7 @@ def main():
         print("GNSS_REPLAY_DUMP is not set: the replay cross-check does not run")
     with tempfile.TemporaryDirectory(prefix="node_contract_") as tmp:
         folded = os.environ.get("GNSS_CONTRACT_FOLDED")
+        rows = os.environ.get("GNSS_CONTRACT_ROWS")
         tests = (
             [
                 lambda: test_counts(base, cfg),
@@ -381,6 +451,7 @@ def main():
             ]
             + ([lambda: test_replay(dump)] if dump else [])
             + ([lambda: test_fold(base, cfg, folded)] if folded else [])
+            + ([lambda: test_rows(folded, rows)] if folded and rows else [])
         )
         for t in tests:
             try:

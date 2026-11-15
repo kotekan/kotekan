@@ -150,16 +150,25 @@ def decode_ctl(buf):
     return h, win, ctl, energy
 
 
+def ctl_name(inject, default):
+    """The chain's own control-block name, gnss<gpu><tag>_n2ctl: the injector's gnss_ctl_name
+    (@p default without one), or in a GPU half's rows form (--gpu-rows) the one its gnss_row,
+    gnss<gpu><tag>, would have."""
+    if "gnss_row" in inject:
+        return inject["gnss_row"] + "_n2ctl"
+    return inject.get("gnss_ctl_name", default)
+
+
 def primary_tag(config_path, gpu):
-    """The primary chain's tag on this GPU: that of the injector whose gnss_ctl_name
-    (gnss<gpu><tag>_n2ctl) gnss_fleet.stage_chain reads as the primary, '' in a config generated
-    before the tags were broker chain keys and _gps_l5 after."""
+    """The primary chain's tag on this GPU: that of the injector whose control-block name
+    (ctl_name: gnss<gpu><tag>_n2ctl) gnss_fleet.stage_chain reads as the primary, '' in a config
+    generated before the tags were broker chain keys and _gps_l5 after."""
     import yaml
 
     cfg = yaml.safe_load(open(config_path))
     prim = gnss_fleet.stage_chain("gnss%d_n2ctl" % gpu, "n2ctl")
     for c in cfg["gnss%d_n2dual" % gpu]["commands"]:
-        name = c.get("gnss_ctl_name", "")
+        name = ctl_name(c, "")
         if c.get("name") == "cudaGnssInject" and (
             gnss_fleet.stage_chain(name, "n2ctl") == prim
         ):
@@ -188,8 +197,7 @@ def config_axes(config_path, gpu, tag, node_yaml):
         c
         for c in dual["commands"]
         if c.get("name") == "cudaGnssInject"
-        and c.get("gnss_ctl_name", "gnss%d%s_n2ctl" % (gpu, tag))
-        == "gnss%d%s_n2ctl" % (gpu, tag)
+        and ctl_name(c, "gnss%d%s_n2ctl" % (gpu, tag)) == "gnss%d%s_n2ctl" % (gpu, tag)
     )
     corr = next(c for c in dual["commands"] if c.get("name") == "cudaCorrelatorDual")
     hops = int(inj["hops_per_record"])
@@ -221,6 +229,11 @@ def config_lanes(config_path, gpu, tag, gather="cap"):
 
     cfg = yaml.safe_load(open(config_path))
     dual = cfg.get("gnss%d%s_n2dual" % (gpu, tag)) or cfg["gnss%d_n2dual" % gpu]
+    if "gnss_rows" in dual:
+        sys.exit(
+            "%s: gnss%d is in the rows form (--gpu-rows), which has no visibility capture"
+            % (config_path, gpu)
+        )
     corr = next(c for c in dual["commands"] if c.get("name") == "cudaCorrelatorDual")
     if gather in corr.get("gnss_gathers", []):
         pre = "gather_%s_" % gather

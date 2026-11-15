@@ -1780,6 +1780,93 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
     return blocks
 
 
+def gpu_rows_form(blocks, merged, injects, corr, outputs, out_buffers, pres, gpu):
+    """--gpu-rows: one tiles array and one control-block array for the GPU half, from the
+    gnss_rows list on the merged cudaProcess (lib/stages/gnss/gnssGpuRows.hpp), in place of each
+    chain's. Row i is pres[i]: its tiles are channels [fg_offset, fg_offset + its channels) of
+    the half's [Tc][Fg_total][Tile] tiles, its control block ctl_bytes at ctl_offset. The
+    injectors and the correlator read their lanes and channels from the rows, and each record
+    assembler reads its row of the two buffers, refusing a control block without its row's
+    tag. Every row must gather the same tiles per channel (the same lanes)."""
+    pre_g = f"gnss{gpu}_"
+    rows, fg, ctl = [], 0, 0
+    for i, p in enumerate(pres):
+        pre = p["pre"]
+        ctl_bytes = blocks[f"{pre}n2ctl_buf"]["frame_size"]
+        rows.append(
+            {
+                "name": pre[:-1],
+                "chain": p["name"],
+                "chain_id": chain_row(p["chain"]).id,
+                "row": i,
+                "channels": p["chan_idx"],
+                "lane_base": p["base"],
+                "lanes": p["lanes"],
+                "fg_offset": fg,
+                "ctl_offset": ctl,
+                "ctl_bytes": ctl_bytes,
+                "n_prn": len(injects[i]["prns"]),
+            }
+        )
+        fg += len(p["chan_idx"])
+        ctl += ctl_bytes
+    lanes = {r["lanes"] for r in rows}
+    if len(lanes) != 1:
+        raise SystemExit(
+            f"gnss{gpu}: --gpu-rows needs every chain on {len(lanes)} lane counts {sorted(lanes)} "
+            "to be one: the half's one gather has one tile count per channel"
+        )
+    tiles_frame = blocks[f"{pres[0]['pre']}n2tiles_buf"]["frame_size"]
+    tiles_bytes = tiles_frame // len(pres[0]["chan_idx"]) * fg
+    tiles_buf, ctl_buf = f"{pre_g}rows_tiles_buf", f"{pre_g}rows_ctl_buf"
+    for p, r, inj in zip(pres, rows, injects):
+        pre = p["pre"]
+        for k in (
+            "num_synth",
+            "synth_lane_base",
+            "gnss_local_channels",
+            "gnss_ctl_name",
+        ):
+            del inj[k]
+        inj["gnss_row"] = r["name"]
+        del blocks[f"{pre}n2tiles_buf"], blocks[f"{pre}n2ctl_buf"]
+        del out_buffers[f"host_{pre}tiles"], out_buffers[f"host_{pre}n2ctl"]
+        asm = blocks[f"{pre}n2assemble"]
+        asm["tiles_buf"], asm["ctl_buf"] = tiles_buf, ctl_buf
+        asm["gnss_row"] = r
+        asm["fg_total"] = fg
+    for k in [k for k in corr if k.startswith("gather_")]:
+        del corr[k]
+    del corr["gnss_gathers"]
+    # The rows' names must not read as a chain's to gnss_fleet.stage_chain: gnss<g>_n2ctl would
+    # read as the primary's.
+    merged["gnss_rows"] = rows
+    merged["gnss_rows_tiles_name"] = f"{pre_g}rows_tiles"
+    merged["gnss_rows_ctl_name"] = f"{pre_g}rows_ctl"
+    outputs[:] = [o for o in outputs if o["out_buf"] in out_buffers]
+    outputs[:0] = [
+        {
+            "name": "cudaOutputData",
+            "gpu_mem": f"{pre_g}rows_tiles_buffer",
+            "out_buf": f"host_{pre_g}rows_tiles",
+        },
+        {
+            "name": "cudaOutputData",
+            "gpu_mem": f"{pre_g}rows_ctl",
+            "out_buf": f"host_{pre_g}rows_ctl",
+        },
+    ]
+    out_buffers[f"host_{pre_g}rows_tiles"] = tiles_buf
+    out_buffers[f"host_{pre_g}rows_ctl"] = ctl_buf
+    for name, size in ((tiles_buf, tiles_bytes), (ctl_buf, ctl)):
+        blocks[name] = {
+            "kotekan_buffer": "standard",
+            "metadata_pool": "gnss_pool",
+            "num_frames": FOLD_EPL_DEPTH,
+            "frame_size": size,
+        }
+
+
 def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
     """One cudaProcess per GPU for every path-B chain on it.
 
@@ -2169,6 +2256,8 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
         )
 
     corr["gnss_gathers"] = names
+    if args.gpu_rows:
+        gpu_rows_form(blocks, merged, injects, corr, outputs, out_buffers, pres, gpu)
     merged["in_buffers"] = primary["in_buffers"]
     merged["out_buffers"] = out_buffers
     merged["commands"] = (
@@ -3663,6 +3752,15 @@ def main():
         "assembler cores (--assembler-core-slots).",
     )
     ap.add_argument(
+        "--gpu-rows",
+        action="store_true",
+        help="with --fold-epl: one tiles and one control-block buffer per GPU half "
+        "(gnss<g>_rows_tiles_buf, gnss<g>_rows_ctl_buf), from a gnss_rows list on the "
+        "gnss<g>_n2dual process, instead of one of each per chain. The correlator gathers every "
+        "chain in one launch, each injector writes its row of the control array with its row "
+        "tag, and each record assembler reads its row of the two. Refuses --vis-capture.",
+    )
+    ap.add_argument(
         "--psi-synth",
         action="store_true",
         help="cudaGnssChordTrack psi_synth on every chain: replica synthesis from per-PRN "
@@ -4078,6 +4176,16 @@ def main():
         raise SystemExit(
             "--psi-synth requires --epl-from-prompt: the fused synthesis packs two lanes per "
             "slot (P, P_HEAD) with the E/L rows rotated from the prompt"
+        )
+    if args.gpu_rows and not args.fold_epl:
+        raise SystemExit(
+            "--gpu-rows requires --fold-epl: the record assemblers read the half's tiles and "
+            "control blocks themselves"
+        )
+    if args.gpu_rows and args.vis_capture:
+        raise SystemExit(
+            "--gpu-rows refuses --vis-capture: its gate and reader take a chain's own control "
+            "blocks"
         )
     args.base = _kotekan_input(args.base)
 
