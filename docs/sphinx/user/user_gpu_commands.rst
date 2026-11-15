@@ -5,9 +5,10 @@ GPU commands
 ************
 
 A ``cudaProcess`` stage runs a list of ``commands`` on one GPU. Each command is
-a ``cudaCommand`` (``lib/cuda``) that queues one kernel or one copy. This page
-says what each command computes. The config parameters and the memory layout of
-each array are in the doxygen block of the class. How a stage runs its commands
+a ``cudaCommand`` (``lib/cuda``) that queues a kernel, a copy or a wait. This
+page says what each command computes. The config parameters and the memory
+layout of each array are in the doxygen block of the class or, where it has
+none, in its constructor. How a stage runs its commands
 (streams, GPU memory, ring buffers) is in :doc:`/overview_theory_of_operation`.
 
 The commands pass data to each other in GPU memory. Most arrays are ring
@@ -34,18 +35,24 @@ Visibilities and RFI statistics (``config/chord/pathfinder.j2``):
     pl_mask_exp, RFImask ---> cudaPL1bitCorrelator ---> n2k_counts
     E, RFImask           ---> cudaCorrelator       ---> n2k_correlation
 
+The two SK commands also read the bad feed mask ``bf_mask``. The two
+correlators read ``RFImask`` after it has passed through the CPU stage
+``DtvRfiMask`` (see ``cudaPilotProxyDetector``).
+
 Beamforming:
 
 .. code-block:: text
 
-    E ---> cudaUpchannelizer ---> Ebar ---> cudaFRBBeamformer ---> I
+    E ---> cudaUpchannelizer ---> Ebar
+    Ebar, W ---> cudaFRBBeamformer ---> I
     I, W2 ---> cudaFRBBeamReformer ---> I2 ---> cudaQuantize4 / cudaQuantize8
     beam positions ---> cudaCalcFRB2Weights ---> W2
 
     E, A, s ---> cudaBasebandBeamformer ---> J
 
-Each beamforming output has a packet loss mask, made by a ``cudaPLMask...``
-command from ``pl_mask_exp``.
+The FRB beamformer for :math:`U = 1` reads ``E`` directly. Each beamforming
+output has a packet loss mask, made by a ``cudaPLMask...`` command from
+``pl_mask_exp``.
 
 
 Notation
@@ -114,7 +121,9 @@ upper-case form: there are :math:`D` dishes and :math:`F` frequencies.
      - Baseband beam.
 
 A sum such as :math:`\sum_{t \in t_c}` runs over the voltage samples of one
-block.
+block. The order of the indices in an equation is for reading. The order in
+memory is in the class, and for the masks, ``I2`` and ``J`` it splits the time
+axis in two.
 
 The notes listed under `References`_ use :math:`\tau` for time, :math:`\pi`
 for polarization, :math:`\beta` for a beam and :math:`p, q` for the FRB grid
@@ -132,6 +141,12 @@ Some names have two meanings, and this page keeps both because the code does:
   beamformer and ``W2`` the weights of the FRB beam reformer.
 * ``S`` labels the axis that holds :math:`(S_0, S_1, S_2)`, and is also the
   dish layout array of the FRB beamformer.
+* :math:`U` is the upchannelization factor, and :math:`U^M_k` is the
+  interpolation function of the FRB beam reformer.
+* :math:`s` is the tap index of the upchannelizer, a summation index in the
+  FRB weights, and the bit shift ``s`` of the baseband beamformer.
+* :math:`\sigma` is the scatter of SK, a dish spacing in the FRB beamformer,
+  and the first bit shift of the baseband beamformer.
 
 Voltages
 --------
@@ -143,7 +158,8 @@ sample is zero.
 Masks
 -----
 
-In every mask, 1 means good.
+In every mask 1 means good, except ``dtv_mask`` (see
+``cudaPilotProxyDetector``).
 
 * ``pl_mask`` is the packet loss mask. It has one bit for every 2 time
   samples, 4 frequencies and 8 dishes of one polarization.
@@ -152,10 +168,15 @@ In every mask, 1 means good.
 * ``bf_mask[p, d]`` is the bad feed mask.
 * ``RFImask[f, t]`` has one bit for every voltage sample and frequency.
 
+In an equation, ``pl[t, f, ...]`` is the packet loss mask value that covers
+that sample.
+
 Masks are packed in bits. A pair of labels such as ``T2hi64`` and ``T2lo64``
 is one packed time axis: ``hi`` counts 64-bit words and ``lo`` counts the
 bytes in a word. The ``2`` says that one bit covers two time samples. ``F4``
-and ``D8`` are frequency and dish axes downsampled by 4 and 8.
+and ``D8`` are frequency and dish axes downsampled by 4 and 8. The labels of
+``RFImask`` differ: in ``T8hi128`` and ``T8lo128`` one bit is one time
+sample, and the numbers count 128 bytes of 8 bits.
 
 Time axes
 ---------
@@ -165,7 +186,7 @@ Time axes
    :widths: 14 46 20 20
 
    * - Axis
-     - Voltage samples for each element
+     - Voltage samples for each step
      - Pathfinder
      - Duration
    * - ``T``
@@ -221,6 +242,12 @@ These commands compute nothing.
    * - ``cudaSyncInput``, ``cudaSyncOutput``, ``cudaSyncStream``
      - Make one CUDA stream wait for another: the kernels for the input
        copy, or the output copy for the kernels.
+   * - ``chordMVPSetup``
+     - Makes views of GPU memory under other names for a demonstration
+       pipeline.
+
+The test stages in ``lib/cuda`` (``test...``, ``gpuSimulateCudaUpchannelizer``)
+and the OpenCL and HIP commands are not on this page.
 
 
 Packet loss masks
@@ -231,14 +258,14 @@ Packet loss masks
     2 time samples and 4 frequencies that it covers.
 
 ``cudaPL1bitCorrelator``
-    Counts the samples that go into each visibility. With :math:`a` and
-    :math:`b` each a group of 8 dishes of one polarization (``D8``):
+    Counts the samples that go into each visibility. With :math:`g` and
+    :math:`g'` each a group of 8 dishes of one polarization (``D8``):
 
     .. math::
 
-        \mathrm{counts}[t_c, f, a, b] =
+        \mathrm{counts}[t_c, f, g, g'] =
             \sum_{t \in t_c} \mathrm{RFImask}[f, t] \;
-            \mathrm{pl}[t, f, a] \; \mathrm{pl}[t, f, b]
+            \mathrm{pl}[t, f, g] \; \mathrm{pl}[t, f, g']
 
     The matrix is stored as the 8 x 8 tiles of its lower triangle.
 
@@ -346,16 +373,19 @@ are Gaussian noise. It needs three sums for each element.
         |\widetilde{\mathrm{SK}} - 1| \le
             \mathtt{rfi\_sk\_rfimask\_sigmas} \times \tilde\sigma
 
-    The correlator uses ``RFImask`` (first-stage excision). The CPU stage
-    ``RfiFrameMask`` uses ``SKtilde`` to reject whole sub-integrations
-    (second-stage excision).
+    The correlator uses ``RFImask`` (first-stage excision). While
+    ``/rfi_first_stage_enabled`` is off, and for the frequencies in
+    ``rfi_first_stage_excision_exempt_freq_ids``, the mask is all good;
+    ``SKtilde`` is still computed. The CPU stage ``RfiFrameMask`` uses
+    ``SKtilde`` to reject whole sub-integrations (second-stage excision).
 
 ``cudaPilotProxyDetector``
     Detects DTV pilot tones in the voltages. See :ref:`pilotproxy`. Its mask
     ``dtv_mask[f]`` is the exception to the rule for masks: 1 means reject.
     The CPU stage ``DtvRfiMask`` clears the ``RFImask`` bits of a rejected
     frequency. In ``pathfinder.j2`` the two correlators read this merged
-    mask.
+    mask. The merge is off by default (``/dtv_mask_enabled``), and the merged
+    mask then equals ``RFImask``.
 
 
 Visibilities
@@ -404,15 +434,18 @@ Upchannelizer
     The half-integer :math:`(U-1)/2` in the phase puts the :math:`U` fine
     channels symmetrically about the centre of the coarse channel.
     ``G[fbar]`` is a real gain. :math:`\mathrm{Quantize}_K` rounds and clamps
-    the real and imaginary parts to :math:`K` bits (4 or 8).
+    the real and imaginary parts to :math:`K` bits: :math:`[-7, 7]` for
+    :math:`K = 4` and :math:`[-127, 127]` for :math:`K = 8`.
 
     Only coarse channels ``Fmin`` to ``Fmax - 1`` are processed. Kernels with
     different :math:`U` skip different numbers of leading samples
     (``max_upchannelization_factor``), so that their outputs are centred on
-    the same times.
+    the same times. In the equation, :math:`\bar t` counts from the first
+    sample after that skip.
 
     ``lib/cuda/upchannelizeReference.hpp`` is a serial version of this
-    equation. ``cudaUpchannelize`` and ``cudaUpchannelize16k`` are earlier
+    equation, and ``gpuSimulateCudaUpchannelizer`` runs it as a command for
+    tests. ``cudaUpchannelize`` and ``cudaUpchannelize16k`` are earlier
     kernels with fixed sizes.
 
 
@@ -426,22 +459,29 @@ with an FFT. The second interpolates the grid to the wanted sky positions.
     Puts the dishes on the regular :math:`M \times N` dish grid
     (``S[d]`` gives the position :math:`(m, n)` of dish :math:`d`; an empty
     position is zero), applies the complex weights ``W``, and does a 2-d FFT
-    that is zero-padded by 2:
+    that is zero-padded by 2. With :math:`d_{mn}` the dish at :math:`(m, n)`:
 
     .. math::
 
-        \tilde E[\bar t, \bar f, p, b_P, b_Q] = \sum_{m=0}^{M-1} \sum_{n=0}^{N-1}
-            W[\bar f, p, m, n] \; \mathrm{Ebar}[\bar t, \bar f, p, m, n] \;
+        \tilde E[\bar t, \bar f, p, b_Q, b_P] = \sum_{m=0}^{M-1} \sum_{n=0}^{N-1}
+            W[\bar f, p, n, m] \; \mathrm{Ebar}[\bar t, \bar f, p, d_{mn}] \;
             \exp \left( \frac{2\pi i \, m \, b_P}{2M}
                       + \frac{2\pi i \, n \, b_Q}{2N} \right)
 
-    It writes the power, summed over polarization and :math:`T_d` time
+    It writes the power, averaged over polarization and :math:`T_d` time
     samples:
 
     .. math::
 
-        I[\tilde t, \bar f, b_P, b_Q] = \sum_{\bar t \in \tilde t} \; \sum_p
-            \left| \tilde E[\bar t, \bar f, p, b_P, b_Q] \right|^2
+        I[\tilde t, \bar f, b_Q, b_P] = \frac{1}{2 P M N T_d}
+            \sum_{\bar t \in \tilde t} \; \sum_p
+            \left| \tilde E[\bar t, \bar f, p, b_Q, b_P] \right|^2
+
+    With this factor, noise of variance :math:`\sigma^2` in each voltage
+    component gives :math:`\langle I \rangle = \sigma^2` for a full grid and
+    weights of unit modulus, and ``I`` stays in the float16 range. Eq. (50) of
+    the note omits the factor. ``W`` changes slowly: there is one set of
+    weights for each ``frb1_phase_lifetime_in_samples`` voltage samples.
 
     The grid beam :math:`(b_P, b_Q)` points at the sky position
     :math:`(\theta, \theta') = (b_P/2, b_Q/2)`, where
@@ -456,7 +496,9 @@ with an FFT. The second interpolates the grid to the wanted sky positions.
 
     There is one kernel for each :math:`U`. All of them write to one ``I``
     array, each to its own range of ``Fbar``, and :math:`U T_d` is the same
-    for all, so ``I`` has one time axis.
+    for all (192 for the pathfinder and CHORD), so ``I`` has one time axis.
+    The exception is ``cudaFRBBeamformer_chord_U128``, where
+    :math:`T_d = 192 \div 128 = 1`.
 
 ``cudaCalcFRB2Weights``
     Writes the weights that interpolate the grid to sky beam :math:`r` at
@@ -466,8 +508,8 @@ with an FFT. The second interpolates the grid to the wanted sky positions.
 
         W2[\bar f, r, b_Q, b_P] = U^M_{b_P}(\theta_r) \; U^N_{b_Q}(\theta'_r),
         \qquad
-        U^M_p(\theta) = \frac{1}{M} \sum_{s=0}^{M} A_s
-            \cos \left( \frac{\pi (2\theta - p) s}{M} \right)
+        U^M_k(\theta) = \frac{1}{M} \sum_{s=0}^{M} A_s
+            \cos \left( \frac{\pi (2\theta - k) s}{M} \right)
 
     with :math:`A_0 = A_M = 1/2` and :math:`A_s = 1` otherwise.
     :math:`\theta` depends on frequency, so there is one matrix for each
@@ -480,24 +522,32 @@ with an FFT. The second interpolates the grid to the wanted sky positions.
     .. math::
 
         I2[\tilde t, \bar f, r] = \sum_{b_P, b_Q}
-            W2[\bar f, r, b_Q, b_P] \; I[\tilde t, \bar f, b_P, b_Q]
+            W2[\bar f, r, b_Q, b_P] \; I[\tilde t, \bar f, b_Q, b_P]
 
     The sum is one cuBLAS matrix product for each frequency.
 
 ``cudaHFB1Accumulate``
-    Averages ``I`` over ``hfb_second_downsampling_factor`` time samples.
+    Averages ``I`` over ``hfb_second_downsampling_factor`` time samples. The
+    beam grid is fixed to the CHIME one.
 
 ``cudaQuantize4`` and ``cudaQuantize8``
-    Quantize ``I2`` in chunks. For each chunk, the mean and standard
-    deviation of the good samples give an ``offset`` (the mean) and a
-    ``scale``, so that ``stddev_cutoff`` standard deviations fill the integer
-    range. A value is recovered as :math:`\mathrm{offset} + \mathrm{scale}
-    \times n`. A NaN or a lost sample is :math:`n = -8` (4 bits) or
-    :math:`n = 0` (8 bits).
+    Quantize ``I2`` in chunks, each with its own ``offset`` and ``scale``. A
+    value is recovered as :math:`\mathrm{offset} + \mathrm{scale} \times n`.
 
-``cudaCHIMEFRBBeamformer_<setup>``, ``cudaTranspose2048_chime``, ``cudaQuantize8Chime``
-    The CHIME forms of the FRB beamformer, of the input reordering before
-    it, and of the quantizer.
+    * ``cudaQuantize4``: a chunk is 256 time samples of one beam and
+      frequency. ``offset`` is the mean of the good samples, and ``scale``
+      maps ``stddev_cutoff`` standard deviations to :math:`n = \pm 7.5`.
+      :math:`n` is in :math:`[-7, 7]`, and a NaN or a lost sample is
+      :math:`n = -8`.
+    * ``cudaQuantize8``: a chunk is 16 times by 16 frequencies of one beam.
+      ``offset`` and ``scale`` map the minimum and maximum of the good
+      samples to the unsigned range :math:`[1, 254]`, and a NaN or a lost
+      sample is :math:`n = 0`.
+
+``cudaCHIMEFRBBeamformer_<setup>_U<U>_K<K>``, ``cudaTranspose2048_chime``, ``cudaQuantize8Chime``
+    ``cudaTranspose2048_chime`` reorders the CHIME voltages into
+    ``E[t, f, p, d]``. The other two are the CHIME forms of the FRB
+    beamformer and of the quantizer.
 
 
 Baseband beamformer
@@ -515,8 +565,9 @@ Baseband beamformer
             \gg s[f, p, b] \right)
 
     Here :math:`x \gg s` is a division by :math:`2^s` that rounds to the
-    nearest integer, and :math:`\mathrm{Quantize}_4` clamps the real and
-    imaginary parts to :math:`[-7, 7]`. All arithmetic is in integers.
+    nearest integer (a tie rounds up), and :math:`\mathrm{Quantize}_4` clamps
+    the real and imaginary parts to :math:`[-7, 7]`. All arithmetic is in
+    integers.
 
     The kernel does the sum in two parts. It sums groups of dishes and shifts
     by :math:`\sigma` bits, then sums the groups and shifts by
@@ -540,8 +591,7 @@ page as described under `Notation`_.
   and (51) are the first kernel. Eqs. (6), (7) and (137) are the weights and
   the second kernel.
 * *CHORD 8-bit baseband beamformer*,
-  ``julia/docs/CHORD_8_bit_baseband_beamformer.pdf``. Eq. (1) is the kernel,
-  and Appendix A is the exact integer arithmetic.
+  ``julia/docs/CHORD_8_bit_baseband_beamformer.pdf``. Eq. (1) is the kernel.
 * *Note on CHIME (not CHORD) FRB beamforming*,
   ``julia/docs/CHIME_FRB_beamforming.pdf``.
 * *Notes on the SK-statistic*: the bias and variance of SK for quantized

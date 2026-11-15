@@ -293,7 +293,9 @@ is not set. ``cudaOutputData`` remembers whether it was skipped so that its
 
 ``cudaInputData`` with ``do_once: true`` copies its host frame into a singleton
 region on the first frame and then never touches the buffer again. This is the
-mechanism for constant inputs such as beamforming phases.
+mechanism for constant inputs such as the baseband bit shifts and the
+upchannelizer gains. The beamforming phases are not constant: they arrive in
+ring buffers.
 
 
 Ring buffers
