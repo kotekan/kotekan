@@ -209,6 +209,8 @@ void IncoherentSearch::dedisperse_chunk() {
             std::fill(s, s + n, 0.0f);
             const int32_t* const dl = &delay[(size_t)d * F];
             for (int c = 0; c < F; ++c) {
+                if (!band_ok[c])
+                    continue; // always zero
                 const float* const h = row(c, t0 + dl[c]);
 #pragma omp simd
                 for (int64_t k = 0; k < n; ++k)
