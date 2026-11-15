@@ -2,7 +2,7 @@
 """Per-row equivalence harness for a GNSS GPU half (cudaGnssInject + cudaCorrelatorDual).
 
     scripts/gnss/gpu_rows_equiv.py extract config/generated/chord_gnss_<node>_multi.yaml X.json
-    scripts/gnss/gpu_rows_equiv.py config X.json OUT.yaml [--chains gps_l5 gal_e5a | all]
+    scripts/gnss/gpu_rows_equiv.py config X.json OUT.yaml [--chains gps_l5 gal_e5a | all] [--rows]
     scripts/gnss/gpu_rows_equiv.py run KOTEKAN CONFIG.yaml OUTDIR [--warm 40] [--frames 8]
     scripts/gnss/gpu_rows_equiv.py compare A/digests.json B/digests.json [--only ROW]
 
@@ -16,14 +16,18 @@ cudaProcess holding the chains' cudaGnssInject commands and the cudaCorrelatorDu
 gathers, verbatim except that the comb is renumbered to local channels 0..n-1 so the voltage
 carries only the comb (--node-channels keeps the node's channels and num_local_freq), copy-outs
 of each chain's tiles and control block and of the synth array, and a rawFileWrite per output.
-Frames are paced at the hop rate (5.12 us).
+Frames are paced at the hop rate (5.12 us). --rows writes the rows form
+(gen_chord_gnss_config.py --gpu-rows): the half's gnss_rows from the chains' injects and gathers,
+one tiles and one control-block copy-out for the half.
 
 run drives a config. It posts each chain's PRN map with its first two slots swapped (a refused map
 is recorded in prn_map_refused) and steps --pre-frames frames, so the swap applies before any seed
 and the generator has filled its random frames; posts seeds and trims; steps --warm warm-up frames
 and --frames digest frames; and digests each row (chain) of each frame: its synth rectangle (its
 channels x lanes [synth_lane_base, +num_synth)), its tiles, and its control block up to its last
-energy row (the rows beyond n_jobs are never written and hold whatever the GPU memory held). The
+energy row (the rows beyond n_jobs are never written and hold whatever the GPU memory held); in
+the rows form these are its slices of the half's, the control block with its row tag checked and
+then zeroed, so the digests compare with a per-chain run's. The
 seeds are re-posted every 20 s (their TTL is 60 s) and trim_ttl_s is raised to 1e6, so neither
 expires. The injects run with psi_sync_build, so the Psi tables a record uses do not depend on the
 builder's timing; --async-build runs the builder as a node does (the Psi coverage and cost
@@ -118,15 +122,117 @@ def half_key(cfg):
 
 
 def chain_of(inject, half):
-    """The chain name of an inject command: its gnss_ctl_name without 'gnss<g>_' and '_n2ctl'."""
+    """The chain name of an inject command: its gnss_ctl_name without 'gnss<g>_' and '_n2ctl', or
+    in the rows form its gnss_row without 'gnss<g>_'."""
     pre = half.replace("_n2dual", "_")
-    name = inject["gnss_ctl_name"]
+    name = (
+        inject["gnss_row"] + "_n2ctl"
+        if "gnss_row" in inject
+        else inject["gnss_ctl_name"]
+    )
     if not (name.startswith(pre) and name.endswith("_n2ctl")):
         raise ValueError(f"inject gnss_ctl_name {name} is not {pre}<chain>_n2ctl")
     return name[len(pre) : -len("_n2ctl")]
 
 
-def make_config(x, chains, n_frames=8, node_channels=False):
+def ctl_bytes(n_prn, n_chan):
+    """gnss_gpu::ctl_bytes."""
+    return OFF_PRNCTL + PRNCTL_SIZE * MAX_REC * n_prn + 8 * 4 * n_prn * MAX_REC * n_chan
+
+
+def rows_form(cfg, half):
+    """The rows form of a harness config (gen_chord_gnss_config.py's gpu_rows_form): the half's
+    gnss_rows from its injects and gathers, in inject order, one tiles and one control-block
+    copy-out for the half in place of each row's, and the injects naming their rows."""
+    blk = cfg[half]
+    g = HALF_STAGE_RE.match(half).group(1)
+    cmds = blk["commands"]
+    corr = [c for c in cmds if c["name"] == "cudaCorrelatorDual"][0]
+    rows, fg, ctl = [], 0, 0
+    drop = set()
+    for i, c in enumerate(c for c in cmds if c["name"] == "cudaGnssInject"):
+        ch = chain_of(c, half)
+        b = ctl_bytes(len(c["prns"]), len(c["gnss_local_channels"]))
+        rows.append(
+            {
+                "name": f"gnss{g}_{ch}",
+                "chain": ch,
+                "chain_id": i + 1,
+                "row": i,
+                "channels": corr[f"gather_{ch}_channels"],
+                "lane_base": corr[f"gather_{ch}_lane_base"],
+                "lanes": corr[f"gather_{ch}_lanes"],
+                "fg_offset": fg,
+                "ctl_offset": ctl,
+                "ctl_bytes": b,
+                "n_prn": len(c["prns"]),
+            }
+        )
+        if (
+            c["gnss_local_channels"] != rows[-1]["channels"]
+            or c["synth_lane_base"] != rows[-1]["lane_base"]
+        ):
+            raise ValueError(f"{ch}: its inject and gather disagree")
+        drop |= {corr[f"gather_{ch}_tiles_name"] + "_buffer", c["gnss_ctl_name"]}
+        for k in (
+            "num_synth",
+            "synth_lane_base",
+            "gnss_local_channels",
+            "gnss_ctl_name",
+        ):
+            del c[k]
+        c["gnss_row"] = rows[-1]["name"]
+        fg += len(rows[-1]["channels"])
+        ctl += b
+    for k in [k for k in corr if k.startswith("gather_")] + ["gnss_gathers"]:
+        del corr[k]
+    blk["gnss_rows"] = rows
+    blk["gnss_rows_tiles_name"] = f"gnss{g}_rows_tiles"
+    blk["gnss_rows_ctl_name"] = f"gnss{g}_rows_ctl"
+    outs = [c for c in cmds if c["name"] == "cudaOutputData"]
+    old = [c for c in outs if c["gpu_mem"] in drop]
+    tiles_bytes = 0
+    kept = {}
+    for c in old:
+        host = blk["out_buffers"].pop(c["out_buf"])
+        kind = "tiles" if c["gpu_mem"].endswith("_tiles_buffer") else "ctl"
+        kept[kind] = cfg[host]
+        if kind == "tiles":
+            tiles_bytes += cfg[host]["frame_size"]
+        sink = [
+            k for k, v in cfg.items() if isinstance(v, dict) and v.get("in_buf") == host
+        ]
+        for k in sink + [host]:
+            del cfg[k]
+    new = []
+    for kind, size in (("tiles", tiles_bytes), ("ctl", ctl)):
+        mem = f"gnss{g}_rows_{kind}" + ("_buffer" if kind == "tiles" else "")
+        host = f"gnss{g}_rows_{kind}_buf"
+        new.append(
+            {"name": "cudaOutputData", "gpu_mem": mem, "out_buf": f"host_{host}"}
+        )
+        blk["out_buffers"][f"host_{host}"] = host
+        cfg[host] = dict(kept[kind], frame_size=size)
+        cfg[host + "_sink"] = {
+            "kotekan_stage": "rawFileWrite",
+            "in_buf": host,
+            "base_dir": "/tmp/kotekan_gnss_rows_equiv",
+            "file_name": host,
+            "file_ext": "raw",
+            "prefix_hostname": False,
+            "num_frames_per_file": 1,
+            "allow_ndarray": True,
+            "create_base_dir": True,
+        }
+    blk["commands"] = [c for c in cmds if c not in old]
+    i = blk["commands"].index(
+        next(c for c in blk["commands"] if c["name"] == "cudaOutputData")
+    )
+    blk["commands"][i:i] = new
+    return cfg
+
+
+def make_config(x, chains, n_frames=8, node_channels=False, as_rows=False):
     """The harness config (a dict) and its comb for @p chains (or 'all') of the extract @p x.
     The comb is renumbered to local channels 0..n-1 unless @p node_channels."""
     half = half_key(x)
@@ -285,6 +391,8 @@ def make_config(x, chains, n_frames=8, node_channels=False):
         if i == len(outputs) - 1:
             sink["exit_after_n_files"] = n_frames
         cfg[host + "_sink"] = sink
+    if as_rows:
+        rows_form(cfg, half)
     return cfg, comb
 
 
@@ -302,6 +410,10 @@ RENUMBERED = (
     "carries only the comb"
 )
 NODE_CHANNELS = "on the node's local channels (num_local_freq {n_local})"
+ROWS_TEXT = (
+    "Rows form (--rows): one gnss_rows list on the half, one gather into the half's tiles, every "
+    "control block in the half's one array, each row's slice copied out with the half's. "
+)
 
 
 class _Dumper(yaml.SafeDumper):
@@ -316,8 +428,8 @@ def _list(dumper, v):
 _Dumper.add_representer(list, _list)
 
 
-def write_config(x, chains, out, n_frames, node_channels):
-    cfg, comb = make_config(x, chains, n_frames, node_channels)
+def write_config(x, chains, out, n_frames, node_channels, as_rows=False):
+    cfg, comb = make_config(x, chains, n_frames, node_channels, as_rows)
     half = half_key(cfg)
     rows = [c for c in cfg[half]["commands"] if c["name"] == "cudaGnssInject"]
     chan = (NODE_CHANNELS if node_channels else RENUMBERED).format(
@@ -325,7 +437,7 @@ def write_config(x, chains, out, n_frames, node_channels):
         nm1=len(comb) - 1,
         n_local=cfg["num_local_freq"],
     )
-    text = CONFIG_TEXT.format(
+    text = (ROWS_TEXT if as_rows else "") + CONFIG_TEXT.format(
         half=half,
         chains=", ".join(chain_of(r, half) for r in rows),
         n=len(rows),
@@ -356,21 +468,66 @@ def load_config(path):
 class Row:
     """One chain of the half, as the run config describes it."""
 
-    def __init__(self, cmd, half, corr, out_host, sinks):
+    def __init__(self, cmd, half, corr, out_host, sinks, cfg_half, n_rec):
+        self.n_rec = n_rec
         self.cmd = cmd
         self.name = chain_of(cmd, half)
         self.n_prn = len(cmd["prns"])
         self.n_chan = cmd["n_channels"]
-        self.lane_base = cmd["synth_lane_base"]
-        self.num_synth = cmd["num_synth"]
         self.lps = cmd.get("lanes_per_slot", 4)
         self.hpr = cmd["hops_per_record"]
         synth = cmd["gnss_synth_channels"]
-        self.chan_idx = [synth.index(c) for c in cmd["gnss_local_channels"]]
-        self.tiles_sink = sinks[
-            out_host[corr[f"gather_{self.name}_tiles_name"] + "_buffer"]
+        # In the rows form the row's slices of the half's tiles and control block.
+        self.row = None
+        if "gnss_row" in cmd:
+            rows = cfg_half["gnss_rows"]
+            self.row = next(r for r in rows if r["name"] == cmd["gnss_row"])
+            self.fg_total = sum(len(r["channels"]) for r in rows)
+            self.lane_base = self.row["lane_base"]
+            self.num_synth = self.row["lanes"]
+            local = self.row["channels"]
+            self.tiles_sink = sinks[
+                out_host[cfg_half["gnss_rows_tiles_name"] + "_buffer"]
+            ]
+            self.ctl_sink = sinks[out_host[cfg_half["gnss_rows_ctl_name"]]]
+        else:
+            self.lane_base = cmd["synth_lane_base"]
+            self.num_synth = cmd["num_synth"]
+            local = cmd["gnss_local_channels"]
+            self.tiles_sink = sinks[
+                out_host[corr[f"gather_{self.name}_tiles_name"] + "_buffer"]
+            ]
+            self.ctl_sink = sinks[out_host[cmd["gnss_ctl_name"]]]
+        self.chan_idx = [synth.index(c) for c in local]
+
+    def ctl(self, buf):
+        """The row's control block in a frame of its ctl sink. In the rows form its row tag is
+        checked and then zeroed, which a chain's own block carries."""
+        if self.row is None:
+            return buf
+        r = self.row
+        b = bytearray(buf[r["ctl_offset"] : r["ctl_offset"] + r["ctl_bytes"]])
+        (tag,) = struct.unpack_from("<q", b, 40)
+        want = (
+            (0x5257 << 48) | (r["chain_id"] << 32) | (r["row"] << 16) | r["fg_offset"]
+        )  # gnss_gpu::row_tag
+        if tag != want:
+            raise SystemExit(f"{self.name}: row tag {tag:#x}, want {want:#x}")
+        struct.pack_into("<q", b, 40, 0)
+        return bytes(b)
+
+    def tiles(self, buf):
+        """The row's tiles in a frame of its tiles sink: in the rows form channels
+        [fg_offset, fg_offset + n_chan) of each of the frame's n_rec Tc slices."""
+        if self.row is None:
+            return buf
+        chan = len(buf) // (self.n_rec * self.fg_total)
+        n = len(self.row["channels"]) * chan
+        o = [
+            (t * self.fg_total + self.row["fg_offset"]) * chan
+            for t in range(self.n_rec)
         ]
-        self.ctl_sink = sinks[out_host[cmd["gnss_ctl_name"]]]
+        return b"".join(buf[x : x + n] for x in o)
 
 
 def rows_of(cfg):
@@ -387,8 +544,9 @@ def rows_of(cfg):
         for v in cfg.values()
         if isinstance(v, dict) and v.get("kotekan_stage") == "rawFileWrite"
     }
+    n_rec = cfg["samples_per_data_set"] // cmds[0]["hops_per_record"]
     rows = [
-        Row(c, half, corr, out_host, sinks)
+        Row(c, half, corr, out_host, sinks, cfg[half], n_rec)
         for c in cmds
         if c["name"] == "cudaGnssInject"
     ]
@@ -711,7 +869,7 @@ def run(a):
     for i in range(n_pre, n_total):
         cs = {}
         for r in rows:
-            buf = read_frame(raw, r.ctl_sink, i)
+            buf = r.ctl(read_frame(raw, r.ctl_sink, i))
             c = parse_ctl(buf)
             c["digest"] = digest(buf[: c["defined"]])
             cs[r.name] = c
@@ -759,7 +917,7 @@ def run(a):
                 rect = synth[:, r.chan_idx, r.lane_base : r.lane_base + r.num_synth]
             if digest_frame:
                 d["ctl"] = c["digest"]
-                d["tiles"] = digest(read_frame(raw, r.tiles_sink, i))
+                d["tiles"] = digest(r.tiles(read_frame(raw, r.tiles_sink, i)))
                 if rect is not None:
                     d["synth"] = digest(np.ascontiguousarray(rect).tobytes())
             if a.scale_r0 and rect is not None:
@@ -979,6 +1137,12 @@ def main():
     p.add_argument("extract", help="extract JSON")
     p.add_argument("out", help="yaml to write")
     p.add_argument("--chains", nargs="+", default=list(DEFAULT_CHAINS), help="or 'all'")
+    p.add_argument(
+        "--rows",
+        action="store_true",
+        help="the rows form: one gnss_rows list, one tiles and one control-block array for the "
+        "half; run digests each row's slices of them, comparable with a per-chain run's",
+    )
     p.add_argument("--frames", type=int, default=8, help="frames of the standalone run")
     p.add_argument(
         "--node-channels",
@@ -1068,7 +1232,9 @@ def main():
         print(f"{a.out}: gnss{a.gpu}_n2dual from {r['source']}", file=sys.stderr)
     elif a.cmd == "config":
         with open(a.extract) as f:
-            write_config(json.load(f), a.chains, a.out, a.frames, a.node_channels)
+            write_config(
+                json.load(f), a.chains, a.out, a.frames, a.node_channels, a.rows
+            )
     elif a.cmd == "run":
         sys.exit(run(a))
     elif a.cmd == "compare":
