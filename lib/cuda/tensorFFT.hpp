@@ -4,6 +4,7 @@
 #define TENSOR_FFT_HPP
 
 #include <cstddef>
+#include <cstdint>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 
@@ -29,5 +30,27 @@ void gpu_tensor_fft(const __half2* in, __half2* out, size_t n, size_t batch, cud
  * per CTA (one per SM); built for accuracy comparison, not tuned for speed.
  */
 void gpu_tensor_fft_f32(const float2* in, float2* out, size_t n, size_t batch, cudaStream_t stream);
+
+/**
+ * The fused last pass of the four-step: runs the second batched FFT (length m2, batch m1)
+ * AND the untangle + gain + quantize in one kernel by giving each CTA a conjugate pair of
+ * transforms (rows k1 and m1 - k1), so the spectrum never returns to global memory. Bytes
+ * land in transform-local [k1][k2] order in out; gpu_bytes_transpose puts them in bin
+ * order. gains_t and stats_t, when given, use the same transform-local layout
+ * (gpu_reorder_f32 converts a bin-ordered table, and converts back with m1 and m2
+ * swapped). scale and the encoding match gpu_quantize_fourstep. Needs m2 in 256..8192
+ * (power of two) and m1 >= 2.
+ */
+void gpu_tensor_fft2_quantize(const __half2* in, size_t m1, size_t m2, const float2* w_hi,
+                              const float2* w_lo, float scale, float gain, const float* gains_t,
+                              float* stats_t, uint8_t* out, cudaStream_t stream);
+
+/// Bytes [k1][k2] (m1 rows of m2) to bin order [k2 * m1 + k1].
+void gpu_bytes_transpose(const uint8_t* in, size_t m1, size_t m2, uint8_t* out,
+                         cudaStream_t stream);
+
+/// Floats from bin order [k2 * m1 + k1] to transform-local [k1 * m2 + k2]; swap the m1 and
+/// m2 arguments to convert back.
+void gpu_reorder_f32(const float* in, size_t m1, size_t m2, float* out, cudaStream_t stream);
 
 #endif // TENSOR_FFT_HPP

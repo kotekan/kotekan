@@ -63,6 +63,10 @@ cudaSparkFEngine::cudaSparkFEngine(Config& config, const std::string& unique_nam
                         unique_name, impl));
     tensor = impl == "tensor";
     fourstep = fp16 || tensor;
+    fused = config.get_default<bool>(unique_name, "fused_quantize", false);
+    if (fused && !(tensor && fp16))
+        throw std::invalid_argument(fmt::format(
+            fmt("{:s}: fused_quantize needs fft_impl tensor and fft_precision fp16"), unique_name));
     if (tensor && fft_length > (1ull << 27))
         throw std::invalid_argument(fmt::format(
             fmt("{:s}: fft_impl tensor supports fft_length up to 2^27 (sub-FFTs up to 8192)"),
@@ -98,6 +102,11 @@ cudaSparkFEngine::cudaSparkFEngine(Config& config, const std::string& unique_nam
             log2m++;
         m1 = 1ull << ((log2m + 1) / 2);
         m2 = m / m1;
+        if (fused && m2 < 256)
+            throw std::invalid_argument(
+                fmt::format(fmt("{:s}: fused_quantize needs the four-step split's m2 >= 256 "
+                                "(fft_length >= 2^18)"),
+                            unique_name));
     }
 
     stats_windows = config.get_default<uint32_t>(unique_name, "stats_windows", 64);
@@ -170,6 +179,20 @@ void cudaSparkFEngine::main_thread() {
         CHECK_CUDA_ERROR(cudaMalloc(&d_stats, m * sizeof(float)));
         CHECK_CUDA_ERROR(cudaMemset(d_stats, 0, m * sizeof(float)));
     }
+    // The fused path quantizes in transform-local order: bytes staged for the transpose,
+    // and the gain/stats tables reordered to match.
+    uint8_t* d_q = nullptr;
+    float* d_gains_t = nullptr;
+    float* d_stats_t = nullptr;
+    if (fused) {
+        CHECK_CUDA_ERROR(cudaMalloc(&d_q, m));
+        if (gain_buf)
+            CHECK_CUDA_ERROR(cudaMalloc(&d_gains_t, m * sizeof(float)));
+        if (stats_buf) {
+            CHECK_CUDA_ERROR(cudaMalloc(&d_stats_t, m * sizeof(float)));
+            CHECK_CUDA_ERROR(cudaMemset(d_stats_t, 0, m * sizeof(float)));
+        }
+    }
     CHECK_CUDA_ERROR(cudaMalloc(&d_whi, hi_entries * sizeof(float2)));
     CHECK_CUDA_ERROR(cudaMalloc(&d_wlo, 4096 * sizeof(float2)));
 
@@ -234,12 +257,18 @@ void cudaSparkFEngine::main_thread() {
             else
                 CHECK_CUFFT(cufftXtExec(plan, d_a, d_b, CUFFT_FORWARD));
             gpu_twiddle_transpose(d_b, m1, m2, d_whi, d_wlo, 1.0f / m1, d_a, stream);
-            if (tensor)
+            if (fused) {
+                gpu_tensor_fft2_quantize(d_a, m1, m2, d_whi, d_wlo, scale, gain, nullptr, nullptr,
+                                         d_q, stream);
+                gpu_bytes_transpose(d_q, m1, m2, (uint8_t*)d_b, stream);
+            } else if (tensor) {
                 gpu_tensor_fft(d_a, d_b, m2, m1, stream);
-            else
+            } else {
                 CHECK_CUFFT(cufftXtExec(plan2, d_a, d_b, CUFFT_FORWARD));
-            gpu_quantize_fourstep(d_b, m1, m2, d_whi, d_wlo, scale, gain, nullptr, nullptr,
-                                  (uint8_t*)d_a, stream);
+            }
+            if (!fused)
+                gpu_quantize_fourstep(d_b, m1, m2, d_whi, d_wlo, scale, gain, nullptr, nullptr,
+                                      (uint8_t*)d_a, stream);
         } else if (fourstep) {
             gpu_unpack12_f32_t(d_lut, samples_per_packet, m1, m2, d_a32, stream);
             gpu_tensor_fft_f32(d_a32, d_b32, m1, m2, stream);
@@ -268,6 +297,10 @@ void cudaSparkFEngine::main_thread() {
         if (table == nullptr)
             return;
         CHECK_CUDA_ERROR(cudaMemcpy(d_gains, table, m * sizeof(float), cudaMemcpyHostToDevice));
+        if (fused) {
+            gpu_reorder_f32(d_gains, m1, m2, d_gains_t, stream);
+            CHECK_CUDA_ERROR(cudaStreamSynchronize(stream));
+        }
         gain_buf->mark_frame_empty(unique_name, gain_id);
         gain_id++;
     }
@@ -302,6 +335,8 @@ void cudaSparkFEngine::main_thread() {
             if (gain_buf->wait_for_full_frame_timeout(unique_name, gain_id, now) == 0) {
                 CHECK_CUDA_ERROR(cudaMemcpy(d_gains, gain_buf->frames[gain_id], m * sizeof(float),
                                             cudaMemcpyHostToDevice));
+                if (fused)
+                    gpu_reorder_f32(d_gains, m1, m2, d_gains_t, stream);
                 gain_buf->mark_frame_empty(unique_name, gain_id);
                 gain_id++;
             }
@@ -324,12 +359,18 @@ void cudaSparkFEngine::main_thread() {
             else
                 CHECK_CUFFT(cufftXtExec(plan, d_a, d_b, CUFFT_FORWARD));
             gpu_twiddle_transpose(d_b, m1, m2, d_whi, d_wlo, 1.0f / m1, d_a, stream);
-            if (tensor)
+            if (fused) {
+                gpu_tensor_fft2_quantize(d_a, m1, m2, d_whi, d_wlo, scale, gain, d_gains_t,
+                                         d_stats_t, d_q, stream);
+                gpu_bytes_transpose(d_q, m1, m2, out_frame, stream);
+            } else if (tensor) {
                 gpu_tensor_fft(d_a, d_b, m2, m1, stream);
-            else
+            } else {
                 CHECK_CUFFT(cufftXtExec(plan2, d_a, d_b, CUFFT_FORWARD));
-            gpu_quantize_fourstep(d_b, m1, m2, d_whi, d_wlo, scale, gain, d_gains, d_stats,
-                                  out_frame, stream);
+            }
+            if (!fused)
+                gpu_quantize_fourstep(d_b, m1, m2, d_whi, d_wlo, scale, gain, d_gains, d_stats,
+                                      out_frame, stream);
         } else if (fourstep) {
             gpu_unpack12_f32_t(d_lut, samples_per_packet, m1, m2, d_a32, stream);
             gpu_tensor_fft_f32(d_a32, d_b32, m1, m2, stream);
@@ -345,9 +386,14 @@ void cudaSparkFEngine::main_thread() {
                                   stream);
         }
         if (emit_stats) {
+            if (fused) {
+                gpu_reorder_f32(d_stats_t, m2, m1, d_stats, stream);
+                CHECK_CUDA_ERROR(cudaMemsetAsync(d_stats_t, 0, m * sizeof(float), stream));
+            }
             CHECK_CUDA_ERROR(cudaMemcpyAsync(stats_frame, d_stats, m * sizeof(float),
                                              cudaMemcpyDeviceToHost, stream));
-            CHECK_CUDA_ERROR(cudaMemsetAsync(d_stats, 0, m * sizeof(float), stream));
+            if (!fused)
+                CHECK_CUDA_ERROR(cudaMemsetAsync(d_stats, 0, m * sizeof(float), stream));
         }
         CHECK_CUDA_ERROR(cudaStreamSynchronize(stream));
         gpu_seconds_gauge.set(current_time() - start);
@@ -380,6 +426,12 @@ void cudaSparkFEngine::main_thread() {
         CHECK_CUDA_ERROR(cudaFree(d_gains));
     if (d_stats)
         CHECK_CUDA_ERROR(cudaFree(d_stats));
+    if (d_q)
+        CHECK_CUDA_ERROR(cudaFree(d_q));
+    if (d_gains_t)
+        CHECK_CUDA_ERROR(cudaFree(d_gains_t));
+    if (d_stats_t)
+        CHECK_CUDA_ERROR(cudaFree(d_stats_t));
     CHECK_CUDA_ERROR(cudaFree(d_whi));
     CHECK_CUDA_ERROR(cudaFree(d_wlo));
     CHECK_CUDA_ERROR(cudaStreamDestroy(stream));

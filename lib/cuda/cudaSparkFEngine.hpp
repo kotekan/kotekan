@@ -63,6 +63,12 @@
  *                          when one is configured.
  * @conf stats_windows      Int, default 64. With stats_buf, windows accumulated per stats
  *                          frame.
+ * @conf fused_quantize     Bool, default false. With fft_impl tensor and fft_precision
+ *                          fp16, run the second batched FFT, untangle, gain and quantize
+ *                          as one kernel over conjugate transform pairs plus a byte
+ *                          transpose, so the spectrum never returns to global memory
+ *                          (needs the four-step split's m2 >= 256, i.e. fft_length >=
+ *                          2^18).
  * @conf gpu_id             Int, default 0.
  * @conf fft_precision      String, default "fp32". "fp16" runs the four-step path: the
  *                          fft_length/2-point transform becomes two batched fp16 cuFFTs
@@ -107,6 +113,7 @@ private:
     bool fp16;
     bool tensor;
     bool fourstep = false;
+    bool fused = false;
     size_t m1 = 0, m2 = 0;
 
     std::shared_ptr<cudaDeviceInterface> device;

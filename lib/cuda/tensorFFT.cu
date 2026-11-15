@@ -341,3 +341,205 @@ void gpu_tensor_fft(const __half2* in, __half2* out, size_t n, size_t batch, cud
     const int blocks = (int)((total + ELEMS - 1) / ELEMS);
     tensor_fft<<<blocks, THREADS, 0, stream>>>(in, out, log2n, total);
 }
+
+// ---- Fused last pass: FFT2 + untangle + gain + quantize in one kernel. Each CTA owns a
+// conjugate PAIR of FFT2 transforms (rows k1 and m1 - k1 of the twiddled matrix; rows 0 and
+// m1/2 pair with themselves), so after the in-smem FFT both Z[k] and Z[m - k] are resident
+// and the spectrum never returns to global memory: the quantized bytes leave in the
+// transform-local [k1][k2] order and a cheap byte transpose puts them in bin order. This
+// removes FFT2's store and the quantizer's two spectrum reads, about a fifth of the
+// pipeline's traffic. Gains and stats use the same transform-local layout
+// (gpu_reorder_f32 converts); requires m2 >= 256 and power-of-two sizes.
+
+__device__ static inline uint8_t encode_fused(float vr, float vi, float g,
+                                              const float* __restrict__ gains,
+                                              float* __restrict__ stats, size_t k) {
+    if (stats)
+        stats[k] += vr * vr + vi * vi;
+    if (gains)
+        g *= gains[k];
+    const int re = max(-7, min(7, __float2int_rn(g * vr)));
+    const int im = max(-7, min(7, __float2int_rn(g * vi)));
+    return (uint8_t)(((re + 8) << 4) | (im + 8));
+}
+
+__device__ static inline float2 twiddle_hilo(const float2* __restrict__ w_hi,
+                                             const float2* __restrict__ w_lo, uint64_t e) {
+    const float2 wh = w_hi[e >> 12];
+    const float2 wl = w_lo[e & 4095];
+    return make_float2(wh.x * wl.x - wh.y * wl.y, wh.x * wl.y + wh.y * wl.x);
+}
+
+// Which half of the pair-CTA's shared array a packed index lives in, and its offset there.
+__device__ static inline int half_of(int i, int n) {
+    return i >= n ? n : 0;
+}
+__device__ static inline int in_half(int i, int n) {
+    return i >= n ? i - n : i;
+}
+
+static constexpr int THREADS_FQ = 512;
+
+__global__ static void __launch_bounds__(THREADS_FQ, 1)
+    tensor_fft2_quantize(const __half2* __restrict__ in, size_t m1, size_t m2,
+                         const float2* __restrict__ w_hi, const float2* __restrict__ w_lo,
+                         float scale, float gain, const float* __restrict__ gains_t,
+                         float* __restrict__ stats_t, uint8_t* __restrict__ out) {
+    extern __shared__ __half2 smp[];
+    const size_t c = blockIdx.x;
+    const bool self = c == 0 || c == m1 / 2;
+    const size_t rowB = self ? c : m1 - c;
+    const int n = (int)m2;
+    int log2n = 0;
+    while ((1 << log2n) < n)
+        log2n++;
+    const int elems = self ? n : 2 * n;
+
+    // Rows are contiguous in global memory; halves are pad()-swizzled like the base kernel
+    // (pad only permutes within 32-aligned blocks, so it stays inside each half).
+    for (int i = threadIdx.x; i < n; i += THREADS_FQ) {
+        smp[pad(i)] = in[c * m2 + i];
+        if (!self)
+            smp[n + pad(i)] = in[rowB * m2 + i];
+    }
+
+    const int s = log2n >> 2;
+    const int lr = log2n & 3;
+    const int grp = (threadIdx.x & 31) >> 2;
+    const int tg = threadIdx.x & 3;
+    __half2 bw[4][2][2];
+    load_dft_fragments(bw, 16, grp, tg);
+
+    const int nstages = s + (lr > 0);
+    for (int t = 0; t < nstages; t++) {
+        const int lb = t == s ? 4 : log2n - 4 * t;
+        const int lc = lb - 4;
+        if (t == s)
+            load_dft_fragments(bw, 1 << lr, grp, tg);
+        __syncthreads();
+        for (int tile = threadIdx.x >> 5; tile < elems / 256; tile += THREADS_FQ / 32) {
+            const int beta0 = 16 * tile + grp;
+            const int blk0 = (beta0 >> lc) << lb, j2_0 = beta0 & ((1 << lc) - 1);
+            const int blk1 = ((beta0 + 8) >> lc) << lb, j2_1 = (beta0 + 8) & ((1 << lc) - 1);
+            float d[4][4] = {};
+#pragma unroll
+            for (int kc = 0; kc < 2; kc++) {
+                const int j = 8 * kc + tg;
+                __half2 a[4];
+                a[0] = smp[half_of(blk0, n) + pad(in_half(blk0, n) + j * (1 << lc) + j2_0)];
+                a[1] = smp[half_of(blk1, n) + pad(in_half(blk1, n) + j * (1 << lc) + j2_1)];
+                a[2] = smp[half_of(blk0, n) + pad(in_half(blk0, n) + (j + 4) * (1 << lc) + j2_0)];
+                a[3] = smp[half_of(blk1, n) + pad(in_half(blk1, n) + (j + 4) * (1 << lc) + j2_1)];
+#pragma unroll
+                for (int ct = 0; ct < 4; ct++)
+                    mma_f32_m16_n8_k16(d[ct], a, bw[ct][kc]);
+            }
+            if (lb > 4) {
+                const float a1 = -6.2831853e0f / (1 << lb);
+#pragma unroll
+                for (int h = 0; h < 2; h++) {
+                    const int j2 = h ? j2_1 : j2_0;
+                    float wr, wi, pr, pi;
+                    __sincosf(a1 * (j2 * tg), &wi, &wr);
+                    __sincosf(a1 * (j2 * 4), &pi, &pr);
+#pragma unroll
+                    for (int ct = 0; ct < 4; ct++) {
+                        const float re = d[ct][2 * h], im = d[ct][2 * h + 1];
+                        d[ct][2 * h] = re * wr - im * wi;
+                        d[ct][2 * h + 1] = re * wi + im * wr;
+                        const float nr = wr * pr - wi * pi;
+                        wi = wr * pi + wi * pr;
+                        wr = nr;
+                    }
+                }
+            }
+#pragma unroll
+            for (int ct = 0; ct < 4; ct++) {
+                const int k1 = 4 * ct + tg;
+                const int p0 = blk0 + k1 * (1 << lc) + j2_0;
+                const int p1 = blk1 + k1 * (1 << lc) + j2_1;
+                smp[half_of(p0, n) + pad(in_half(p0, n))] = __floats2half2_rn(d[ct][0], d[ct][1]);
+                smp[half_of(p1, n) + pad(in_half(p1, n))] = __floats2half2_rn(d[ct][2], d[ct][3]);
+            }
+        }
+    }
+
+    __syncthreads();
+    for (int k2 = threadIdx.x; k2 < n; k2 += THREADS_FQ) {
+        const int q2 =
+            self ? (c == 0 ? (int)((m2 - k2) % m2) : (int)(m2 - 1 - k2)) : (int)(m2 - 1 - k2);
+        const float2 za = __half22float2(smp[pad(bin_pos(k2, s, lr))]);
+        const float2 zb =
+            __half22float2(self ? smp[pad(bin_pos(q2, s, lr))] : smp[n + pad(bin_pos(q2, s, lr))]);
+        // Bin (c, k2): Z[k] = za, Z[m - k] = zb.
+        {
+            const size_t k = (size_t)k2 * m1 + c;
+            const float er = 0.5f * (za.x + zb.x), ei = 0.5f * (za.y - zb.y);
+            const float our = 0.5f * (za.y + zb.y), oui = 0.5f * (zb.x - za.x);
+            const float2 w = twiddle_hilo(w_hi, w_lo, k);
+            const float xr = scale * (er + w.x * our - w.y * oui);
+            const float xi = scale * (ei + w.x * oui + w.y * our);
+            const size_t kt = c * m2 + k2;
+            out[kt] = encode_fused(xr, xi, gain, gains_t, stats_t, kt);
+        }
+        // Bin (m1 - c, q2): Z[k] = zb, Z[m - k] = za (the same pair, swapped).
+        if (!self) {
+            const size_t k = (size_t)q2 * m1 + rowB;
+            const float er = 0.5f * (zb.x + za.x), ei = 0.5f * (zb.y - za.y);
+            const float our = 0.5f * (zb.y + za.y), oui = 0.5f * (za.x - zb.x);
+            const float2 w = twiddle_hilo(w_hi, w_lo, k);
+            const float xr = scale * (er + w.x * our - w.y * oui);
+            const float xi = scale * (ei + w.x * oui + w.y * our);
+            const size_t kt = rowB * m2 + q2;
+            out[kt] = encode_fused(xr, xi, gain, gains_t, stats_t, kt);
+        }
+    }
+}
+
+void gpu_tensor_fft2_quantize(const __half2* in, size_t m1, size_t m2, const float2* w_hi,
+                              const float2* w_lo, float scale, float gain, const float* gains_t,
+                              float* stats_t, uint8_t* out, cudaStream_t stream) {
+    assert(m2 >= 256 && m2 <= 8192 && (m2 & (m2 - 1)) == 0 && m1 >= 2);
+    const int smem = 2 * (int)m2 * sizeof(__half2);
+    cudaFuncSetAttribute(tensor_fft2_quantize, cudaFuncAttributeMaxDynamicSharedMemorySize, smem);
+    tensor_fft2_quantize<<<(unsigned)(m1 / 2 + 1), THREADS_FQ, smem, stream>>>(
+        in, m1, m2, w_hi, w_lo, scale, gain, gains_t, stats_t, out);
+}
+
+// Bytes [k1][k2] -> bin order [k2 * m1 + k1], 32x32 tiles.
+__global__ static void bytes_transpose(const uint8_t* __restrict__ in, size_t m1, size_t m2,
+                                       uint8_t* __restrict__ out) {
+    __shared__ uint8_t tile[32][33];
+    const size_t k10 = blockIdx.x * 32;
+    const size_t k20 = blockIdx.y * 32;
+    for (int l = threadIdx.y; l < 32; l += 8)
+        tile[l][threadIdx.x] = in[(k10 + l) * m2 + k20 + threadIdx.x];
+    __syncthreads();
+    for (int r = threadIdx.y; r < 32; r += 8)
+        out[(k20 + r) * m1 + k10 + threadIdx.x] = tile[threadIdx.x][r];
+}
+
+void gpu_bytes_transpose(const uint8_t* in, size_t m1, size_t m2, uint8_t* out,
+                         cudaStream_t stream) {
+    dim3 grid(m1 / 32, m2 / 32), block(32, 8);
+    bytes_transpose<<<grid, block, 0, stream>>>(in, m1, m2, out);
+}
+
+// Floats in bin order [k2 * m1 + k1] -> transform-local [k1 * m2 + k2] (or back, by
+// swapping the roles of m1 and m2).
+__global__ static void reorder_f32(const float* __restrict__ in, size_t m1, size_t m2,
+                                   float* __restrict__ out) {
+    __shared__ float tile[32][33];
+    const size_t k10 = blockIdx.x * 32;
+    const size_t k20 = blockIdx.y * 32;
+    for (int l = threadIdx.y; l < 32; l += 8)
+        tile[l][threadIdx.x] = in[(k20 + l) * m1 + k10 + threadIdx.x];
+    __syncthreads();
+    for (int r = threadIdx.y; r < 32; r += 8)
+        out[(k10 + threadIdx.x) * m2 + k20 + r] = tile[threadIdx.x][r];
+}
+
+void gpu_reorder_f32(const float* in, size_t m1, size_t m2, float* out, cudaStream_t stream) {
+    dim3 grid(m1 / 32, m2 / 32), block(32, 8);
+    reorder_f32<<<grid, block, 0, stream>>>(in, m1, m2, out);
+}
