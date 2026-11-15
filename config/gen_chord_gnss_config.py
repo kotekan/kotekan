@@ -110,6 +110,11 @@ def lanes_per_slot_for(args):
 
 # Frames per GNSS chain buffer.
 BUFFER_DEPTH = 4
+# Frames of a chain's tiles and control-block buffers with --fold-epl. Its record assembler
+# releases each pair before its records, so these frames are the chain's whole slack before
+# cudaOutputData blocks the GPU; 8 keeps the slack its tiles and epl buffers give it without
+# --fold-epl (4 + 4).
+FOLD_EPL_DEPTH = 8
 # PRN slots an extra search (--aggregator-extra-search) scans when the spec names none, by
 # the signal name's constellation prefix: the broadcast PRN ranges, not a lane budget.
 EXTRA_SEARCH_PRNS = {
@@ -1350,11 +1355,13 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
     record_floats = record_stride(n_live)
     steer = elem_steer_keys(args, arr, n_live)
 
+    # With --fold-epl the record assembler reads the tiles and the control block itself.
+    io_depth = FOLD_EPL_DEPTH if args.fold_epl else BUFFER_DEPTH
     blocks = {
         tiles_buf: {
             "kotekan_buffer": "standard",
             "metadata_pool": "gnss_pool",
-            "num_frames": BUFFER_DEPTH,
+            "num_frames": io_depth,
             "frame_size": tiles_frame_bytes,
         },
         # The chain's injector and correlator, as a process block that merge_n2dual_gpu folds
@@ -1474,7 +1481,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
         ctl_buf: {
             "kotekan_buffer": "standard",
             "metadata_pool": "gnss_pool",
-            "num_frames": BUFFER_DEPTH,
+            "num_frames": io_depth,
             "frame_size": ctl_bytes,
         },
         epl_buf: {
@@ -1610,6 +1617,24 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             "cpu_affinity": [V["cores"]["combine"]],
         },
     }
+    # --fold-epl: the record assembler takes GnssN2RecordAssemble's inputs and keys, and builds
+    # each epl frame itself; the adapter and its epl buffer go.
+    if args.fold_epl:
+        adapter = blocks.pop(f"{pre}n2assemble_tiles")
+        del blocks[epl_buf]
+        asm = blocks[f"{pre}n2assemble"]
+        del asm["in_buf"]
+        for k in (
+            "ctl_buf",
+            "tiles_buf",
+            "num_elements",
+            "num_synth",
+            "lanes_per_slot",
+            "hops_per_record",
+        ):
+            asm[k] = adapter[k]
+        asm["fft_len"] = cfg["fengine"]["fft_length"]
+
     # The combined records in a buffer, for an n2dump: nothing else reads them, so a
     # dropAllFrames drains it. Without one the combiner keeps each emit for its REST replies.
     if args.combiner_out_buf:
@@ -3627,6 +3652,15 @@ def main():
         "three), and pack two synth lanes per PRN slot (P, P_HEAD) instead of four, "
         "GnssN2RecordAssemble rotating P into the E and L rows (lanes_per_slot), on every "
         "chain.",
+    )
+    ap.add_argument(
+        "--fold-epl",
+        action="store_true",
+        help="every chain's GnssGpuRecordAssemble reads its tiles and control block itself "
+        "(tiles_buf, ctl_buf) and builds each epl frame in its own memory: no "
+        "GnssN2RecordAssemble stage and no n2epl buffer, and the n2tiles and n2ctl buffers "
+        "hold FOLD_EPL_DEPTH frames instead of BUFFER_DEPTH. The transform moves onto the "
+        "assembler cores (--assembler-core-slots).",
     )
     ap.add_argument(
         "--psi-synth",
