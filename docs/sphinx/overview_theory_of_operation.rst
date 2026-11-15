@@ -8,6 +8,7 @@ commands, how frames flow through the device, and the rules a command author or
 config author has to follow. Most of these rules are consequences of the design
 rather than checks in the code, so they are collected here. The host-side buffer
 protocol is covered in :ref:`dev_buffers`; this page assumes you have read it.
+What each command computes is in :ref:`gpu_stages`.
 
 Host pipeline in one paragraph
 ==============================

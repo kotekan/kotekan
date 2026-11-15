@@ -7,7 +7,8 @@ GPU stages
 A ``cudaProcess`` stage runs a list of ``commands`` on one GPU. Each command is
 a ``cudaCommand`` (``lib/cuda``) that queues one kernel or one copy. This page
 says what each command computes. The config parameters and the memory layout of
-each array are in the doxygen block of the class.
+each array are in the doxygen block of the class. How a stage runs its commands
+(streams, GPU memory, ring buffers) is in :doc:`/overview_theory_of_operation`.
 
 The commands pass data to each other in GPU memory. Most arrays are ring
 buffers along their time axis, so a command reads as many samples as are ready
