@@ -56,7 +56,12 @@ enum class Mutation {
     /// At frame 3, chain B's control block claims one PRN, one channel or one lane per slot more.
     n_prn_B3,
     n_chan_B3,
-    lanes_B3
+    lanes_B3,
+    /// With Scenario::gpu_rows: chain A's and B's assemblers swap their gnss_row ctl_offset, or
+    /// fg_offset; from frame 3 B's control block carries the next row's tag.
+    ctl_offset_swap_AB,
+    fg_offset_swap_AB,
+    row_tag_B3
 };
 
 /// The events, by frame. Chain A is chains[0], B chains[1] and C chains[2].
@@ -84,6 +89,14 @@ struct Scenario {
     /// true: every chain's assembler reads the tiles and the control block itself (tiles_buf and
     /// ctl_buf), without GnssN2RecordAssemble, and its epl digests are read from its own frame.
     bool fold = false;
+    /// true, with fold: the chains are rows of one GPU half (gnssGpuRows.hpp). Each tiles and
+    /// control-block frame holds every chain's, the tiles on one channel axis in chain order,
+    /// and each assembler reads its row of its own buffers' frames, one chain after another as
+    /// without it.
+    bool gpu_rows = false;
+    /// true, with gpu_rows: one pair of buffers that every assembler reads, as on a node; the
+    /// chains then read each frame concurrently.
+    bool gpu_rows_shared = false;
 };
 
 /// Record index of frame 0's first record: a multiple of every window length the chains use

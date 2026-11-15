@@ -355,6 +355,47 @@ json host_block(const std::map<std::string, json>& blocks, const std::vector<std
     return host;
 }
 
+/// With Scenario::gpu_rows_shared: the GPU half's tiles and control-block buffers.
+std::string rows_buf(const std::vector<ChainSpec>& cs, const std::string& role) {
+    return "gnss" + std::to_string(cs[0].gpu) + "_rows_" + role;
+}
+
+/// With Scenario::gpu_rows: the chains' gnss_rows entries, in chain order, and the channel count of
+/// the half's tiles.
+json gpu_rows_of(const std::vector<ChainSpec>& cs) {
+    json rows = json::array();
+    int fg = 0;
+    size_t ctl = 0;
+    for (size_t i = 0; i < cs.size(); ++i) {
+        const ChainSpec& s = cs[i];
+        std::vector<int> chans;
+        for (int c = 0; c < s.n_chan; ++c)
+            chans.push_back(fg + c);
+        const size_t b = gnss_gpu::ctl_bytes(s.n_prn, s.n_chan);
+        rows.push_back({{"name", s.pre},
+                        {"chain", s.pre.substr(s.pre.find('_') + 1)},
+                        {"chain_id", (int)i + 1},
+                        {"row", (int)i},
+                        {"channels", chans},
+                        {"lane_base", 0},
+                        {"lanes", s.num_synth},
+                        {"fg_offset", fg},
+                        {"ctl_offset", ctl},
+                        {"ctl_bytes", b},
+                        {"n_prn", s.n_prn}});
+        fg += s.n_chan;
+        ctl += b;
+    }
+    return rows;
+}
+
+int fg_total(const std::vector<ChainSpec>& cs) {
+    int fg = 0;
+    for (const auto& s : cs)
+        fg += s.n_chan;
+    return fg;
+}
+
 /// One kotekan config holding every chain's four blocks, with the harness's buffer names.
 json build_config(const std::vector<ChainSpec>& cs, const Scenario& sc,
                   const std::vector<int>& cpus) {
@@ -363,6 +404,12 @@ json build_config(const std::vector<ChainSpec>& cs, const Scenario& sc,
     cfg["cpu_affinity"] = cpus;
     cfg["samples_per_data_set"] = cs[0].n_rec * cs[0].hops_per_record;
     std::map<std::string, json> rows_as, rows_cb, rows_tp;
+    // The assemblers' rows; the feeder lays the frames out by gpu_rows_of() itself.
+    json gpu_rows = gpu_rows_of(cs);
+    if (sc.mut == Mutation::ctl_offset_swap_AB)
+        std::swap(gpu_rows[0]["ctl_offset"], gpu_rows[1]["ctl_offset"]);
+    if (sc.mut == Mutation::fg_offset_swap_AB)
+        std::swap(gpu_rows[0]["fg_offset"], gpu_rows[1]["fg_offset"]);
     for (size_t i = 0; i < cs.size(); ++i) {
         const ChainSpec& s = cs[i];
         json ad = s.adapter, as = s.assemble, cb = s.combine, tp = s.telem;
@@ -377,6 +424,14 @@ json build_config(const std::vector<ChainSpec>& cs, const Scenario& sc,
                 if (ad.contains(k))
                     as[k] = ad[k];
             as["fft_len"] = s.fft_len;
+            if (sc.gpu_rows_shared) {
+                as["ctl_buf"] = rows_buf(cs, "ctl_buf");
+                as["tiles_buf"] = rows_buf(cs, "tiles_buf");
+            }
+            if (sc.gpu_rows) {
+                as["gnss_row"] = gpu_rows[i];
+                as["fg_total"] = fg_total(cs);
+            }
         } else {
             as["in_buf"] = buf_name(s, "n2epl_buf");
         }
@@ -454,9 +509,13 @@ const char* const KIND[N_KIND] = {"epl", "rec", "cmb", "telem", "cube"};
 
 struct ChainRun {
     const ChainSpec* s = nullptr;
+    const std::vector<ChainSpec>* cs = nullptr; ///< every chain, this one included
     int idx = 0;
     const Scenario* sc = nullptr;
-    std::unique_ptr<Buffer> ctl, tiles, buf[N_KIND];
+    /// The chain's own tiles and control-block buffers, or with Scenario::gpu_rows_shared the
+    /// half's.
+    Buffer *ctl = nullptr, *tiles = nullptr;
+    std::unique_ptr<Buffer> own_ctl, own_tiles, buf[N_KIND];
     std::vector<std::unique_ptr<kotekan::Stage>> stages;
     GnssCoherentCombiner* cmb = nullptr;
     size_t cmb_row = 0; ///< the chain's row of cmb
@@ -686,7 +745,7 @@ void capture_scratch(ChainRun& R, int k) {
 /// 0xA5 as soon as the assembler releases it, whichever comes first. An assembler that reads one
 /// after releasing it reads this instead.
 void refill_released(ChainRun& R, int k) {
-    Buffer* const bufs[2] = {R.ctl.get(), R.tiles.get()};
+    Buffer* const bufs[2] = {R.ctl, R.tiles};
     bool done[2] = {false, false};
     const auto t0 = std::chrono::steady_clock::now();
     while (!done[0] || !done[1]) {
@@ -705,7 +764,7 @@ void refill_released(ChainRun& R, int k) {
 /// With Scenario::fold, fails unless the released tiles and ctl frames still hold refill_released's
 /// 0xA5: in production cudaOutputData's next frame lands there.
 void check_released(const ChainRun& R, int k) {
-    for (const Buffer* b : {R.ctl.get(), R.tiles.get()})
+    for (const Buffer* b : {R.ctl, R.tiles})
         for (size_t j = 0; j < b->frame_size; ++j)
             if (b->frames[0][j] != 0xA5)
                 child_fail(81, fmt::format("{:s}: {:s} byte {:d} written after frame {:d} was "
@@ -956,6 +1015,62 @@ std::string short_hostname() {
     return hn;
 }
 
+/// Writes frame @p k into @p R's tiles and control-block buffers and marks them full: the chain's
+/// own frames, or with Scenario::gpu_rows the whole GPU half's, every chain at its row of
+/// @p layout (with gpu_rows_shared, the half's one pair of buffers that every chain reads).
+void feed(const std::vector<std::unique_ptr<ChainRun>>& runs, ChainRun& R, const json& layout,
+          const Sky& sky, const Scenario& sc, int k, Digests& d) {
+    uint8_t* ctl_f = R.ctl->wait_for_empty_frame("feeder", 0);
+    int32_t* tiles_f = (int32_t*)R.tiles->wait_for_empty_frame("feeder", 0);
+    if (ctl_f == nullptr || tiles_f == nullptr)
+        child_fail(74, "feeder: buffer shut down");
+    int64_t hop0 = 0;
+    for (auto& W : runs) {
+        if (!sc.gpu_rows && W.get() != &R)
+            continue;
+        const ChainSpec& s = *W->s;
+        const size_t ctl_b = gnss_gpu::ctl_bytes(s.n_prn, s.n_chan);
+        const size_t tiles_n = (size_t)s.n_rec * s.n_chan * n_tile(s) * 512;
+        // A row's frames are written as the chain's own, then copied to its place in the half's.
+        std::vector<uint8_t> own_ctl(sc.gpu_rows ? ctl_b : 0);
+        std::vector<int32_t> own_tiles(sc.gpu_rows ? tiles_n : 0);
+        uint8_t* ctl = sc.gpu_rows ? own_ctl.data() : ctl_f;
+        int32_t* tiles = sc.gpu_rows ? own_tiles.data() : tiles_f;
+        write_ctl(ctl, ctl_b, s, sky, sc, k);
+        write_tiles(tiles, tiles_n, s, sky, sc, k);
+        apply_mutation(sc, W->idx, k, s, ctl, tiles);
+        if (W->idx == 1 && k == sc.dark_r0_frame) {
+            json t = json::array();
+            for (int slot : {sc.dark_r0_slot, 0}) {
+                const int lane = s.lanes_per_slot * slot
+                                 + gnss_gpu::lane_of_row(s.lanes_per_slot, gnss_gpu::ROW_P);
+                for (int r = 1; r < s.n_rec; ++r)
+                    t.push_back(tiles[tile_index(s, r, 0, lane, 0)]);
+            }
+            d.pins["B2_tiles"] = t;
+        }
+        hop0 = ((const gnss_gpu::FrameHdr*)ctl)->seq0 / s.fft_len
+               + (sc.mut == Mutation::seq0_skew_B3 && W->idx == 1 && k >= 3);
+        if (!sc.gpu_rows)
+            continue;
+        const json& row = layout.at(W->idx);
+        const int fg_offset = row.at("fg_offset").get<int>();
+        const int bad = sc.mut == Mutation::row_tag_B3 && W->idx == 1 && k >= 3;
+        ((gnss_gpu::FrameHdr*)ctl)->_pad1 = gnss_gpu::row_tag(
+            row.at("chain_id").get<int>(), row.at("row").get<int>() + bad, fg_offset);
+        std::memcpy(ctl_f + row.at("ctl_offset").get<size_t>(), ctl, ctl_b);
+        const size_t slice = (size_t)s.n_chan * n_tile(s) * 512;
+        const int fg = fg_total(*W->cs);
+        for (int r = 0; r < s.n_rec; ++r)
+            std::memcpy(tiles_f + ((size_t)r * fg + fg_offset) * n_tile(s) * 512, tiles + r * slice,
+                        slice * sizeof(int32_t));
+    }
+    R.tiles->allocate_new_metadata_object(0);
+    get_chord_metadata(R.tiles, 0)->set_fpga_seq_num(hop0);
+    R.ctl->mark_frame_full("feeder", 0);
+    R.tiles->mark_frame_full("feeder", 0);
+}
+
 int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::string& out_path) {
     // Boost.Test's handlers would report a crash from inside the child and carry on; the parent
     // reports the signal instead.
@@ -983,17 +1098,39 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
     auto tiles_pool = metadataPool::create(2 * (int)cs.size(), sizeof(chordMetadata), "tiles_pool",
                                            "chordMetadata");
     kotekan::bufferContainer bc;
+    // With Scenario::gpu_rows every tiles and control-block frame is a whole GPU half's: every
+    // chain's tiles on one channel axis and every control block, in chain order (gpu_rows_of).
+    // With gpu_rows_shared one pair of buffers holds them for every chain.
+    const json layout = gpu_rows_of(cs);
+    const size_t rows_ctl_b =
+        layout.back().at("ctl_offset").get<size_t>() + layout.back().at("ctl_bytes").get<size_t>();
+    const size_t rows_tiles_b =
+        (size_t)cs[0].n_rec * fg_total(cs) * n_tile(cs[0]) * 512 * sizeof(int32_t);
+    std::unique_ptr<Buffer> rows_ctl, rows_tiles;
+    if (sc.gpu_rows_shared) {
+        const size_t ctl_b = rows_ctl_b, tiles_b = rows_tiles_b;
+        rows_ctl = std::make_unique<Buffer>(1, ctl_b, pool, rows_buf(cs, "ctl_buf"), "standard", 0,
+                                            false, false, std::vector<int>{}, true, sc.prefill);
+        rows_tiles =
+            std::make_unique<Buffer>(1, tiles_b, tiles_pool, rows_buf(cs, "tiles_buf"), "standard",
+                                     0, false, false, std::vector<int>{}, true, sc.prefill);
+        bc.add_buffer(rows_buf(cs, "ctl_buf"), rows_ctl.get());
+        bc.add_buffer(rows_buf(cs, "tiles_buf"), rows_tiles.get());
+        rows_ctl->register_producer("feeder");
+        rows_tiles->register_producer("feeder");
+    }
     std::vector<std::unique_ptr<ChainRun>> runs;
     for (size_t i = 0; i < cs.size(); ++i) {
         const ChainSpec& s = cs[i];
         auto R = std::make_unique<ChainRun>();
         R->s = &s;
+        R->cs = &cs;
         R->idx = (int)i;
         R->sc = &sc;
-        const size_t ctl_b =
-            gnss_gpu::off_prnctl() + sizeof(gnss_gpu::PrnCtl) * gnss_gpu::MAX_REC * s.n_prn
-            + sizeof(double) * gnss_gpu::max_jobs(s.n_prn, gnss_gpu::ROWS_PLAIN) * s.n_chan;
-        const size_t tiles_b = (size_t)s.n_rec * s.n_chan * n_tile(s) * 512 * sizeof(int32_t);
+        const size_t ctl_b = sc.gpu_rows ? rows_ctl_b : gnss_gpu::ctl_bytes(s.n_prn, s.n_chan);
+        const size_t tiles_b = sc.gpu_rows
+                                   ? rows_tiles_b
+                                   : (size_t)s.n_rec * s.n_chan * n_tile(s) * 512 * sizeof(int32_t);
         const int max_prn = s.telem.at("max_prn").get<int>();
         const size_t sizes[N_KIND] = {
             gnss_gpu::frame_bytes(s.n_prn, s.n_chan, gnss_gpu::ROWS_PLAIN, s.n_live),
@@ -1003,15 +1140,18 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
             gnss::cube_frame_bytes(s.assemble.value("beam_cube_max_prn", s.n_prn),
                                    s.assemble.value("beam_cube_max_bins", s.n_chan), s.n_live)};
         const char* role[N_KIND] = {"n2epl_buf", "n2rec_buf", "n2cmb_buf", "telem_buf", "cube_buf"};
-        R->ctl = std::make_unique<Buffer>(1, ctl_b, pool, buf_name(s, "n2ctl_buf"), "standard", 0,
-                                          false, false, std::vector<int>{}, true, sc.prefill);
-        R->tiles =
+        R->own_ctl =
+            std::make_unique<Buffer>(1, ctl_b, pool, buf_name(s, "n2ctl_buf"), "standard", 0, false,
+                                     false, std::vector<int>{}, true, sc.prefill);
+        R->own_tiles =
             std::make_unique<Buffer>(1, tiles_b, tiles_pool, buf_name(s, "n2tiles_buf"), "standard",
                                      0, false, false, std::vector<int>{}, true, sc.prefill);
-        bc.add_buffer(buf_name(s, "n2ctl_buf"), R->ctl.get());
-        bc.add_buffer(buf_name(s, "n2tiles_buf"), R->tiles.get());
-        R->ctl->register_producer("feeder");
-        R->tiles->register_producer("feeder");
+        bc.add_buffer(buf_name(s, "n2ctl_buf"), R->own_ctl.get());
+        bc.add_buffer(buf_name(s, "n2tiles_buf"), R->own_tiles.get());
+        R->own_ctl->register_producer("feeder");
+        R->own_tiles->register_producer("feeder");
+        R->ctl = sc.gpu_rows_shared ? rows_ctl.get() : R->own_ctl.get();
+        R->tiles = sc.gpu_rows_shared ? rows_tiles.get() : R->own_tiles.get();
         for (int k = 0; k < N_KIND; ++k) {
             R->buf[k] = std::make_unique<Buffer>(k == EPL ? 1 : 4, sizes[k], pool,
                                                  buf_name(s, role[k]), "standard", 0, false, false,
@@ -1100,36 +1240,23 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
     Digests d;
     for (int k = 0; k < sc.n_frames; ++k) {
         g_frame.store(k);
+        // With gpu_rows_shared the half's frame k is written whole and released whole before
+        // any chain's frame k is read back.
+        if (sc.gpu_rows_shared) {
+            if (k > 0)
+                check_released(*runs[0], k - 1);
+            feed(runs, *runs[0], layout, sky, sc, k, d);
+            refill_released(*runs[0], k);
+        }
         for (auto& R : runs) {
             const ChainSpec& s = *R->s;
-            if (sc.fold && k > 0)
-                check_released(*R, k - 1);
-            uint8_t* ctl = R->ctl->wait_for_empty_frame("feeder", 0);
-            int32_t* tiles = (int32_t*)R->tiles->wait_for_empty_frame("feeder", 0);
-            if (ctl == nullptr || tiles == nullptr)
-                child_fail(74, "feeder: buffer shut down");
-            write_ctl(ctl, R->ctl->frame_size, s, sky, sc, k);
-            write_tiles(tiles, R->tiles->frame_size / sizeof(int32_t), s, sky, sc, k);
-            apply_mutation(sc, R->idx, k, s, ctl, tiles);
-            if (R->idx == 1 && k == sc.dark_r0_frame) {
-                json t = json::array();
-                for (int slot : {sc.dark_r0_slot, 0}) {
-                    const int lane = s.lanes_per_slot * slot
-                                     + gnss_gpu::lane_of_row(s.lanes_per_slot, gnss_gpu::ROW_P);
-                    for (int r = 1; r < s.n_rec; ++r)
-                        t.push_back(tiles[tile_index(s, r, 0, lane, 0)]);
-                }
-                d.pins["B2_tiles"] = t;
+            if (!sc.gpu_rows_shared) {
+                if (sc.fold && k > 0)
+                    check_released(*R, k - 1);
+                feed(runs, *R, layout, sky, sc, k, d);
+                if (sc.fold)
+                    refill_released(*R, k);
             }
-            R->tiles->allocate_new_metadata_object(0);
-            const int64_t hop0 = ((const gnss_gpu::FrameHdr*)ctl)->seq0 / s.fft_len;
-            get_chord_metadata(R->tiles.get(), 0)
-                ->set_fpga_seq_num(hop0
-                                   + (sc.mut == Mutation::seq0_skew_B3 && R->idx == 1 && k >= 3));
-            R->ctl->mark_frame_full("feeder", 0);
-            R->tiles->mark_frame_full("feeder", 0);
-            if (sc.fold)
-                refill_released(*R, k);
             wait_quiescent(*R, k);
             if (sc.fold)
                 capture_fold(*R, k);
@@ -1769,6 +1896,76 @@ BOOST_AUTO_TEST_CASE(fold) {
         BOOST_CHECK(base.live == d.live);
         BOOST_CHECK(base.pins == d.pins);
         BOOST_CHECK(base.slots == d.slots);
+    }
+}
+
+/// The chains as rows of one GPU half, each assembler reading its row of whole-half tiles and
+/// control-block frames, give the baseline's digests; with GNSS_REPLAY_FULL=1 also as rows of
+/// one host. With one pair of buffers that every assembler reads, as on a node, the chains
+/// process each frame concurrently, so only what a frame alone determines can be compared: the
+/// epl frames. The rest depends on the order in which chains read each other's ProjBoard entries.
+BOOST_AUTO_TEST_CASE(gpu_rows) {
+    const Digests& base = baseline();
+    Scenario sc = base_scenario();
+    sc.cold_ref = true;
+    sc.fold = true;
+    sc.gpu_rows = true;
+    std::vector<Scenario> runs = {sc};
+    if (full_run()) {
+        runs.push_back(sc);
+        runs.back().rows = true;
+    }
+    for (const Scenario& x : runs) {
+        const Digests d = run_scenario(chains(), x);
+        BOOST_CHECK_MESSAGE(changed(base, d).empty(),
+                            "gpu rows, rows " << x.rows << ": " << join(changed(base, d)));
+        BOOST_CHECK(base.live == d.live);
+        BOOST_CHECK(base.pins == d.pins);
+        BOOST_CHECK(base.slots == d.slots);
+    }
+    sc.gpu_rows_shared = true;
+    const Digests d = run_scenario(chains(), sc);
+    for (const auto& s : chains())
+        BOOST_CHECK_MESSAGE(d.streams.at(s.pre + ".epl") == base.streams.at(s.pre + ".epl"),
+                            "gpu rows shared: " << s.pre << ".epl");
+    BOOST_CHECK(base.pins == d.pins);
+}
+
+/// A row FATALs on another row's control block: chain A's and B's rows swapping their ctl_offset
+/// or their fg_offset, which shape checks cannot see between rows of one shape, or B's block
+/// carrying another row's tag.
+BOOST_AUTO_TEST_CASE(gpu_rows_refuse_a_mismatch) {
+    const std::string A = "/" + chains()[0].pre + "_n2assemble: ";
+    const std::string B = "/" + chains()[1].pre + "_n2assemble: ";
+    for (const Mutation m :
+         {Mutation::ctl_offset_swap_AB, Mutation::fg_offset_swap_AB, Mutation::row_tag_B3}) {
+        Scenario sc = base_scenario();
+        sc.fold = true;
+        sc.gpu_rows = true;
+        // Both rows of a swap FATAL, so they are fed one after the other: two at once can leave
+        // the child's SIGTERM handler without either message.
+        sc.gpu_rows_shared = m == Mutation::row_tag_B3;
+        sc.mut = m;
+        char path[] = "/tmp/gnss_replay_XXXXXX";
+        const int fd = mkstemp(path);
+        BOOST_REQUIRE(fd >= 0);
+        close(fd);
+        const int rc = run_child(chains(), sc, path);
+        std::ifstream f(path);
+        const std::string msg((std::istreambuf_iterator<char>(f)),
+                              std::istreambuf_iterator<char>());
+        unlink(path);
+        // Rows of one shape read each other's blocks and refuse them by their tag; a swap
+        // between rows of different shapes may already put a row outside the frames.
+        const bool who = msg.compare(0, B.size(), B) == 0
+                         || (m != Mutation::row_tag_B3 && msg.compare(0, A.size(), A) == 0);
+        const bool same_shape =
+            chains()[0].n_prn == chains()[1].n_prn && chains()[0].n_chan == chains()[1].n_chan;
+        const bool why = msg.find("carries row tag") != std::string::npos
+                         || (!same_shape && msg.find("are not inside") != std::string::npos);
+        BOOST_CHECK_MESSAGE(rc == 70 && who && why,
+                            "mutation " << (int)m << ": child exit " << rc << ", " << msg);
+        BOOST_TEST_MESSAGE("mutation " << (int)m << ": " << msg);
     }
 }
 
