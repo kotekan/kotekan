@@ -238,6 +238,8 @@ write_dtv:
         log_level: warn
         in_buf: dtv_{{ p[0] }}_buffer
         base_dir: /mnt/cs00/data/dtv
+        # One acq_<start time> directory per run, so a restart keeps the previous files.
+        acq_dir: true
         file_name: dtv_{{ p[0] }}
         prefix_hostname: false
 {% endfor %}
