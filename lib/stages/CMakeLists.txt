@@ -149,7 +149,7 @@ if(ASDF_CXX_FOUND)
 endif()
 
 if(GDAL_FOUND)
-    target_link_libraries(kotekan_stages PUBLIC GDAL::GDAL)
+    target_link_libraries(kotekan_stages PRIVATE GDAL::GDAL)
 endif()
 
 if(HDF5_FOUND
