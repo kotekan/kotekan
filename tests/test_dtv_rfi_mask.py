@@ -72,6 +72,7 @@ def setup_pipeline(
     fine_support=False,
     num_times=T,
     reject_finite=False,
+    mask_enabled=None,
 ):
     T = num_times
     pipeline = Pipeline(tmp_path, runtime)
@@ -308,6 +309,11 @@ def setup_pipeline(
         dtv_buf="host_dtv_mask_buffer",
         out_buf="host_dtv_RFImask_buffer",
     )
+    if mask_enabled is not None:
+        cfg["dtv_mask_enabled"] = dict(
+            kotekan_update_endpoint="json", enabled=mask_enabled, valid_at_time_ns=0
+        )
+        cfg["combine"]["enabled_updatable_config"] = "/dtv_mask_enabled"
     if fine_support:
         cfg["host_dtv_fine_support_buffer"] = dict(
             kotekan_buffer="ndarray",
@@ -541,6 +547,29 @@ def test_mask_visibility_and_counts_across_ring_wrap(
         assert np.any(expected_counts == 0)
         if not real_detector and index == 1:
             assert not got_counts.any() and not got_vis.any()
+
+
+def test_disabled_mask_copies_the_sk_mask(tmp_path, runtime):
+    # fine_support adds unsupported rank, a required ID and a permanent-mask ID,
+    # none of which clear samples while the mask is off.
+    pipeline, masks, _, _ = setup_pipeline(
+        tmp_path, runtime, fine_support=True, mask_enabled=False
+    )
+    code, log = pipeline.run()
+    assert code == 0, log[-12000:]
+    combined = reference.read_raw_frames(
+        str(tmp_path / "out" / "dtv_RFImask_*.raw"), T * F // 8
+    )
+    assert len(combined) == FRAMES
+    for index in range(FRAMES):
+        packed = np.packbits(
+            masks[index].reshape(T // 1024, 1024, F).transpose(0, 2, 1),
+            axis=-1,
+            bitorder="little",
+        )
+        np.testing.assert_array_equal(
+            combined[index].payload.reshape(T // 1024, F, 128), packed
+        )
 
 
 @pytest.mark.parametrize("fault", ["frequency", "late", "missing", "period"])
