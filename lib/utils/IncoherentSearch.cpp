@@ -1,0 +1,360 @@
+#include "IncoherentSearch.hpp"
+
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <stdexcept>
+
+namespace {
+// Dispersion delay in ms = dispersion_ms * DM * (difference of GHz^-2)
+const double dispersion_ms = 4.148808;
+// Samples per block of the drift test
+const int drift_block = 64;
+// Updates of a running statistic before the update is clipped
+const int64_t unclipped_updates = 64;
+// An update of a running statistic is limited to this many sigma
+const double update_clip = 5.0;
+// A sample merges into a candidate at another DM only below this fraction of its S/N
+const double residue_fraction = 0.3;
+} // namespace
+
+IncoherentSearch::IncoherentSearch(const IncoherentSearchParams& params) :
+    p(params), F(params.num_freq), D((int)params.dms.size()), W((int)params.widths.size()),
+    a(params.sample_s / params.tau_s) {
+    if (F <= 0 || D == 0 || W == 0 || p.sample_s <= 0 || p.tau_s <= 0 || p.thermal <= 0
+        || p.baseline <= 0 || p.chunk <= 0 || p.dfreq_mhz <= 0 || p.freq0_mhz <= 0)
+        throw std::invalid_argument("IncoherentSearch: invalid parameters");
+    if (!std::is_sorted(p.widths.begin(), p.widths.end()) || p.widths.front() < 1)
+        throw std::invalid_argument("IncoherentSearch: widths must be ascending and positive");
+
+    holdoff = std::llround(p.holdoff_s / p.sample_s);
+    min_count = std::llround(1.0 / p.sample_s);
+    close_after = std::llround(2.0 / p.sample_s);
+    ref_interval = std::max<int64_t>(1, std::llround(0.5 / p.sample_s));
+
+    mean.assign(F, 0.0);
+    var.assign(F, 0.0);
+    count.assign(F, 0);
+    ref.assign(F, 1e9f);
+    block_sum.assign(F, 0.0);
+    drift.assign(F, 0.0);
+    scratch.assign(F, 0.0f);
+    state.assign(F, 0);
+    band_ok.assign(F, 1);
+    for (int c = 0; c < F; ++c) {
+        const double f = p.freq0_mhz + p.dfreq_mhz * c;
+        for (const auto& band : p.mask_bands_mhz)
+            if (f >= band.first && f <= band.second)
+                band_ok[c] = 0;
+    }
+
+    const double sample_ms = p.sample_s * 1e3;
+    const double nu_top = (p.freq0_mhz + p.dfreq_mhz * (F - 1)) / 1e3;
+    const double nu_bottom = p.freq0_mhz / 1e3;
+    sweep_per_dm =
+        dispersion_ms * (1 / (nu_bottom * nu_bottom) - 1 / (nu_top * nu_top)) / sample_ms;
+    delay.resize((size_t)D * F);
+    max_delay.assign(D, 0);
+    for (int d = 0; d < D; ++d) {
+        for (int c = 0; c < F; ++c) {
+            const double nu = (p.freq0_mhz + p.dfreq_mhz * c) / 1e3;
+            const double ms = dispersion_ms * p.dms[d] * (1 / (nu * nu) - 1 / (nu_top * nu_top));
+            const int32_t n = (int32_t)std::lround(ms / sample_ms);
+            delay[(size_t)d * F + c] = n;
+            max_delay[d] = std::max<int64_t>(max_delay[d], n);
+        }
+        max_delay_all = std::max(max_delay_all, max_delay[d]);
+    }
+
+    const int wmax = p.widths.back();
+    lookahead = 2 * wmax + p.baseline;
+    history_len = lookahead + wmax + p.baseline;
+    history.assign((size_t)D * (history_len + p.chunk), 0.0f);
+    history_n.assign(D, 0);
+    next_sum.assign(D, 0);
+    next_eval.assign(D, wmax + p.baseline);
+    sum_var.assign((size_t)D * W, 0.0);
+    sum_count.assign((size_t)D * W, 0);
+    sigma_floor.assign(W, 0.0);
+
+    // A candidate's samples must still be in the buffer when it is closed.
+    keep = max_delay_all + lookahead + wmax + 2 * p.chunk + close_after;
+    buffer_len = keep + std::max<int64_t>(4096, keep / 4);
+    w.assign((size_t)F * buffer_len, 0.0f);
+}
+
+void IncoherentSearch::update_reference() {
+    std::vector<float> ratio(F), window(2 * p.mask_neighbours + 1);
+    for (int c = 0; c < F; ++c) {
+        const bool known = count[c] >= min_count && mean[c] > 0 && var[c] > 0;
+        ratio[c] = known ? (float)(std::sqrt(var[c]) / mean[c] / p.thermal) : 1e9f;
+    }
+    for (int c = 0; c < F; ++c) {
+        const int lo = std::max(0, c - p.mask_neighbours);
+        const int hi = std::min(F - 1, c + p.mask_neighbours);
+        const int n = hi - lo + 1;
+        std::copy(ratio.begin() + lo, ratio.begin() + hi + 1, window.begin());
+        std::nth_element(window.begin(), window.begin() + n / 4, window.begin() + n);
+        // A bright source raises the noise of every channel, so the reference is what the
+        // neighbours do, but never below thermal.
+        ref[c] = std::max(window[n / 4], 1.0f);
+    }
+}
+
+void IncoherentSearch::add_sample(const float* power) {
+    if (ns - base == buffer_len) {
+        const int64_t drop = buffer_len - keep;
+        for (int c = 0; c < F; ++c)
+            std::memmove(&w[(size_t)c * buffer_len], &w[(size_t)c * buffer_len + drop],
+                         keep * sizeof(float));
+        base += drop;
+    }
+    if (ns % ref_interval == 0)
+        update_reference();
+
+    // Normalize by the statistics before this sample, then update them.
+    enum { missing = 0, known = 1, used = 2 };
+    double zero_dm = 0;
+    int n_used = 0;
+    for (int c = 0; c < F; ++c) {
+        const double x = power[c];
+        state[c] = missing;
+        scratch[c] = 0;
+        if (!(x > 0))
+            continue;
+        if (count[c] == 0) {
+            mean[c] = x;
+            count[c] = 1;
+            continue;
+        }
+        const double d = x - mean[c];
+        const double sd = std::sqrt(var[c]);
+        if (count[c] >= min_count && sd > 0 && mean[c] > 0) {
+            scratch[c] = (float)std::clamp(d / sd, -p.clip, p.clip);
+            const bool quiet = sd <= p.mask_threshold * ref[c] * p.thermal * mean[c];
+            const bool steady = p.drift_threshold <= 0 || drift[c] <= p.drift_threshold;
+            state[c] = band_ok[c] && quiet && steady ? used : known;
+            if (state[c] == used) {
+                zero_dm += scratch[c];
+                ++n_used;
+            }
+        }
+        // A variance of zero must stay free to grow.
+        const double dc = count[c] >= unclipped_updates && sd > 0
+                              ? std::clamp(d, -update_clip * sd, update_clip * sd)
+                              : d;
+        const double weight = std::max(a, 1.0 / (count[c] + 1));
+        mean[c] += weight * dc;
+        var[c] += weight * (dc * dc - var[c]);
+        ++count[c];
+    }
+    if (n_used)
+        zero_dm /= n_used;
+    num_used = n_used;
+
+    const int64_t col = ns - base;
+    for (int c = 0; c < F; ++c) {
+        w[(size_t)c * buffer_len + col] = state[c] == used ? (float)(scratch[c] - zero_dm) : 0.0f;
+        if (state[c] != missing)
+            block_sum[c] += scratch[c] - zero_dm;
+    }
+    ++ns;
+
+    if (ns % drift_block == 0) {
+        const int64_t blocks = ns / drift_block;
+        const double weight = std::max(std::min(1.0, a * drift_block), 1.0 / blocks);
+        for (int c = 0; c < F; ++c) {
+            const double m = block_sum[c] / drift_block;
+            drift[c] += weight * (drift_block * m * m - drift[c]);
+            block_sum[c] = 0;
+        }
+    }
+    if (ns % p.chunk == 0) {
+        dedisperse_chunk();
+        close_events();
+    }
+}
+
+void IncoherentSearch::dedisperse_chunk() {
+    std::vector<Hit> hits;
+    double max_snr = 0;
+#pragma omp parallel num_threads(p.num_threads)
+    {
+        std::vector<Hit> my_hits;
+        std::vector<float> sums(p.chunk);
+        std::vector<double> prefix(history_len + p.chunk + 1);
+        double my_max = 0;
+#pragma omp for schedule(dynamic, 8) nowait
+        for (int d = 0; d < D; ++d) {
+            // The sum for top-channel time t needs the samples up to t + max_delay.
+            const int64_t t0 = next_sum[d];
+            const int64_t n = ns - max_delay[d] - t0;
+            if (n <= 0)
+                continue;
+            float* const s = sums.data();
+            std::fill(s, s + n, 0.0f);
+            const int32_t* const dl = &delay[(size_t)d * F];
+            for (int c = 0; c < F; ++c) {
+                const float* const h = row(c, t0 + dl[c]);
+#pragma omp simd
+                for (int64_t k = 0; k < n; ++k)
+                    s[k] += h[k];
+            }
+            next_sum[d] = t0 + n;
+            search_dm(d, s, n, prefix, my_hits, my_max);
+        }
+#pragma omp critical
+        {
+            hits.insert(hits.end(), my_hits.begin(), my_hits.end());
+            max_snr = std::max(max_snr, my_max);
+        }
+    }
+    max_snr_seen = std::max(max_snr_seen, max_snr);
+
+    // Near DM 0 the zero-DM subtraction removes the sum itself; do not divide by what is left.
+    std::vector<double> sigma;
+    for (int wi = 0; wi < W; ++wi) {
+        sigma.clear();
+        for (int d = 0; d < D; ++d)
+            if (sum_count[(size_t)d * W + wi] > 0)
+                sigma.push_back(std::sqrt(sum_var[(size_t)d * W + wi]));
+        if (sigma.empty())
+            continue;
+        std::nth_element(sigma.begin(), sigma.begin() + sigma.size() / 2, sigma.end());
+        sigma_floor[wi] = 0.5 * sigma[sigma.size() / 2];
+    }
+
+    std::sort(hits.begin(), hits.end(), [](const Hit& x, const Hit& y) { return x.snr > y.snr; });
+    merge_hits(hits);
+}
+
+void IncoherentSearch::search_dm(int d, const float* sums, int64_t n, std::vector<double>& prefix,
+                                 std::vector<Hit>& hits, double& max_snr) {
+    float* const h = &history[(size_t)d * (history_len + p.chunk)];
+    std::memcpy(h + history_n[d], sums, n * sizeof(float));
+    history_n[d] += n;
+    const int64_t hn = history_n[d];
+    const int64_t start = next_sum[d] - hn; // top-channel time of h[0]
+    prefix[0] = 0;
+    for (int64_t i = 0; i < hn; ++i)
+        prefix[i + 1] = prefix[i] + h[i];
+
+    const int nb = p.baseline;
+    int64_t t = next_eval[d];
+    for (; t + lookahead <= next_sum[d]; ++t) {
+        const int64_t i = t - start;
+        for (int wi = 0; wi < W; ++wi) {
+            // The window of wd samples from t, less the mean of nb samples on each side, which
+            // start wd samples clear of the window.
+            const int wd = p.widths[wi];
+            const double on = prefix[i + wd] - prefix[i];
+            const double sides = (prefix[i - wd] - prefix[i - wd - nb])
+                                 + (prefix[i + 2 * wd + nb] - prefix[i + 2 * wd]);
+            const double v = on - sides * wd / (2.0 * nb);
+            // Exactly zero means no data (start-up, or every channel missing): leave the
+            // statistics as they are.
+            if (v == 0)
+                continue;
+
+            double& variance = sum_var[(size_t)d * W + wi];
+            int64_t& updates = sum_count[(size_t)d * W + wi];
+            const double sd = std::sqrt(variance);
+            const double sigma = std::max(sd, sigma_floor[wi]);
+            if (updates >= min_count && t >= holdoff && sigma > 0) {
+                const double snr = v / sigma;
+                max_snr = std::max(max_snr, snr);
+                if (snr > p.threshold)
+                    hits.push_back({(float)snr, d, wi, t});
+            }
+            const double vc = updates >= unclipped_updates && sd > 0
+                                  ? std::clamp(v, -update_clip * sd, update_clip * sd)
+                                  : v;
+            variance += std::max(a, 1.0 / (updates + 1)) * (vc * vc - variance);
+            ++updates;
+        }
+    }
+    next_eval[d] = t;
+
+    // Keep what the next windows' left baselines need.
+    const int64_t drop = (t - p.widths.back() - nb) - start;
+    if (drop > 0) {
+        std::memmove(h, h + drop, (hn - drop) * sizeof(float));
+        history_n[d] = hn - drop;
+    }
+}
+
+void IncoherentSearch::merge_hits(const std::vector<Hit>& hits) {
+    for (const Hit& hit : hits) {
+        const double dm = p.dms[hit.dm_index];
+        bool merged = false;
+        for (Event& e : events) {
+            const double ddm = std::abs(dm - p.dms[e.best.dm_index]);
+            if (std::abs((double)(hit.sample - e.best.sample)) > 20 + sweep_per_dm * ddm)
+                continue;
+            const bool same_dm = ddm <= std::max(2.0, 0.005 * p.dms[e.best.dm_index]);
+            if (!same_dm && hit.snr >= residue_fraction * e.best.snr)
+                continue;
+            ++e.num_hits;
+            if (!e.reported && hit.snr > e.best.snr)
+                e.best = hit;
+            merged = true;
+            break;
+        }
+        if (!merged)
+            events.push_back({hit, 1, ns, false});
+    }
+}
+
+void IncoherentSearch::close_events() {
+    for (Event& e : events) {
+        if (e.reported || ns - e.created < close_after)
+            continue;
+        IncoherentCandidate cand;
+        cand.snr = e.best.snr;
+        cand.dm = p.dms[e.best.dm_index];
+        cand.width = p.widths[e.best.width_index];
+        cand.sample = e.best.sample;
+        cand.num_hits = e.num_hits;
+        band_occupancy(cand, e.best);
+        candidates.push_back(cand);
+        e.reported = true;
+    }
+    // A reported event stays until its residue at the highest DM has been searched.
+    const int64_t lifetime = max_delay_all + lookahead + 2 * p.chunk + close_after;
+    events.erase(std::remove_if(events.begin(), events.end(),
+                                [&](const Event& e) { return ns - e.created > lifetime; }),
+                 events.end());
+}
+
+void IncoherentSearch::band_occupancy(IncoherentCandidate& cand, const Hit& hit) const {
+    if (hit.sample < base)
+        return;
+    const int32_t* const dl = &delay[(size_t)hit.dm_index * F];
+    const int wd = p.widths[hit.width_index];
+    for (int b = 0; b < IncoherentCandidate::num_blocks; ++b) {
+        const int c0 = (int)((int64_t)b * F / IncoherentCandidate::num_blocks);
+        const int c1 = (int)((int64_t)(b + 1) * F / IncoherentCandidate::num_blocks);
+        double sum = 0;
+        int n = 0;
+        for (int c = c0; c < c1; ++c) {
+            const float* const h = row(c, hit.sample + dl[c]);
+            n += h[0] != 0;
+            for (int k = 0; k < wd; ++k)
+                sum += h[k];
+        }
+        cand.block_snr[b] = n ? (float)(sum / std::sqrt((double)n * wd)) : 0.0f;
+    }
+    cand.has_blocks = true;
+}
+
+std::vector<IncoherentCandidate> IncoherentSearch::take_candidates() {
+    std::vector<IncoherentCandidate> out;
+    out.swap(candidates);
+    return out;
+}
+
+double IncoherentSearch::take_max_snr() {
+    const double out = max_snr_seen;
+    max_snr_seen = 0;
+    return out;
+}

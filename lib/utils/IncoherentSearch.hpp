@@ -1,0 +1,192 @@
+/**
+ * @file
+ * @brief Search of feed-summed power for dispersed pulses.
+ *  - IncoherentSearch
+ */
+#ifndef INCOHERENT_SEARCH_HPP
+#define INCOHERENT_SEARCH_HPP
+
+#include <array>
+#include <cstdint>
+#include <utility>
+#include <vector>
+
+/// Parameters of IncoherentSearch.
+struct IncoherentSearchParams {
+    /// Number of frequency channels, in ascending frequency
+    int num_freq = 0;
+    /// Centre frequency of channel 0 and the channel spacing, MHz
+    double freq0_mhz = 0;
+    double dfreq_mhz = 0;
+    /// Length of one time sample, seconds
+    double sample_s = 0;
+    /// Trial dispersion measures, pc/cm^3
+    std::vector<double> dms;
+    /// Pulse widths tried, in samples, ascending
+    std::vector<int> widths = {1, 2, 4, 8, 16};
+    /// Time constant of every running mean and variance, seconds
+    double tau_s = 5.0;
+    /// A normalized sample is limited to this many sigma
+    double clip = 3.0;
+    /// Thermal sigma/mean of one power sample: 1 / sqrt(voltage samples summed)
+    double thermal = 0;
+    /// A channel is masked when its sigma/mean exceeds this times the lower quartile of the
+    /// channels within mask_neighbours on each side
+    double mask_threshold = 1.25;
+    int mask_neighbours = 256;
+    /// A channel is masked when the variance of its 64-sample means exceeds this times that of
+    /// white noise. 0 turns the test off.
+    double drift_threshold = 2.0;
+    /// Frequency ranges that are always masked, MHz
+    std::vector<std::pair<double, double>> mask_bands_mhz;
+    /// Samples on each side of a pulse window that give its baseline
+    int baseline = 128;
+    /// Candidates are reported above this S/N
+    double threshold = 8.0;
+    /// No candidates before this time after the first sample, seconds
+    double holdoff_s = 120.0;
+    /// Samples dedispersed per pass
+    int chunk = 256;
+    /// OpenMP threads for the dedispersion
+    int num_threads = 4;
+};
+
+/// One pulse candidate.
+struct IncoherentCandidate {
+    /// Blocks of channels in the band occupancy
+    static constexpr int num_blocks = 16;
+    /// S/N of the strongest sample, with its DM, pulse width in samples and arrival at the top
+    /// channel in samples since the first one
+    double snr = 0;
+    double dm = 0;
+    int width = 0;
+    int64_t sample = 0;
+    /// Samples above threshold that were merged into the candidate
+    int num_hits = 0;
+    /// S/N of each block of channels along the dispersion curve. A pulse fills most blocks;
+    /// narrow-band interference fills one or two. Empty when the data had left the buffer.
+    std::array<float, num_blocks> block_snr{};
+    bool has_blocks = false;
+};
+
+/**
+ * @class IncoherentSearch
+ * @brief Searches power summed over feeds for dispersed pulses, one time sample at a time.
+ *
+ * Each channel keeps an exponential running mean and variance and is normalized by them. Channels
+ * that are missing, in a fixed band, noisier than their neighbours or drifting are masked. The
+ * channel average is subtracted at each time (zero DM). The normalized samples are summed along
+ * each trial DM's dispersion curve with delays rounded to the nearest sample, relative to the top
+ * channel. Each sum is tried at several widths against a baseline from the samples on both sides,
+ * and normalized by its own running variance.
+ *
+ * Samples above threshold are merged into candidates: with the strongest sample of an open
+ * candidate when they lie within the dispersion sweep between the two DMs and are either close in
+ * DM or much weaker (the residue of a bright pulse at another DM).
+ *
+ * The object has no dependencies in kotekan and is not thread safe.
+ */
+class IncoherentSearch {
+public:
+    explicit IncoherentSearch(const IncoherentSearchParams& params);
+
+    /**
+     * @brief Adds one time sample.
+     * @param power  Power per channel; a value <= 0 marks a missing channel.
+     */
+    void add_sample(const float* power);
+
+    /// Returns the candidates completed since the last call.
+    std::vector<IncoherentCandidate> take_candidates();
+
+    /// Highest S/N of any DM and width since the last call, after the hold-off.
+    double take_max_snr();
+
+    /// Samples added so far
+    int64_t num_samples() const {
+        return ns;
+    }
+
+    /// Channels used in the most recent sample
+    int channels_used() const {
+        return num_used;
+    }
+
+    /// Longest dispersion delay searched, in samples
+    int64_t longest_delay() const {
+        return max_delay_all;
+    }
+
+private:
+    struct Hit {
+        float snr;
+        int32_t dm_index;
+        int32_t width_index;
+        int64_t sample;
+    };
+    struct Event {
+        Hit best;
+        int num_hits;
+        int64_t created; // value of ns when the event was opened
+        bool reported;
+    };
+
+    void update_reference();
+    void dedisperse_chunk();
+    void search_dm(int d, const float* sums, int64_t n, std::vector<double>& prefix,
+                   std::vector<Hit>& hits, double& max_snr);
+    void merge_hits(const std::vector<Hit>& hits);
+    void close_events();
+    void band_occupancy(IncoherentCandidate& cand, const Hit& hit) const;
+    const float* row(int channel, int64_t sample) const {
+        return &w[(size_t)channel * buffer_len + (size_t)(sample - base)];
+    }
+
+    const IncoherentSearchParams p;
+    const int F;
+    const int D;
+    const int W;
+    const double a; // weight of one sample in a running statistic
+    // In samples:
+    int64_t holdoff = 0;
+    int64_t min_count = 0;    // updates a statistic needs before it is used
+    int64_t close_after = 0;  // a candidate is reported this long after its first sample
+    int64_t ref_interval = 0; // between updates of the neighbours' reference
+    int64_t lookahead = 0;    // sums needed after a window's start
+
+    // Per channel
+    std::vector<double> mean, var;
+    std::vector<int64_t> count;
+    std::vector<float> ref; // sigma/mean reference from the neighbours, in units of thermal
+    std::vector<uint8_t> band_ok, state;
+    std::vector<double> block_sum, drift;
+    std::vector<float> scratch;
+
+    // Normalized samples [channel][time], a linear buffer that is shifted down when full
+    std::vector<float> w;
+    int64_t buffer_len = 0;
+    int64_t keep = 0;
+    int64_t base = 0; // sample index of column 0
+    int64_t ns = 0;   // samples added
+    int num_used = 0;
+
+    // Per DM
+    std::vector<int32_t> delay; // [D][F]
+    std::vector<int64_t> max_delay;
+    int64_t max_delay_all = 0;
+    double sweep_per_dm = 0;        // samples of sweep across the band per unit DM
+    std::vector<int64_t> next_sum;  // first top-channel time not yet dedispersed
+    std::vector<int64_t> next_eval; // first window start not yet evaluated
+    int64_t history_len = 0;
+    std::vector<float> history; // [D][history_len + chunk]: the most recent sums
+    std::vector<int64_t> history_n;
+    std::vector<double> sum_var; // [D][W]
+    std::vector<int64_t> sum_count;
+    std::vector<double> sigma_floor; // [W]
+
+    std::vector<Event> events;
+    std::vector<IncoherentCandidate> candidates;
+    double max_snr_seen = 0;
+};
+
+#endif
