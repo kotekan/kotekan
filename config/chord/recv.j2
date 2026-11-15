@@ -275,11 +275,12 @@ buffer_recv_incoherent_power:
     listen_port: 11039
 
 # Pulse search of the summed power: 300-1600 MHz, DM 100-1500. The fixed masks are the
-# aeronautical band and GNSS. It needs about 3.5 cores and 2 GB.
+# aeronautical band and GNSS. It needs 2 GB. Timed on recv1 with 6144 channels: 8 threads search
+# 1.47 s of data per second (6 threads 1.2 s, 12 threads 1.8 s).
 incoherent_beam_search:
     kotekan_stage: IncoherentBeamSearch
-    cpu_affinity: [4,5,6,7,8,9]
-    num_threads: 6
+    cpu_affinity: [4,5,6,7,8,9,10,11]
+    num_threads: 8
     in_buf: incoherent_power_buffer
     freq_id_base: 1536
     num_local_freq: 6656
