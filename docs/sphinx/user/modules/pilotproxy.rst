@@ -162,12 +162,13 @@ a bundle calibrated from recorded files needs a steady input count.
 Each X-engine half packs 1024 blocks (about 43 seconds) of each sent product
 into one frame with ``NDArrayTimeConcat``, and sends the frames to the recv
 node. ``config/chord/recv.j2`` writes each frame to its own file under
-``/mnt/cs00/data/dtv``, named ``dtv_<product>.<number>.h5``. The numbers follow
-arrival order, so a file's ``coarse_freq`` attribute identifies the half, and
-its ``fpga_seq_num`` attribute gives the start of the window. The windows are
-aligned in ``fpga_seq_num``, so the halves' files cover the same time spans. A
-block missing from a window is a row of ``0xFF`` bytes: ``-1`` for the mask and
-fine support, and the largest ``uint64`` for the powers and fine powers.
+``/mnt/cs00/data/dtv/acq_<start time>``, one directory per run, named
+``dtv_<product>.<number>.h5``. The numbers follow arrival order, so a file's
+``coarse_freq`` attribute identifies the half, and its ``fpga_seq_num``
+attribute gives the start of the window. The windows are aligned in
+``fpga_seq_num``, so the halves' files cover the same time spans. A block
+missing from a window is a row of ``0xFF`` bytes: ``-1`` for the mask and fine
+support, and the largest ``uint64`` for the powers and fine powers.
 
 POST ``{"enabled": true, "valid_at_time_ns": 0}`` to ``/dtv_mask_enabled`` to
 apply the mask from the next frame, and ``false`` to stop. A nonzero
