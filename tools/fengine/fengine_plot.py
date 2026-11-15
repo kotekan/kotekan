@@ -24,6 +24,7 @@ COLORS = {
     "tensor fp16": "#eb6834",
     "tensor TF32": "#1baf7a",
     "cuFFT fp32": "#eda100",
+    "tensor fp16 fused": "#e87ba4",
 }
 
 plt.rcParams.update(
@@ -109,6 +110,7 @@ def utilisation_figure(path_csv, path_png):
         ("tensor", "fp16"): "tensor fp16",
         ("tensor", "fp32"): "tensor TF32",
         ("cufft", "fp32"): "cuFFT fp32",
+        ("tensor-fused", "fp16"): "tensor fp16 fused",
     }
     series = {}
     for r in rows:
@@ -120,8 +122,9 @@ def utilisation_figure(path_csv, path_png):
     for name in [k for k in COLORS if k in series]:
         pts = sorted(series[name])
         xs = [p[0] for p in pts]
+        # Legends carry identity here: the fp16 paths converge, so direct labels collide.
         style_line(ax1, xs, [p[1] for p in pts], name, direct=False)
-        style_line(ax2, xs, [p[2] for p in pts], name)
+        style_line(ax2, xs, [p[2] for p in pts], name, direct=False)
     for ax in (ax1, ax2):
         ax.set_xscale("log", base=2)
         xs = sorted({p[0] for pts in series.values() for p in pts})

@@ -70,7 +70,7 @@ fengine:
     out_payload_buf: out_payload_buffer
     gain: 8
     fft_precision: {precision}
-    fft_impl: {impl}
+    fft_impl: {impl}{fused}
 """
 
 
@@ -86,10 +86,18 @@ def scrape(port):
     return vals
 
 
-def run_one(binary, n, precision, impl, samples, scratch):
-    cfg = os.path.join(scratch, f"bench_{n}_{precision}_{impl}.yaml")
+def run_one(binary, n, precision, impl, samples, scratch, fused=False):
+    name = impl + ("-fused" if fused else "")
+    cfg = os.path.join(scratch, f"bench_{n}_{precision}_{name}.yaml")
     with open(cfg, "w") as f:
-        f.write(TEMPLATE.format(n=n, precision=precision, impl=impl))
+        f.write(
+            TEMPLATE.format(
+                n=n,
+                precision=precision,
+                impl=impl,
+                fused="\n    fused_quantize: true" if fused else "",
+            )
+        )
     log = cfg.replace(".yaml", ".log")
     proc = subprocess.Popen(
         [binary, "-c", cfg], stdout=open(log, "w"), stderr=subprocess.STDOUT
@@ -130,7 +138,7 @@ def run_one(binary, n, precision, impl, samples, scratch):
     return {
         "n": n,
         "precision": precision,
-        "impl": impl,
+        "impl": name,
         "gpu_s_mean": mean,
         "gpu_s_min": min(vals),
         "gpu_s_max": max(vals),
@@ -148,14 +156,17 @@ if __name__ == "__main__":
     ap.add_argument("--impl", default="cufft")
     ap.add_argument("--precision", default="fp16")
     ap.add_argument("--samples", type=int, default=40)
+    ap.add_argument("--fused", action="store_true")
     ap.add_argument("--sizes", default="20,21,22,23,24,25,26,27")
     ap.add_argument("--scratch", default=os.path.dirname(os.path.abspath(__file__)))
     a = ap.parse_args()
     rows = []
     for e in [int(x) for x in a.sizes.split(",")]:
-        r = run_one(a.binary, 1 << e, a.precision, a.impl, a.samples, a.scratch)
+        r = run_one(
+            a.binary, 1 << e, a.precision, a.impl, a.samples, a.scratch, a.fused
+        )
         print(
-            f"2^{e} {a.precision}/{a.impl}: {r['gpu_s_mean']*1e3:.3f} ms/window "
+            f"2^{e} {a.precision}/{r['impl']}: {r['gpu_s_mean']*1e3:.3f} ms/window "
             f"({r['utilisation']*100:.1f}% of realtime), {r['windows_per_s']:.1f} w/s",
             flush=True,
         )
