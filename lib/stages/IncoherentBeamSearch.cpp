@@ -64,8 +64,9 @@ using kotekan::prometheus::Metrics;
  *                         Default 0.56. A DM error of e delays the bottom of 300-1600 MHz by
  *                         44.5 ms * e against the top, so the step follows from the sample
  *                         length, and from the smearing within a channel, which grows with
- *                         the DM. The defaults keep at least 80 % of the S/N of a 1 ms pulse
- *                         at the worst DM, 95 % on average, with 1.31 ms samples.
+ *                         the DM. With 1.31 ms samples the defaults keep 94 % of the S/N of
+ *                         a 1 ms pulse on average and 78 % at the worst DM (5 ms: 97 % and
+ *                         89 %).
  * @conf mask_bands_mhz    List of [low, high]. Frequency ranges that are never searched.
  * @conf mask_freq_ids     List of int. FPGA frequency ids that are never searched.
  * @conf threshold         Double. S/N above which a candidate is reported. Default 8.
