@@ -68,7 +68,6 @@ BOOST_AUTO_TEST_CASE(pulse_is_found_at_its_dm_and_time) {
     BOOST_CHECK_EQUAL(c.dm, 100);
     BOOST_CHECK_EQUAL(c.sample, 6000);
     BOOST_CHECK_EQUAL(c.width, 1);
-    BOOST_REQUIRE(c.has_blocks);
     int filled = 0;
     for (float b : c.block_snr)
         filled += b > 3;
@@ -86,7 +85,6 @@ BOOST_AUTO_TEST_CASE(band_occupancy_shows_a_narrow_signal) {
         if (c.snr > best->snr)
             best = &c;
     BOOST_CHECK_GT(best->snr, 12);
-    BOOST_REQUIRE(best->has_blocks);
     int filled = 0;
     for (float b : best->block_snr)
         filled += b > 3;

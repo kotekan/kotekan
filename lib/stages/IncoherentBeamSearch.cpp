@@ -3,6 +3,7 @@
 #include "NDArray.hpp"
 #include "Stage.hpp"
 #include "StageFactory.hpp"
+#include "Telescope.hpp"
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "chordMetadata.hpp"
@@ -11,7 +12,6 @@
 #include "visUtil.hpp"
 
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <fstream>
@@ -36,25 +36,25 @@ using kotekan::prometheus::Metrics;
  * channel that has not arrived by then is missing in that sample, and a frame that arrives
  * later is dropped, as is a frame off the first frame's sample grid.
  *
- * A frame more than restart_gap_s from the samples being assembled restarts the search at that
- * frame: the F-engine or every sender has restarted.
+ * A frame more than restart_gap_s from the samples being assembled is dropped too. A run of
+ * such frames means the F-engine or every sender has restarted, and restarts the search at
+ * the newest of them; frames of one sender with a wrong time never make such a run.
  *
  * Each candidate is logged, and appended to candidate_file as a line of JSON: the FPGA sequence
- * number of its arrival at the top channel, its S/N, DM, width in samples, the number of
- * samples above threshold merged into it, and the S/N in each of 16 blocks of channels along
- * its dispersion curve (block_snr; empty if the samples had left the search's buffer).
+ * number of its arrival at the top channel (and its UNIX time, with GPS time), its S/N, DM,
+ * width in samples, the number of samples above threshold merged into it, and the S/N in each
+ * of 16 blocks of channels along its dispersion curve.
  *
  * The search runs in this stage's thread and its OpenMP threads, between frames. in_buf must
- * hold the frames that arrive during one pass of chunk samples.
+ * hold the frames that arrive during one search pass (0.3 s).
  *
  * @par Buffers
  * @buffer in_buf   Power frames of all halves.
  *     @buffer_format   NDArray uint16 [Trfi, F]; 0 marks a missing value.
  *     @buffer_metadata chordMetadata
  *
- * @conf min_freq_id       Int. FPGA frequency id of the lowest channel searched.
- * @conf num_freq          Int. Number of channels searched, upward from min_freq_id.
- * @conf freq_id_width_mhz Double. Frequency per FPGA frequency id. Default 3200 / 16384.
+ * @conf freq_id_base      Int. FPGA frequency id of the lowest channel searched.
+ * @conf num_local_freq    Int. Number of channels searched, upward from freq_id_base.
  * @conf num_feeds         Int. Feeds summed in the power; sets the expected noise.
  * @conf dm_min            Double. Lowest trial DM, pc/cm^3. Default 100.
  * @conf dm_max            Double. Highest trial DM. Default 1500.
@@ -66,14 +66,14 @@ using kotekan::prometheus::Metrics;
  * @conf tau_s             Double. Time constant of the running statistics. Default 5.
  * @conf num_threads       Int. OpenMP threads of the search. Default 4.
  * @conf assembly_delay_s  Double. How long a time sample waits for all halves. Default 1.
- * @conf restart_gap_s     Double. A frame this far from the assembled samples restarts the
- *                         search. Default 10.
+ * @conf restart_gap_s     Double. Frames this far from the assembled samples are dropped, and
+ *                         a run of them restarts the search. Default 10.
  * @conf candidate_file    String. File the candidates are appended to. Default none.
  *
  * @metric kotekan_incoherent_beam_search_candidates_total   Candidates reported.
  * @metric kotekan_incoherent_beam_search_max_snr   Highest S/N in the last 32 search passes.
  * @metric kotekan_incoherent_beam_search_channels_used   Channels used in the newest sample.
- * @metric kotekan_incoherent_beam_search_dropped_frames_total   Frames late or off the grid.
+ * @metric kotekan_incoherent_beam_search_dropped_frames_total   Frames late, far or off the grid.
  * @metric kotekan_incoherent_beam_search_restarts_total   Restarts of the search.
  */
 class IncoherentBeamSearch : public kotekan::Stage {
@@ -81,7 +81,7 @@ public:
     IncoherentBeamSearch(kotekan::Config& config, const std::string& unique_name,
                          kotekan::bufferContainer& buffers) :
         Stage(config, unique_name, buffers, std::bind(&IncoherentBeamSearch::main_thread, this)),
-        in_buf(get_buffer("in_buf")), min_freq_id(config.get<int>(unique_name, "min_freq_id")),
+        in_buf(get_buffer("in_buf")), freq_id_base(config.get<int>(unique_name, "freq_id_base")),
         candidates_counter(Metrics::instance().add_counter(
             "kotekan_incoherent_beam_search_candidates_total", unique_name)),
         max_snr_gauge(
@@ -94,10 +94,7 @@ public:
             "kotekan_incoherent_beam_search_restarts_total", unique_name)) {
         in_buf->register_consumer(unique_name);
 
-        in_desc = in_buf->get_frame_desc<kotekan::GenericNDArray>();
-        if (!in_desc)
-            FATAL_ERROR("IncoherentBeamSearch: in_buf {:s} needs an NDArray frame description",
-                        in_buf->buffer_name);
+        in_desc = in_buf->require_frame_desc<kotekan::GenericNDArray>();
         const std::vector<std::ptrdiff_t> extents = in_desc->get_extents();
         if (in_desc->get_value_datatype() != kotekan::uint16 || extents.size() != 2)
             FATAL_ERROR("IncoherentBeamSearch: in_buf {:s} must be uint16 [Trfi, F]",
@@ -109,13 +106,13 @@ public:
             FATAL_ERROR("IncoherentBeamSearch: dimension 0 of in_buf {:s} has no time scaling",
                         in_buf->buffer_name);
 
-        const double width_mhz =
-            config.get_default<double>(unique_name, "freq_id_width_mhz", 3200.0 / 16384);
-        params.num_freq = config.get<int>(unique_name, "num_freq");
-        params.freq0_mhz = min_freq_id * width_mhz;
-        params.dfreq_mhz = width_mhz;
-        // One FPGA sample lasts 1 / (the width of a frequency id)
-        params.sample_s = period / (width_mhz * 1e6);
+        const Telescope& tel = Telescope::instance();
+        params.num_freq = config.get<int>(unique_name, "num_local_freq");
+        params.freq0_mhz = tel.to_freq_MHz((freq_id_t)freq_id_base);
+        params.dfreq_mhz = tel.to_freq_MHz((freq_id_t)(freq_id_base + 1)) - params.freq0_mhz;
+        if (params.dfreq_mhz <= 0)
+            FATAL_ERROR("IncoherentBeamSearch: frequency must rise with the frequency id");
+        params.sample_s = period * tel.seq_length_nsec() * 1e-9;
         params.thermal = 1 / std::sqrt((double)period * config.get<int>(unique_name, "num_feeds"));
         const double dm_min = config.get_default<double>(unique_name, "dm_min", 100.0);
         const double dm_max = config.get_default<double>(unique_name, "dm_max", 1500.0);
@@ -124,13 +121,11 @@ public:
             FATAL_ERROR("IncoherentBeamSearch: need 0 < dm_min <= dm_max and dm_step > 0");
         for (double dm = dm_min; dm <= dm_max; dm *= 1 + dm_step)
             params.dms.push_back(dm);
-        for (const auto& band : config.get_default<nlohmann::json>(unique_name, "mask_bands_mhz",
-                                                                   nlohmann::json::array()))
-            params.mask_bands_mhz.push_back({band.at(0).get<double>(), band.at(1).get<double>()});
-        for (const auto& id : config.get_default<nlohmann::json>(unique_name, "mask_freq_ids",
-                                                                 nlohmann::json::array())) {
-            const double f = id.get<int>() * width_mhz;
-            params.mask_bands_mhz.push_back({f - width_mhz / 4, f + width_mhz / 4});
+        params.mask_bands_mhz = config.get_default<std::vector<std::pair<double, double>>>(
+            unique_name, "mask_bands_mhz", {});
+        for (int id : config.get_default<std::vector<int>>(unique_name, "mask_freq_ids", {})) {
+            const double f = tel.to_freq_MHz((freq_id_t)id);
+            params.mask_bands_mhz.push_back({f - params.dfreq_mhz / 4, f + params.dfreq_mhz / 4});
         }
         params.threshold = config.get_default<double>(unique_name, "threshold", params.threshold);
         params.holdoff_s = config.get_default<double>(unique_name, "holdoff_s", params.holdoff_s);
@@ -148,7 +143,6 @@ public:
         ring_len = delay_samples + 2 * frame_samples;
         ring.assign((size_t)ring_len * params.num_freq, 0);
         power.assign(params.num_freq, 0.0f);
-
         try {
             search = std::make_unique<IncoherentSearch>(params);
         } catch (const std::invalid_argument& e) {
@@ -166,6 +160,7 @@ public:
     void main_thread() override {
         frameID in_id(in_buf);
         bool started = false;
+        int far_run = 0;
 
         while (!stop_thread) {
             const uint8_t* frame = in_buf->wait_for_full_frame(unique_name, in_id);
@@ -190,9 +185,10 @@ public:
             const bool far = started
                              && (first >= next_sample + restart_gap
                                  || first + frame_samples <= next_sample - restart_gap);
-            if (!started || far) {
-                if (far) {
-                    WARN("IncoherentBeamSearch: frame at FPGA seq {:d} is far from the samples "
+            far_run = far ? far_run + 1 : 0;
+            if (!started || far_run >= far_frames_to_restart) {
+                if (started) {
+                    WARN("IncoherentBeamSearch: frames at FPGA seq {:d} are far from the samples "
                          "being assembled at {:d}; restarting the search",
                          seq, next_sample * period + phase);
                     restarts_counter.inc();
@@ -200,8 +196,8 @@ public:
                 phase = seq % period;
                 start_search(first);
                 started = true;
-            }
-            if (seq % period != phase || first + frame_samples <= next_sample) {
+                far_run = 0;
+            } else if (far || seq % period != phase || first + frame_samples <= next_sample) {
                 dropped_frames_counter.inc();
                 in_buf->mark_frame_empty(unique_name, in_id++);
                 continue;
@@ -214,7 +210,7 @@ public:
             for (int64_t t = std::max<int64_t>(0, next_sample - first); t < frame_samples; ++t) {
                 uint16_t* const row = &ring[(size_t)((first + t) % ring_len) * params.num_freq];
                 for (std::ptrdiff_t f = 0; f < frame_freqs; ++f) {
-                    const int c = freq_ids[f] - min_freq_id;
+                    const int c = freq_ids[f] - freq_id_base;
                     if (c >= 0 && c < params.num_freq)
                         row[c] = values[t * frame_freqs + f];
                 }
@@ -227,10 +223,16 @@ public:
     }
 
 private:
-    // Restarts the search with `sample` as its first time sample.
+    // A run of this many frames far from the assembled samples restarts the search: several
+    // frames from each of 16 halves.
+    static constexpr int far_frames_to_restart = 64;
+
+    // Makes `sample` the first time sample of a search without history.
     void start_search(int64_t sample) {
-        if (search->num_samples() > 0)
+        if (search->num_samples() > 0) {
+            search.reset(); // free the buffers before allocating them again
             search = std::make_unique<IncoherentSearch>(params);
+        }
         origin = next_sample = newest_end = sample;
         std::fill(ring.begin(), ring.end(), 0);
         std::fill(recent_max.begin(), recent_max.end(), 0.0);
@@ -242,17 +244,17 @@ private:
             power[c] = row[c];
         std::fill(row, row + params.num_freq, 0);
         ++next_sample;
-        search->add_sample(power.data());
-        if (search->num_samples() % params.chunk == 0)
+        if (search->add_sample(power.data()))
             report();
     }
 
+    // Called after each search pass.
     void report() {
-        recent_max[(search->num_samples() / params.chunk) % recent_max.size()] =
-            search->take_max_snr();
+        recent_max[num_reports++ % recent_max.size()] = search->take_max_snr();
         max_snr_gauge.set(*std::max_element(recent_max.begin(), recent_max.end()));
         channels_used_gauge.set(search->channels_used());
 
+        const Telescope& tel = Telescope::instance();
         for (const IncoherentCandidate& c : search->take_candidates()) {
             const int64_t seq = (origin + c.sample) * period + phase;
             candidates_counter.inc();
@@ -261,24 +263,21 @@ private:
                  c.snr, c.dm, c.width, seq);
             if (!candidate_file.is_open())
                 continue;
-            nlohmann::json line = {
-                {"fpga_seq", seq},
-                {"snr", c.snr},
-                {"dm", c.dm},
-                {"width", c.width},
-                {"num_hits", c.num_hits},
-                {"block_snr", nlohmann::json::array()},
-                {"reported_unix",
-                 std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch())
-                     .count()}};
-            if (c.has_blocks)
-                line["block_snr"] = c.block_snr;
+            nlohmann::json line = {{"fpga_seq", seq},
+                                   {"snr", c.snr},
+                                   {"dm", c.dm},
+                                   {"width", c.width},
+                                   {"num_hits", c.num_hits},
+                                   {"block_snr", c.block_snr},
+                                   {"reported_unix", current_time()}};
+            if (tel.gps_time_enabled())
+                line["unix_time"] = ts_to_double(tel.to_time(seq));
             candidate_file << line.dump() << std::endl;
         }
     }
 
     Buffer* const in_buf;
-    const int min_freq_id;
+    const int freq_id_base;
     std::shared_ptr<const kotekan::GenericNDArray> in_desc;
     std::ptrdiff_t frame_samples = 0;
     std::ptrdiff_t frame_freqs = 0;
@@ -298,6 +297,7 @@ private:
     int64_t next_sample = 0; // the next sample to search
     int64_t newest_end = 0;  // one past the newest sample received
     std::vector<double> recent_max = std::vector<double>(32, 0.0);
+    size_t num_reports = 0;
 
     std::ofstream candidate_file;
     kotekan::prometheus::Counter& candidates_counter;

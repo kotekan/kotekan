@@ -22,31 +22,16 @@ struct IncoherentSearchParams {
     double sample_s = 0;
     /// Trial dispersion measures, pc/cm^3
     std::vector<double> dms;
-    /// Pulse widths tried, in samples, ascending
-    std::vector<int> widths = {1, 2, 4, 8, 16};
     /// Time constant of every running mean and variance, seconds
     double tau_s = 5.0;
-    /// A normalized sample is limited to this many sigma
-    double clip = 3.0;
     /// Thermal sigma/mean of one power sample: 1 / sqrt(voltage samples summed)
     double thermal = 0;
-    /// A channel is masked when its sigma/mean exceeds this times the lower quartile of the
-    /// channels within mask_neighbours on each side
-    double mask_threshold = 1.25;
-    int mask_neighbours = 256;
-    /// A channel is masked when the variance of its 64-sample means exceeds this times that of
-    /// white noise. 0 turns the test off.
-    double drift_threshold = 2.0;
     /// Frequency ranges that are always masked, MHz
     std::vector<std::pair<double, double>> mask_bands_mhz;
-    /// Samples on each side of a pulse window that give its baseline
-    int baseline = 128;
     /// Candidates are reported above this S/N
     double threshold = 8.0;
     /// No candidates before this time after the first sample, seconds
     double holdoff_s = 120.0;
-    /// Samples dedispersed per pass
-    int chunk = 256;
     /// OpenMP threads for the dedispersion
     int num_threads = 4;
 };
@@ -64,9 +49,8 @@ struct IncoherentCandidate {
     /// Samples above threshold that were merged into the candidate
     int num_hits = 0;
     /// S/N of each block of channels along the dispersion curve. A pulse fills most blocks;
-    /// narrow-band interference fills one or two. Empty when the data had left the buffer.
+    /// narrow-band interference fills one or two.
     std::array<float, num_blocks> block_snr{};
-    bool has_blocks = false;
 };
 
 /**
@@ -84,6 +68,9 @@ struct IncoherentCandidate {
  * candidate when they lie within the dispersion sweep between the two DMs and are either close in
  * DM or much weaker (the residue of a bright pulse at another DM).
  *
+ * Widths of 1 to 16 samples are tried, in passes of 256 samples; these and the mask thresholds
+ * are constants in the source.
+ *
  * The object has no dependencies in kotekan and is not thread safe.
  */
 class IncoherentSearch {
@@ -93,8 +80,9 @@ public:
     /**
      * @brief Adds one time sample.
      * @param power  Power per channel; a value <= 0 marks a missing channel.
+     * @return True when this sample completed a search pass: there may be new candidates.
      */
-    void add_sample(const float* power);
+    bool add_sample(const float* power);
 
     /// Returns the candidates completed since the last call.
     std::vector<IncoherentCandidate> take_candidates();
@@ -110,11 +98,6 @@ public:
     /// Channels used in the most recent sample
     int channels_used() const {
         return num_used;
-    }
-
-    /// Longest dispersion delay searched, in samples
-    int64_t longest_delay() const {
-        return max_delay_all;
     }
 
 private:

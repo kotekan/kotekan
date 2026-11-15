@@ -44,10 +44,7 @@ public:
         in_buf->register_consumer(unique_name);
         out_buf->register_producer(unique_name);
 
-        in_desc = in_buf->get_frame_desc<kotekan::GenericNDArray>();
-        if (!in_desc)
-            FATAL_ERROR("IncoherentBeamPower: in_buf {:s} needs an NDArray frame description",
-                        in_buf->buffer_name);
+        in_desc = in_buf->require_frame_desc<kotekan::GenericNDArray>();
         const std::vector<std::ptrdiff_t> extents = in_desc->get_extents();
         if (in_desc->get_value_datatype() != kotekan::uint64 || extents.size() != 3
             || extents[2] != 3)

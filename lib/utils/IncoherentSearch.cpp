@@ -1,6 +1,7 @@
 #include "IncoherentSearch.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <stdexcept>
@@ -8,6 +9,20 @@
 namespace {
 // Dispersion delay in ms = dispersion_ms * DM * (difference of GHz^-2)
 const double dispersion_ms = 4.148808;
+// Pulse widths tried, in samples
+const std::array<int, 5> widths = {1, 2, 4, 8, 16};
+// Samples on each side of a pulse window that give its baseline
+const int baseline = 128;
+// Samples dedispersed per pass
+const int chunk = 256;
+// A normalized sample is limited to this many sigma
+const double sample_clip = 3.0;
+// A channel is masked when its sigma/mean exceeds mask_threshold times the lower quartile of the
+// channels within mask_neighbours on each side
+const double mask_threshold = 1.25;
+const int mask_neighbours = 256;
+// A channel is masked when the variance of its block means exceeds this times that of white noise
+const double drift_threshold = 2.0;
 // Samples per block of the drift test
 const int drift_block = 64;
 // Updates of a running statistic before the update is clipped
@@ -19,13 +34,11 @@ const double residue_fraction = 0.3;
 } // namespace
 
 IncoherentSearch::IncoherentSearch(const IncoherentSearchParams& params) :
-    p(params), F(params.num_freq), D((int)params.dms.size()), W((int)params.widths.size()),
+    p(params), F(params.num_freq), D((int)params.dms.size()), W((int)widths.size()),
     a(params.sample_s / params.tau_s) {
-    if (F <= 0 || D == 0 || W == 0 || p.sample_s <= 0 || p.tau_s <= 0 || p.thermal <= 0
-        || p.baseline <= 0 || p.chunk <= 0 || p.dfreq_mhz <= 0 || p.freq0_mhz <= 0)
+    if (F <= 0 || D == 0 || p.sample_s <= 0 || p.tau_s <= 0 || p.thermal <= 0 || p.dfreq_mhz <= 0
+        || p.freq0_mhz <= 0)
         throw std::invalid_argument("IncoherentSearch: invalid parameters");
-    if (!std::is_sorted(p.widths.begin(), p.widths.end()) || p.widths.front() < 1)
-        throw std::invalid_argument("IncoherentSearch: widths must be ascending and positive");
 
     holdoff = std::llround(p.holdoff_s / p.sample_s);
     min_count = std::llround(1.0 / p.sample_s);
@@ -66,32 +79,32 @@ IncoherentSearch::IncoherentSearch(const IncoherentSearchParams& params) :
         max_delay_all = std::max(max_delay_all, max_delay[d]);
     }
 
-    const int wmax = p.widths.back();
-    lookahead = 2 * wmax + p.baseline;
-    history_len = lookahead + wmax + p.baseline;
-    history.assign((size_t)D * (history_len + p.chunk), 0.0f);
+    const int wmax = widths.back();
+    lookahead = 2 * wmax + baseline;
+    history_len = lookahead + wmax + baseline;
+    history.assign((size_t)D * (history_len + chunk), 0.0f);
     history_n.assign(D, 0);
     next_sum.assign(D, 0);
-    next_eval.assign(D, wmax + p.baseline);
+    next_eval.assign(D, wmax + baseline);
     sum_var.assign((size_t)D * W, 0.0);
     sum_count.assign((size_t)D * W, 0);
     sigma_floor.assign(W, 0.0);
 
-    // A candidate's samples must still be in the buffer when it is closed.
-    keep = max_delay_all + lookahead + wmax + 2 * p.chunk + close_after;
+    // A candidate's samples are still in the buffer when it is closed: band_occupancy relies on it.
+    keep = max_delay_all + lookahead + wmax + 2 * chunk + close_after;
     buffer_len = keep + std::max<int64_t>(4096, keep / 4);
     w.assign((size_t)F * buffer_len, 0.0f);
 }
 
 void IncoherentSearch::update_reference() {
-    std::vector<float> ratio(F), window(2 * p.mask_neighbours + 1);
+    std::vector<float> ratio(F), window(2 * mask_neighbours + 1);
     for (int c = 0; c < F; ++c) {
         const bool known = count[c] >= min_count && mean[c] > 0 && var[c] > 0;
         ratio[c] = known ? (float)(std::sqrt(var[c]) / mean[c] / p.thermal) : 1e9f;
     }
     for (int c = 0; c < F; ++c) {
-        const int lo = std::max(0, c - p.mask_neighbours);
-        const int hi = std::min(F - 1, c + p.mask_neighbours);
+        const int lo = std::max(0, c - mask_neighbours);
+        const int hi = std::min(F - 1, c + mask_neighbours);
         const int n = hi - lo + 1;
         std::copy(ratio.begin() + lo, ratio.begin() + hi + 1, window.begin());
         std::nth_element(window.begin(), window.begin() + n / 4, window.begin() + n);
@@ -101,7 +114,7 @@ void IncoherentSearch::update_reference() {
     }
 }
 
-void IncoherentSearch::add_sample(const float* power) {
+bool IncoherentSearch::add_sample(const float* power) {
     if (ns - base == buffer_len) {
         const int64_t drop = buffer_len - keep;
         for (int c = 0; c < F; ++c)
@@ -130,9 +143,9 @@ void IncoherentSearch::add_sample(const float* power) {
         const double d = x - mean[c];
         const double sd = std::sqrt(var[c]);
         if (count[c] >= min_count && sd > 0 && mean[c] > 0) {
-            scratch[c] = (float)std::clamp(d / sd, -p.clip, p.clip);
-            const bool quiet = sd <= p.mask_threshold * ref[c] * p.thermal * mean[c];
-            const bool steady = p.drift_threshold <= 0 || drift[c] <= p.drift_threshold;
+            scratch[c] = (float)std::clamp(d / sd, -sample_clip, sample_clip);
+            const bool quiet = sd <= mask_threshold * ref[c] * p.thermal * mean[c];
+            const bool steady = drift[c] <= drift_threshold;
             state[c] = band_ok[c] && quiet && steady ? used : known;
             if (state[c] == used) {
                 zero_dm += scratch[c];
@@ -169,10 +182,11 @@ void IncoherentSearch::add_sample(const float* power) {
             block_sum[c] = 0;
         }
     }
-    if (ns % p.chunk == 0) {
-        dedisperse_chunk();
-        close_events();
-    }
+    if (ns % chunk != 0)
+        return false;
+    dedisperse_chunk();
+    close_events();
+    return true;
 }
 
 void IncoherentSearch::dedisperse_chunk() {
@@ -181,8 +195,8 @@ void IncoherentSearch::dedisperse_chunk() {
 #pragma omp parallel num_threads(p.num_threads)
     {
         std::vector<Hit> my_hits;
-        std::vector<float> sums(p.chunk);
-        std::vector<double> prefix(history_len + p.chunk + 1);
+        std::vector<float> sums(chunk);
+        std::vector<double> prefix(history_len + chunk + 1);
         double my_max = 0;
 #pragma omp for schedule(dynamic, 8) nowait
         for (int d = 0; d < D; ++d) {
@@ -230,7 +244,7 @@ void IncoherentSearch::dedisperse_chunk() {
 
 void IncoherentSearch::search_dm(int d, const float* sums, int64_t n, std::vector<double>& prefix,
                                  std::vector<Hit>& hits, double& max_snr) {
-    float* const h = &history[(size_t)d * (history_len + p.chunk)];
+    float* const h = &history[(size_t)d * (history_len + chunk)];
     std::memcpy(h + history_n[d], sums, n * sizeof(float));
     history_n[d] += n;
     const int64_t hn = history_n[d];
@@ -239,14 +253,14 @@ void IncoherentSearch::search_dm(int d, const float* sums, int64_t n, std::vecto
     for (int64_t i = 0; i < hn; ++i)
         prefix[i + 1] = prefix[i] + h[i];
 
-    const int nb = p.baseline;
+    const int nb = baseline;
     int64_t t = next_eval[d];
     for (; t + lookahead <= next_sum[d]; ++t) {
         const int64_t i = t - start;
         for (int wi = 0; wi < W; ++wi) {
             // The window of wd samples from t, less the mean of nb samples on each side, which
             // start wd samples clear of the window.
-            const int wd = p.widths[wi];
+            const int wd = widths[wi];
             const double on = prefix[i + wd] - prefix[i];
             const double sides = (prefix[i - wd] - prefix[i - wd - nb])
                                  + (prefix[i + 2 * wd + nb] - prefix[i + 2 * wd]);
@@ -276,7 +290,7 @@ void IncoherentSearch::search_dm(int d, const float* sums, int64_t n, std::vecto
     next_eval[d] = t;
 
     // Keep what the next windows' left baselines need.
-    const int64_t drop = (t - p.widths.back() - nb) - start;
+    const int64_t drop = (t - widths.back() - nb) - start;
     if (drop > 0) {
         std::memmove(h, h + drop, (hn - drop) * sizeof(float));
         history_n[d] = hn - drop;
@@ -292,7 +306,7 @@ void IncoherentSearch::merge_hits(const std::vector<Hit>& hits) {
             if (std::abs((double)(hit.sample - e.best.sample)) > 20 + sweep_per_dm * ddm)
                 continue;
             // The same pulse while the two sweeps differ by a few of the widest window
-            const bool same_pulse = sweep_per_dm * ddm <= 4.0 * p.widths.back();
+            const bool same_pulse = sweep_per_dm * ddm <= 4.0 * widths.back();
             if (!same_pulse && hit.snr >= residue_fraction * e.best.snr)
                 continue;
             ++e.num_hits;
@@ -313,7 +327,7 @@ void IncoherentSearch::close_events() {
         IncoherentCandidate cand;
         cand.snr = e.best.snr;
         cand.dm = p.dms[e.best.dm_index];
-        cand.width = p.widths[e.best.width_index];
+        cand.width = widths[e.best.width_index];
         cand.sample = e.best.sample;
         cand.num_hits = e.num_hits;
         band_occupancy(cand, e.best);
@@ -321,17 +335,15 @@ void IncoherentSearch::close_events() {
         e.reported = true;
     }
     // A reported event stays until its residue at the highest DM has been searched.
-    const int64_t lifetime = max_delay_all + lookahead + 2 * p.chunk + close_after;
+    const int64_t lifetime = max_delay_all + lookahead + 2 * chunk + close_after;
     events.erase(std::remove_if(events.begin(), events.end(),
                                 [&](const Event& e) { return ns - e.created > lifetime; }),
                  events.end());
 }
 
 void IncoherentSearch::band_occupancy(IncoherentCandidate& cand, const Hit& hit) const {
-    if (hit.sample < base)
-        return;
     const int32_t* const dl = &delay[(size_t)hit.dm_index * F];
-    const int wd = p.widths[hit.width_index];
+    const int wd = widths[hit.width_index];
     for (int b = 0; b < IncoherentCandidate::num_blocks; ++b) {
         const int c0 = (int)((int64_t)b * F / IncoherentCandidate::num_blocks);
         const int c1 = (int)((int64_t)(b + 1) * F / IncoherentCandidate::num_blocks);
@@ -345,7 +357,6 @@ void IncoherentSearch::band_occupancy(IncoherentCandidate& cand, const Hit& hit)
         }
         cand.block_snr[b] = n ? (float)(sum / std::sqrt((double)n * wd)) : 0.0f;
     }
-    cand.has_blocks = true;
 }
 
 std::vector<IncoherentCandidate> IncoherentSearch::take_candidates() {
