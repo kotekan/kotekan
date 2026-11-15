@@ -63,7 +63,8 @@ struct SearchPipeline {
                                 {"num_feeds", 128},
                                 {"dm_min", 50},
                                 {"dm_max", 150},
-                                {"dm_step", 0.02},
+                                {"dm_step_min", 1},
+                                {"dm_step_max", 3},
                                 {"holdoff_s", 3},
                                 {"num_threads", 2},
                                 {"candidate_file", path}}}};

@@ -59,7 +59,13 @@ using kotekan::prometheus::Metrics;
  * @conf num_feeds         Int. Feeds summed in the power; sets the expected noise.
  * @conf dm_min            Double. Lowest trial DM, pc/cm^3. Default 100.
  * @conf dm_max            Double. Highest trial DM. Default 1500.
- * @conf dm_step           Double. Step between trial DMs as a fraction of the DM. Default 0.001.
+ * @conf dm_step_min       Double. Step between trial DMs at dm_min. Default 0.12.
+ * @conf dm_step_max       Double. Step at dm_max; in between it grows as a power of the DM.
+ *                         Default 0.56. A DM error of e delays the bottom of 300-1600 MHz by
+ *                         44.5 ms * e against the top, so the step follows from the sample
+ *                         length, and from the smearing within a channel, which grows with
+ *                         the DM. The defaults keep at least 80 % of the S/N of a 1 ms pulse
+ *                         at the worst DM, 95 % on average, with 1.31 ms samples.
  * @conf mask_bands_mhz    List of [low, high]. Frequency ranges that are never searched.
  * @conf mask_freq_ids     List of int. FPGA frequency ids that are never searched.
  * @conf threshold         Double. S/N above which a candidate is reported. Default 8.
@@ -117,10 +123,14 @@ public:
         params.thermal = 1 / std::sqrt((double)period * config.get<int>(unique_name, "num_feeds"));
         const double dm_min = config.get_default<double>(unique_name, "dm_min", 100.0);
         const double dm_max = config.get_default<double>(unique_name, "dm_max", 1500.0);
-        const double dm_step = config.get_default<double>(unique_name, "dm_step", 0.001);
-        if (dm_min <= 0 || dm_max < dm_min || dm_step <= 0)
-            FATAL_ERROR("IncoherentBeamSearch: need 0 < dm_min <= dm_max and dm_step > 0");
-        for (double dm = dm_min; dm <= dm_max; dm *= 1 + dm_step)
+        const double step_min = config.get_default<double>(unique_name, "dm_step_min", 0.12);
+        const double step_max = config.get_default<double>(unique_name, "dm_step_max", 0.56);
+        if (dm_min <= 0 || dm_max <= dm_min || step_min <= 0 || step_max < step_min)
+            FATAL_ERROR("IncoherentBeamSearch: need 0 < dm_min < dm_max and 0 < dm_step_min <= "
+                        "dm_step_max");
+        // The step grows as a power of the DM, from dm_step_min to dm_step_max.
+        const double growth = std::log(step_max / step_min) / std::log(dm_max / dm_min);
+        for (double dm = dm_min; dm <= dm_max; dm += step_min * std::pow(dm / dm_min, growth))
             params.dms.push_back(dm);
         params.mask_bands_mhz = config.get_default<std::vector<std::pair<double, double>>>(
             unique_name, "mask_bands_mhz", {});
