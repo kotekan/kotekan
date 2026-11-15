@@ -11,6 +11,7 @@
 
 #include <cstddef> // for size_t
 #include <cstdint> // for int32_t, uint8_t
+#include <string>  // for string
 
 namespace gnss_gpu {
 
@@ -45,6 +46,29 @@ struct TilesView {
  */
 int assemble_epl(const CtlView& ctl, const TilesView& tiles, uint8_t* out, size_t out_bytes,
                  int n_prn, int lanes_per_slot, int num_elements, int n_live, int hops_per_record);
+
+/// The shape of one chain's epl transform: the tiles its gather emits and the control blocks its
+/// injector writes.
+struct EplShape {
+    int num_elements; ///< antenna stations in the correlator
+    int num_synth;
+    int n_live; ///< live antennas the tiles cover
+    int n_chan;
+    int n_prn;
+    int lanes_per_slot;
+    int hops_per_record;
+    int n_rec; ///< records per frame
+
+    /// Mixed tiles per channel, as cudaCorrelatorDual::build_tile_selection gathers them.
+    int n_tile() const;
+    /// FATAL, naming @p who, unless the injector can pack this shape and @p tiles_frame_size is
+    /// the size of a tiles frame of it.
+    void check(const std::string& who, size_t tiles_frame_size) const;
+    /// FATAL, naming @p who, unless the control block @p ctl has this shape; then assemble_epl()
+    /// from it and @p tiles into @p out. Returns assemble_epl()'s job groups.
+    int assemble(const std::string& who, const uint8_t* ctl, const int32_t* tiles, uint8_t* out,
+                 size_t out_bytes) const;
+};
 
 } // namespace gnss_gpu
 

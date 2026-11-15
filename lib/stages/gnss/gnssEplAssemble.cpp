@@ -137,4 +137,53 @@ int assemble_epl(const CtlView& ctl, const TilesView& tiles, uint8_t* out, size_
     return n_out_jobs;
 }
 
+int EplShape::n_tile() const {
+    // Must mirror cudaCorrelatorDual::build_tile_selection and gen_chord_gnss_config.py's
+    // n2_tiles_per_chan. The frame-size check catches a count mismatch; an order mismatch reads
+    // as garbage correlations.
+    return ((num_elements + num_synth) / 16 - num_elements / 16) * ((n_live + 15) / 16);
+}
+
+void EplShape::check(const std::string& who, size_t tiles_frame_size) const {
+    if (lanes_per_slot != LANES_FULL && lanes_per_slot != LANES_PROMPT)
+        FATAL_ERROR_NON_OO("{:s}: lanes_per_slot {:d} must be {:d} or {:d}", who, lanes_per_slot,
+                           LANES_FULL, LANES_PROMPT);
+    if (lanes_per_slot == LANES_PROMPT && n_chan > MAX_ROT_CHAN)
+        FATAL_ERROR_NON_OO("{:s}: {:d} channels exceed the {:d} PrnCtl::rot carries; "
+                           "lanes_per_slot {:d} needs every E/L lane packed",
+                           who, n_chan, MAX_ROT_CHAN, lanes_per_slot);
+    if (lanes_per_slot * n_prn > num_synth)
+        FATAL_ERROR_NON_OO("{:s}: {:d}*n_prn ({:d}) exceeds num_synth ({:d})", who, lanes_per_slot,
+                           lanes_per_slot * n_prn, num_synth);
+
+    // The tiles frame is n_rec x n_chan x n_tile x (16x16 complex int32), sized by the config
+    // generator. A mismatch means its geometry (n2_tiles_per_chan) and this stage's disagree.
+    const size_t need = (size_t)n_rec * n_chan * n_tile() * 512 * sizeof(int32_t);
+    if (tiles_frame_size != need)
+        FATAL_ERROR_NON_OO("{:s}: tiles_buf frame_size {:d} != {:d} for {:d} rec x {:d} chan x "
+                           "{:d} mixed tiles",
+                           who, tiles_frame_size, need, n_rec, n_chan, n_tile());
+}
+
+int EplShape::assemble(const std::string& who, const uint8_t* ctl, const int32_t* tiles,
+                       uint8_t* out, size_t out_bytes) const {
+    const auto* hdr = (const FrameHdr*)ctl;
+    // The producer's lane count is in the frame; a mismatch would read P's tile as E's.
+    if (lanes_per_slot_of(hdr->lanes_per_slot) != lanes_per_slot)
+        FATAL_ERROR_NON_OO("{:s}: the control block says {:d} lanes per slot, this stage is "
+                           "configured for {:d} -- cudaGnssInject and this stage must carry the "
+                           "same lanes_per_slot",
+                           who, lanes_per_slot_of(hdr->lanes_per_slot), lanes_per_slot);
+
+    // Every row below n_jobs is written whole, for every channel and element, which needs the
+    // frame to have this stage's shape.
+    if (hdr->n_prn != n_prn || hdr->n_chan != n_chan || hdr->n_rec != n_rec || hdr->n_rec > MAX_REC)
+        FATAL_ERROR_NON_OO("{:s}: the control block is {:d} PRN x {:d} chan x {:d} records, this "
+                           "stage {:d} x {:d} x {:d} (at most {:d} records)",
+                           who, hdr->n_prn, hdr->n_chan, hdr->n_rec, n_prn, n_chan, n_rec, MAX_REC);
+    const TilesView tv{tiles, (size_t)n_chan * n_tile() * 512, 0, n_chan, n_tile()};
+    return assemble_epl({ctl}, tv, out, out_bytes, n_prn, lanes_per_slot, num_elements, n_live,
+                        hops_per_record);
+}
+
 } // namespace gnss_gpu

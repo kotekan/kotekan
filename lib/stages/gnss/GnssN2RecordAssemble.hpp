@@ -10,6 +10,7 @@
 #include "Stage.hpp"
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
+#include "gnssEplAssemble.hpp"
 
 #include <string>
 
@@ -75,12 +76,7 @@ private:
     Buffer* _tiles_buf;
     Buffer* _out_buf;
 
-    int _num_elements, _num_synth, _n_live, _n_gnss_chan, _n_prn;
-    int _lanes_per_slot; ///< gnss_gpu::LANES_FULL or LANES_PROMPT (see the class note)
-    int _hops_per_record, _n_hops_frame;
-
-    /// Tile geometry, recomputed from config exactly as cudaCorrelatorDual does.
-    int _na16, _nt16, _nlive16, _n_tile;
+    gnss_gpu::EplShape _shape;
 };
 
 #endif // GNSS_N2_RECORD_ASSEMBLE_HPP
