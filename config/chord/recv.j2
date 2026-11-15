@@ -249,3 +249,40 @@ write_dtv:
         file_name: dtv_{{ p[0] }}
         prefix_hostname: false
 {% endfor %}
+
+# Incoherent-beam power from the X-engine halves (incoherent.j2): frames of 32 time samples
+# (1.31 ms each) over a half's 464 frequencies, 24 per second from each of 16 halves. The
+# shape and the port must match incoherent.j2. All halves share one buffer; 1024 frames are
+# 2.6 s, which covers the search's passes (0.3 s of data each).
+incoherent_power_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: 1100
+
+incoherent_power_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 1024
+    value_type: uint16
+    extents: [32, 464]
+    quantity_name: "incoherent_beam_power"
+    dimnames: ["Trfi", "F"]
+    dimscalings: [256, 1]
+    metadata_pool: incoherent_power_pool
+
+buffer_recv_incoherent_power:
+    kotekan_stage: bufferRecv
+    use_frame_desc: true
+    buf: incoherent_power_buffer
+    listen_port: 11039
+
+# Pulse search of the summed power: 300-1600 MHz, DM 100-1500. The fixed masks are the
+# aeronautical band and GNSS. It needs about 3.5 cores and 2 GB.
+incoherent_beam_search:
+    kotekan_stage: IncoherentBeamSearch
+    cpu_affinity: [4,5,6,7,8,9]
+    num_threads: 6
+    in_buf: incoherent_power_buffer
+    freq_id_base: 1536
+    num_local_freq: 6656
+    num_feeds: num_elements
+    mask_bands_mhz: [[1010, 1130], [1164, 1300], [1559, 1610]]
+    candidate_file: /mnt/cs00/data/incoherent_beam_search/candidates.jsonl

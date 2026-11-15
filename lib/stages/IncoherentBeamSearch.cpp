@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <json.hpp>
@@ -151,6 +152,8 @@ public:
 
         const std::string path = config.get_default<std::string>(unique_name, "candidate_file", "");
         if (!path.empty()) {
+            std::error_code ignored; // a failure shows when the file is opened
+            std::filesystem::create_directories(std::filesystem::path(path).parent_path(), ignored);
             candidate_file.open(path, std::ios::app);
             if (!candidate_file)
                 FATAL_ERROR("IncoherentBeamSearch: cannot open candidate_file {:s}", path);
