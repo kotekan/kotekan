@@ -24,10 +24,10 @@ The facets:
              NUMA node g is listed as misplaced
   stall      per chain, the GPU frames of slack before cudaOutputData blocks the half:
              min(tiles, ctl) + epl + usable rec frames / records per frame, keyed by its
-             adapter, or by its assembler when that reads the tiles and ctl itself (no epl
-             term). A bufferMerge with
-             no timeout on a chain's path from cudaOutputData's tiles and ctl through its
-             records is listed under its own name with its (negative) timeout
+             adapter, or by its assembler when that reads the tiles and ctl itself, with its own
+             frame as the one epl frame. A bufferMerge with no timeout on a chain's path from
+             cudaOutputData's tiles and ctl through its records is listed under its own name
+             with its (negative) timeout
   census     what elem_shared_ref, lane_relay, gen_fleet, viscap_read and gnss_fleet.stage_chain
              find in the config, each by its own code
 
@@ -282,9 +282,10 @@ def _upstream(stages, bufs):
 def stall_budget(cfg):
     """{adapter unique_name: GPU frames of slack, or 'unresolved' with no assembler downstream
     of its epl}, the same keyed by assembler unique_name for an assembler that reads the tiles
-    and ctl itself, plus {bufferMerge unique_name: timeout} for every merge with no timeout on a
-    chain's path from cudaOutputData's tiles and ctl through its records. cudaOutputData fills
-    tiles and ctl together and their reader drains them together, so the shallower counts."""
+    and ctl itself, with its own frame as the epl frame it works on, plus {bufferMerge
+    unique_name: timeout} for every merge with no timeout on a chain's path from
+    cudaOutputData's tiles and ctl through its records. cudaOutputData fills tiles and ctl
+    together and their reader drains them together, so the shallower counts."""
     bufs = _buffers(cfg)
     stages = _stages(cfg)
     out, reach = {}, set()
@@ -314,7 +315,7 @@ def stall_budget(cfg):
         if tiles is None:
             continue
         reach |= _upstream(stages, (tiles, ctl))
-        out[u] = slack(a, a, tiles, ctl, 0)
+        out[u] = slack(a, a, tiles, ctl, 1)
     grown = True
     while grown:
         grown = False

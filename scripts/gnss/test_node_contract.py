@@ -9,8 +9,9 @@ generator writes for cx52 today. Without GNSS_CONTRACT_BASELINE only test_only_k
 and the test exits 77. With GNSS_REPLAY_DUMP=DIR2
 (test_gnss_chain_replay's config.json and endpoints.json) rest_surface of the replay's config
 must equal the per-chain endpoints its stages registered. With GNSS_CONTRACT_FOLDED=DIR3 (the
-same node generated with --fold-epl) the folded config must keep every chain's stall budget at
-8.75 or more and differ from DIR's only in placement and stall.
+same node generated with --fold-epl) every folded assembler must carry its adapter's inputs
+and keys, keep its chain's stall budget at 8.75 or more and differ from DIR's only in placement
+and stall.
 """
 import collections
 import copy
@@ -264,14 +265,38 @@ def test_mutations(cfg, head, base, d):
     check(facet_lines(lines, "census"), "the moved blocks show in census")
 
 
-def test_fold(base, d):
-    s = nc.snapshot(os.path.join(d, NAME), NODE, NODE)
+def test_fold(base, cfg, d):
+    path = os.path.join(d, NAME)
+    s = nc.snapshot(path, NODE, NODE)
     st = s["stall"]
     asm = {k: v for k, v in st.items() if k.endswith("_n2assemble")}
     check(
         len(asm) == 30 and len(st) == 30 and min(asm.values()) >= 8.75,
         "folded: 30 assemblers, each with a stall budget of 8.75 or more (%s)"
         % dict(collections.Counter(st.values())),
+    )
+    # Each folded assembler sets its adapter's inputs and shape keys itself.
+    folded = dict(nc._stages(nc.load(path), "GnssGpuRecordAssemble"))
+    keys = (
+        "tiles_buf",
+        "ctl_buf",
+        "num_elements",
+        "num_synth",
+        "lanes_per_slot",
+        "hops_per_record",
+    )
+    (fft,) = {b[0]["fft_length"] for _, b in nc._blocks(cfg) if "fft_length" in b[0]}
+    bad = []
+    for u, ad in nc._stages(cfg, "GnssN2RecordAssemble"):
+        a = folded.get(u[: -len("_tiles")], [{}])[0]
+        want = {k: ad[0].get(k) for k in keys}
+        want.update(fft_len=fft, in_buf=None)
+        if {k: a.get(k) for k in want} != want:
+            bad.append(u)
+    check(
+        len(folded) == 30 and not bad,
+        "folded: every assembler carries its adapter's inputs and keys, and no in_buf (%s)"
+        % bad,
     )
     lines = nc.diff(base, s)
     facets = {ln[2:].split(":", 1)[0] for ln in lines}
@@ -355,7 +380,7 @@ def main():
                 lambda: test_mutations(cfg, head, base, tmp),
             ]
             + ([lambda: test_replay(dump)] if dump else [])
-            + ([lambda: test_fold(base, folded)] if folded else [])
+            + ([lambda: test_fold(base, cfg, folded)] if folded else [])
         )
         for t in tests:
             try:

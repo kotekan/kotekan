@@ -111,9 +111,9 @@ def lanes_per_slot_for(args):
 # Frames per GNSS chain buffer.
 BUFFER_DEPTH = 4
 # Frames of a chain's tiles and control-block buffers with --fold-epl. Its record assembler
-# releases each pair before its records, so these frames are the chain's whole slack before
-# cudaOutputData blocks the GPU; 8 keeps the slack its tiles and epl buffers give it without
-# --fold-epl (4 + 4).
+# releases each pair before its records, so these frames are the chain's slack ahead of the
+# frame it works on before cudaOutputData blocks the GPU. Without --fold-epl that slack is 7
+# (4 tiles + 4 epl, less the epl frame the assembler works on): 7 keeps it, 8 adds a frame.
 FOLD_EPL_DEPTH = 8
 # PRN slots an extra search (--aggregator-extra-search) scans when the spec names none, by
 # the signal name's constellation prefix: the broadcast PRN ranges, not a lane budget.
