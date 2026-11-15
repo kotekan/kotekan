@@ -14,8 +14,9 @@
 // also runs each chain's PRN swap references (Scenario::cold_ref), and the zero-amplitude
 // control run; GNSS_REPLAY_FULL=1 adds the determinism, mutation and prefill
 // controls, a run whose combiners have no out_buf and one whose combiners keep slot state across
-// a PRN swap. Every run also replays the chains as rows of three host stages (Scenario::rows),
-// which must give the baseline's digests.
+// a PRN swap. Every run also replays the chains as rows of three host stages (Scenario::rows), and
+// with assemblers that read the tiles and control blocks themselves (Scenario::fold); each must
+// give the baseline's digests.
 
 #include "Config.hpp"                // for Config
 #include "GnssChanMetadata.hpp"      // for GnssChanMetadata, get_gnss_chan_metadata
@@ -26,6 +27,7 @@
 #include "Stage.hpp"                 // for Stage
 #include "buffer.hpp"                // for Buffer
 #include "bufferContainer.hpp"       // for bufferContainer
+#include "chordMetadata.hpp"         // for chordMetadata, get_chord_metadata
 #include "gnssChanPower.hpp"         // for ChanPower
 #include "gnssGpuChain.hpp"          // for FrameHdr, PrnCtl, off_*
 #include "gnssProjSubspace.hpp"      // for ProjBoard
@@ -366,7 +368,17 @@ json build_config(const std::vector<ChainSpec>& cs, const Scenario& sc,
         ad["ctl_buf"] = buf_name(s, "n2ctl_buf");
         ad["tiles_buf"] = buf_name(s, "n2tiles_buf");
         ad["out_buf"] = buf_name(s, "n2epl_buf");
-        as["in_buf"] = buf_name(s, "n2epl_buf");
+        if (sc.fold) {
+            as.erase("in_buf");
+            as["ctl_buf"] = buf_name(s, "n2ctl_buf");
+            as["tiles_buf"] = buf_name(s, "n2tiles_buf");
+            for (const char* k : {"num_elements", "num_synth", "lanes_per_slot", "hops_per_record"})
+                if (ad.contains(k))
+                    as[k] = ad[k];
+            as["fft_len"] = s.fft_len;
+        } else {
+            as["in_buf"] = buf_name(s, "n2epl_buf");
+        }
         as["out_buf"] = buf_name(s, "n2rec_buf");
         as["cube_buf"] = buf_name(s, "cube_buf");
         cb["in_bufs"] = {buf_name(s, "n2rec_buf")};
@@ -380,7 +392,8 @@ json build_config(const std::vector<ChainSpec>& cs, const Scenario& sc,
         tp["out_buf"] = buf_name(s, "telem_buf");
         for (json* b : {&ad, &as, &cb, &tp})
             (*b)["cpu_affinity"] = cpus;
-        cfg[s.pre + "_n2assemble_tiles"] = ad;
+        if (!sc.fold)
+            cfg[s.pre + "_n2assemble_tiles"] = ad;
         if (sc.rows) {
             rows_as[s.pre] = as;
             rows_cb[s.pre] = cb;
@@ -420,8 +433,13 @@ double replay_clock() {
     return 1000.0 + k * g_frame_s + ((g_clock_step && k >= 50) ? 30.0 : 0.0);
 }
 
+std::string g_out_path;
+
+/// FATAL_ERROR -> exit_kotekan -> raise(SIGTERM), in the thread that set the FATAL's message,
+/// which the child leaves at its output path.
 void on_sigterm(int) {
-    _exit(70); // FATAL_ERROR -> exit_kotekan -> raise(SIGTERM)
+    std::ofstream(g_out_path) << kotekan::kotekanLogging::get_error_message();
+    _exit(70);
 }
 
 [[noreturn]] void child_fail(int code, const std::string& why) {
@@ -441,6 +459,8 @@ struct ChainRun {
     std::vector<std::unique_ptr<kotekan::Stage>> stages;
     GnssCoherentCombiner* cmb = nullptr;
     size_t cmb_row = 0; ///< the chain's row of cmb
+    GnssGpuRecordAssemble* as = nullptr;
+    size_t as_row = 0; ///< the chain's row of as
     std::vector<SideCombiner> side;
     std::vector<uint64_t> hashes[N_KIND];
     std::atomic<int> count[N_KIND];
@@ -540,6 +560,15 @@ void read_cube(ChainRun& R, const uint8_t* f, size_t bytes, uint64_t* h) {
     R.cube_pow = pw;
 }
 
+/// Digests @p f, the chain's epl frame @p n.
+void take_epl(ChainRun& R, const uint8_t* f, int n) {
+    // The live projection rewrites chain A's epl frame in place while the capture reads it.
+    if (!(R.idx == 0 && n >= R.sc->proj_live_frame))
+        R.hashes[EPL].push_back(hash_epl(R, f));
+    if (R.idx == 1 && n == R.sc->dark_r0_frame)
+        read_pin_epl(R, f);
+}
+
 void capture(ChainRun* R, int kind) {
     Buffer* b = R->buf[kind].get();
     const std::string name = std::string("capture_") + KIND[kind];
@@ -551,11 +580,7 @@ void capture(ChainRun* R, int kind) {
         const int n = R->count[kind].load();
         uint64_t h = 0;
         if (kind == EPL) {
-            // The live projection rewrites chain A's epl frame in place while this reads it.
-            if (!(R->idx == 0 && n >= R->sc->proj_live_frame))
-                h = hash_epl(*R, f);
-            if (R->idx == 1 && n == R->sc->dark_r0_frame)
-                read_pin_epl(*R, f);
+            take_epl(*R, f, n);
         } else if (kind == REC) {
             h = fnv1a64(f, b->frame_size);
             const GnssChanMetadata* m = get_gnss_chan_metadata(b, id);
@@ -603,7 +628,7 @@ void capture(ChainRun* R, int kind) {
                     ++R->telem_bad_meta;
             }
         }
-        if (!(kind == EPL && R->idx == 0 && n >= R->sc->proj_live_frame))
+        if (kind != EPL)
             R->hashes[kind].push_back(h);
         b->mark_frame_empty(name, id);
         id = (id + 1) % b->num_frames;
@@ -626,10 +651,10 @@ bool sides_quiescent(const ChainRun& R, int k) {
 
 bool quiescent(ChainRun& R, int k) {
     const int n_rec = R.s->n_rec;
-    return R.ctl->is_frame_empty(0) && R.tiles->is_frame_empty(0) && R.buf[EPL]->is_frame_empty(0)
+    const bool epl = R.sc->fold || (R.buf[EPL]->is_frame_empty(0) && R.count[EPL].load() == k + 1);
+    return R.ctl->is_frame_empty(0) && R.tiles->is_frame_empty(0) && epl
            && R.buf[REC]->get_num_full_frames() == 0 && R.buf[CUBE]->get_num_full_frames() == 0
-           && R.count[EPL].load() == k + 1 && R.count[REC].load() == n_rec * (k + 1)
-           && R.count[TELEM].load() == k + 1
+           && R.count[REC].load() == n_rec * (k + 1) && R.count[TELEM].load() == k + 1
            && R.cmb->records_done(R.cmb_row) == (uint64_t)n_rec * (k + 1)
            && (!R.sc->combiner_out_buf || R.count[CMB].load() == n_rec * (k + 1) / R.emit_every)
            && sides_quiescent(R, k);
@@ -654,6 +679,12 @@ void capture_scratch(ChainRun& R, int k) {
     R.hashes[CMB].push_back(fnv1a64(f.data(), f.size() * sizeof(float)));
     R.cmb_rows.push_back(cmb_slot_rows(*R.s, f.data()));
     R.count[CMB].store(n + 1);
+}
+
+/// With Scenario::fold, digests the assembler's own epl frame of frame @p k.
+void capture_fold(ChainRun& R, int k) {
+    take_epl(R, R.as->epl_frame(R.as_row), k);
+    R.count[EPL].store(k + 1);
 }
 
 void capture_side(ChainRun& R, int k) {
@@ -864,6 +895,13 @@ void apply_mutation(const Scenario& sc, int idx, int frame, const ChainSpec& s, 
                 pc[(size_t)r * s.n_prn + 2].job0 += ROWS_PLAIN;
     if (sc.mut == Mutation::tile_word_B10 && idx == 1 && frame == 10)
         tiles[tile_index(s, 0, 0, lane_of_row(s.lanes_per_slot, ROW_P), 0)] ^= (1 << 20);
+    auto* hdr = (FrameHdr*)ctl;
+    if (idx == 1 && frame == 3) {
+        hdr->n_prn += sc.mut == Mutation::n_prn_B3;
+        hdr->n_chan += sc.mut == Mutation::n_chan_B3;
+        if (sc.mut == Mutation::lanes_B3)
+            hdr->lanes_per_slot = s.lanes_per_slot == LANES_FULL ? LANES_PROMPT : LANES_FULL;
+    }
 }
 
 std::vector<int> allowed_cpus() {
@@ -891,6 +929,7 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
     // reports the signal instead.
     for (int sig : {SIGSEGV, SIGBUS, SIGFPE, SIGILL, SIGABRT, SIGALRM})
         std::signal(sig, SIG_DFL);
+    g_out_path = out_path;
     std::signal(SIGTERM, on_sigterm);
     alarm(300);
     if (sc.cpu >= 0) {
@@ -908,6 +947,9 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
     const Sky sky = sky_for(sc);
 
     auto pool = metadataPool::create(64 * (int)cs.size(), 64, "pool", "GnssChanMetadata");
+    // The tiles carry the correlator's metadata, as cudaOutputData forwards it.
+    auto tiles_pool = metadataPool::create(2 * (int)cs.size(), sizeof(chordMetadata), "tiles_pool",
+                                           "chordMetadata");
     kotekan::bufferContainer bc;
     std::vector<std::unique_ptr<ChainRun>> runs;
     for (size_t i = 0; i < cs.size(); ++i) {
@@ -932,8 +974,8 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
         R->ctl = std::make_unique<Buffer>(1, ctl_b, pool, buf_name(s, "n2ctl_buf"), "standard", 0,
                                           false, false, std::vector<int>{}, true, sc.prefill);
         R->tiles =
-            std::make_unique<Buffer>(1, tiles_b, pool, buf_name(s, "n2tiles_buf"), "standard", 0,
-                                     false, false, std::vector<int>{}, true, sc.prefill);
+            std::make_unique<Buffer>(1, tiles_b, tiles_pool, buf_name(s, "n2tiles_buf"), "standard",
+                                     0, false, false, std::vector<int>{}, true, sc.prefill);
         bc.add_buffer(buf_name(s, "n2ctl_buf"), R->ctl.get());
         bc.add_buffer(buf_name(s, "n2tiles_buf"), R->tiles.get());
         R->ctl->register_producer("feeder");
@@ -963,25 +1005,30 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
     config.update_config(build_config(cs, sc, cpus));
     std::vector<std::unique_ptr<kotekan::Stage>> hosts;
     GnssCoherentCombiner* cmb_host = nullptr;
+    GnssGpuRecordAssemble* as_host = nullptr;
     if (sc.rows) {
-        hosts.emplace_back(
-            new GnssGpuRecordAssemble(config, records_host(cs[0].gpu), bc, &replay_clock));
+        as_host = new GnssGpuRecordAssemble(config, records_host(cs[0].gpu), bc, &replay_clock);
+        hosts.emplace_back(as_host);
         cmb_host = new GnssCoherentCombiner(config, combine_host(cs[0].gpu), bc);
         hosts.emplace_back(cmb_host);
         hosts.emplace_back(new GnssTelemPack(config, telem_host(cs[0].gpu), bc));
     }
     for (auto& R : runs) {
         const ChainSpec& s = *R->s;
-        R->stages.emplace_back(
-            new GnssN2RecordAssemble(config, "/" + s.pre + "_n2assemble_tiles", bc));
+        if (!sc.fold)
+            R->stages.emplace_back(
+                new GnssN2RecordAssemble(config, "/" + s.pre + "_n2assemble_tiles", bc));
         if (sc.rows) {
             // The host's rows are in key order.
+            R->as = as_host;
             R->cmb = cmb_host;
             for (const auto& c : cs)
                 R->cmb_row += c.pre < s.pre;
+            R->as_row = R->cmb_row;
         } else {
-            R->stages.emplace_back(new GnssGpuRecordAssemble(config, assembler_name(s, R->idx, sc),
-                                                             bc, &replay_clock));
+            R->as =
+                new GnssGpuRecordAssemble(config, assembler_name(s, R->idx, sc), bc, &replay_clock);
+            R->stages.emplace_back(R->as);
             R->cmb = new GnssCoherentCombiner(config, "/" + s.pre + "_n2combine", bc);
             R->stages.emplace_back(R->cmb);
             R->stages.emplace_back(new GnssTelemPack(config, "/" + s.pre + "_telem_pack", bc));
@@ -1010,8 +1057,11 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
     for (auto& R : runs) {
         for (auto& st : R->stages)
             st->start();
+        // An assembler's own epl frame is prefilled as the buffers are.
+        if (sc.fold)
+            std::memset(R->as->epl_frame(R->as_row), sc.prefill, R->buf[EPL]->frame_size);
         for (int k = 0; k < N_KIND; ++k)
-            if (k != CMB || sc.combiner_out_buf)
+            if ((k != CMB || sc.combiner_out_buf) && (k != EPL || !sc.fold))
                 R->cap[k] = std::thread(capture, R.get(), k);
     }
 
@@ -1037,9 +1087,23 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
                 }
                 d.pins["B2_tiles"] = t;
             }
+            R->tiles->allocate_new_metadata_object(0);
+            const int64_t hop0 = ((const gnss_gpu::FrameHdr*)ctl)->seq0 / s.fft_len;
+            get_chord_metadata(R->tiles.get(), 0)
+                ->set_fpga_seq_num(hop0
+                                   + (sc.mut == Mutation::seq0_skew_B3 && R->idx == 1 && k >= 3));
             R->ctl->mark_frame_full("feeder", 0);
             R->tiles->mark_frame_full("feeder", 0);
+            // A frame released is the GPU's to overwrite: an assembler that reads one after
+            // releasing it reads this instead.
+            if (sc.fold) {
+                std::memset(R->ctl->wait_for_empty_frame("feeder", 0), 0xA5, R->ctl->frame_size);
+                std::memset(R->tiles->wait_for_empty_frame("feeder", 0), 0xA5,
+                            R->tiles->frame_size);
+            }
             wait_quiescent(*R, k);
+            if (sc.fold)
+                capture_fold(*R, k);
             if (!sc.combiner_out_buf)
                 capture_scratch(*R, k);
             capture_side(*R, k);
@@ -1069,7 +1133,8 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
                                        d.slots[s.pre][x.name]);
             }
             if (sc.refill_a5)
-                std::memset(R->buf[EPL]->frames[0], 0xA5, R->buf[EPL]->frame_size);
+                std::memset(sc.fold ? R->as->epl_frame(R->as_row) : R->buf[EPL]->frames[0], 0xA5,
+                            R->buf[EPL]->frame_size);
         }
         if (std::find(sc.checkpoints.begin(), sc.checkpoints.end(), k) != sc.checkpoints.end())
             snapshot_board(k, d);
@@ -1149,11 +1214,8 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
 
 // ---- the parent ----
 
-Digests run_scenario(const std::vector<ChainSpec>& cs, const Scenario& sc) {
-    char path[] = "/tmp/gnss_replay_XXXXXX";
-    const int fd = mkstemp(path);
-    BOOST_REQUIRE(fd >= 0);
-    close(fd);
+/// Runs @p sc in a forked child, which writes its digests to @p path. Returns its exit code.
+int run_child(const std::vector<ChainSpec>& cs, const Scenario& sc, const char* path) {
     std::fflush(nullptr);
     const pid_t pid = fork();
     BOOST_REQUIRE(pid >= 0);
@@ -1171,20 +1233,35 @@ Digests run_scenario(const std::vector<ChainSpec>& cs, const Scenario& sc) {
         if (std::chrono::steady_clock::now() - t0 > std::chrono::seconds(310)) {
             kill(pid, SIGKILL);
             waitpid(pid, &status, 0);
-            unlink(path);
             BOOST_FAIL("replay child timed out");
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
-    Digests d;
-    if (WIFSIGNALED(status)) {
-        unlink(path);
+    if (WIFSIGNALED(status))
         BOOST_FAIL("replay child killed by signal " << WTERMSIG(status));
-    }
-    const int rc = WEXITSTATUS(status);
-    if (rc != 0) {
+    return WEXITSTATUS(status);
+}
+
+Digests run_scenario(const std::vector<ChainSpec>& cs, const Scenario& sc) {
+    char path[] = "/tmp/gnss_replay_XXXXXX";
+    const int fd = mkstemp(path);
+    BOOST_REQUIRE(fd >= 0);
+    close(fd);
+    int rc = -1;
+    try {
+        rc = run_child(cs, sc, path);
+    } catch (...) {
         unlink(path);
-        BOOST_FAIL("replay child exit " << rc << (rc == 70 ? " (FATAL in child)" : ""));
+        throw;
+    }
+    Digests d;
+    if (rc != 0) {
+        std::ifstream f(path);
+        const std::string msg((std::istreambuf_iterator<char>(f)),
+                              std::istreambuf_iterator<char>());
+        unlink(path);
+        BOOST_FAIL("replay child exit " << rc
+                                        << (rc == 70 ? " (FATAL in child: " + msg + ")" : ""));
     }
     std::ifstream in(path);
     const json j = json::parse(in);
@@ -1634,6 +1711,61 @@ BOOST_AUTO_TEST_CASE(rows) {
     BOOST_CHECK(base.live == d.live);
     BOOST_CHECK(base.pins == d.pins);
     BOOST_CHECK(base.slots == d.slots);
+}
+
+/// The assemblers reading the tiles and control blocks themselves give the baseline's digests,
+/// their epl frames included; with GNSS_REPLAY_FULL=1 also as rows of one host, and with their
+/// epl frames left stale between frames.
+BOOST_AUTO_TEST_CASE(fold) {
+    const Digests& base = baseline();
+    Scenario sc = base_scenario();
+    sc.cold_ref = true;
+    sc.fold = true;
+    std::vector<Scenario> runs = {sc};
+    if (full_run()) {
+        runs.push_back(sc);
+        runs.back().rows = true;
+        runs.push_back(sc);
+        runs.back().refill_a5 = false;
+    }
+    for (const Scenario& x : runs) {
+        const Digests d = run_scenario(chains(), x);
+        BOOST_CHECK_MESSAGE(changed(base, d).empty(), "fold, rows " << x.rows << ", refill "
+                                                                    << x.refill_a5 << ": "
+                                                                    << join(changed(base, d)));
+        BOOST_CHECK(base.live == d.live);
+        BOOST_CHECK(base.pins == d.pins);
+        BOOST_CHECK(base.slots == d.slots);
+    }
+}
+
+/// An assembler reading the tiles and control blocks itself FATALs when the tiles frame is not
+/// the control block's or the control block is not the configured shape.
+BOOST_AUTO_TEST_CASE(fold_refuses_a_mismatch) {
+    const std::string B = "/" + chains()[1].pre + "_n2assemble: ";
+    const std::vector<std::pair<Mutation, std::string>> cases = {
+        {Mutation::seq0_skew_B3, "the two buffers are out of step"},
+        {Mutation::n_prn_B3, "the control block is"},
+        {Mutation::n_chan_B3, "the control block is"},
+        {Mutation::lanes_B3, "lanes per slot"}};
+    for (const auto& [m, want] : cases) {
+        Scenario sc = base_scenario();
+        sc.fold = true;
+        sc.mut = m;
+        char path[] = "/tmp/gnss_replay_XXXXXX";
+        const int fd = mkstemp(path);
+        BOOST_REQUIRE(fd >= 0);
+        close(fd);
+        const int rc = run_child(chains(), sc, path);
+        std::ifstream f(path);
+        const std::string msg((std::istreambuf_iterator<char>(f)),
+                              std::istreambuf_iterator<char>());
+        unlink(path);
+        BOOST_CHECK_MESSAGE(rc == 70 && msg.compare(0, B.size(), B) == 0
+                                && msg.find(want) != std::string::npos,
+                            "mutation " << (int)m << ": child exit " << rc << ", " << msg);
+        BOOST_TEST_MESSAGE("mutation " << (int)m << ": " << msg);
+    }
 }
 
 BOOST_AUTO_TEST_CASE(identity) {

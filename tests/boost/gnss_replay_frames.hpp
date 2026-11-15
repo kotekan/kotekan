@@ -50,7 +50,13 @@ enum class Mutation {
     rename_A,
     tile_word_B10,
     clock_step_50,
-    zero_amp
+    zero_amp,
+    /// From frame 3, chain B's tiles start one hop after its control block's seq0.
+    seq0_skew_B3,
+    /// At frame 3, chain B's control block claims one PRN, one channel or one lane per slot more.
+    n_prn_B3,
+    n_chan_B3,
+    lanes_B3
 };
 
 /// The events, by frame. Chain A is chains[0], B chains[1] and C chains[2].
@@ -75,6 +81,9 @@ struct Scenario {
     /// true: every chain's assembler, combiner and telemetry pack run as rows of one host stage
     /// each (a `chains:` block), instead of as one stage per chain.
     bool rows = false;
+    /// true: every chain's assembler reads the tiles and the control block itself (tiles_buf and
+    /// ctl_buf), without GnssN2RecordAssemble, and its epl digests are read from its own frame.
+    bool fold = false;
 };
 
 /// Record index of frame 0's first record: a multiple of every window length the chains use
