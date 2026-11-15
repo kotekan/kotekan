@@ -23,7 +23,9 @@ The facets:
   placement  numa_node of every buffer and cpu_affinity of every stage; a gnss<g>_ buffer off
              NUMA node g is listed as misplaced
   stall      per chain, the GPU frames of slack before cudaOutputData blocks the half:
-             min(tiles, ctl) + epl + usable rec frames / records per frame. A bufferMerge with
+             min(tiles, ctl) + epl + usable rec frames / records per frame, keyed by its
+             adapter, or by its assembler when that reads the tiles and ctl itself (no epl
+             term). A bufferMerge with
              no timeout on a chain's path from cudaOutputData's tiles and ctl through its
              records is listed under its own name with its (negative) timeout
   census     what elem_shared_ref, lane_relay, gen_fleet, viscap_read and gnss_fleet.stage_chain
@@ -279,12 +281,26 @@ def _upstream(stages, bufs):
 
 def stall_budget(cfg):
     """{adapter unique_name: GPU frames of slack, or 'unresolved' with no assembler downstream
-    of its epl}, plus {bufferMerge unique_name: timeout} for every merge with no timeout on a
+    of its epl}, the same keyed by assembler unique_name for an assembler that reads the tiles
+    and ctl itself, plus {bufferMerge unique_name: timeout} for every merge with no timeout on a
     chain's path from cudaOutputData's tiles and ctl through its records. cudaOutputData fills
-    tiles and ctl together and the adapter drains them together, so the shallower counts."""
+    tiles and ctl together and their reader drains them together, so the shallower counts."""
     bufs = _buffers(cfg)
     stages = _stages(cfg)
     out, reach = {}, set()
+
+    def slack(s, a, tiles, ctl, epl_frames):
+        rec = _get(a, "out_buf")
+        rb = bufs[rec]
+        per_frame = _get(s, "samples_per_data_set") // _get(s, "hops_per_record")
+        hold = 1 if _get(rb, "peek_hold", False) else 0
+        reach.add(rec)
+        return (
+            min(_get(bufs[tiles], "num_frames"), _get(bufs[ctl], "num_frames"))
+            + epl_frames
+            + (_get(rb, "num_frames") - hold) / per_frame
+        )
+
     for u, s in _stages(cfg, "GnssN2RecordAssemble"):
         tiles, ctl, epl = _get(s, "tiles_buf"), _get(s, "ctl_buf"), _get(s, "out_buf")
         reach |= _upstream(stages, (tiles, ctl))
@@ -292,16 +308,13 @@ def stall_budget(cfg):
         if a is None:
             out[u] = "unresolved"
             continue
-        rec = _get(a, "out_buf")
-        rb = bufs[rec]
-        per_frame = _get(s, "samples_per_data_set") // _get(s, "hops_per_record")
-        hold = 1 if _get(rb, "peek_hold", False) else 0
-        out[u] = (
-            min(_get(bufs[tiles], "num_frames"), _get(bufs[ctl], "num_frames"))
-            + _get(bufs[epl], "num_frames")
-            + (_get(rb, "num_frames") - hold) / per_frame
-        )
-        reach.add(rec)
+        out[u] = slack(s, a, tiles, ctl, _get(bufs[epl], "num_frames"))
+    for u, a in _stages(cfg, "GnssGpuRecordAssemble"):
+        tiles, ctl = a[0].get("tiles_buf"), a[0].get("ctl_buf")
+        if tiles is None:
+            continue
+        reach |= _upstream(stages, (tiles, ctl))
+        out[u] = slack(a, a, tiles, ctl, 0)
     grown = True
     while grown:
         grown = False

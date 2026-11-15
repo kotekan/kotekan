@@ -8,7 +8,9 @@ DIR holds a generated chord_gnss_cx52_multi.yaml; the counts are those of the co
 generator writes for cx52 today. Without GNSS_CONTRACT_BASELINE only test_only_keys is checked
 and the test exits 77. With GNSS_REPLAY_DUMP=DIR2
 (test_gnss_chain_replay's config.json and endpoints.json) rest_surface of the replay's config
-must equal the per-chain endpoints its stages registered.
+must equal the per-chain endpoints its stages registered. With GNSS_CONTRACT_FOLDED=DIR3 (the
+same node generated with --fold-epl) the folded config must keep every chain's stall budget at
+8.75 or more and differ from DIR's only in placement and stall.
 """
 import collections
 import copy
@@ -262,6 +264,35 @@ def test_mutations(cfg, head, base, d):
     check(facet_lines(lines, "census"), "the moved blocks show in census")
 
 
+def test_fold(base, d):
+    s = nc.snapshot(os.path.join(d, NAME), NODE, NODE)
+    st = s["stall"]
+    asm = {k: v for k, v in st.items() if k.endswith("_n2assemble")}
+    check(
+        len(asm) == 30 and len(st) == 30 and min(asm.values()) >= 8.75,
+        "folded: 30 assemblers, each with a stall budget of 8.75 or more (%s)"
+        % dict(collections.Counter(st.values())),
+    )
+    lines = nc.diff(base, s)
+    facets = {ln[2:].split(":", 1)[0] for ln in lines}
+    check(
+        facets <= {"placement", "stall"},
+        "folded: only placement and stall differ (%s)" % sorted(facets),
+    )
+    place = [ln for ln in lines if ln[2:].startswith("placement:")]
+    stages = [ln.split(" ")[3] for ln in place if ln.startswith("- placement: cpu ")]
+    bufs = [ln.split(" ")[3] for ln in place if ln.startswith("- placement: numa ")]
+    check(
+        len(stages) == 30
+        and all(x.endswith("_n2assemble_tiles") for x in stages)
+        and len(bufs) == 30
+        and all(x.endswith("_n2epl_buf") for x in bufs)
+        and len(place) == 60,
+        "folded: placement loses the 30 adapters and the 30 epl buffers, nothing else "
+        "(%d stages, %d buffers, %d lines)" % (len(stages), len(bufs), len(place)),
+    )
+
+
 def test_replay(dump):
     """rest_surface of the replay's config against what its stages registered."""
     cpath = os.path.join(dump, "config.json")
@@ -317,10 +348,15 @@ def main():
     if not dump:
         print("GNSS_REPLAY_DUMP is not set: the replay cross-check does not run")
     with tempfile.TemporaryDirectory(prefix="node_contract_") as tmp:
-        tests = [
-            lambda: test_counts(base, cfg),
-            lambda: test_mutations(cfg, head, base, tmp),
-        ] + ([lambda: test_replay(dump)] if dump else [])
+        folded = os.environ.get("GNSS_CONTRACT_FOLDED")
+        tests = (
+            [
+                lambda: test_counts(base, cfg),
+                lambda: test_mutations(cfg, head, base, tmp),
+            ]
+            + ([lambda: test_replay(dump)] if dump else [])
+            + ([lambda: test_fold(base, folded)] if folded else [])
+        )
         for t in tests:
             try:
                 t()
