@@ -56,6 +56,8 @@ struct FrameHdr {
     /// that as LANES_FULL. The epl frame GnssN2RecordAssemble emits always has ROWS_PLAIN rows
     /// per PRN whatever the lane count, so nothing downstream of it reads this.
     int32_t lanes_per_slot;
+    /// 0, or in a GPU half's shared control array the row tag of the block's writer
+    /// (gnss_gpu::row_tag, gnssGpuRows.hpp).
     int64_t _pad1;
 };
 static_assert(sizeof(FrameHdr) == 48, "FrameHdr must stay 16-byte aligned");
@@ -162,6 +164,10 @@ constexpr size_t off_prnctl() {
 }
 constexpr size_t off_corr(int n_prn) {
     return off_prnctl() + sizeof(PrnCtl) * MAX_REC * n_prn;
+}
+/// Size of cudaGnssInject's control block: the frame layout without corr.
+constexpr size_t ctl_bytes(int n_prn, int n_chan) {
+    return off_corr(n_prn) + sizeof(double) * max_jobs(n_prn, ROWS_PLAIN) * n_chan;
 }
 /// @param n_elem antennas per correlation row.
 ///

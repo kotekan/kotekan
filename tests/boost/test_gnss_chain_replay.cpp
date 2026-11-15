@@ -30,6 +30,7 @@
 #include "chordMetadata.hpp"         // for chordMetadata, get_chord_metadata
 #include "gnssChanPower.hpp"         // for ChanPower
 #include "gnssGpuChain.hpp"          // for FrameHdr, PrnCtl, off_*
+#include "gnssGpuRows.hpp"           // for row_tag
 #include "gnssProjSubspace.hpp"      // for ProjBoard
 #include "gnssRecord.hpp"            // for frame_floats, record_stride, cube_frame_bytes
 #include "gnssTelem.hpp"             // for TelemHeader, telem_frame_bytes

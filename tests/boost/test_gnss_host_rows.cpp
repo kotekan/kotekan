@@ -10,6 +10,7 @@
 #include "GnssGpuRecordAssemble.hpp" // for GnssGpuRecordAssemble
 #include "GnssTelemPack.hpp"         // for GnssTelemPack
 #include "bufferContainer.hpp"       // for bufferContainer
+#include "gnssGpuRows.hpp"           // for gpu_rows
 #include "gnssHostRows.hpp"          // for host_rows, rest_register_unique
 #include "kotekanLogging.hpp"        // for FatalError
 #include "kotekanMode.hpp"           // for kotekanMode
@@ -175,6 +176,54 @@ BOOST_AUTO_TEST_CASE(row_missing_key_is_fatal) {
     check_row_keys<GnssGpuRecordAssemble>(GnssGpuRecordAssemble::ROW_KEYS);
     check_row_keys<GnssCoherentCombiner>(GnssCoherentCombiner::ROW_KEYS);
     check_row_keys<GnssTelemPack>(GnssTelemPack::ROW_KEYS);
+}
+
+// A GPU half's gnss_rows: two rows of one shape (32 PRN x 6 channels), as gnss0_gps_l5 and
+// gnss0_gal_e5a on a node.
+static json gpu_rows_block() {
+    const size_t b = gnss_gpu::ctl_bytes(32, 6);
+    json rows = json::array();
+    for (int i = 0; i < 2; ++i)
+        rows.push_back({{"name", i ? "gnss0_gal_e5a" : "gnss0_gps_l5"},
+                        {"chain", i ? "gal_e5a" : "gps_l5"},
+                        {"chain_id", i + 1},
+                        {"row", i},
+                        {"channels", {326, 327, 328, 329, 330, 331}},
+                        {"lane_base", 64 * i},
+                        {"lanes", 64},
+                        {"fg_offset", 6 * i},
+                        {"ctl_offset", b * i},
+                        {"ctl_bytes", b},
+                        {"n_prn", 32}});
+    return {{"gnss_rows", rows}};
+}
+
+// Shape checks cannot tell two rows of one shape apart, so gnss_rows must be the arrays'
+// concatenation in list order: a swap of two rows' ctl_offset, fg_offset or row, or a wrong
+// ctl_bytes, is refused.
+BOOST_AUTO_TEST_CASE(gpu_rows_refuse_a_swap) {
+    auto rows_of = [](const json& host) {
+        kotekan::Config config;
+        config.update_config(config_with(host));
+        return gnss_gpu::gpu_rows(config, "/host");
+    };
+    BOOST_CHECK_EQUAL(fatal_of([&] { BOOST_REQUIRE(rows_of(gpu_rows_block()).size() == 2); }), "");
+    for (const char* k : {"ctl_offset", "fg_offset", "row"}) {
+        json h = gpu_rows_block();
+        std::swap(h["gnss_rows"][0][k], h["gnss_rows"][1][k]);
+        BOOST_CHECK_MESSAGE(fatal_of([&] { rows_of(h); }).find("the rows before it put it at")
+                                != std::string::npos,
+                            k);
+    }
+    json h = gpu_rows_block();
+    h["gnss_rows"][1]["ctl_bytes"] = gnss_gpu::ctl_bytes(32, 7);
+    BOOST_CHECK(fatal_of([&] { rows_of(h); }).find("ctl_bytes") != std::string::npos);
+    h = gpu_rows_block();
+    h["gnss_rows"][1]["chain_id"] = 1;
+    BOOST_CHECK(fatal_of([&] { rows_of(h); }).find("not unique") != std::string::npos);
+    h = gpu_rows_block();
+    h["gnss_rows"][1].erase("lanes");
+    BOOST_CHECK_EQUAL(fatal_of([&] { rows_of(h); }), "<exception>");
 }
 
 // A record row reads in_buf, or tiles_buf and ctl_buf, each set at its own path.
