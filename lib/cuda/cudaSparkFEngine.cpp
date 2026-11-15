@@ -6,6 +6,7 @@
 #include "fftWindowJob.hpp"      // for fft_window_job, fft_window_lut
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, INFO
 #include "prometheusMetrics.hpp" // for Metrics
+#include "tensorFFT.hpp"         // for gpu_tensor_fft
 #include "visUtil.hpp"           // for frameID, current_time
 
 #include "fmt.hpp" // for format
@@ -55,6 +56,19 @@ cudaSparkFEngine::cudaSparkFEngine(Config& config, const std::string& unique_nam
             fmt::format(fmt("{:s}: fft_precision must be \"fp32\" or \"fp16\", not \"{:s}\""),
                         unique_name, precision));
     fp16 = precision == "fp16";
+    const std::string impl = config.get_default<std::string>(unique_name, "fft_impl", "cufft");
+    if (impl != "cufft" && impl != "tensor")
+        throw std::invalid_argument(
+            fmt::format(fmt("{:s}: fft_impl must be \"cufft\" or \"tensor\", not \"{:s}\""),
+                        unique_name, impl));
+    tensor = impl == "tensor";
+    if (tensor && !fp16)
+        throw std::invalid_argument(
+            fmt::format(fmt("{:s}: fft_impl tensor requires fft_precision fp16"), unique_name));
+    if (tensor && fft_length > (1ull << 27))
+        throw std::invalid_argument(fmt::format(
+            fmt("{:s}: fft_impl tensor supports fft_length up to 2^27 (sub-FFTs up to 8192)"),
+            unique_name));
 
     if (fft_length == 0 || fft_length % samples_per_packet != 0 || fft_length > (1ull << 28))
         throw std::invalid_argument(
@@ -173,9 +187,10 @@ void cudaSparkFEngine::main_thread() {
             cudaMemcpy(d_wlo, wlo.data(), 4096 * sizeof(float2), cudaMemcpyHostToDevice));
     }
 
-    // fp32: one plan over m. fp16: batched sub-FFTs over the m1 x m2 four-step split.
+    // fp32: one plan over m. fp16: batched sub-FFTs over the m1 x m2 four-step split,
+    // which fft_impl tensor runs with gpu_tensor_fft instead of cuFFT plans.
     cufftHandle plan = 0, plan2 = 0;
-    if (fp16) {
+    if (fp16 && !tensor) {
         long long n1 = m1, n2 = m2;
         size_t ws;
         CHECK_CUFFT(cufftCreate(&plan));
@@ -185,12 +200,14 @@ void cudaSparkFEngine::main_thread() {
         CHECK_CUFFT(cufftXtMakePlanMany(plan2, 1, &n2, nullptr, 1, n2, CUDA_C_16F, nullptr, 1, n2,
                                         CUDA_C_16F, m1, &ws, CUDA_C_16F));
         CHECK_CUFFT(cufftSetStream(plan2, stream));
-    } else {
+    } else if (!fp16) {
         CHECK_CUFFT(cufftPlan1d(&plan, (int)m, CUFFT_C2C, 1));
     }
-    CHECK_CUFFT(cufftSetStream(plan, stream));
+    if (plan)
+        CHECK_CUFFT(cufftSetStream(plan, stream));
     INFO("FFT of {:d} points ({:d} packets) on GPU {:d}, {:s}{:s}, scale {:g}", fft_length,
-         num_packets, gpu_id, fp16 ? "fp16 four-step " : "fp32",
+         num_packets, gpu_id,
+         fp16 ? (tensor ? "fp16 tensor four-step " : "fp16 four-step ") : "fp32",
          fp16 ? fmt::format(fmt("{:d}x{:d}"), m1, m2) : "", 2.0 / (double)fft_length * gain);
 
     // The twiddle pass divides fp16 intermediates by m1 to stay in range; fold it back here.
@@ -205,9 +222,15 @@ void cudaSparkFEngine::main_thread() {
                                     cudaMemcpyHostToDevice));
         if (fp16) {
             gpu_unpack12_fp16_t(d_lut, samples_per_packet, m1, m2, d_a, stream);
-            CHECK_CUFFT(cufftXtExec(plan, d_a, d_b, CUFFT_FORWARD));
+            if (tensor)
+                gpu_tensor_fft(d_a, d_b, m1, m2, stream);
+            else
+                CHECK_CUFFT(cufftXtExec(plan, d_a, d_b, CUFFT_FORWARD));
             gpu_twiddle_transpose(d_b, m1, m2, d_whi, d_wlo, 1.0f / m1, d_a, stream);
-            CHECK_CUFFT(cufftXtExec(plan2, d_a, d_b, CUFFT_FORWARD));
+            if (tensor)
+                gpu_tensor_fft(d_a, d_b, m2, m1, stream);
+            else
+                CHECK_CUFFT(cufftXtExec(plan2, d_a, d_b, CUFFT_FORWARD));
             gpu_quantize_fourstep(d_b, m1, m2, d_whi, d_wlo, scale, gain, nullptr, nullptr,
                                   (uint8_t*)d_a, stream);
         } else {
@@ -282,9 +305,15 @@ void cudaSparkFEngine::main_thread() {
                                          cudaMemcpyHostToDevice, stream));
         if (fp16) {
             gpu_unpack12_fp16_t(d_lut, samples_per_packet, m1, m2, d_a, stream);
-            CHECK_CUFFT(cufftXtExec(plan, d_a, d_b, CUFFT_FORWARD));
+            if (tensor)
+                gpu_tensor_fft(d_a, d_b, m1, m2, stream);
+            else
+                CHECK_CUFFT(cufftXtExec(plan, d_a, d_b, CUFFT_FORWARD));
             gpu_twiddle_transpose(d_b, m1, m2, d_whi, d_wlo, 1.0f / m1, d_a, stream);
-            CHECK_CUFFT(cufftXtExec(plan2, d_a, d_b, CUFFT_FORWARD));
+            if (tensor)
+                gpu_tensor_fft(d_a, d_b, m2, m1, stream);
+            else
+                CHECK_CUFFT(cufftXtExec(plan2, d_a, d_b, CUFFT_FORWARD));
             gpu_quantize_fourstep(d_b, m1, m2, d_whi, d_wlo, scale, gain, d_gains, d_stats,
                                   out_frame, stream);
         } else {
@@ -319,7 +348,8 @@ void cudaSparkFEngine::main_thread() {
         windows_counter.inc();
     }
 
-    CHECK_CUFFT(cufftDestroy(plan));
+    if (plan)
+        CHECK_CUFFT(cufftDestroy(plan));
     if (plan2)
         CHECK_CUFFT(cufftDestroy(plan2));
     CHECK_CUDA_ERROR(cudaFree(fp16 ? (void*)d_a : (void*)d_time));

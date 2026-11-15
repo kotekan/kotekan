@@ -71,6 +71,9 @@
  *                          scales by 1/m1), halving the memory traffic. Needs fft_length a
  *                          power of two of at least 2^11 and samples_per_packet a multiple
  *                          of 64.
+ * @conf fft_impl           String, default "cufft". "tensor" (fp16 only, fft_length up to
+ *                          2^27) replaces the two batched cuFFTs with the tensor-core
+ *                          kernel of tensorFFT.hpp, same layout and semantics.
  *
  * @par Metrics
  * @metric kotekan_cuda_spark_fengine_windows_total  Windows processed.
@@ -100,6 +103,7 @@ private:
     float gain;
     int32_t gpu_id;
     bool fp16;
+    bool tensor;
     size_t m1 = 0, m2 = 0;
 
     std::shared_ptr<cudaDeviceInterface> device;
