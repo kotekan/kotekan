@@ -3,6 +3,7 @@
 #include "Telescope.hpp" // for Telescope (the record epoch)
 #include "dspPfbPrototype.hpp"
 #include "gnssGpuChain.hpp"
+#include "gnssHostRows.hpp" // for rest_register_unique
 #include "gnssSignal.hpp"
 #include "kotekanLogging.hpp"
 
@@ -15,8 +16,12 @@
 #include <string>
 
 using kotekan::Config;
+using kotekan::connectionInstance;
 
 namespace gnss {
+
+using GetCallback = std::function<void(connectionInstance&)>;
+using PostCallback = std::function<void(connectionInstance&, nlohmann::json&)>;
 
 // The Doppler margin of an FDMA slot's own lobe: GLONASS's L2 Doppler stays under ~3.7 kHz here.
 static constexpr double FDMA_DOPPLER_MARGIN_HZ = 5e3;
@@ -24,7 +29,8 @@ static constexpr double FDMA_DOPPLER_MARGIN_HZ = 5e3;
 // ---------------------------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------------------------
-TrackChain::TrackChain(Config& config, const std::string& cfg_path) {
+TrackChain::TrackChain(Config& config, const std::string& cfg_path,
+                       std::vector<std::string>& rest_paths) {
     using namespace std::placeholders;
 
     prns = config.get<std::vector<int>>(cfg_path, "prns");
@@ -199,23 +205,23 @@ TrackChain::TrackChain(Config& config, const std::string& cfg_path) {
     fold.init(n_prn);
 
     const std::string ep = config.get<std::string>(cfg_path, "seed_endpoint");
-    kotekan::restServer::instance().register_post_callback(
-        ep, std::bind(&TrackChain::set_seeds_callback, this, _1, _2));
+    rest_register_unique(ep, PostCallback(std::bind(&TrackChain::set_seeds_callback, this, _1, _2)),
+                         rest_paths);
     // trim_endpoint has no effect. The live configs still carry it, so it is read only so a
     // usage report does not list it unused.
     config.get_default<std::string>(cfg_path, "trim_endpoint", "");
     // GnssFleetTrim's actuator.
     const std::string sep = config.get<std::string>(cfg_path, "set_trim_endpoint");
-    kotekan::restServer::instance().register_post_callback(
-        sep, std::bind(&TrackChain::set_trim_callback, this, _1, _2));
+    rest_register_unique(sep, PostCallback(std::bind(&TrackChain::set_trim_callback, this, _1, _2)),
+                         rest_paths);
     // Slot membership. Always registered, with no enable flag on the node: whether to apply
     // swaps is the broker's decision (it also has a report-only mode).
     const std::string gpe = config.get<std::string>(cfg_path, "get_prns_endpoint");
-    kotekan::restServer::instance().register_get_callback(
-        gpe, std::bind(&TrackChain::get_prns_callback, this, _1));
+    rest_register_unique(gpe, GetCallback(std::bind(&TrackChain::get_prns_callback, this, _1)),
+                         rest_paths);
     const std::string spe = config.get<std::string>(cfg_path, "set_prns_endpoint");
-    kotekan::restServer::instance().register_post_callback(
-        spe, std::bind(&TrackChain::set_prns_callback, this, _1, _2));
+    rest_register_unique(spe, PostCallback(std::bind(&TrackChain::set_prns_callback, this, _1, _2)),
+                         rest_paths);
     INFO_NON_OO("cudaGnssChordTrack: {:d} PRN x {:d} chan x {:d} elem, {:d} hops/record "
                 "({:d} rec/frame), seeds on {:s}",
                 n_prn, n_chan, n_elem, hops_per_record, n_rec, ep);

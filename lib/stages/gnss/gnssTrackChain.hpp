@@ -75,8 +75,11 @@ namespace gnss {
  */
 class TrackChain : public kotekan::kotekanLogging {
 public:
-    /// Reads its config at @p cfg_path.
-    TrackChain(kotekan::Config& config, const std::string& cfg_path);
+    /// Reads its config at @p cfg_path and registers its REST endpoints, adding their paths to
+    /// @p rest_paths for the owner to remove before it destroys the chain. A path that already
+    /// has a callback is FATAL.
+    TrackChain(kotekan::Config& config, const std::string& cfg_path,
+               std::vector<std::string>& rest_paths);
 
     /// POST endpoint: a JSON array of {prn, doppler_hz, code_phase_chips, code_phase_rate,
     /// doppler_rate_hz_s, carrier_trim_hz, ref_hop, code_phase_at_ref_chips}. The first three

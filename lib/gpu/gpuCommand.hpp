@@ -20,6 +20,7 @@
 #include <stdint.h> // for int32_t, int64_t
 #include <string>   // for string, basic_string
 #include <tuple>    // for tuple
+#include <utility>  // for pair
 #include <vector>   // for vector
 
 class gpuDeviceInterface;
@@ -162,6 +163,14 @@ public:
     /// This is just the time the command is running, and doesn't include time waiting
     /// in the queue.
     std::shared_ptr<StatTracker> excute_time;
+
+    /**
+     * @brief The rows this command gives its stage's /gpu_profile, each a name and an execution
+     *        time tracker shared by the command's instances: by default one, its own.
+     */
+    virtual std::vector<std::pair<std::string, std::shared_ptr<StatTracker>>> profile_rows() {
+        return {{get_name(), excute_time}};
+    }
 
     /// Almost the same as excute_time, but divided by the frame arrival period
     std::shared_ptr<StatTracker> utilization;
