@@ -2,8 +2,6 @@
 
 #include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO
 
-#include <algorithm> // for find_first_of
-
 using kotekan::bufferContainer;
 using kotekan::Config;
 
@@ -45,14 +43,6 @@ static gnss_gpu::GpuRow inject_row(Config& config, const std::string& path) {
     return {};
 }
 
-// True when rows @p a and @p b write a common synth lane on a common channel.
-static bool rows_overlap(const gnss_gpu::GpuRow& a, const gnss_gpu::GpuRow& b) {
-    return a.lane_base < b.lane_base + b.lanes && b.lane_base < a.lane_base + a.lanes
-           && std::find_first_of(a.channels.begin(), a.channels.end(), b.channels.begin(),
-                                 b.channels.end())
-                  != a.channels.end();
-}
-
 cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::string& unique_name,
                                                  bufferContainer& host_buffers,
                                                  cudaDeviceInterface& device) :
@@ -82,15 +72,6 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
                                    unique_name, g.name);
             rows.push_back({host[found], g, nullptr});
         }
-        for (size_t i = 0; i < rows.size(); ++i)
-            for (size_t j = 0; j < i; ++j)
-                if (rows_overlap(rows[i].gpu, rows[j].gpu))
-                    FATAL_ERROR_NON_OO(
-                        "cudaGnssInject {:s}: rows {:s} and {:s} share a channel "
-                        "and write overlapping lanes [{:d}, {:d}) and [{:d}, {:d})",
-                        unique_name, rows[j].host.key, rows[i].host.key, rows[j].gpu.lane_base,
-                        rows[j].gpu.lane_base + rows[j].gpu.lanes, rows[i].gpu.lane_base,
-                        rows[i].gpu.lane_base + rows[i].gpu.lanes);
     }
     for (Row& r : rows)
         r.chain = std::make_unique<gnss::TrackChain>(config, r.host.cfg_path, _rest_paths);

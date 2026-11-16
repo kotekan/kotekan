@@ -224,6 +224,12 @@ BOOST_AUTO_TEST_CASE(gpu_rows_refuse_a_swap) {
     h = gpu_rows_block();
     h["gnss_rows"][1].erase("lanes");
     BOOST_CHECK_EQUAL(fatal_of([&] { rows_of(h); }), "<exception>");
+    // Rows that share a channel must write disjoint lanes.
+    h = gpu_rows_block();
+    h["gnss_rows"][1]["lane_base"] = 32;
+    BOOST_CHECK(fatal_of([&] { rows_of(h); }).find("overlapping lanes") != std::string::npos);
+    h["gnss_rows"][1]["channels"] = {332, 333, 334, 335, 336, 337};
+    BOOST_CHECK_EQUAL(fatal_of([&] { rows_of(h); }), "");
 }
 
 // A record row reads in_buf, or tiles_buf and ctl_buf, each set at its own path.

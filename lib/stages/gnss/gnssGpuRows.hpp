@@ -13,11 +13,12 @@
 
 #include "json.hpp" // for json
 
-#include <cstddef> // for size_t
-#include <cstdint> // for int32_t, int64_t
-#include <set>     // for set
-#include <string>  // for string
-#include <vector>  // for vector
+#include <algorithm> // for find_first_of
+#include <cstddef>   // for size_t
+#include <cstdint>   // for int32_t, int64_t
+#include <set>       // for set
+#include <string>    // for string
+#include <vector>    // for vector
 
 namespace gnss_gpu {
 
@@ -68,11 +69,19 @@ inline GpuRow gpu_row(const nlohmann::json& j) {
     return r;
 }
 
+/// True when rows @p a and @p b write a common synth lane on a common channel.
+inline bool rows_overlap(const GpuRow& a, const GpuRow& b) {
+    return a.lane_base < b.lane_base + b.lanes && b.lane_base < a.lane_base + a.lanes
+           && std::find_first_of(a.channels.begin(), a.channels.end(), b.channels.begin(),
+                                 b.channels.end())
+                  != a.channels.end();
+}
+
 /**
  * The gnss_rows list at @p path. FATAL unless the rows are the arrays' concatenation in list
  * order: row i has row i, its fg_offset and ctl_offset follow the rows before it, its ctl_bytes
- * is that of its n_prn and channels, and names, chain ids and tag fields are unique and fit the
- * tag.
+ * is that of its n_prn and channels, names, chain ids and tag fields are unique and fit the
+ * tag, and no two rows write the same synth lanes on a shared channel.
  */
 inline std::vector<GpuRow> gpu_rows(kotekan::Config& config, const std::string& path) {
     const std::vector<nlohmann::json> list =
@@ -105,6 +114,12 @@ inline std::vector<GpuRow> gpu_rows(kotekan::Config& config, const std::string& 
             FATAL_ERROR_NON_OO("{:s}: gnss_rows {:s}: chain_id {:d} or fg_offset {:d} does not fit "
                                "the row tag's 16 bits",
                                path, r.name, r.chain_id, r.fg_offset);
+        for (const GpuRow& q : rows)
+            if (rows_overlap(q, r))
+                FATAL_ERROR_NON_OO("{:s}: gnss_rows {:s} and {:s} share a channel and write "
+                                   "overlapping lanes [{:d}, {:d}) and [{:d}, {:d})",
+                                   path, q.name, r.name, q.lane_base, q.lane_base + q.lanes,
+                                   r.lane_base, r.lane_base + r.lanes);
         fg += n_chan;
         ctl += r.ctl_bytes;
         rows.push_back(r);
