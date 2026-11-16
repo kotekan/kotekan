@@ -5,7 +5,6 @@
 #include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata
 #include "gnssChanPower.hpp"    // for ChanPower
 #include "gnssProjSubspace.hpp" // for ProjBoard
-#include "visUtil.hpp"          // for frameID
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -106,33 +105,40 @@ void GnssGpuRecordAssemble::run_row(size_t i) {
     Row& row = _rows[i];
     const std::string& name = _host_rows[i].name;
     Buffer* in_buf = row.in_buf;
-    Buffer* out_buf = row.out_buf;
-    frameID frame_out(out_buf);
 
     while (!stop_thread) {
         const uint8_t* in =
             in_buf ? in_buf->wait_for_full_frame(name, row.in_id) : next_epl_frame(i);
         if (in == nullptr)
             return;
-        const int n_rec = row.chain.begin_frame(in);
-        for (int r = 0; r < n_rec && !stop_thread; ++r) {
-            float* out = (float*)out_buf->wait_for_empty_frame(name, frame_out);
-            if (out == nullptr)
-                return;
-            const int64_t wstart = row.chain.assemble_record(r, out);
-            emit_cube_window(i);
-            if (out_buf->metadata_pool) {
-                out_buf->allocate_new_metadata_object(frame_out);
-                get_gnss_chan_metadata(out_buf, frame_out)->sample_seq = wstart;
-            }
-            out_buf->mark_frame_full(name, frame_out);
-            frame_out++;
-        }
+        if (!run_records(i, in))
+            return;
         if (in_buf) {
             in_buf->mark_frame_empty(name, row.in_id);
             row.in_id = (row.in_id + 1) % in_buf->num_frames;
         }
     }
+}
+
+bool GnssGpuRecordAssemble::run_records(size_t i, const uint8_t* in) {
+    Row& row = _rows[i];
+    const std::string& name = _host_rows[i].name;
+    Buffer* out_buf = row.out_buf;
+    const int n_rec = row.chain.begin_frame(in);
+    for (int r = 0; r < n_rec && !stop_thread; ++r) {
+        float* out = (float*)out_buf->wait_for_empty_frame(name, row.out_id);
+        if (out == nullptr)
+            return false;
+        const int64_t wstart = row.chain.assemble_record(r, out);
+        emit_cube_window(i);
+        if (out_buf->metadata_pool) {
+            out_buf->allocate_new_metadata_object(row.out_id);
+            get_gnss_chan_metadata(out_buf, row.out_id)->sample_seq = wstart;
+        }
+        out_buf->mark_frame_full(name, row.out_id);
+        row.out_id = (row.out_id + 1) % out_buf->num_frames;
+    }
+    return true;
 }
 
 void GnssGpuRecordAssemble::read_gpu_row(Config& config, const gnss::HostRow& hr, Row& row) {

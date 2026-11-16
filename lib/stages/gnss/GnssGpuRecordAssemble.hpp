@@ -94,6 +94,7 @@ private:
         std::unique_ptr<uint8_t[]> epl;
         size_t epl_bytes = 0;
         Buffer* out_buf = nullptr;
+        int out_id = 0;
         /// Push leg: each completed window is pushed to cube_buf with its address (chain, window
         /// index, wstart). It never blocks the tracker: if the next frame is not empty (safe to
         /// test, as this row is the only producer) the window is dropped and counted in
@@ -109,6 +110,8 @@ private:
     std::vector<std::string> _rest_paths;
 
     void run_row(size_t row);
+    /// Run row @p row's records of its input frame @p in. Returns false when shutting down.
+    bool run_records(size_t row, const uint8_t* in);
     /// Assemble row @p row's next frame from its tiles and control block and release both.
     /// Returns the frame, or null when shutting down.
     const uint8_t* next_epl_frame(size_t row);
