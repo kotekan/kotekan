@@ -2171,7 +2171,8 @@
    ]
   },
   "DIGUI-120": {
-   "status": "no_transmission",
+   "status": "transmitting",
+   "status_basis": "track beam: PRN 906 with sender ID 84 (DIGUI-120's own), 1324 CRC-valid seconds 11-13 05:56 to 23:45 (2026-11-13T05:56:30Z)",
    "catnum": 67060,
    "g2_phase": 905,
    "theta_us": -2.053,
@@ -2239,7 +2240,8 @@
    ]
   },
   "DIGUI-123": {
-   "status": "no_transmission",
+   "status": "transmitting",
+   "status_basis": "track beam: PRN 1836 with sender ID 86 (DIGUI-123's own), 1746 CRC-valid seconds 11-13 05:30 to 23:28; code-mate DIGUI-125 sends ID 88 and has none (2026-11-13T05:30:40Z)",
    "catnum": 67063,
    "g2_phase": 1835,
    "theta_us": -7.146,
@@ -2261,7 +2263,8 @@
    ]
   },
   "DIGUI-124": {
-   "status": "no_transmission",
+   "status": "transmitting",
+   "status_basis": "track beam: PRN 1158 with sender ID 87 (DIGUI-124's own), 201 CRC-valid seconds 11-13 21:10 to 23:07 (2026-11-13T21:10:51Z)",
    "catnum": 67064,
    "g2_phase": 1157,
    "theta_us": -9.834,
@@ -2305,8 +2308,8 @@
    ]
   },
   "DIGUI-126": {
-   "status": "no_transmission",
-   "status_basis": "clipping monitor: the 1268 MHz lobe without the 1202 MHz lobe on this pass and every later one to 11-11 (KV 2026-11-12: count silent), 6.86 deg (2026-11-08T00:08:35Z)",
+   "status": "transmitting",
+   "status_basis": "track beam: PRN 1276 with sender ID 89 (DIGUI-126's own), 79 CRC-valid seconds 11-13 22:41 to 22:44; code-mate DIGUI-119 sends ID 82 (2026-11-13T22:41:37Z)",
    "catnum": 67066,
    "g2_phase": 1275,
    "theta_us": -2.703,
@@ -4217,8 +4220,13 @@
   },
   {
    "start": "2026-11-13T06:39:01Z",
+   "end": "2026-11-13T21:10:45Z",
+   "note": "sky input down ~10 dB on every node at once (rf_chan median pw 1.47 -> 0.15 between 06:39:01.0 and 06:39:01.5Z), upstream of the nodes; back from 21:10:46Z (ramp to full level by 21:11:05Z) per the clipping monitor's median power (gnss guowang, 2026-11-16)"
+  },
+  {
+   "start": "2026-11-13T23:45:58Z",
    "end": null,
-   "note": "sky input down ~10 dB on every node at once (rf_chan median pw 1.47 -> 0.15 between 06:39:01.0 and 06:39:01.5Z), upstream of the nodes; still down at 12:38Z (gnss guowang)"
+   "note": "sky input lost again on every instance at once between 23:45:57 and 23:45:58Z (rf_chan median pw 1.48 -> 0.15); the analog chains' power supply failed; still dark 11-16 (gnss guowang)"
   }
  ],
  "silent_max_sep_deg": 4.0,
@@ -4257,7 +4265,8 @@
    ["2026-11-07T23:43:14Z", false, "clipping monitor: the 1268 MHz lobe without the 1202 MHz lobe on this pass and every later one to 11-11 (KV 2026-11-12: count silent), 4.82 deg"]
   ],
   "DIGUI-126": [
-   ["2026-11-08T00:08:35Z", false, "clipping monitor: the 1268 MHz lobe without the 1202 MHz lobe on this pass and every later one to 11-11 (KV 2026-11-12: count silent), 6.86 deg"]
+   ["2026-11-08T00:08:35Z", false, "clipping monitor: the 1268 MHz lobe without the 1202 MHz lobe on this pass and every later one to 11-11 (KV 2026-11-12: count silent), 6.86 deg"],
+   ["2026-11-13T22:41:37Z", true, "track beam: PRN 1276 with sender ID 89 (DIGUI-126's own), 79 CRC-valid seconds 11-13 22:41 to 22:44; code-mate DIGUI-119 sends ID 82"]
   ],
   "DIGUI-127": [
    ["2026-11-08T23:22:35Z", false, "clipping monitor: the 1268 MHz lobe without the 1202 MHz lobe on this pass and every later one to 11-11 (KV 2026-11-12: count silent), 4.82 deg"],
@@ -4265,6 +4274,15 @@
   ],
   "DIGUI-125": [
    ["2026-11-08T23:47:38Z", false, "clipping monitor: the 1268 MHz lobe without the 1202 MHz lobe on this pass and every later one to 11-11 (KV 2026-11-12: count silent), 5.58 deg"]
+  ],
+  "DIGUI-123": [
+   ["2026-11-13T05:30:40Z", true, "track beam: PRN 1836 with sender ID 86 (DIGUI-123's own), 1746 CRC-valid seconds 11-13 05:30 to 23:28; code-mate DIGUI-125 sends ID 88 and has none"]
+  ],
+  "DIGUI-120": [
+   ["2026-11-13T05:56:30Z", true, "track beam: PRN 906 with sender ID 84 (DIGUI-120's own), 1324 CRC-valid seconds 11-13 05:56 to 23:45"]
+  ],
+  "DIGUI-124": [
+   ["2026-11-13T21:10:51Z", true, "track beam: PRN 1158 with sender ID 87 (DIGUI-124's own), 201 CRC-valid seconds 11-13 21:10 to 23:07"]
   ]
  },
  "rejected": {
