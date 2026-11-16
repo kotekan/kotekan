@@ -33,13 +33,14 @@
 
 
 # DTV detector products from the X-engine halves (dtv.j2): one frame of dtv_blocks_per_frame
-# 8192-sample blocks per half, over 384 frequencies (num_local_freq in pathfinder.j2).
-# Shapes and ports must match dtv.j2.
+# 8192-sample blocks per half, over num_local_freq frequencies (telescope.j2, shared with
+# pathfinder.j2). Shapes and ports must match dtv.j2.
+{% from "telescope.j2" import num_local_freq %}
 {% set dtv_blocks_per_frame = 1024 %}
 {% set dtv_products = [
-    ("mask", "int8", "384", '"F"', "1", 11031),
-    ("powers", "uint64", "384, 3", '"F", "W"', "1, 1", 11033),
-    ("fine_support", "int32", "384, 2", '"F", "S"', "1, 1", 11035),
+    ("mask", "int8", num_local_freq ~ "", '"F"', "1", 11031),
+    ("powers", "uint64", num_local_freq ~ ", 3", '"F", "W"', "1, 1", 11033),
+    ("fine_support", "int32", num_local_freq ~ ", 2", '"F", "S"', "1, 1", 11035),
     ("fine_powers", "uint64", "2, 3, 256", '"F", "W", "B"', "1, 1, 1", 11037),
 ] %}
 {% set dtv_sent = dtv_products if dtv_calibration_mode|default(false) else dtv_products|selectattr("0", "equalto", "mask")|list %}
