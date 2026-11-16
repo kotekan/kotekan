@@ -4213,6 +4213,11 @@
    "note": "no sky signal: GPS L5 absent from the broker fleet 14:59:20.5-22:23:31.7Z (cf06 broker.log.7.gz FLEET-COH); cause not logged (gnss guowang, 2026-11-14)"
   },
   {
+   "start": "2026-11-09T17:04:00Z",
+   "end": "2026-11-09T22:09:00Z",
+   "note": "no sky signal: none in the clipping monitor from about 17:04 to 22:09Z and no checksum-valid second in the track beam from 18:00 to 21:59Z (site review S7-1); bounds approximate; no library pass falls in it"
+  },
+  {
    "start": "2026-11-13T06:39:01Z",
    "end": "2026-11-13T21:10:45Z",
    "note": "sky input down ~10 dB on every node at once (rf_chan median pw 1.47 -> 0.15 between 06:39:01.0 and 06:39:01.5Z), upstream of the nodes; back from 21:10:46Z (ramp to full level by 21:11:05Z) per the clipping monitor's median power (gnss guowang, 2026-11-16)"
