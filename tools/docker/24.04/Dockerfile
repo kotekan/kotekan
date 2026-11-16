@@ -57,7 +57,6 @@ RUN apt-get update && \
         libfftw3-dev \
         libgdal-dev \
         libhdf5-dev \
-        libhdf5-serial-dev \
         liblapack-dev \
         liblapacke-dev \
         liblz4-dev \
@@ -79,7 +78,6 @@ RUN apt-get update && \
         software-properties-common \
         valgrind \
         wget \
-        xtensor-dev \
         && \
     apt-get clean && apt-get autoclean && rm -rf /var/lib/apt/lists/*
 
