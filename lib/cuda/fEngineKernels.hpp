@@ -59,6 +59,7 @@ void gpu_twiddle_transpose(const __half2* in, size_t m1, size_t m2, const float2
  * Z[k2 * m1 + k1]; bin k's conjugate partner Z[m - k] sits at (m1 - k1, m2 - 1 - k2), or in
  * row 0 at (0, (m2 - k2) mod m2). The untangle, scaling and 4+4 encoding match
  * gpu_untangle_quantize; scale must also fold in the m1 the twiddle pass divided out.
+ * Bins move in pairs: out must be 2-byte aligned, gains and stats 8-byte.
  */
 void gpu_quantize_fourstep(const __half2* spec, size_t m1, size_t m2, const float2* w_hi,
                            const float2* w_lo, float scale, float gain, const float* gains,

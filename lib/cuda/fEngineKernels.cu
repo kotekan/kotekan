@@ -1,5 +1,7 @@
 #include "fEngineKernels.hpp"
 
+#include <cstring> // for memcpy
+
 __global__ static void unpack12_f32(const uint64_t* __restrict__ lut, int num_packets, int pairs,
                                     float2* __restrict__ out) {
     for (int p = blockIdx.x; p < num_packets; p += gridDim.x) {
@@ -22,53 +24,62 @@ void gpu_unpack12(const uint64_t* lut, int num_packets, int samples_per_packet, 
                                              (float2*)out);
 }
 
-__device__ static uint8_t encode(float vr, float vi, float g, const float* __restrict__ gains,
-                                 float* __restrict__ stats, size_t k) {
-    if (stats)
-        stats[k] += vr * vr + vi * vi;
-    if (gains)
-        g *= gains[k];
+// The 4+4 byte of g * (vr, vi): round to nearest even, clamp +-7, offset by 8, real high.
+__device__ static uint8_t encode(float vr, float vi, float g) {
     const int re = max(-7, min(7, __float2int_rn(g * vr)));
     const int im = max(-7, min(7, __float2int_rn(g * vi)));
     return (uint8_t)(((re + 8) << 4) | (im + 8));
 }
 
+__device__ static float2 twiddle_hilo(const float2* __restrict__ w_hi,
+                                      const float2* __restrict__ w_lo, uint64_t e) {
+    const float2 wh = w_hi[e >> 12];
+    const float2 wl = w_lo[e & 4095];
+    return make_float2(wh.x * wl.x - wh.y * wl.y, wh.x * wl.y + wh.y * wl.x);
+}
+
+// scale * X[k] from zk = Z[k], zmk = Z[m - k] and w = W^k: X[k] = Ze + W^k Zo with
+// Ze = (Z[k] + conj(Z[m-k])) / 2, Zo = (Z[k] - conj(Z[m-k])) / 2i.
+__device__ static float2 untangle(float2 zk, float2 zmk, float2 w, float scale) {
+    const float er = 0.5f * (zk.x + zmk.x);
+    const float ei = 0.5f * (zk.y - zmk.y);
+    const float our = 0.5f * (zk.y + zmk.y);
+    const float oui = 0.5f * (zmk.x - zk.x);
+    return make_float2(scale * (er + w.x * our - w.y * oui), scale * (ei + w.x * oui + w.y * our));
+}
+
+// One bin per thread. Block 2j quantizes the 256 bins of chunk j and block 2j + 1 those of the
+// j-th chunk from the end, which holds all but one of their conjugate partners m - k, so the
+// partner loads of each block are its neighbour's own loads and come from L2: the spectrum
+// crosses DRAM about once instead of twice.
 __global__ static void untangle_quantize(const float2* __restrict__ spec, size_t m,
                                          const float2* __restrict__ w_hi,
                                          const float2* __restrict__ w_lo, float scale, float gain,
                                          const float* __restrict__ gains, float* __restrict__ stats,
                                          uint8_t* __restrict__ out) {
-    for (size_t k = blockIdx.x * (size_t)blockDim.x + threadIdx.x; k < m;
-         k += (size_t)gridDim.x * blockDim.x) {
-        const float2 zk = spec[k];
-        const float2 zmk = spec[k == 0 ? 0 : m - k];
-        // Ze = (Z[k] + conj(Z[m-k])) / 2, Zo = (Z[k] - conj(Z[m-k])) / 2i.
-        const float er = 0.5f * (zk.x + zmk.x);
-        const float ei = 0.5f * (zk.y - zmk.y);
-        const float our = 0.5f * (zk.y + zmk.y);
-        const float oui = 0.5f * (zmk.x - zk.x);
-        const float2 wh = w_hi[k >> 12];
-        const float2 wl = w_lo[k & 4095];
-        const float2 w = make_float2(wh.x * wl.x - wh.y * wl.y, wh.x * wl.y + wh.y * wl.x);
-        const float xr = scale * (er + w.x * our - w.y * oui);
-        const float xi = scale * (ei + w.x * oui + w.y * our);
-        out[k] = encode(xr, xi, gain, gains, stats, k);
-    }
+    const size_t chunks = (m + 255) / 256;
+    const size_t c = blockIdx.x % 2 ? chunks - 1 - blockIdx.x / 2 : blockIdx.x / 2;
+    const size_t k = c * 256 + threadIdx.x;
+    if (k >= m)
+        return;
+    const float2 x =
+        untangle(spec[k], spec[k == 0 ? 0 : m - k], twiddle_hilo(w_hi, w_lo, k), scale);
+    if (stats)
+        stats[k] += x.x * x.x + x.y * x.y;
+    out[k] = encode(x.x, x.y, gains ? gain * gains[k] : gain);
 }
 
 void gpu_untangle_quantize(const float2* spec, size_t m, const float2* w_hi, const float2* w_lo,
                            float scale, float gain, const float* gains, float* stats, uint8_t* out,
                            cudaStream_t stream) {
-    const size_t want = (m + 255) / 256;
-    const int blocks = want < 4096 ? (int)want : 4096;
-    untangle_quantize<<<blocks, 256, 0, stream>>>(spec, m, w_hi, w_lo, scale, gain, gains, stats,
-                                                  out);
+    untangle_quantize<<<(unsigned)((m + 255) / 256), 256, 0, stream>>>(spec, m, w_hi, w_lo, scale,
+                                                                       gain, gains, stats, out);
 }
 
 // ---- Four-step kernels, templated on the complex storage type (__half2 for the fp16
-// path, float2 for the TF32 tensor path). All three work in 32x32 tiles with (32, 8)
-// threads: smem staging turns the transposed access of one side into coalesced rows on
-// both sides.
+// path, float2 for the TF32 tensor path). The unpack and twiddle passes work in 32x32 tiles
+// with (32, 8) threads, the quantizer in taller tiles: smem staging turns the transposed
+// access of one side into coalesced rows on both sides.
 
 __device__ static inline float2 tofloat2(const __half2 v) {
     return __half22float2(v);
@@ -118,13 +129,6 @@ void gpu_unpack12_f32_t(const uint64_t* lut, int samples_per_packet, size_t m1, 
     unpack12_t<<<grid, block, 0, stream>>>(lut, samples_per_packet, m1, m2, out);
 }
 
-__device__ static float2 twiddle_hilo(const float2* __restrict__ w_hi,
-                                      const float2* __restrict__ w_lo, uint64_t e) {
-    const float2 wh = w_hi[e >> 12];
-    const float2 wl = w_lo[e & 4095];
-    return make_float2(wh.x * wl.x - wh.y * wl.y, wh.x * wl.y + wh.y * wl.x);
-}
-
 template<typename T2>
 __global__ static void
 twiddle_transpose(const T2* __restrict__ in, size_t m1, size_t m2, const float2* __restrict__ w_hi,
@@ -158,57 +162,102 @@ void gpu_twiddle_transpose_f32(const float2* in, size_t m1, size_t m2, const flo
     twiddle_transpose<<<grid, block, 0, stream>>>(in, m1, m2, w_hi, w_lo, inv_m1, out);
 }
 
-template<typename T2>
-__global__ static void quantize_fourstep(const T2* __restrict__ spec, size_t m1, size_t m2,
-                                         const float2* __restrict__ w_hi,
-                                         const float2* __restrict__ w_lo, float scale, float gain,
-                                         const float* __restrict__ gains, float* __restrict__ stats,
-                                         uint8_t* __restrict__ out) {
-    __shared__ T2 fwd[32][33];
-    __shared__ T2 par[32][33];
-    const size_t k10 = blockIdx.x * 32;
-    const size_t k20 = blockIdx.y * 32;
-    for (int l = threadIdx.y; l < 32; l += 8) {
-        const size_t k1 = k10 + l;
-        const int c = threadIdx.x;
-        fwd[l][c] = spec[k1 * m2 + k20 + c];
+// K adjacent floats as one access, and K quantized bytes as one store.
+template<int K>
+struct quantize_lanes;
+template<>
+struct quantize_lanes<2> {
+    using floats = float2;
+    using bytes = uint16_t;
+};
+template<>
+struct quantize_lanes<1> {
+    using floats = float;
+    using bytes = uint8_t;
+};
+
+// Tiles of 32K rows (k1) by 32 columns (k2): spectrum rows load coalesced into shared memory,
+// then each lane quantizes K adjacent bins k1 of one k2, so a warp stores 32K contiguous
+// output bytes. Tile element (l, c) sits at l * 32 + (c ^ l / K): the row stores and the
+// lanes' K-row reads both hit 32 distinct banks. Tile t and tile T - 1 - t, which holds all
+// but one row of t's conjugate partners, run as neighbouring blocks, so the partner loads of
+// each are the other's own loads and come from L2: the spectrum crosses DRAM about once
+// instead of twice.
+template<typename T2, int K>
+__global__ static void __launch_bounds__(256)
+    quantize_fourstep(const T2* __restrict__ spec, size_t m1, size_t m2,
+                      const float2* __restrict__ w_hi, const float2* __restrict__ w_lo, float scale,
+                      float gain, const float* __restrict__ gains, float* __restrict__ stats,
+                      uint8_t* __restrict__ out) {
+    using floats = typename quantize_lanes<K>::floats;
+    using bytes = typename quantize_lanes<K>::bytes;
+    __shared__ T2 fwd[32 * K * 32];
+    __shared__ T2 par[32 * K * 32];
+    const int lane = threadIdx.x % 32, warp = threadIdx.x / 32;
+    const size_t nb = m2 / 32, tiles = m1 / (32 * K) * nb;
+    const size_t t = blockIdx.x % 2 ? tiles - 1 - blockIdx.x / 2 : blockIdx.x / 2;
+    const size_t k10 = t / nb * 32 * K, k20 = t % nb * 32;
+    for (int l = warp; l < 32 * K; l += 8) {
+        const size_t k1 = k10 + l, k2 = k20 + lane;
+        const int s = l * 32 + (lane ^ (l / K));
+        fwd[s] = spec[k1 * m2 + k2];
         // The conjugate partner of (k1, k2) is (m1 - k1, m2 - 1 - k2), except row 0 pairs
         // with itself at column (m2 - k2) mod m2.
-        if (k1 == 0)
-            par[l][c] = spec[(m2 - (k20 + c)) % m2];
-        else
-            par[l][c] = spec[(m1 - k1) * m2 + m2 - 1 - (k20 + c)];
+        par[s] = k1 == 0 ? spec[(m2 - k2) % m2] : spec[(m1 - k1) * m2 + m2 - 1 - k2];
     }
     __syncthreads();
-    for (int r = threadIdx.y; r < 32; r += 8) {
-        const size_t k1 = k10 + threadIdx.x;
-        const size_t k2 = k20 + r;
-        const size_t k = k2 * m1 + k1;
-        const float2 zk = tofloat2(fwd[threadIdx.x][r]);
-        const float2 zmk = tofloat2(par[threadIdx.x][r]);
-        const float er = 0.5f * (zk.x + zmk.x);
-        const float ei = 0.5f * (zk.y - zmk.y);
-        const float our = 0.5f * (zk.y + zmk.y);
-        const float oui = 0.5f * (zmk.x - zk.x);
-        const float2 w = twiddle_hilo(w_hi, w_lo, k);
-        const float xr = scale * (er + w.x * our - w.y * oui);
-        const float xi = scale * (ei + w.x * oui + w.y * our);
-        out[k] = encode(xr, xi, gain, gains, stats, k);
+    for (int r = warp; r < 32; r += 8) {
+        const size_t k = (k20 + r) * m1 + k10 + K * lane; // the lane's first bin
+        float g[K], st[K];
+        if (gains) {
+            const floats v = *(const floats*)(gains + k);
+            memcpy(g, &v, sizeof(v));
+        }
+        if (stats) {
+            const floats v = *(const floats*)(stats + k);
+            memcpy(st, &v, sizeof(v));
+        }
+        uint32_t q = 0;
+#pragma unroll
+        for (int i = 0; i < K; i++) {
+            const int s = (K * lane + i) * 32 + (r ^ lane);
+            const float2 x = untangle(tofloat2(fwd[s]), tofloat2(par[s]),
+                                      twiddle_hilo(w_hi, w_lo, k + i), scale);
+            if (stats)
+                st[i] += x.x * x.x + x.y * x.y;
+            q |= (uint32_t)encode(x.x, x.y, gains ? gain * g[i] : gain) << (8 * i);
+        }
+        if (stats) {
+            floats v;
+            memcpy(&v, st, sizeof(v));
+            *(floats*)(stats + k) = v;
+        }
+        *(bytes*)(out + k) = (bytes)q;
     }
+}
+
+// 64-row tiles where m1 allows; 128-row tiles measured slower on GB10 (fewer blocks per SM).
+template<typename T2>
+static void launch_quantize_fourstep(const T2* spec, size_t m1, size_t m2, const float2* w_hi,
+                                     const float2* w_lo, float scale, float gain,
+                                     const float* gains, float* stats, uint8_t* out,
+                                     cudaStream_t stream) {
+    if (m1 >= 64)
+        quantize_fourstep<T2, 2><<<(unsigned)(m1 / 64 * (m2 / 32)), 256, 0, stream>>>(
+            spec, m1, m2, w_hi, w_lo, scale, gain, gains, stats, out);
+    else
+        quantize_fourstep<T2, 1><<<(unsigned)(m1 / 32 * (m2 / 32)), 256, 0, stream>>>(
+            spec, m1, m2, w_hi, w_lo, scale, gain, gains, stats, out);
 }
 
 void gpu_quantize_fourstep(const __half2* spec, size_t m1, size_t m2, const float2* w_hi,
                            const float2* w_lo, float scale, float gain, const float* gains,
                            float* stats, uint8_t* out, cudaStream_t stream) {
-    dim3 grid(m1 / 32, m2 / 32), block(32, 8);
-    quantize_fourstep<<<grid, block, 0, stream>>>(spec, m1, m2, w_hi, w_lo, scale, gain, gains,
-                                                  stats, out);
+    launch_quantize_fourstep(spec, m1, m2, w_hi, w_lo, scale, gain, gains, stats, out, stream);
 }
 
 void gpu_quantize_fourstep_f32(const float2* spec, size_t m1, size_t m2, const float2* w_hi,
                                const float2* w_lo, float scale, float gain, const float* gains,
                                float* stats, uint8_t* out, cudaStream_t stream) {
-    dim3 grid(m1 / 32, m2 / 32), block(32, 8);
-    quantize_fourstep<<<grid, block, 0, stream>>>(spec, m1, m2, w_hi, w_lo, scale, gain, gains,
-                                                  stats, out);
+    launch_quantize_fourstep(spec, m1, m2, w_hi, w_lo, scale, gain, gains, stats, out, stream);
 }
