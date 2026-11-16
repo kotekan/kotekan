@@ -60,5 +60,5 @@ readers and writers. Build kotekan and the broker helpers with
 The script installs the test dependencies into a temporary virtual environment
 and checks that the helper binaries exist before running all four test modules.
 Each module starts a private Redis database and Comet broker on local ports;
-both processes and their temporary files are removed after the tests. The GCC
-CPU test job runs the same script.
+both processes and their temporary files are removed after the tests. CI does
+not run them, and without ``comet`` and ``redis-server`` on ``PATH`` they skip.
