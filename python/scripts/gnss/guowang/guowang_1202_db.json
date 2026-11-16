@@ -3380,14 +3380,13 @@
    "ref_input": 116,
    "drift_ns_s": 1.97,
    "note": "inferred satellite: theta and ppb on its TLE moved +1.612 s along track (fitted to the carrier)",
-   "last_observed_utc": "2026-11-09T11:54:15Z",
-   "last_checked_utc": "2026-11-09T11:54:15Z",
-   "last_checked_sep_deg": 13.49,
-   "passes_found": 2,
+   "last_observed_utc": "2026-11-04T12:45:57Z",
+   "last_checked_utc": "2026-11-04T12:45:57Z",
+   "last_checked_sep_deg": 5.42,
+   "passes_found": 1,
    "passes_silent": 0,
    "passes": [
-    ["2026-11-04T12:45:57Z", 5.42, true],
-    ["2026-11-09T11:54:15Z", 13.49, true]
+    ["2026-11-04T12:45:57Z", 5.42, true]
    ]
   },
   "DIGUI-180": {
@@ -3402,15 +3401,14 @@
    "ref_input": 116,
    "drift_ns_s": 6.49,
    "note": "inferred satellite: theta and ppb on its TLE moved -0.767 s along track (fitted to the carrier)",
-   "last_observed_utc": "2026-11-09T15:27:12Z",
-   "last_checked_utc": "2026-11-09T15:27:12Z",
-   "last_checked_sep_deg": 26.94,
-   "passes_found": 3,
+   "last_observed_utc": "2026-11-09T11:39:15Z",
+   "last_checked_utc": "2026-11-09T11:39:15Z",
+   "last_checked_sep_deg": 8.73,
+   "passes_found": 2,
    "passes_silent": 0,
    "passes": [
     ["2026-11-04T12:34:03Z", 10.95, true],
-    ["2026-11-09T11:39:15Z", 8.73, true],
-    ["2026-11-09T15:27:12Z", 26.94, true]
+    ["2026-11-09T11:39:15Z", 8.73, true]
    ]
   },
   "DIGUI-181": {
@@ -3470,10 +3468,9 @@
    "last_observed_utc": "2026-11-07T12:09:33Z",
    "last_checked_utc": "2026-11-07T12:09:33Z",
    "last_checked_sep_deg": 2.18,
-   "passes_found": 2,
+   "passes_found": 1,
    "passes_silent": 0,
    "passes": [
-    ["2026-11-06T12:44:02Z", 12.54, true],
     ["2026-11-07T12:09:33Z", 2.18, true]
    ]
   },
@@ -3559,11 +3556,10 @@
    "last_observed_utc": "2026-11-11T13:28:34Z",
    "last_checked_utc": "2026-11-11T13:28:34Z",
    "last_checked_sep_deg": 4.37,
-   "passes_found": 4,
+   "passes_found": 3,
    "passes_silent": 0,
    "passes": [
     ["2026-11-06T10:33:06Z", 4.8, true],
-    ["2026-11-06T14:20:12Z", 13.03, true],
     ["2026-11-07T09:59:44Z", 1.68, true],
     ["2026-11-11T13:28:34Z", 4.37, true]
    ]
@@ -3693,11 +3689,10 @@
    "last_observed_utc": "2026-11-07T14:12:57Z",
    "last_checked_utc": "2026-11-07T14:12:57Z",
    "last_checked_sep_deg": 7.44,
-   "passes_found": 3,
+   "passes_found": 2,
    "passes_silent": 0,
    "passes": [
     ["2026-11-06T14:47:02Z", 1.28, true],
-    ["2026-11-07T10:26:49Z", 12.7, true],
     ["2026-11-07T14:12:57Z", 7.44, true]
    ]
   },
@@ -3959,11 +3954,10 @@
    "last_observed_utc": "2026-11-11T11:31:41Z",
    "last_checked_utc": "2026-11-11T11:31:41Z",
    "last_checked_sep_deg": 3.91,
-   "passes_found": 3,
+   "passes_found": 2,
    "passes_silent": 0,
    "passes": [
     ["2026-11-04T13:31:39Z", 1.21, true],
-    ["2026-11-06T12:23:46Z", 13.9, true],
     ["2026-11-11T11:31:41Z", 3.91, true]
    ]
   },
@@ -4288,6 +4282,24 @@
  "rejected": {
   "DIGUI-72": [
    ["2026-11-13T02:11:24Z", "DIGUI-141 signal: code 1896 found on DIGUI-141 in the same window (168) at 4.12 deg; theta +374 us = the range difference to DIGUI-141 (113.1 km); ring r326 has no transmitter"]
+  ],
+  "DIGUI-213": [
+   ["2026-11-06T12:23:46Z", "code-mate test (paper data/beamdump_detections.csv): the code 2027 is DIGUI-78's, 4.9 us from its predicted theta, against 195 us from DIGUI-213's; window 44 at 13.9 deg"]
+  ],
+  "DIGUI-183": [
+   ["2026-11-06T12:44:02Z", "code-mate test (paper data/beamdump_detections.csv): the code 792 is DIGUI-112's, 0.06 us from its predicted theta, against 100 us from DIGUI-183's; window 48 at 12.5 deg"]
+  ],
+  "DIGUI-187": [
+   ["2026-11-06T14:20:12Z", "code-mate test (paper data/beamdump_detections.csv): the code 1922 is DIGUI-16's, 0.14 us from its predicted theta, against 212 us from DIGUI-187's; window 54 at 13.0 deg"]
+  ],
+  "DIGUI-193": [
+   ["2026-11-07T10:26:49Z", "code-mate test (paper data/beamdump_detections.csv): the code 271 is DIGUI-129's, 0.12 us from its predicted theta, against 99 us from DIGUI-193's; window 94 at 12.7 deg"]
+  ],
+  "DIGUI-179": [
+   ["2026-11-09T11:54:15Z", "code-mate test (paper data/beamdump_detections.csv): the code 1585 is DIGUI-108's, 0.07 us from its predicted theta, against 158 us from DIGUI-179's; window 47 at 13.5 deg"]
+  ],
+  "DIGUI-180": [
+   ["2026-11-09T15:27:12Z", "code-mate test (paper data/beamdump_detections.csv): the code 555 is DIGUI-166's, 7.3 us from its predicted theta, against 664 us from DIGUI-180's; window 57 at 26.9 deg"]
   ]
  }
 }
