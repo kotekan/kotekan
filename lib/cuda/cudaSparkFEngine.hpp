@@ -91,7 +91,7 @@
  *                          earlier than its window_index, payload frames are released three
  *                          jobs late so the history stays readable (payload_buf must hold
  *                          three windows more than the plain path needs; checked at
- *                          runtime), and the first three windows after startup or a
+ *                          startup), and the first three windows after startup or a
  *                          realignment fold zero history. The prototype is read as __half
  *                          (its symmetric first half, 2 * fft_length values) from one
  *                          device table shared by every instance on the GPU.

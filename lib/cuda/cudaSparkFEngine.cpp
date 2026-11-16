@@ -87,6 +87,19 @@ cudaSparkFEngine::cudaSparkFEngine(Config& config, const std::string& unique_nam
                             "{:d} and at most 2^28"),
                         unique_name, fft_length, samples_per_packet));
     num_packets = fft_length / samples_per_packet;
+    // The PFB holds each window's payload frames three windows longer. Short of four
+    // windows and two partial frames, the producer stalls on a frame the stage holds and
+    // no further job arrives. Slots are at least the packed payload, so this undercounts.
+    if (pfb) {
+        const uint64_t window_bytes = (uint64_t)num_packets * (3 * samples_per_packet / 2);
+        const uint64_t need =
+            (4 * window_bytes + payload_buf->frame_size - 1) / payload_buf->frame_size + 2;
+        if ((uint64_t)payload_buf->num_frames < need)
+            throw std::invalid_argument(
+                fmt::format(fmt("{:s}: pfb_taps 4 needs payload_buf to hold four windows and "
+                                "two partial frames, at least {:d} frames, not {:d}"),
+                            unique_name, need, payload_buf->num_frames));
+    }
     if (out_buf->frame_size < fft_length / 2)
         throw std::invalid_argument(
             fmt::format(fmt("{:s}: out_payload_buf frames hold {:d} bytes but a spectrum is "
@@ -344,11 +357,6 @@ void cudaSparkFEngine::main_thread() {
         if (job->num_packets != num_packets)
             FATAL_ERROR("Job carries {:d} packets per window, this stage expects {:d}",
                         job->num_packets, num_packets);
-        if (pfb && job->acquire_up_to - released > (uint64_t)payload_buf->num_frames)
-            FATAL_ERROR("pfb_taps 4 releases payload frames three jobs late: window {:d} would "
-                        "hold {:d} frames but payload_buf has {:d}; raise num_frames by three "
-                        "windows' worth",
-                        job->window_index, job->acquire_up_to - released, payload_buf->num_frames);
         // After a (re)alignment the previous windows are not contiguous with this one.
         if (pfb && (job->flags & FFT_WINDOW_REALIGNED))
             history = 0;
