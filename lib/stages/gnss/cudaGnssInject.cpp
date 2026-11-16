@@ -242,6 +242,11 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
                 d_ctl + row.ctl_offset + row.ctl_off_energy, row.d_energy,
                 (size_t)row.n_jobs * gnss_gpu::ROWS_PLAIN * row.chain->n_chan * sizeof(double),
                 cudaMemcpyDeviceToDevice, stream));
+    // The last row's time carries the shared copies, so the rows' times sum to the command's.
+    if (_hosted && profiling) {
+        CHECK_CUDA_ERROR(cudaEventCreate(&_rows.back().end_event));
+        CHECK_CUDA_ERROR(cudaEventRecord(_rows.back().end_event, stream));
+    }
 
     return record_end_event();
 }
@@ -536,7 +541,7 @@ void cudaGnssInject::enqueue_row(Row& row, const cudaPipelineState& pipestate, l
              "records",
              row.label, hop0_frame, n_active, n_jobs_frame, n_rec);
 
-    if (_hosted) {
+    if (_hosted && profiling && &row != &_rows.back()) {
         CHECK_CUDA_ERROR(cudaEventCreate(&row.end_event));
         CHECK_CUDA_ERROR(cudaEventRecord(row.end_event, stream));
     }

@@ -130,7 +130,8 @@ private:
         /// This frame's jobs and the device energy rows they wrote, [n_jobs * ROWS_PLAIN][n_chan].
         int n_jobs = 0;
         double* d_energy = nullptr;
-        /// Hosting only: this frame's events around the row's work, and their trackers.
+        /// Hosting only: the row's trackers and, when profiling, this frame's events around its
+        /// work (the last row's also take in the shared copies).
         cudaEvent_t start_event = nullptr, end_event = nullptr;
         std::shared_ptr<StatTracker> execute_time, utilization;
     };
