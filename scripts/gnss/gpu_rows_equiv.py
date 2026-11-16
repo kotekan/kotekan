@@ -2,9 +2,11 @@
 """Per-row equivalence harness for a GNSS GPU half (cudaGnssInject + cudaCorrelatorDual).
 
     scripts/gnss/gpu_rows_equiv.py extract config/generated/chord_gnss_<node>_multi.yaml X.json
-    scripts/gnss/gpu_rows_equiv.py config X.json OUT.yaml [--chains gps_l5 gal_e5a | all] [--rows]
+    scripts/gnss/gpu_rows_equiv.py config X.json OUT.yaml [--chains gps_l5 gal_e5a | all] [--rows
+        [--hosted]]
     scripts/gnss/gpu_rows_equiv.py run KOTEKAN CONFIG.yaml OUTDIR [--warm 40] [--frames 8]
     scripts/gnss/gpu_rows_equiv.py compare A/digests.json B/digests.json [--only ROW]
+    scripts/gnss/gpu_rows_equiv.py refuse KOTEKAN HOSTED.yaml OUTDIR MUTATION
 
 extract writes a kotekan config fragment: the node config's root scalars, its gnss<g>_n2dual
 block, and the host buffers that block names with their metadata pools, verbatim.
@@ -18,7 +20,8 @@ carries only the comb (--node-channels keeps the node's channels and num_local_f
 of each chain's tiles and control block and of the synth array, and a rawFileWrite per output.
 Frames are paced at the hop rate (5.12 us). --rows writes the rows form
 (gen_chord_gnss_config.py --gpu-rows): the half's gnss_rows from the chains' injects and gathers,
-one tiles and one control-block copy-out for the half.
+one tiles and one control-block copy-out for the half. --hosted (with --rows) hosts every row in
+one cudaGnssInject (--inject-host).
 
 run drives a config. It posts each chain's PRN map with its first two slots swapped (a refused map
 is recorded in prn_map_refused) and steps --pre-frames frames, so the swap applies before any seed
@@ -34,7 +37,8 @@ builder's timing; --async-build runs the builder as a node does (the Psi coverag
 baselines), and then only the warm frames of seeds with a constant Doppler reproduce. A digest
 frame must be warm, or the run exits 1: every slot that runs at all runs in every record of it and
 of the frame before, the data form of cudaGnssInject's psi_dark_hop0 == -1 (a state field, not on
-REST; the log lines it gates are reported too). --lever ROW moves one seed of that row. --dop-rate,
+REST; the log lines it gates are reported too). --lever ROW moves one seed of that row,
+--lever-prns ROW also swaps that row's slots 2 and 3, --lever-trim ROW raises its trims. --dop-rate,
 --leo-slots/--leo-rate and --reseed-at/--reseed-jump make the Psi coverage scenario; every run
 reports its dark slots per frame, over the slots that run at all (or, with --live-from, that ran
 in a control run). --scale-r0 adds the check that a slot running in a record after record 0
@@ -53,6 +57,11 @@ compare reports which (row, kind) digests differ between two runs over their dig
 every digest frame is warm, and neither run's digests depend on the builder's timing (an
 --async-build run whose seeds ramp or reseed, or any --async-build run under --all-frames); --only
 ROW requires exactly that row's digests to differ.
+
+refuse runs a hosted config (config --rows --hosted) with one mutation the hosted inject must
+refuse at construction (REFUSALS): two rows sharing lanes on a shared channel, two rows taking
+one gnss_row, a row naming no gnss_rows entry, a gnss_rows entry no row takes, and two rows on
+one REST path.
 """
 import argparse
 import copy
@@ -232,7 +241,24 @@ def rows_form(cfg, half):
     return cfg
 
 
-def make_config(x, chains, n_frames=8, node_channels=False, as_rows=False):
+def hosted_form(cfg, half):
+    """The hosted form of a rows-form harness config (gen_chord_gnss_config.py --inject-host):
+    one cudaGnssInject hosting every row's injector in its chains block."""
+    sys.path.insert(
+        0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../config")
+    )
+    import gen_chord_gnss_config
+
+    cmds = cfg[half]["commands"]
+    injects = [c for c in cmds if c["name"] == "cudaGnssInject"]
+    gen_chord_gnss_config.inject_host_form(injects, HALF_STAGE_RE.match(half).group(1))
+    cfg[half]["commands"] = injects + [c for c in cmds if c["name"] != "cudaGnssInject"]
+    return cfg
+
+
+def make_config(
+    x, chains, n_frames=8, node_channels=False, as_rows=False, hosted=False
+):
     """The harness config (a dict) and its comb for @p chains (or 'all') of the extract @p x.
     The comb is renumbered to local channels 0..n-1 unless @p node_channels."""
     half = half_key(x)
@@ -393,6 +419,8 @@ def make_config(x, chains, n_frames=8, node_channels=False, as_rows=False):
         cfg[host + "_sink"] = sink
     if as_rows:
         rows_form(cfg, half)
+    if hosted:
+        hosted_form(cfg, half)
     return cfg, comb
 
 
@@ -414,6 +442,10 @@ ROWS_TEXT = (
     "Rows form (--rows): one gnss_rows list on the half, one gather into the half's tiles, every "
     "control block in the half's one array, each row's slice copied out with the half's. "
 )
+HOSTED_TEXT = (
+    "Hosted (--hosted): one cudaGnssInject hosts every row's injector in its chains "
+    "block. "
+)
 
 
 class _Dumper(yaml.SafeDumper):
@@ -428,21 +460,25 @@ def _list(dumper, v):
 _Dumper.add_representer(list, _list)
 
 
-def write_config(x, chains, out, n_frames, node_channels, as_rows=False):
-    cfg, comb = make_config(x, chains, n_frames, node_channels, as_rows)
+def write_config(x, chains, out, n_frames, node_channels, as_rows=False, hosted=False):
+    cfg, comb = make_config(x, chains, n_frames, node_channels, as_rows, hosted)
     half = half_key(cfg)
-    rows = [c for c in cfg[half]["commands"] if c["name"] == "cudaGnssInject"]
+    rows = injectors(cfg, half)
     chan = (NODE_CHANNELS if node_channels else RENUMBERED).format(
         comb=" ".join(str(c) for c in comb),
         nm1=len(comb) - 1,
         n_local=cfg["num_local_freq"],
     )
-    text = (ROWS_TEXT if as_rows else "") + CONFIG_TEXT.format(
-        half=half,
-        chains=", ".join(chain_of(r, half) for r in rows),
-        n=len(rows),
-        chan=chan,
-        affinity=x[half].get("cpu_affinity", "(none)"),
+    text = (
+        (ROWS_TEXT if as_rows else "")
+        + (HOSTED_TEXT if hosted else "")
+        + CONFIG_TEXT.format(
+            half=half,
+            chains=", ".join(chain_of(r, half) for r in rows),
+            n=len(rows),
+            chan=chan,
+            affinity=x[half].get("cpu_affinity", "(none)"),
+        )
     )
     rule = "#" * 42
     head = "\n".join(
@@ -530,6 +566,18 @@ class Row:
         return b"".join(buf[x : x + n] for x in o)
 
 
+def injectors(cfg, half):
+    """Each row's injector: a cudaGnssInject, or in the hosted form a row of the half's one with
+    the host's keys, in gnss_rows order."""
+    cmds = [c for c in cfg[half]["commands"] if c["name"] == "cudaGnssInject"]
+    if not any("chains" in c for c in cmds):
+        return cmds
+    (host,) = cmds
+    shared = {k: v for k, v in host.items() if k != "chains"}
+    by_row = {r["gnss_row"]: r for r in host["chains"].values()}
+    return [dict(shared, **by_row[r["name"]]) for r in cfg[half]["gnss_rows"]]
+
+
 def rows_of(cfg):
     half = half_key(cfg)
     cmds = cfg[half]["commands"]
@@ -547,8 +595,7 @@ def rows_of(cfg):
     n_rec = cfg["samples_per_data_set"] // cmds[0]["hops_per_record"]
     rows = [
         Row(c, half, corr, out_host, sinks, cfg[half], n_rec)
-        for c in cmds
-        if c["name"] == "cudaGnssInject"
+        for c in injectors(cfg, half)
     ]
     synth_sink = sinks[out_host[corr["gnss_synth_name"]]]
     return half, corr, rows, synth_sink
@@ -709,12 +756,14 @@ def run(a):
         synth_sink = None
     if a.half_cores:
         cfg[half]["cpu_affinity"] = a.half_cores
-    for r in rows:
-        r.cmd["trim_ttl_s"] = 1.0e6
+    for c in cfg[half]["commands"]:
+        if c["name"] != "cudaGnssInject":
+            continue
+        c["trim_ttl_s"] = 1.0e6
         if not a.async_build:
-            r.cmd["psi_sync_build"] = True
+            c["psi_sync_build"] = True
         if a.psi_refresh_hz:
-            r.cmd["psi_refresh_hz"] = a.psi_refresh_hz
+            c["psi_refresh_hz"] = a.psi_refresh_hz
     run_cfg = os.path.join(a.outdir, "run.yaml")
     with open(run_cfg, "w") as f:
         yaml.safe_dump(cfg, f, sort_keys=False)
@@ -756,6 +805,8 @@ def run(a):
         for r in rows:
             m = rest(port, ep[r.name]["get_prns_endpoint"])["prns"]
             m[0], m[1] = m[1], m[0]
+            if a.lever_prns == r.name:
+                m[2], m[3] = m[3], m[2]
             try:
                 rest(port, ep[r.name]["set_prns_endpoint"], {"prns": m})
             except urllib.error.HTTPError as e:
@@ -801,7 +852,10 @@ def run(a):
             rest(
                 port,
                 ep[r.name]["set_trim_endpoint"],
-                [{"prn": prn, "trim_chips": 0.05} for prn in maps[r.name]],
+                [
+                    {"prn": prn, "trim_chips": 0.3 if a.lever_trim == r.name else 0.05}
+                    for prn in maps[r.name]
+                ],
             )
         t_seed = time.time()
         sizes = {}
@@ -969,6 +1023,94 @@ def run(a):
         print(f"digest frames not warm: {bad}", file=sys.stderr)
         return 1
     return 2 if a.scale_r0 and out["scale_r0"]["verdict"] != "pass" else 0
+
+
+# The hosted inject's refusals at construction (cudaGnssChordTrackState, gnss::TrackChain): each
+# mutation of a hosted config and the message it must stop with.
+REFUSALS = {
+    "overlap": "share a channel and write overlapping lanes",
+    "dup": "both take gnss_row",
+    "foreign": "gnss_rows has no row",
+    "missing": "no row of chains takes gnss_row",
+    "rest": "is already registered",
+}
+
+
+def refuse(a):
+    """Run a hosted config with one mutation (REFUSALS): exit 0 if kotekan stops with that
+    mutation's message, 1 if it starts or stops for another reason."""
+    cfg = load_config(a.config)
+    half = half_key(cfg)
+    (host,) = [c for c in cfg[half]["commands"] if c["name"] == "cudaGnssInject"]
+    chains, rows = host["chains"], cfg[half]["gnss_rows"]
+    first, second = list(chains)[:2]
+    if a.mutation == "overlap":
+        # The first two rows that share a channel write the same lanes.
+        i, j = next(
+            (i, j)
+            for j in range(len(rows))
+            for i in range(j)
+            if set(rows[i]["channels"]) & set(rows[j]["channels"])
+        )
+        rows[j]["lane_base"] = rows[i]["lane_base"]
+    elif a.mutation == "dup":
+        # A second entry takes the first's row, on endpoints of its own.
+        chains["dup"] = {
+            k: "/dup" + v if k.endswith("endpoint") else v
+            for k, v in chains[first].items()
+        }
+    elif a.mutation == "foreign":
+        chains[first]["gnss_row"] = half.replace("_n2dual", "_none")
+    elif a.mutation == "missing":
+        del chains[second]
+    elif a.mutation == "rest":
+        chains[second]["seed_endpoint"] = chains[first]["seed_endpoint"]
+    cfg[VOLTAGE_STAGE]["rest_mode"] = "step"
+    os.makedirs(a.outdir, exist_ok=True)
+    run_cfg = os.path.join(a.outdir, "run.yaml")
+    with open(run_cfg, "w") as f:
+        yaml.safe_dump(cfg, f, sort_keys=False)
+    log_path = os.path.join(a.outdir, "kotekan.log")
+    with open(log_path, "w") as log:
+        proc = subprocess.Popen(
+            [a.kotekan, "-c", run_cfg, "-b", f"127.0.0.1:{a.port}"],
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        started = False
+        t0 = time.time()
+        while proc.poll() is None and time.time() - t0 < a.startup_timeout:
+            try:
+                started = bool(rest(a.port, "/status").get("running"))
+            except OSError:
+                pass
+            if started:
+                break
+            time.sleep(0.5)
+        if proc.poll() is None:
+            try:
+                rest(a.port, "/kill", timeout=5)
+            except OSError:
+                pass
+            try:
+                proc.wait(timeout=60)
+            except subprocess.TimeoutExpired:
+                os.killpg(proc.pid, signal.SIGKILL)
+                proc.wait()
+    with open(log_path, errors="replace") as f:
+        text = f.read()
+    want = REFUSALS[a.mutation]
+    res = {
+        "mutation": a.mutation,
+        "started": started,
+        "returncode": proc.returncode,
+        "message": want,
+        "found": want in text,
+    }
+    res["verdict"] = "pass" if not started and want in text else "fail"
+    print(json.dumps(res))
+    return 0 if res["verdict"] == "pass" else 1
 
 
 def coverage(frames, reseed_at):
@@ -1143,6 +1285,11 @@ def main():
         help="the rows form: one gnss_rows list, one tiles and one control-block array for the "
         "half; run digests each row's slices of them, comparable with a per-chain run's",
     )
+    p.add_argument(
+        "--hosted",
+        action="store_true",
+        help="with --rows: one cudaGnssInject hosting every row (--inject-host)",
+    )
     p.add_argument("--frames", type=int, default=8, help="frames of the standalone run")
     p.add_argument(
         "--node-channels",
@@ -1174,6 +1321,8 @@ def main():
     )
     p.add_argument("--seed", type=int, default=1)
     p.add_argument("--lever", help="row whose slot 3 code phase moves by 0.25 chips")
+    p.add_argument("--lever-prns", help="row whose PRN map also swaps slots 2 and 3")
+    p.add_argument("--lever-trim", help="row whose trims are 0.3 chips instead of 0.05")
     p.add_argument(
         "--dop-rate", type=float, default=0.0, help="Doppler rate of every slot, Hz/s"
     )
@@ -1215,6 +1364,15 @@ def main():
     p.add_argument("--startup-timeout", type=float, default=300.0)
     p.add_argument("--frame-timeout", type=float, default=120.0)
     p.add_argument("--keep", action="store_true", help="keep the raw frames")
+    p = sub.add_parser(
+        "refuse", help="check the hosted inject refuses a mutated config"
+    )
+    p.add_argument("kotekan", help="kotekan binary")
+    p.add_argument("config", help="hosted harness config (config --rows --hosted)")
+    p.add_argument("outdir")
+    p.add_argument("mutation", choices=sorted(REFUSALS))
+    p.add_argument("--port", type=int, default=12048)
+    p.add_argument("--startup-timeout", type=float, default=300.0)
     p = sub.add_parser("compare", help="compare two runs' digests")
     p.add_argument("a")
     p.add_argument("b")
@@ -1233,10 +1391,18 @@ def main():
     elif a.cmd == "config":
         with open(a.extract) as f:
             write_config(
-                json.load(f), a.chains, a.out, a.frames, a.node_channels, a.rows
+                json.load(f),
+                a.chains,
+                a.out,
+                a.frames,
+                a.node_channels,
+                a.rows,
+                a.hosted,
             )
     elif a.cmd == "run":
         sys.exit(run(a))
+    elif a.cmd == "refuse":
+        sys.exit(refuse(a))
     elif a.cmd == "compare":
         sys.exit(compare(a))
 
