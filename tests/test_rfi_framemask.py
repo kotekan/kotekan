@@ -55,9 +55,7 @@ very_small_config = {
     },
     "rfi_thresholds": {
         "kotekan_update_endpoint": "json",
-        "thresholds": [
-            {"threshold": 1.0, "fraction": 0.5},
-        ],
+        "thresholds": [{"threshold": 1.0, "fraction": 0.5},],
         "valid_at_time_ns": 0,
     },
 }
