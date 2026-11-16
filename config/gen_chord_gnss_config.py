@@ -1867,6 +1867,52 @@ def gpu_rows_form(blocks, merged, injects, corr, outputs, out_buffers, pres, gpu
         }
 
 
+# The keys a chain's injector keeps in its row of a hosted cudaGnssInject (--inject-host): those
+# cudaGnssChordTrackState requires in every row, then those a row may set. Every other key is
+# the same on every chain of a half and sits once on the host.
+INJECT_ROW_KEYS = (
+    "gnss_row",
+    "prns",
+    "signal",
+    "n_channels",
+    "channel_ids",
+    "f_offset_hz",
+    "dll_spacing",
+    "lanes_per_slot",
+    "seed_endpoint",
+    "set_trim_endpoint",
+    "get_prns_endpoint",
+    "set_prns_endpoint",
+)
+INJECT_ROW_OPTIONAL_KEYS = ("prn_freq_offset_hz", "trim_endpoint")
+
+
+def inject_host_form(injects, gpu):
+    """--inject-host: the half's injectors as rows of one cudaGnssInject, each in its chains
+    block under its gnss_row with INJECT_ROW_KEYS and those of INJECT_ROW_OPTIONAL_KEYS it has,
+    every other key once on the host. The rows keep their own REST endpoints."""
+    row_keys = INJECT_ROW_KEYS + INJECT_ROW_OPTIONAL_KEYS
+    host = {}
+    for k in injects[0]:
+        if k in row_keys:
+            continue
+        if any(k not in inj or inj[k] != injects[0][k] for inj in injects):
+            raise SystemExit(
+                f"gnss{gpu}: --inject-host needs {k} the same on every chain's injector"
+            )
+        host[k] = injects[0][k]
+    host["chains"] = {}
+    for inj in injects:
+        extra = set(inj) - set(host) - set(row_keys)
+        if extra:
+            raise SystemExit(
+                f"gnss{gpu}: --inject-host: {inj['gnss_row']} has keys {sorted(extra)} that "
+                "are neither row keys nor on every chain"
+            )
+        host["chains"][inj["gnss_row"]] = {k: inj[k] for k in row_keys if k in inj}
+    injects[:] = [host]
+
+
 def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
     """One cudaProcess per GPU for every path-B chain on it.
 
@@ -2258,6 +2304,8 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
     corr["gnss_gathers"] = names
     if args.gpu_rows:
         gpu_rows_form(blocks, merged, injects, corr, outputs, out_buffers, pres, gpu)
+    if args.inject_host:
+        inject_host_form(injects, gpu)
     merged["in_buffers"] = primary["in_buffers"]
     merged["out_buffers"] = out_buffers
     merged["commands"] = (
@@ -3761,6 +3809,14 @@ def main():
         "tag, and each record assembler reads its row of the two. Refuses --vis-capture.",
     )
     ap.add_argument(
+        "--inject-host",
+        action="store_true",
+        help="with --gpu-rows: one cudaGnssInject per GPU half, hosting every chain's "
+        "injector as a row of its chains block (keyed by its gnss_row, on the chain's own "
+        "REST endpoints), instead of one injector per chain: one voltage-ring claim and one "
+        "control-block upload per frame for the half.",
+    )
+    ap.add_argument(
         "--psi-synth",
         action="store_true",
         help="cudaGnssChordTrack psi_synth on every chain: replica synthesis from per-PRN "
@@ -4181,6 +4237,10 @@ def main():
         raise SystemExit(
             "--gpu-rows requires --fold-epl: the record assemblers read the half's tiles and "
             "control blocks themselves"
+        )
+    if args.inject_host and not args.gpu_rows:
+        raise SystemExit(
+            "--inject-host requires --gpu-rows: its rows are the half's gnss_rows"
         )
     if args.gpu_rows and args.vis_capture:
         raise SystemExit(

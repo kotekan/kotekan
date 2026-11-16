@@ -159,6 +159,14 @@ def ctl_name(inject, default):
     return inject.get("gnss_ctl_name", default)
 
 
+def injectors(commands):
+    """Each chain's injector among a GPU half's commands: a cudaGnssInject, or each row of one
+    that hosts the half's chains (--inject-host)."""
+    for c in commands:
+        if c.get("name") == "cudaGnssInject":
+            yield from (c["chains"].values() if "chains" in c else [c])
+
+
 def primary_tag(config_path, gpu):
     """The primary chain's tag on this GPU: that of the injector whose control-block name
     (ctl_name: gnss<gpu><tag>_n2ctl) gnss_fleet.stage_chain reads as the primary, '' in a config
@@ -167,11 +175,9 @@ def primary_tag(config_path, gpu):
 
     cfg = yaml.safe_load(open(config_path))
     prim = gnss_fleet.stage_chain("gnss%d_n2ctl" % gpu, "n2ctl")
-    for c in cfg["gnss%d_n2dual" % gpu]["commands"]:
+    for c in injectors(cfg["gnss%d_n2dual" % gpu]["commands"]):
         name = ctl_name(c, "")
-        if c.get("name") == "cudaGnssInject" and (
-            gnss_fleet.stage_chain(name, "n2ctl") == prim
-        ):
+        if gnss_fleet.stage_chain(name, "n2ctl") == prim:
             return name[len("gnss%d" % gpu) : -len("_n2ctl")]
     sys.exit(
         "%s: GPU %d has no injector of the primary (%s)" % (config_path, gpu, prim)

@@ -14,9 +14,10 @@ and compares its per-chain paths with CONFIG's rest facet.
 
 The facets:
 
-  rest       the per-chain REST paths kotekan registers: the inject's four
-             (cudaGnssChordTrack.cpp), the assembler's (GnssGpuRecordAssemble's constructor)
-             and the combiner's (GnssCoherentCombiner::main_thread), conditions restated
+  rest       the per-chain REST paths kotekan registers: the inject's four, per row of a
+             hosted inject (gnssTrackChain.cpp), the assembler's (GnssGpuRecordAssemble's
+             constructor) and the combiner's (GnssCoherentCombiner::main_thread), conditions
+             restated
   identity   the names other stages and processes key on: each assembler's ProjBoard group,
              lane owner and cube sender, GnssN2Project board_group, cudaGnssBeamDump
              beam_lane_owner, the telemetry header fields and frame size, bufferSend addresses
@@ -150,9 +151,8 @@ def rest_surface(cfg):
     """{'GET /path', 'POST /path'} of every per-chain endpoint kotekan registers."""
     out = set()
     for u, s in _stages(cfg, "cudaProcess"):
-        for c in s[0].get("commands") or []:
-            if c.get("name") == "cudaGnssInject":
-                out.update("%s %s" % (verb, _slash(c[key])) for verb, key in INJECT)
+        for c in viscap_read.injectors(s[0].get("commands") or []):
+            out.update("%s %s" % (verb, _slash(c[key])) for verb, key in INJECT)
     for u, s in _stages(cfg, "GnssGpuRecordAssemble"):
         eps = [
             ("GET", "get_spectrum"),

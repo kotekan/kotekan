@@ -14,11 +14,14 @@ and keys, keep its chain's stall budget at 8.75 or more and differ from DIR's on
 and stall. With GNSS_CONTRACT_ROWS=DIR4 (the same node generated with --fold-epl --gpu-rows)
 every assembler and injector must read its row of its half's gnss_rows, and DIR4 must differ
 from DIR3 only in the placement of the tiles and ctl buffers: 60 per-chain ones out, 4 per-half
-ones in, on the half's NUMA node, holding the same bytes.
+ones in, on the half's NUMA node, holding the same bytes. With GNSS_CONTRACT_HOSTED=DIR5 (the
+same node generated with --fold-epl --gpu-rows --inject-host) its contract must equal DIR4's, and
+each half must have one injector whose rows, merged with its own keys, are DIR4's injectors.
 """
 import collections
 import copy
 import json
+import operator
 import os
 import re
 import sys
@@ -387,6 +390,44 @@ def test_rows(fold_dir, rows_dir):
     check(not bad, "rows: every injector and assembler reads its half's row (%s)" % bad)
 
 
+def test_hosted(rows_dir, hosted_dir):
+    rpath, hpath = os.path.join(rows_dir, NAME), os.path.join(hosted_dir, NAME)
+    rcfg, hcfg = nc.load(rpath), nc.load(hpath)
+    lines = nc.diff(nc.snapshot(rpath, NODE, NODE), nc.snapshot(hpath, NODE, NODE))
+    check(not lines, "hosted: the contract equals the rows form's (%s)" % lines[:5])
+    bad = []
+    for g in (0, 1):
+        half = "gnss%d_n2dual" % g
+        want = [c for c in rcfg[half]["commands"] if c["name"] == "cudaGnssInject"]
+        got = [c for c in hcfg[half]["commands"] if c["name"] == "cudaGnssInject"]
+        if len(got) != 1 or "chains" not in got[0]:
+            bad.append("%s: %d injectors" % (half, len(got)))
+            continue
+        host = {k: v for k, v in got[0].items() if k != "chains"}
+        rows = [dict(host, **r) for r in got[0]["chains"].values()]
+        key = operator.itemgetter("gnss_row")
+        if sorted(rows, key=key) != sorted(want, key=key) or any(
+            k != r["gnss_row"] for k, r in got[0]["chains"].items()
+        ):
+            bad.append("%s: rows" % half)
+        others = [c for c in hcfg[half]["commands"] if c["name"] != "cudaGnssInject"]
+        if others != [
+            c for c in rcfg[half]["commands"] if c["name"] != "cudaGnssInject"
+        ]:
+            bad.append("%s: other commands" % half)
+        if {k: v for k, v in hcfg[half].items() if k != "commands"} != {
+            k: v for k, v in rcfg[half].items() if k != "commands"
+        }:
+            bad.append("%s: block keys" % half)
+    rest = {k: v for k, v in hcfg.items() if not re.match(r"gnss\d_n2dual$", k)}
+    if rest != {k: v for k, v in rcfg.items() if not re.match(r"gnss\d_n2dual$", k)}:
+        bad.append("blocks outside the halves")
+    check(
+        not bad,
+        "hosted: one injector per half hosts the rows form's injectors (%s)" % bad,
+    )
+
+
 def test_replay(dump):
     """rest_surface of the replay's config against what its stages registered."""
     cpath = os.path.join(dump, "config.json")
@@ -444,6 +485,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="node_contract_") as tmp:
         folded = os.environ.get("GNSS_CONTRACT_FOLDED")
         rows = os.environ.get("GNSS_CONTRACT_ROWS")
+        hosted = os.environ.get("GNSS_CONTRACT_HOSTED")
         tests = (
             [
                 lambda: test_counts(base, cfg),
@@ -452,6 +494,7 @@ def main():
             + ([lambda: test_replay(dump)] if dump else [])
             + ([lambda: test_fold(base, cfg, folded)] if folded else [])
             + ([lambda: test_rows(folded, rows)] if folded and rows else [])
+            + ([lambda: test_hosted(rows, hosted)] if rows and hosted else [])
         )
         for t in tests:
             try:
