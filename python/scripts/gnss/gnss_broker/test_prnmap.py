@@ -385,7 +385,7 @@ def test_chains_config():
     """The production chains (config/gnss_chains_chord.yaml, each chain over `common:`) against
     the chains table's PRN lists (config/gnss_fleet_chord.yaml chains:; an FDMA list, PRN@k,
     pins its slots and is left out): a chain under apply must have PRNs
-    the node's /set_prns can take (1..gnss::max_prn: cudaGnssChordTrack.cpp), or every swap it
+    the node's /set_prns can take (1..gnss::max_prn: gnssTrackChain.cpp), or every swap it
     proposes is refused (sbas_l5, 10-23); and a chain with probe-require-slot must read the map
     back, or the filter never has a map and the probes go unfiltered."""
     print("\nthe chains' prn-reconfig against the manifest's PRN lists")
