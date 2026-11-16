@@ -167,11 +167,7 @@ def rfimasksum_data(tmpdir_factory, setup):
     )
 
     test = runner.KotekanStageTester(
-        "RfiMaskSum",
-        {},
-        input_buffer,
-        dump_buffer,
-        config,
+        "RfiMaskSum", {}, input_buffer, dump_buffer, config,
     )
 
     test.run()

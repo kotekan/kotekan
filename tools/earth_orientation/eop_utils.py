@@ -665,11 +665,7 @@ def build_EOP_table(times, time0_ns, iers):
 
 
 def build_time_array(
-    t_ref,
-    n_intervals_before,
-    n_intervals_after,
-    interval_length_days,
-    snap_to_grid,
+    t_ref, n_intervals_before, n_intervals_after, interval_length_days, snap_to_grid,
 ):
     r"""
     Construct an array of times for the entries in the EOP Table.
