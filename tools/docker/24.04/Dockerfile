@@ -28,6 +28,7 @@ WORKDIR /code/build
 RUN apt-get update && \
     apt-get install -y \
         bison \
+        black \
         build-essential \
         ccache \
         clang \
@@ -57,7 +58,6 @@ RUN apt-get update && \
         libfftw3-dev \
         libgdal-dev \
         libhdf5-dev \
-        libhdf5-serial-dev \
         liblapack-dev \
         liblapacke-dev \
         liblz4-dev \
@@ -82,7 +82,6 @@ RUN apt-get update && \
         software-properties-common \
         valgrind \
         wget \
-        xtensor-dev \
         && \
     apt-get clean && apt-get autoclean && rm -rf /var/lib/apt/lists/*
 
@@ -95,7 +94,7 @@ ENV PIP_NO_CACHE_DIR=1
 RUN python3 -m pip install --upgrade \
         astropy \
         bitshuffle \
-        'click>=8.1.3' \
+        click \
         cmake_format \
         flask \
         flask-cors \
@@ -116,11 +115,6 @@ RUN python3 -m pip install --upgrade \
         requests \
         ruamel.yaml \
         tabulate
-
-# The current formatter needs an older Click than the runtime packages.
-RUN python3 -m venv /opt/black_env && \
-    /opt/black_env/bin/python -m pip install black==19.10b0 click==8.0.2 && \
-    ln -s /opt/black_env/bin/black /usr/local/bin/black
 
 # Uncomment this to check what version got installed
 # RUN python3 -m pip show <package>

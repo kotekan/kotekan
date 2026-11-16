@@ -148,6 +148,10 @@ state at startup (both default to false):
 ``dtv_write_enabled``, endpoint ``/dtv_write_enabled``
     Send the detector products to the recv node.
 
+``dtv_calibration_mode`` (template only, default false) sets which products are
+sent: only the mask, or with it the powers, fine support and fine powers for
+calibration and debugging. Render ``config/chord/recv.j2`` with the same value.
+
 The detector reads the bad feed mask ring of ``bufferBadInputs``, and a flagged
 input is packed as zero. ``bufferBadInputs`` also flags every element outside
 the main array, which on CHORD are the Missing dishes and the 16 RFI antennas,
@@ -155,16 +159,16 @@ so the detector also drops the RFI antennas, which probably see DTV most
 strongly. ``dtv_powers`` and ``dtv_fine_powers`` fall as inputs are flagged, so
 a bundle calibrated from recorded files needs a steady input count.
 
-Each X-engine half packs 1024 blocks (about 43 seconds) of masks, powers, fine
-support and fine powers into one frame with ``NDArrayTimeConcat``, and sends
-the frames to the recv node. ``config/chord/recv.j2`` writes each frame to its
-own file under ``/mnt/cs00/data/dtv``, named ``dtv_<product>.<number>.h5``. The numbers
-follow arrival order, so a file's ``coarse_freq`` attribute identifies the
-half, and its ``fpga_seq_num`` attribute gives the start of the window. The
-windows are aligned in ``fpga_seq_num``, so the halves' files cover the same
-time spans. A block missing from a window is a row of ``0xFF`` bytes: ``-1``
-for the mask and fine support, and the largest ``uint64`` for the powers and
-fine powers.
+Each X-engine half packs 1024 blocks (about 43 seconds) of each sent product
+into one frame with ``NDArrayTimeConcat``, and sends the frames to the recv
+node. ``config/chord/recv.j2`` writes each frame to its own file under
+``/mnt/cs00/data/dtv/acq_<start time>``, one directory per run, named
+``dtv_<product>.<number>.h5``. The numbers follow arrival order, so a file's
+``coarse_freq`` attribute identifies the half, and its ``fpga_seq_num``
+attribute gives the start of the window. The windows are aligned in
+``fpga_seq_num``, so the halves' files cover the same time spans. A block
+missing from a window is a row of ``0xFF`` bytes: ``-1`` for the mask and fine
+support, and the largest ``uint64`` for the powers and fine powers.
 
 POST ``{"enabled": true, "valid_at_time_ns": 0}`` to ``/dtv_mask_enabled`` to
 apply the mask from the next frame, and ``false`` to stop. A nonzero
@@ -242,10 +246,11 @@ Monitoring
   then cover the DTV rejections as well.
 * ``dtv_powers`` holds the pilot and reference powers of every block, so a
   moved pilot or a new line near a reference bin can be seen there even when
-  the mask does not fire. Either one requires a recalibration.
-* ``config/chord/dtv.j2`` also sends ``dtv_fine_powers`` to the recv node, on
-  port 11037. PilotProxy calibrates a bundle from these files, so a detect-only
-  run replaces baseband captures for calibration. The output has
+  the mask does not fire. Either one requires a recalibration. On CHORD it is
+  sent only in calibration mode.
+* In calibration mode, ``config/chord/dtv.j2`` also sends ``dtv_fine_powers`` to
+  the recv node, on port 11037. PilotProxy calibrates a bundle from these files,
+  so a detect-only run replaces baseband captures for calibration. The output has
   ``dtv_fine_powers_rows`` rows (R, 2 on the Pathfinder), with bound channel i
   in row i and its ``coarse_freq`` in the metadata (-1 for an unused row). A
   node that binds more than R channels stops at its first frame.
