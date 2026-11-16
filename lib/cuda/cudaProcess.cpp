@@ -10,6 +10,7 @@
 #include "driver_types.h"           // for CUevent_st, cudaEvent_t, cudaEventDisableTiming, cudaH...
 #include "factory.hpp"              // for FACTORY, FACTORY_VARIANT
 #include "kotekanLogging.hpp"       // for DEBUG, DEBUG2
+#include "kotekanNvtx.hpp"          // for KOTEKAN_NVTX_PUSH, KOTEKAN_NVTX_POP, KOTEKAN_NVTX_RANGE
 
 #include "fmt.hpp" // for compile_string_to_view
 
@@ -134,15 +135,18 @@ void cudaProcess::queue_commands(int gpu_frame_counter) {
     {
         // One queuing lock per stream this pipeline enqueues onto; the helper fixes the order
         // (see lock_streams_ascending for why that matters).
+        KOTEKAN_NVTX_PUSH("stream locks");
         auto locks =
             lock_streams_ascending(_my_stream_ids, [&](std::int32_t sid) -> std::recursive_mutex& {
                 return device->stream_mutex(sid);
             });
+        KOTEKAN_NVTX_POP();
 
         // Create the state object that will get passed through this pipeline
         cudaPipelineState pipestate(gpu_frame_counter);
 
         for (auto& command : commands) {
+            KOTEKAN_NVTX_RANGE("execute " + command[icommand]->get_unique_name());
             // Feed the last signal into the next operation
             cudaEvent_t event = ((cudaCommand*)command[icommand])->execute_base(pipestate, events);
             if (event != nullptr) {
