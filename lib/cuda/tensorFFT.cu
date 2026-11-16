@@ -506,23 +506,44 @@ void gpu_tensor_fft2_quantize(const __half2* in, size_t m1, size_t m2, const flo
         in, m1, m2, w_hi, w_lo, scale, gain, gains_t, stats_t, out);
 }
 
-// Bytes [k1][k2] -> bin order [k2 * m1 + k1], 32x32 tiles.
-__global__ static void bytes_transpose(const uint8_t* __restrict__ in, size_t m1, size_t m2,
-                                       uint8_t* __restrict__ out) {
-    __shared__ uint8_t tile[32][33];
-    const size_t k10 = blockIdx.x * 32;
-    const size_t k20 = blockIdx.y * 32;
-    for (int l = threadIdx.y; l < 32; l += 8)
-        tile[l][threadIdx.x] = in[(k10 + l) * m2 + k20 + threadIdx.x];
+// Bytes [k1][k2] -> bin order [k2 * m1 + k1] in 128 x 128 tiles, so that a warp reads 128
+// bytes of an input row and writes 128 bytes of an output row, a 32-bit word per lane. The
+// shared tile holds input row l as 32 words XOR-swizzled by l / 4: the row stores and the
+// reads of word g from rows 4 lane .. 4 lane + 3 both hit 32 distinct banks. Each lane turns
+// those four words into the four output words of k2 = 4 g .. 4 g + 3 in registers.
+__global__ static void __launch_bounds__(256)
+    bytes_transpose(const uint8_t* __restrict__ in, size_t m1, size_t m2,
+                    uint8_t* __restrict__ out) {
+    __shared__ uint32_t tile[128 * 32];
+    const int lane = threadIdx.x % 32, warp = threadIdx.x / 32;
+    const size_t k10 = blockIdx.x * 128;
+    const size_t k20 = blockIdx.y * 128;
+    for (int l = warp; l < 128; l += 8)
+        tile[l * 32 + (lane ^ (l / 4))] = ((const uint32_t*)(in + (k10 + l) * m2 + k20))[lane];
     __syncthreads();
-    for (int r = threadIdx.y; r < 32; r += 8)
-        out[(k20 + r) * m1 + k10 + threadIdx.x] = tile[threadIdx.x][r];
+    for (int g = warp; g < 32; g += 8) {
+        uint32_t w[4];
+#pragma unroll
+        for (int i = 0; i < 4; i++)
+            w[i] = tile[(4 * lane + i) * 32 + (g ^ lane)];
+        // Byte i of output word j is byte j of w[i].
+        const uint32_t lo01 = __byte_perm(w[0], w[1], 0x5140);
+        const uint32_t hi01 = __byte_perm(w[0], w[1], 0x7362);
+        const uint32_t lo23 = __byte_perm(w[2], w[3], 0x5140);
+        const uint32_t hi23 = __byte_perm(w[2], w[3], 0x7362);
+        uint32_t* o = (uint32_t*)(out + (k20 + 4 * g) * m1 + k10) + lane;
+        o[0] = __byte_perm(lo01, lo23, 0x5410);
+        o[m1 / 4] = __byte_perm(lo01, lo23, 0x7632);
+        o[m1 / 2] = __byte_perm(hi01, hi23, 0x5410);
+        o[3 * m1 / 4] = __byte_perm(hi01, hi23, 0x7632);
+    }
 }
 
 void gpu_bytes_transpose(const uint8_t* in, size_t m1, size_t m2, uint8_t* out,
                          cudaStream_t stream) {
-    dim3 grid(m1 / 32, m2 / 32), block(32, 8);
-    bytes_transpose<<<grid, block, 0, stream>>>(in, m1, m2, out);
+    assert(m1 % 128 == 0 && m2 % 128 == 0);
+    dim3 grid(m1 / 128, m2 / 128);
+    bytes_transpose<<<grid, 256, 0, stream>>>(in, m1, m2, out);
 }
 
 // Floats in bin order [k2 * m1 + k1] -> transform-local [k1 * m2 + k2] (or back, by

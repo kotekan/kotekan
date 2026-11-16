@@ -45,7 +45,8 @@ void gpu_tensor_fft2_quantize(const __half2* in, size_t m1, size_t m2, const flo
                               const float2* w_lo, float scale, float gain, const float* gains_t,
                               float* stats_t, uint8_t* out, cudaStream_t stream);
 
-/// Bytes [k1][k2] (m1 rows of m2) to bin order [k2 * m1 + k1].
+/// Bytes [k1][k2] (m1 rows of m2) to bin order [k2 * m1 + k1]. m1 and m2 must be multiples
+/// of 128, and out 4-byte aligned.
 void gpu_bytes_transpose(const uint8_t* in, size_t m1, size_t m2, uint8_t* out,
                          cudaStream_t stream);
 
