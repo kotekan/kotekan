@@ -186,6 +186,8 @@ def setup(request, accum_setup):
     # prod_config and accum_setup are shared between params, so set or clear both
     config.pop("rfi_first_stage_enabled", None)
     accum_setup.pop("rfi_first_stage_enabled_updatable_config", None)
+    config.pop("dtv_mask_enabled", None)
+    accum_setup.pop("dtv_mask_enabled_updatable_config", None)
     if "first_stage_off_frame" in request.param:
         frame_len = config["samples_per_data_set"]
         off_seq = (
@@ -196,10 +198,15 @@ def setup(request, accum_setup):
             "enabled": False,
             "valid_at_time_ns": tel.get_t_inst_ns(off_seq, request.param["tel"]),
         }
-        accum_setup[
-            "rfi_first_stage_enabled_updatable_config"
-        ] = "/rfi_first_stage_enabled"
+        accum_setup["rfi_first_stage_enabled_updatable_config"] = (
+            "/rfi_first_stage_enabled"
+        )
         request.param["first_stage_off_seq"] = off_seq
+        # The DTV mask switches on at the same time
+        config["dtv_mask_enabled"] = dict(
+            config["rfi_first_stage_enabled"], enabled=True
+        )
+        accum_setup["dtv_mask_enabled_updatable_config"] = "/dtv_mask_enabled"
 
     request.param["rng"] = np.random.default_rng(seed=_TEST_SEED)
 
@@ -227,7 +234,7 @@ def make_zeroed_chord_buffer(
 ):
     """
     Produce ChordBuffer objects containing 0's in sequence.
-    
+
     Parameters
     ----------
     name : String
@@ -1114,7 +1121,7 @@ def expected_accum(
             dcorr = (corr2 - corr1).astype(np.float32)
             dcorr2 = dcorr[..., 0] ** 2 + dcorr[..., 1] ** 2
             accum_var_chime[i] += mask_32[:, None, None, None] * dcorr2
-            accum_bias_chime[i] += (mask_32 * (dN ** 2))[:, None, None, None]
+            accum_bias_chime[i] += (mask_32 * (dN**2))[:, None, None, None]
 
             # Accumulate the EvenOddPosDef variance. Less worried about replicating truncation here.
             inv_N1 = safe_invert(N1, float)
@@ -1141,7 +1148,7 @@ def expected_accum(
             bias = accum_bias_chime[i, f] * (vis[..., 0] ** 2 + vis[..., 1] ** 2)
             accum_n2_var_chime[i, f, :] = (accum_var_chime[i, f] - bias)[
                 corr_idx_b, corr_idx_i, corr_idx_j
-            ] * (inv_N_32 ** 2)
+            ] * (inv_N_32**2)
 
             # compute final EvenOddPosDef var
             # Normalize by pairs that contributed to the variance estimate.
@@ -1364,6 +1371,29 @@ def test_first_stage_enabled(accum_data, accum_list, setup):
             frame_starts = sub_seqs - sub_seqs % frame_len
             expected = sub_len * np.count_nonzero(frame_starts < off_seq)
         assert frame.metadata.n_rfi_first_stage_enabled_fpga_ticks == expected
+
+
+def test_dtv_mask_enabled(accum_data, accum_list, setup):
+
+    if setup["fail"]:
+        return
+
+    config = setup["config"]
+    frame_len = config["samples_per_data_set"]
+    sub_len = config["sub_integration_ntime"]
+    on_seq = setup.get("first_stage_off_seq")
+
+    for idx, frame in enumerate(accum_data):
+        accum = accum_list[idx // config["num_local_freq"]]
+        # Without the endpoint the count is zero
+        expected = 0
+        if on_seq is not None:
+            sub_seqs = (
+                config["first_frame_index"] * frame_len + sub_len * accum["sub_idx"]
+            )
+            frame_starts = sub_seqs - sub_seqs % frame_len
+            expected = sub_len * np.count_nonzero(frame_starts >= on_seq)
+        assert frame.metadata.n_dtv_mask_enabled_fpga_ticks == expected
 
 
 def test_vis(accum_data, expected_accum, accum_list, setup):

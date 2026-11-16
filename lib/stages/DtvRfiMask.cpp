@@ -4,9 +4,11 @@
 #include "NDArray.hpp"
 #include "Stage.hpp"
 #include "StageFactory.hpp"
+#include "Telescope.hpp"
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "chordMetadata.hpp"
+#include "configUpdater.hpp"
 #include "kotekanLogging.hpp"
 
 #include <algorithm>
@@ -14,6 +16,7 @@
 #include <cstring>
 #include <functional>
 #include <limits>
+#include <mutex>
 #include <set>
 #include <vector>
 
@@ -52,6 +55,11 @@
  *          in [0,CHORD_META_MAX_FREQ) that must have an evaluated fine decision (default []).
  *          Requires fine_support_buf when nonempty. Both lists must be disjoint and
  *          contain only IDs in the input frequency assignment.
+ * @conf    enabled_updatable_config Optional path to a block with `enabled` and
+ *          `valid_at_time_ns` (0: from startup). While disabled, the RFImask is copied
+ *          unchanged and require_fine_freq_ids is not checked. A change applies from the
+ *          first frame starting at or after valid_at_time_ns. Without this key the mask is
+ *          always applied.
  */
 class DtvRfiMask : public kotekan::Stage {
 public:
@@ -110,6 +118,12 @@ public:
             if (support_desc)
                 ensure_product_desc(support, true, support_desc->get_rank());
         }
+        enabled_config_path =
+            config.get_default<std::string>(unique_name, "enabled_updatable_config", "");
+        if (!enabled_config_path.empty())
+            kotekan::configUpdater::instance().subscribe(
+                enabled_config_path,
+                std::bind(&DtvRfiMask::receive_enabled, this, std::placeholders::_1));
     }
 
     void main_thread() override {
@@ -180,6 +194,15 @@ public:
                         && sm->get_freq_upchan_index() != std::vector<int>(frequencies, 0)))
                     FATAL_ERROR("DtvRfiMask fine support identity mismatch");
             }
+            {
+                std::lock_guard<std::mutex> lock(enabled_mutex);
+                if (seq >= next_enabled_valid_at_seq) {
+                    if (next_enabled != enabled)
+                        WARN("DTV mask {:s} from seq {:d}", next_enabled ? "on" : "off", seq);
+                    enabled = next_enabled;
+                    next_enabled_valid_at_seq = std::numeric_limits<int64_t>::max();
+                }
+            }
             std::vector<bool> excluded(frequencies);
             for (int f = 0; f < frequencies; ++f) {
                 if (reject[f] != 0 && reject[f] != 1)
@@ -191,14 +214,15 @@ public:
                           || ((valid == 0 || valid == 1) && count >= 0 && count <= 256
                               && (valid == 0 || count > 0))))
                         FATAL_ERROR("DtvRfiMask malformed fine support row");
-                    if (valid == -1
+                    if (enabled && valid == -1
                         && std::find(required.begin(), required.end(), freq[f]) != required.end())
                         FATAL_ERROR("DtvRfiMask required fine threshold was not evaluated");
                     invalid = valid == 0;
                 }
-                excluded[f] =
-                    reject[f] || invalid
-                    || std::find(permanent.begin(), permanent.end(), freq[f]) != permanent.end();
+                excluded[f] = enabled
+                              && (reject[f] || invalid
+                                  || std::find(permanent.begin(), permanent.end(), freq[f])
+                                         != permanent.end());
             }
 
             auto* combined = output->wait_for_empty_frame(unique_name, out_id);
@@ -226,6 +250,32 @@ public:
     }
 
 private:
+    bool receive_enabled(nlohmann::json& json) {
+        bool new_enabled;
+        int64_t time_ns;
+        try {
+            new_enabled = json.at("enabled").get<bool>();
+            time_ns = json.at("valid_at_time_ns").get<int64_t>();
+        } catch (const std::exception& e) {
+            WARN("Failed to read update to {:s}: {:s}", enabled_config_path, e.what());
+            return false;
+        }
+        // 0 means from startup. A time before the stream start would underflow in to_seq.
+        int64_t seq = 0;
+        if (time_ns != 0) {
+            if (time_ns < Telescope::instance().to_time_ns(0)) {
+                WARN("Got invalid start time: {:d} - keeping the current DTV mask state", time_ns);
+                return true;
+            }
+            seq = Telescope::instance().to_seq(time_ns);
+        }
+        INFO("{:s} the DTV mask from seq {:d}", new_enabled ? "Enabling" : "Disabling", seq);
+        std::lock_guard<std::mutex> lock(enabled_mutex);
+        next_enabled = new_enabled;
+        next_enabled_valid_at_seq = seq;
+        return true;
+    }
+
     void ensure_product_desc(Buffer* buffer, bool fine, size_t rank, int64_t period = 1) {
         std::vector<std::ptrdiff_t> extents{frequencies};
         std::vector<kotekan::Symbol> names{"F"};
@@ -252,6 +302,11 @@ private:
     const int mask_rows;
     Buffer *rfi, *dtv, *output, *support;
     std::vector<int> permanent, required;
+    std::string enabled_config_path;
+    std::mutex enabled_mutex;
+    bool enabled = true;
+    bool next_enabled = true;
+    int64_t next_enabled_valid_at_seq = std::numeric_limits<int64_t>::max();
 };
 
 REGISTER_KOTEKAN_STAGE(DtvRfiMask);

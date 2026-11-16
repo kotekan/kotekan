@@ -1,7 +1,7 @@
-numpy>=1.15.1
+numpy
 astropy
 mpmath
-msgpack>=0.6.1
+msgpack
 click
 h5py
 future
