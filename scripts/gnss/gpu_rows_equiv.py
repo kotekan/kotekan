@@ -716,6 +716,8 @@ def scale_r0(row, ctl, synth_rect):
 
 
 def run(a):
+    if a.midswap and a.reseed_at is None:
+        raise SystemExit("--midswap needs --reseed-at")
     cfg = load_config(a.config)
     half, corr, rows, synth_sink = rows_of(cfg)
     spd = cfg["samples_per_data_set"]
@@ -892,9 +894,22 @@ def run(a):
         if a.reseed_at is not None:
             rest(port, step, {"num_frames": a.reseed_at})
             wait_frames(n_pre + a.reseed_at)
+            n_mid = 0
+            if a.midswap:
+                # Slots 2 and 3 of one seeded row swap while every row runs, then the reseed.
+                m = maps[a.midswap][:]
+                m[2], m[3] = m[3], m[2]
+                rest(port, ep[a.midswap]["set_prns_endpoint"], {"prns": m})
+                n_mid = 1
+                rest(port, step, {"num_frames": n_mid})
+                wait_frames(n_pre + a.reseed_at + n_mid)
+                g = rest(port, ep[a.midswap]["get_prns_endpoint"])
+                if g["pending"] or g["prns"] != m:
+                    raise SystemExit(f"the swap on {a.midswap} did not apply: {g}")
+                maps[a.midswap] = m
             post_seeds(a.reseed_at)
             post_seeds.last = time.time()
-            rest(port, step, {"num_frames": n_total - n_pre - a.reseed_at})
+            rest(port, step, {"num_frames": n_total - n_pre - a.reseed_at - n_mid})
         else:
             rest(port, step, {"num_frames": n_total - n_pre})
         wait_frames(n_total)
@@ -1025,8 +1040,9 @@ def run(a):
     return 2 if a.scale_r0 and out["scale_r0"]["verdict"] != "pass" else 0
 
 
-# The hosted inject's refusals at construction (cudaGnssChordTrackState, gnss::TrackChain): each
-# mutation of a hosted config and the message it must stop with.
+# The hosted inject's refusals at construction (cudaGnssChordTrackState, gnss::TrackChain,
+# gnss_gpu::gpu_rows): each mutation of a hosted config and the message it must stop with. Only
+# overlap also applies to the rows form.
 REFUSALS = {
     "overlap": "share a channel and write overlapping lanes",
     "dup": "both take gnss_row",
@@ -1037,13 +1053,16 @@ REFUSALS = {
 
 
 def refuse(a):
-    """Run a hosted config with one mutation (REFUSALS): exit 0 if kotekan stops with that
-    mutation's message, 1 if it starts or stops for another reason."""
+    """Run a hosted config, or for overlap a rows config, with one mutation (REFUSALS): exit 0
+    if kotekan stops with that mutation's message, 1 if it starts or stops for another
+    reason."""
     cfg = load_config(a.config)
     half = half_key(cfg)
-    (host,) = [c for c in cfg[half]["commands"] if c["name"] == "cudaGnssInject"]
-    chains, rows = host["chains"], cfg[half]["gnss_rows"]
-    first, second = list(chains)[:2]
+    rows = cfg[half]["gnss_rows"]
+    if a.mutation != "overlap":
+        (host,) = [c for c in cfg[half]["commands"] if c["name"] == "cudaGnssInject"]
+        chains = host["chains"]
+        first, second = list(chains)[:2]
     if a.mutation == "overlap":
         # The first two rows that share a channel write the same lanes.
         i, j = next(
@@ -1323,6 +1342,10 @@ def main():
     p.add_argument("--lever", help="row whose slot 3 code phase moves by 0.25 chips")
     p.add_argument("--lever-prns", help="row whose PRN map also swaps slots 2 and 3")
     p.add_argument("--lever-trim", help="row whose trims are 0.3 chips instead of 0.05")
+    p.add_argument(
+        "--midswap",
+        help="row whose PRN map swaps slots 2 and 3 at --reseed-at, while every row runs seeded",
+    )
     p.add_argument(
         "--dop-rate", type=float, default=0.0, help="Doppler rate of every slot, Hz/s"
     )
