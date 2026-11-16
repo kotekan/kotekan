@@ -27,14 +27,14 @@
  * 0x88 (0+0j) once by cudaCorrelatorDual's constructor, and each injector overwrites only its
  * own lanes and channels.
  *
- * Seeds, fleet trims and slot membership live in the command's @ref cudaGnssChordTrackState.
+ * Seeds, fleet trims and slot membership live in the command's gnss::TrackChain.
  * Several injectors (one per chain) can run in one kotekan instance, each with its own state
  * but one REST server between them, so each needs its own seed_endpoint, set_trim_endpoint,
  * get_prns_endpoint and set_prns_endpoint.
  *
  * Replicas are synthesized per record (hops_per_record; 4 records per 8192-hop frame at CHORD),
  * from gnss::propagate_seed at each record's window start with the fleet code trim from
- * cudaGnssChordTrackState::snapshot_trims, through GnssCudaDespread::build_jobs like every
+ * gnss::TrackChain::snapshot_trims, through GnssCudaDespread::build_jobs like every
  * other Spec-taking despread. Under the state's psi_synth the synthesis and the pack are one
  * launch (GnssCudaDespread::enqueue_psi_pack); the control block, energies and lanes are the
  * same. The Psi tables are built on the despread's builder thread, never here: a seeded slot
@@ -54,7 +54,7 @@
  * is intended: it must produce a synth window for every window the correlator consumes.
  *
  * @conf As the ring consumers (buffer_depth, num_times, num_elements, num_local_freq,
- *       voltage_name), plus the @ref cudaGnssChordTrackState keys (set `n_elements: 1`; it is
+ *       voltage_name), plus the gnss::TrackChain keys (set `n_elements: 1`; it is
  *       unused here), and:
  * @conf  num_synth            Int. Lanes this chain writes (lanes_per_slot per PRN slot).
  * @conf  lanes_per_slot       Int, default 4. Synth lanes per PRN slot: 4 packs E, P, L and

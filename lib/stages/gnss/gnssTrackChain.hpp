@@ -1,0 +1,250 @@
+/**
+ * @file
+ * @brief One GNSS chain's broker seeds, fleet code trims and slot membership, for
+ *        cudaGnssInject.
+ *  - gnss::TrackChain
+ */
+
+#ifndef GNSS_TRACK_CHAIN_HPP
+#define GNSS_TRACK_CHAIN_HPP
+
+#include "Config.hpp"                 // for Config
+#include "GnssCudaDespread.hpp"       // for GnssCudaDespread
+#include "gnssChannelizedReplica.hpp" // for ChannelizedReplicaBank
+#include "guowang1202Nav.hpp"         // for Gw1202NavPages
+#include "kotekanLogging.hpp"         // for kotekanLogging
+#include "restServer.hpp"             // for connectionInstance
+
+#include <memory> // for shared_ptr, unique_ptr
+#include <mutex>  // for mutex
+#include <string> // for string
+#include <vector> // for vector
+
+namespace gnss {
+
+/**
+ * @class TrackChain
+ * @brief One chain's broker seeds, fleet code trims and slot membership, shared by its GNSS
+ *        command's instances, plus the replica bank and GPU despread engine they build from.
+ *
+ * @conf prns            List of Int. PRN in each slot; the slot count n_prn is fixed.
+ * @conf signal          String. Signal descriptor name (gnssSignal.hpp).
+ * @conf prn_freq_offset_hz List of Double (optional). Per-slot FDMA carrier offsets from the
+ *                       descriptor's carrier, Hz (GLONASS L2OF: k * 437.5 kHz). Empty for CDMA.
+ * @conf n_channels      Int. Covering channels.
+ * @conf channel_ids     List of Int. Global PFB bin of each covering channel, in local order.
+ * @conf n_elements      Int. Required, but only logged.
+ * @conf samples_per_data_set Int. Hops per frame.
+ * @conf hops_per_record Int. Hops per record; must divide samples_per_data_set.
+ * @conf fft_length      Int. Real samples per hop.
+ * @conf sample_rate     Double. Real sample rate, Hz.
+ * @conf f_offset_hz     Double. Carrier offset from band centre, Hz (on CHORD, the carrier
+ *                       itself).
+ * @conf conjugate       Bool. Must be true: the F-engine output is conjugated, and
+ *                       cudaGnssInject always conjugates the replica. Default true.
+ * @conf dll_spacing     Double. Early/Late offset, chips.
+ * @conf frame0_utc      Double. UTC of absolute sample 0; overrides the telescope's. Default 0.
+ * @conf trim_ttl_s      Double. Trim lifetime without a refresh, s; must be > 0. Default 4.
+ * @conf despread_max_chips      Int. Must be 80: the despread gathers an 80-chip window
+ *                               centred on the PFB span. Default 80. Not read under psi_synth.
+ * @conf despread_chips_centered Bool. Must be true. Default true. Not read under psi_synth.
+ * @conf phi_fp16        Bool. Must be true: the Phi tables are fp16. Default true. Not read
+ *                       under psi_synth, which builds no Phi table.
+ * @conf epl_from_prompt Bool. Synthesise the prompt replica only and take the E and L lanes as
+ *                       its per-channel rotations (GnssCudaDespread::set_epl_from_prompt): one
+ *                       chip walk per hop instead of three. Default false.
+ * @conf psi_synth       Bool. Replica synthesis from per-PRN code-phase tables
+ *                       (GnssCudaDespread::set_psi_synth, lib/cuda/cudaGnssPsiSynth.hpp), fused
+ *                       with the N^2 pack in cudaGnssInject. The tables are the full PFB span,
+ *                       so the replica carries +1.1% more energy (~1% in correlation) than the
+ *                       80-chip Phi replica: every absolute SNR gate sees that step at a
+ *                       cutover. Default false.
+ * @conf psi_fp16        Bool. Under psi_synth, store the tables as fp16 (storage error
+ *                       ~1.8e-4 per sample, cudaGnssPsiBench). Default true.
+ * @conf psi_refresh_hz  Double. Under psi_synth, rebuild a slot's table when its Doppler moves
+ *                       further than this from the table's. Default 30.
+ * @conf psi_sync_build  Bool. Under psi_synth, for tests only: wait for each Psi build on the
+ *                       GPU thread (GnssCudaDespread::set_psi_sync_build), so the outputs do
+ *                       not depend on the builder's timing. A node config must not set it.
+ *                       Default false.
+ * @conf seed_endpoint   String. POST /set_seeds.
+ * @conf trim_endpoint   String, ignored (read only so a usage report does not list it).
+ * @conf set_trim_endpoint String. POST /set_trim.
+ * @conf get_prns_endpoint String. GET /get_prns.
+ * @conf set_prns_endpoint String. POST /set_prns.
+ */
+class TrackChain : public kotekan::kotekanLogging {
+public:
+    /// Reads its config at @p cfg_path.
+    TrackChain(kotekan::Config& config, const std::string& cfg_path);
+
+    /// POST endpoint: a JSON array of {prn, doppler_hz, code_phase_chips, code_phase_rate,
+    /// doppler_rate_hz_s, carrier_trim_hz, ref_hop, code_phase_at_ref_chips}. The first three
+    /// are required; each seed replaces the slot's whole seed. PRNs not in the map are ignored.
+    void set_seeds_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
+
+    /// POST endpoint: the fleet controller's code trim, a JSON array of {prn, trim_chips}. See
+    /// @ref trim_ttl_s for why this is not a /set_seeds field.
+    void set_trim_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
+
+    // ---- Slot membership (docs/CHORD_LIVE_PRN_RECONFIG.md) ----
+    // The broker reassigns slots to satellites as the sky changes. The slot count n_prn never
+    // changes: it sizes every buffer, GPU allocation and wire frame, so a resize is a restart.
+    // Changing which PRN a slot holds leaves every size the same.
+    //
+    // Lock order: prn_mtx is taken before seed_mtx or trim_mtx, never after. The REST callbacks
+    // that resolve a PRN to a slot hold it across their seed_mtx/trim_mtx section. Other
+    // threads read @c prns only under prn_mtx. The GPU thread is its only writer
+    // (apply_prn_swaps, under prn_mtx), so it may read @c prns without the lock
+    // (snapshot_seeds, snapshot_trims, cudaGnssInject::execute).
+
+    /// POST endpoint: the whole slot->PRN map in slot order, as {"prns": [...]}.
+    /// The node diffs it against its own map, so re-sending the current map is a no-op and a
+    /// lost post costs only latency. The length must equal n_prn exactly; a different length is
+    /// refused, not padded. An optional "at_hop" schedules the swap (see @ref prn_at_hop).
+    /// Staged, not applied: @ref apply_prn_swaps applies it at a frame boundary, so no record
+    /// is built from half a map.
+    void set_prns_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
+
+    /// GET endpoint: {prns, pending, last_hop}, the live map, whether a new one is staged and
+    /// the newest frame hop seen.
+    void get_prns_callback(kotekan::connectionInstance& conn);
+
+    /// Apply the staged map if it is due. GPU thread only: it re-uploads device code tables on
+    /// @c stream. Resets each swapped slot's seed, trim and trim diagnostics and, through
+    /// GnssCudaDespread::set_prn, its device code table, Phi cache and last_ang0/last_phi_ddop
+    /// records. Anything left over would attribute the old satellite's state to the new one.
+    /// The fold history is not reset here: the slot's @ref slot_gen is bumped, and
+    /// cudaGnssInject resets it from that.
+    void apply_prn_swaps(void* stream /*cudaStream_t*/);
+
+    std::mutex prn_mtx; ///< taken before seed_mtx/trim_mtx; guards @c prns (see above), the
+                        ///< staging below and last_hop
+    std::vector<int> pending_prns; ///< staged map; empty = nothing staged
+    /// Per-slot swap counter, incremented on every swap of the slot. A holder of per-slot
+    /// history compares it with the generation it last saw (FoldHist::slot_gen_seen) to know
+    /// when to reset.
+    std::vector<uint64_t> slot_gen;
+
+    // ---- Scheduled swaps ----
+    // A swap applied at each node's next frame boundary lands on a different frame on every
+    // node, and the combiner would then fold a window whose instances disagree about which
+    // satellite a slot holds. `at_hop` pins the swap to an absolute F-engine hop: the broker
+    // picks one a few seconds ahead and every node applies it at its first frame boundary at
+    // or after it, before any job of that frame is built.
+    //
+    // The deadline is on the F-engine's hop counter, which is the same on every node; wall time
+    // is not. It is in hops, not samples (GnssChanMetadata::sample_seq is hop * fft_len); the
+    // broker derives it from the combiner's hop axis.
+    int64_t prn_at_hop = -1;    ///< apply at the first frame with hop0 >= this; <0 = next frame
+    int64_t prn_stage_hop = -1; ///< last_hop when the map was staged (re-base guard)
+    int64_t last_hop = -1;      ///< newest frame hop0 seen; the deadline is tested on it
+
+    /// Record this frame's absolute first hop. Whatever owns the frame loop must call this at
+    /// every frame boundary, before @ref apply_prn_swaps: without it last_hop stays -1 and
+    /// every scheduled swap applies immediately, with no error.
+    void note_frame_hop(long long hop);
+
+    // Geometry. n_prn is immutable; @c prns is not (see above).
+    std::vector<int> prns;
+    int n_prn = 0, n_chan = 0, n_elem = 0;
+    int max_prn = 63; ///< the signal's highest PRN (gnss::max_prn): 2047 for GW_1202
+    int hops_per_record = 0, n_hops_frame = 0, fft_len = 0;
+    double sample_rate = 0.0, f_offset_hz = 0.0, dll_spacing = 0.0;
+    bool epl_from_prompt = false;
+    bool psi_synth = false; ///< cudaGnssInject takes GnssCudaDespread::enqueue_psi_pack
+    /// Startup coverage under psi_synth, kept here because the command's instances (one per
+    /// in-flight frame) share it: the frame hop at which a seeded slot was first found waiting
+    /// for its Psi tables, -1 while none is. Written by the GPU thread only.
+    long long psi_dark_hop0 = -1;
+    double frame0_utc = 0.0; ///< UTC of absolute sample 0; 0 = unknown, which the record
+                             ///< assembler refuses
+
+    /// One PRN's live seed. The broker owns these and refreshes them every cycle; one not
+    /// refreshed within @ref seed_ttl_s expires.
+    struct Seed {
+        bool have = false;
+        double doppler_hz = 0.0;
+        double cp_chips = 0.0; ///< prompt code-phase argument at ref_hop (gnss::SeedState)
+        double cp_rate = 0.0;  ///< residual code rate, chips per hop
+        double dop_rate = 0.0; ///< Hz/s
+        double ctrim_hz = 0.0; ///< broker carrier trim
+        long long ref_hop = 0;
+        double phase_ref_chips = -1.0; ///< physical code phase at ref_hop (-1 = derive from cp)
+        double t_recv = 0.0;           ///< steady_clock seconds when this seed last arrived
+        /// GuoWang data-sign wipe: the satellite's absolute 2 ms frame index (from the BDT
+        /// week start) of the phase at ref_hop, -1 = none, and its message pages
+        /// (guowang1202Nav); shared so that the per-frame seed snapshot copies a pointer.
+        long long nav_frame_at_ref = -1;
+        std::shared_ptr<const guowang::Gw1202NavPages> nav_pages;
+    };
+    /// Drop a seed not refreshed within this many seconds, so a satellite that has set stops
+    /// being despread within a minute. The broker re-seeds every cycle, so this is many
+    /// refreshes of margin.
+    static constexpr double seed_ttl_s = 60.0;
+
+    /// Snapshot the live trims, expiring any whose controller stopped posting.
+    std::vector<double> snapshot_trims(std::vector<int>& expired);
+
+    /// The expiry sweep itself. The caller must hold trim_mtx.
+    ///
+    /// snapshot_trims runs it before every copy, so the GPU thread never applies an expired
+    /// trim. set_trim_callback runs it too, so each post also expires stale trims in the shared
+    /// state while the GPU thread is stalled.
+    void expire_trims_locked(std::vector<int>& expired);
+
+    /// Snapshot the live seeds, expiring stale ones in the shared state so every reader sees the
+    /// live set. Expired PRN numbers land in @c expired for the caller to log outside the lock.
+    std::vector<Seed> snapshot_seeds(std::vector<int>& expired);
+    std::mutex seed_mtx;
+    std::vector<Seed> seeds;
+
+    // ---- Fleet code trim ----
+    // `trim` is written by GnssFleetTrim through /set_trim and added to the propagated code
+    // phase (gnss::propagate_seed).
+    //
+    // It is not a /set_seeds field because a seed post replaces the whole seed, zeroing any
+    // field it omits, so a trim sender would have to resend the broker's exact seed. /set_trim
+    // carries one number per PRN and touches nothing else, not even the seed's t_recv. It is
+    // absolute, not a delta, so a lost post costs latency only.
+    //
+    // A trim expires: one not refreshed within trim_ttl_s goes to zero (a step of up to
+    // trim_clamp) rather than stand as a fixed code offset once its controller has stopped,
+    // which the broker's own DLL would then fight.
+    double trim_ttl_s = 0.0;
+    std::vector<double> trim_t_recv; ///< steady-clock stamp of the last /set_trim, per PRN
+
+    static constexpr double trim_clamp = 3.0; ///< |trim| bound, chips
+    std::mutex trim_mtx;                      ///< guards the trim vectors
+    std::vector<double> trim; ///< per-PRN cp trim, chips (applied cp = model + trim)
+    /// Re-pin fold history per slot, shared by the command's instances; GPU thread only. The
+    /// producer's dcyc = (applied - dop_prev) * t_abs is the carrier-phase step from the
+    /// previous record. A cudaCommand has one instance per in-flight GPU frame and frames
+    /// round-robin over them, so a history kept per instance would hold the record a whole
+    /// buffer depth of frames back. gpuProcess runs every instance's execute() on one thread in
+    /// frame order, so a history kept here is always the true previous record.
+    struct FoldHist {
+        std::vector<double> dop_prev; ///< previous record's applied carrier (dop + ctrim), Hz
+        std::vector<uint8_t> ok;      ///< 0 = no previous record (arc start)
+        std::vector<uint64_t> slot_gen_seen; ///< slot_gen already acknowledged (history reset once)
+        void init(int n) {
+            dop_prev.assign((size_t)n, 0.0);
+            ok.assign((size_t)n, 0);
+            slot_gen_seen.assign((size_t)n, 0);
+        }
+    };
+    FoldHist fold;
+
+
+    std::unique_ptr<gnss::ChannelizedReplicaBank> replica;
+    std::unique_ptr<GnssCudaDespread> despread;
+    std::vector<int> covering; ///< local channel indices this signal occupies (0..n_chan-1)
+    /// FDMA only (empty for CDMA): per slot, the local channels of its own lobe and their bit
+    /// mask. A slot owns only its own k's main lobe, not the whole comb.
+    std::vector<std::vector<int>> slot_covering;
+    std::vector<uint64_t> slot_chan_mask;
+};
+
+} // namespace gnss
+
+#endif // GNSS_TRACK_CHAIN_HPP

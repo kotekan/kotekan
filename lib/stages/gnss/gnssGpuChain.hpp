@@ -35,7 +35,7 @@
 namespace gnss_gpu {
 
 /// Maximum records per frame. A frame holds samples_per_data_set / hops_per_record records
-/// (4 for CHORD's 8192-hop frames and 2048-hop records); cudaGnssChordTrackState rejects a
+/// (4 for CHORD's 8192-hop frames and 2048-hop records); gnss::TrackChain rejects a
 /// geometry that exceeds this.
 constexpr int MAX_REC = 16;
 

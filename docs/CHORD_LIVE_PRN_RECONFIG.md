@@ -75,7 +75,7 @@ Reset, in one place per owner:
 |---|---|
 | `ChannelizedReplicaBank::set_prn` | the slot's expanded code table |
 | `GnssCudaDespread::set_prn` | device code row, Phi cache, carrier-NCO accumulator, `last_ang0`/`last_phi_ddop` |
-| `cudaGnssChordTrackState::apply_prn_swaps` | seed, trim, trim diagnostics, power EMAs |
+| `gnss::TrackChain::apply_prn_swaps` | seed, trim, trim diagnostics, power EMAs |
 | each command instance | its own per-slot Doppler history (via `slot_gen`) |
 | `gnss::RecordChain::follow_frame_prns` | element cal, NCO phase, arc continuity, open spectrum windows |
 | `GnssChannelizedSearch::apply_prn_swaps` | replica cache, refine engines' code tables, detection, Doppler + overlay hints |

@@ -62,7 +62,7 @@ cudaGnssInject::cudaGnssInject(Config& config, const std::string& unique_name,
                                           _num_elements / 2},
             std::array<std::string, 4>{"T", "F", "P", "D"},
             std::array<std::ptrdiff_t, 4>{1, 1, 1, 1}, *this) {
-    cudaGnssChordTrackState& S = *st();
+    gnss::TrackChain& S = st()->chain;
 
     if (_lanes_per_slot != gnss_gpu::LANES_FULL && _lanes_per_slot != gnss_gpu::LANES_PROMPT)
         FATAL_ERROR("cudaGnssInject: lanes_per_slot {:d} must be {:d} (E/P/L/P_HEAD lanes) or "
@@ -167,7 +167,7 @@ int cudaGnssInject::wait_on_precondition() {
 cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vector<cudaEvent_t>&) {
     pre_execute();
     record_start_event();
-    cudaGnssChordTrackState& S = *st();
+    gnss::TrackChain& S = st()->chain;
     const cudaStream_t stream = device.getStream(cuda_stream_id);
     const int n_rec = S.n_hops_frame / S.hops_per_record;
 
@@ -267,7 +267,7 @@ cudaEvent_t cudaGnssInject::execute(cudaPipelineState& pipestate, const std::vec
         hdr->_pad1 = _row.tag();
 
     std::vector<int> expired;
-    const std::vector<cudaGnssChordTrackState::Seed> seeds = S.snapshot_seeds(expired);
+    const std::vector<gnss::TrackChain::Seed> seeds = S.snapshot_seeds(expired);
     for (int prn : expired)
         INFO("cudaGnssInject: PRN {:d} seed expired -- lane group goes dark", prn);
 

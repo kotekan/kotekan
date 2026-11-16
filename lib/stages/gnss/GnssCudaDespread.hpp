@@ -59,7 +59,7 @@ public:
     ///
     /// This is only the GPU half of the swap. Seeds, trims, power averages, element cal and
     /// anything else the caller keys by slot still describe the old satellite; see
-    /// cudaGnssChordTrackState::apply_prn_swaps.
+    /// gnss::TrackChain::apply_prn_swaps.
     ///
     /// Returns false, having changed nothing, if the slot is out of range, the PRN has no code
     /// for this signal, or the bank is FDMA (see ChannelizedReplicaBank::set_prn).

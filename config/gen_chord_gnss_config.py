@@ -1394,7 +1394,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                     "lanes_per_slot": lanes_per_slot,
                     # Local frame indices of the comb (the tap's chan_ids), never freq_ids.
                     "gnss_local_channels": chan_idx,
-                    # The state class, cudaGnssChordTrackState: seeds, trims and slot
+                    # The chain's gnss::TrackChain: seeds, trims and slot
                     # membership, on this chain's own endpoints.
                     "prns": prns,
                     "n_channels": n_chan,
@@ -3138,7 +3138,7 @@ def live_frame0_utc(cfg, args, timeout=3.0):
 def check_frame0(cfg, args, live_t0):
     """Check the record epoch this config pins against the frame 0 the running fleet serves.
 
-    cudaGnssChordTrackState takes frame0_utc (the UTC of the F-engine's absolute sample 0;
+    gnss::TrackChain takes frame0_utc (the UTC of the F-engine's absolute sample 0;
     records are stamped frame0_utc + wstart/rate) from Telescope::to_time_ns(0) unless the config
     carries one, so by default none is emitted and nothing can go stale. A pinned value
     (--frame0-nano, else the node file's fengine.frame0_utc) goes stale silently at the next
@@ -4202,7 +4202,7 @@ def main():
     check_frame0(cfg, args, live_frame0_utc(cfg, args) if pinned else None)
 
     # --frame0-nano sets the record epoch as well as the telescope's startup GPS time (below):
-    # cudaGnssChordTrackState prefers a configured frame0_utc over the telescope's, so setting
+    # gnss::TrackChain prefers a configured frame0_utc over the telescope's, so setting
     # only the telescope's would leave a node-file value stamping the records.
     if args.frame0_nano:
         cfg["fengine"]["frame0_utc"] = args.frame0_nano * 1e-9

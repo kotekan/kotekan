@@ -179,7 +179,7 @@ public:
     /// This is not the whole swap. Everything keyed to slot @c p elsewhere (the GPU code table,
     /// Phi caches, seeds, trims, power averages, element cal, detections) still describes the
     /// old satellite, and the caller must reset it in the same step; see
-    /// cudaGnssChordTrackState::apply_prn_swaps.
+    /// gnss::TrackChain::apply_prn_swaps.
     ///
     /// Returns false, changing nothing, if @c p is out of range, @c prn has no code for this
     /// signal, or the bank has FDMA offsets set. Costs one code expansion.
