@@ -108,7 +108,6 @@ For linting, testing, and documentation, install these Python packages (often in
 .. code:: bash
 
    python3 -m pip install \
-     black \
      cmake_format \
      pytest pytest-xdist pytest-timeout \
      pytest-cpp \
@@ -208,7 +207,7 @@ To build only one part of the documentation:
 
 * Black::
 
-    sudo pip3 install black
+    sudo apt-get install black
 
 Hardware
 =========
