@@ -5,6 +5,7 @@
 #include "fEngineKernels.hpp"    // for gpu_unpack12, gpu_untangle_quantize
 #include "fftWindowJob.hpp"      // for fft_window_job, fft_window_lut
 #include "kotekanLogging.hpp"    // for FATAL_ERROR, INFO
+#include "pfbKernels.hpp"        // for pfb_taps, pfb_proto_shared
 #include "prometheusMetrics.hpp" // for Metrics
 #include "tensorFFT.hpp"         // for gpu_tensor_fft
 #include "visUtil.hpp"           // for frameID, current_time
@@ -61,6 +62,14 @@ cudaSparkFEngine::cudaSparkFEngine(Config& config, const std::string& unique_nam
         throw std::invalid_argument(
             fmt::format(fmt("{:s}: fft_impl must be \"cufft\" or \"tensor\", not \"{:s}\""),
                         unique_name, impl));
+    const uint32_t taps = config.get_default<uint32_t>(unique_name, "pfb_taps", 1);
+    if (taps != 1 && taps != 4)
+        throw std::invalid_argument(
+            fmt::format(fmt("{:s}: pfb_taps must be 1 or 4, not {:d}"), unique_name, taps));
+    pfb = taps == 4;
+    if (pfb && !fp16)
+        throw std::invalid_argument(
+            fmt::format(fmt("{:s}: pfb_taps 4 requires fft_precision fp16"), unique_name));
     tensor = impl == "tensor";
     fourstep = fp16 || tensor;
     fused = config.get_default<bool>(unique_name, "fused_quantize", false);
@@ -170,7 +179,18 @@ void cudaSparkFEngine::main_thread() {
         CHECK_CUDA_ERROR(cudaMalloc(&d_time, fft_length * sizeof(float)));
         CHECK_CUDA_ERROR(cudaMalloc(&d_spec, m * sizeof(float2)));
     }
-    CHECK_CUDA_ERROR(cudaMalloc(&d_lut, num_packets * sizeof(uint64_t)));
+    // The PFB keeps the last four windows' tables in rotating slots of d_lut.
+    CHECK_CUDA_ERROR(cudaMalloc(&d_lut, (pfb ? 4 : 1) * num_packets * sizeof(uint64_t)));
+    const __half* d_proto = nullptr;
+    if (pfb) {
+        // The hamming windowed-sinc prototype rounded to __half, its symmetric first half
+        // (2 * fft_length values), one table per GPU shared across F-engine instances
+        // (pfb_proto_shared).
+        bool reused = false;
+        d_proto = pfb_proto_shared(gpu_id, fft_length, 4, reused);
+        if (reused)
+            INFO("Reusing the shared 4-tap PFB prototype table on GPU {:d}", gpu_id);
+    }
     float* d_gains = nullptr;
     float* d_stats = nullptr;
     if (gain_buf)
@@ -232,8 +252,8 @@ void cudaSparkFEngine::main_thread() {
     }
     if (plan)
         CHECK_CUFFT(cufftSetStream(plan, stream));
-    INFO("FFT of {:d} points ({:d} packets) on GPU {:d}, {:s}{:s}, scale {:g}", fft_length,
-         num_packets, gpu_id,
+    INFO("FFT of {:d} points ({:d} packets) on GPU {:d}, {:s}{:s}{:s}, scale {:g}", fft_length,
+         num_packets, gpu_id, pfb ? "4-tap PFB, " : "",
          fourstep ? (fp16 ? (tensor ? "fp16 tensor four-step " : "fp16 four-step ")
                           : "tf32 tensor four-step ")
                   : "fp32",
@@ -247,11 +267,17 @@ void cudaSparkFEngine::main_thread() {
     // lazily, and that stall must land before packets are flowing, not on window one.
     {
         uint8_t* scratch = fourstep ? (fp16 ? (uint8_t*)d_a : (uint8_t*)d_a32) : (uint8_t*)d_time;
-        std::vector<uint64_t> warm_lut(num_packets, (uint64_t)(uintptr_t)scratch);
-        CHECK_CUDA_ERROR(cudaMemcpy(d_lut, warm_lut.data(), num_packets * sizeof(uint64_t),
+        std::vector<uint64_t> warm_lut((pfb ? 4 : 1) * num_packets, (uint64_t)(uintptr_t)scratch);
+        CHECK_CUDA_ERROR(cudaMemcpy(d_lut, warm_lut.data(), warm_lut.size() * sizeof(uint64_t),
                                     cudaMemcpyHostToDevice));
         if (fourstep && fp16) {
-            gpu_unpack12_fp16_t(d_lut, samples_per_packet, m1, m2, d_a, stream);
+            if (pfb) {
+                pfb_taps taps;
+                for (int q = 0; q < 4; q++)
+                    taps.lut[q] = d_lut + q * num_packets;
+                gpu_pfb_unpack12_fp16_t(taps, samples_per_packet, m1, m2, d_proto, d_a, stream);
+            } else
+                gpu_unpack12_fp16_t(d_lut, samples_per_packet, m1, m2, d_a, stream);
             if (tensor)
                 gpu_tensor_fft(d_a, d_b, m1, m2, stream);
             else
@@ -290,6 +316,11 @@ void cudaSparkFEngine::main_thread() {
     uint64_t acquired = 0, released = 0;
     frameID gain_id(gain_buf ? gain_buf : job_buf), stats_id(stats_buf ? stats_buf : job_buf);
     uint64_t window_count = 0;
+    // PFB state: the rotating d_lut slot the next window lands in, how many previous
+    // windows are valid history, and the release cursors of the last three jobs.
+    uint32_t lut_slot = 0, history = 0;
+    uint64_t rel_hist[3] = {0, 0, 0};
+    size_t rel_idx = 0;
 
     // Hold processing until the first gain table, so no window goes out with the wrong gain.
     if (gain_buf) {
@@ -313,6 +344,14 @@ void cudaSparkFEngine::main_thread() {
         if (job->num_packets != num_packets)
             FATAL_ERROR("Job carries {:d} packets per window, this stage expects {:d}",
                         job->num_packets, num_packets);
+        if (pfb && job->acquire_up_to - released > (uint64_t)payload_buf->num_frames)
+            FATAL_ERROR("pfb_taps 4 releases payload frames three jobs late: window {:d} would "
+                        "hold {:d} frames but payload_buf has {:d}; raise num_frames by three "
+                        "windows' worth",
+                        job->window_index, job->acquire_up_to - released, payload_buf->num_frames);
+        // After a (re)alignment the previous windows are not contiguous with this one.
+        if (pfb && (job->flags & FFT_WINDOW_REALIGNED))
+            history = 0;
 
         bool shutdown = false;
         while (acquired < job->acquire_up_to) {
@@ -350,10 +389,21 @@ void cudaSparkFEngine::main_thread() {
         }
 
         const double start = current_time();
-        CHECK_CUDA_ERROR(cudaMemcpyAsync(d_lut, fft_window_lut(job), num_packets * sizeof(uint64_t),
-                                         cudaMemcpyHostToDevice, stream));
+        uint64_t* d_job_lut = d_lut + (pfb ? lut_slot * num_packets : 0);
+        CHECK_CUDA_ERROR(cudaMemcpyAsync(d_job_lut, fft_window_lut(job),
+                                         num_packets * sizeof(uint64_t), cudaMemcpyHostToDevice,
+                                         stream));
         if (fourstep && fp16) {
-            gpu_unpack12_fp16_t(d_lut, samples_per_packet, m1, m2, d_a, stream);
+            if (pfb) {
+                // Slot lut_slot is the newest window; a null table folds zeros for history
+                // the aligner has not produced since the last realignment.
+                pfb_taps taps;
+                for (uint32_t q = 0; q < 4; q++)
+                    taps.lut[q] =
+                        3 - q <= history ? d_lut + ((lut_slot + 1 + q) % 4) * num_packets : nullptr;
+                gpu_pfb_unpack12_fp16_t(taps, samples_per_packet, m1, m2, d_proto, d_a, stream);
+            } else
+                gpu_unpack12_fp16_t(d_lut, samples_per_packet, m1, m2, d_a, stream);
             if (tensor)
                 gpu_tensor_fft(d_a, d_b, m1, m2, stream);
             else
@@ -403,7 +453,18 @@ void cudaSparkFEngine::main_thread() {
             stats_id++;
         }
 
-        while (released < job->release_up_to) {
+        // The PFB reads three windows of history: hold this job's frames and release what
+        // job s-3 released.
+        uint64_t release_target = job->release_up_to;
+        if (pfb) {
+            release_target = rel_hist[rel_idx];
+            rel_hist[rel_idx] = job->release_up_to;
+            rel_idx = (rel_idx + 1) % 3;
+            lut_slot = (lut_slot + 1) % 4;
+            if (history < 3)
+                history++;
+        }
+        while (released < release_target) {
             payload_buf->mark_frame_empty(unique_name, rel_id);
             rel_id++;
             released++;
@@ -422,6 +483,7 @@ void cudaSparkFEngine::main_thread() {
     CHECK_CUDA_ERROR(cudaFree(fourstep ? (fp16 ? (void*)d_a : (void*)d_a32) : (void*)d_time));
     CHECK_CUDA_ERROR(cudaFree(fourstep ? (fp16 ? (void*)d_b : (void*)d_b32) : (void*)d_spec));
     CHECK_CUDA_ERROR(cudaFree(d_lut));
+    // d_proto stays: the shared prototype table outlives any one instance.
     if (d_gains)
         CHECK_CUDA_ERROR(cudaFree(d_gains));
     if (d_stats)

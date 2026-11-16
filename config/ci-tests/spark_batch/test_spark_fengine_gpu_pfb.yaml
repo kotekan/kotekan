@@ -1,0 +1,119 @@
+---
+#
+# The GPU F-engine chain of test_spark_fengine_gpu_tensor.yaml with pfb_taps: 4: the fp16
+# four-step tensor path behind the 4-tap polyphase fold. The tone sits on a bin centre, where
+# the PFB keeps the plain FFT's gain (CPU reference: gain * X[80] = +3.9063, quantizing to 4,
+# against round(8 * 1000 / 2048) = 4). No loss injection: a lost packet would smear noise
+# over four output windows. The first two windows after the aligner's startup discard fold
+# missing history (reference: 0 and 2 counts at the tone bin) and are the allowed bad
+# windows; the third (one window short of full history) already quantizes to 4. Needs a CUDA
+# build and a GPU.
+#
+type: config
+log_level: INFO
+
+cpu_affinity: [0, 1]
+
+telescope:
+    name: fake
+
+# Input CRS packets: 64 byte headers and 512 12-bit samples in 768 payload bytes.
+header_size: 64
+header_slot: 128
+payload_size: 768
+payload_slot: 768
+packets_per_frame: 32
+buffer_depth: 4
+# The PFB holds three windows of history (1.5 frames here) on top of the plain path's needs.
+gen_buffer_depth: 8
+samples_per_packet: 512
+
+# One FFT window is 16 packets; the output spectrum is 4096 bins in 4 packets.
+fft_length: 8192
+bins_per_packet: 1024
+noise_slots: 64
+
+src_mac: "30:c5:99:3f:09:1e"
+dst_mac: "10:70:fd:53:05:06"
+src_ip: 10.0.0.1
+dst_ip: 10.0.0.2
+src_port: 4000
+
+gen_header_buffer:
+    kotekan_buffer: standard
+    num_frames: gen_buffer_depth
+    frame_size: packets_per_frame * header_slot
+gen_payload_buffer:
+    kotekan_buffer: standard
+    num_frames: gen_buffer_depth
+    frame_size: packets_per_frame * payload_slot
+job_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: 48 + (fft_length / samples_per_packet) * 8
+noise_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: noise_slots * payload_slot
+out_payload_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: fft_length / 2
+out_header_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: ((fft_length / 2) / bins_per_packet) * header_slot
+
+gen:
+    kotekan_stage: crsPacketGen
+    header_buf: gen_header_buffer
+    payload_buf: gen_payload_buffer
+    num_adcs: 1
+    # 9 packets: not a multiple of fft_length, so the aligner discards up to seq 8192.
+    start_seq: 4608
+    # 5 cycles per packet lands on output bin 5 * 8192 / 512 = 80.
+    tone_bin: [5]
+    tone_amplitude: [1000]
+    # No noise: off-tone bins quantize to exactly 0x88.
+    noise_rms: 0
+    num_frames: 40
+
+align:
+    kotekan_stage: crsWindowAlign
+    header_buf: gen_header_buffer
+    payload_buf: gen_payload_buffer
+    job_buf: job_buffer
+    noise_buf: noise_buffer
+    noise_rms: 10
+    queue_depth: 32
+
+fengine:
+    kotekan_stage: cudaSparkFEngine
+    job_buf: job_buffer
+    payload_buf: gen_payload_buffer
+    noise_buf: noise_buffer
+    out_payload_buf: out_payload_buffer
+    gain: 8
+    fft_precision: fp16
+    fft_impl: tensor
+    pfb_taps: 4
+
+headers:
+    kotekan_stage: crsHeaderGen
+    job_buf: job_buffer
+    out_header_buf: out_header_buffer
+    dst_port: 11000
+
+check:
+    kotekan_stage: fEngineCheck
+    header_buf: out_header_buffer
+    payload_buf: out_payload_buffer
+    payload_size: bins_per_packet
+    payload_slot: bins_per_packet
+    tone_bin: 80
+    expected_real: 4
+    tolerance: 1
+    num_windows: 16
+    max_bad_windows: 2
+
+log_config_usage: fatal_error

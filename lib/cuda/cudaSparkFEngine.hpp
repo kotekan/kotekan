@@ -82,6 +82,19 @@
  *                          mma, or, with fft_precision fp32, fp32 data on TF32 mma (fp32
  *                          storage and accumulation, TF32-rounded multiplies) in place of
  *                          kernel of tensorFFT.hpp, same layout and semantics.
+ * @conf pfb_taps           Int, default 1 (plain FFT). 4 (fp16 only) makes the F-engine a
+ *                          4-tap polyphase filter bank: the unpack kernel folds each window
+ *                          with the previous three through a hamming windowed-sinc
+ *                          prototype (pfbPrototype.hpp) before the same FFT, cutting a
+ *                          tone's leakage into bins two or more channels away from -13 dB
+ *                          to about -50 dB. Each spectrum is then centred 1.5 windows
+ *                          earlier than its window_index, payload frames are released three
+ *                          jobs late so the history stays readable (payload_buf must hold
+ *                          three windows more than the plain path needs; checked at
+ *                          runtime), and the first three windows after startup or a
+ *                          realignment fold zero history. The prototype is read as __half
+ *                          (its symmetric first half, 2 * fft_length values) from one
+ *                          device table shared by every instance on the GPU.
  *
  * @par Metrics
  * @metric kotekan_cuda_spark_fengine_windows_total  Windows processed.
@@ -114,6 +127,7 @@ private:
     bool tensor;
     bool fourstep = false;
     bool fused = false;
+    bool pfb = false;
     size_t m1 = 0, m2 = 0;
 
     std::shared_ptr<cudaDeviceInterface> device;
