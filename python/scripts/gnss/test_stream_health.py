@@ -85,12 +85,33 @@ def main():
     )
     if parse_drops(mt2, 1).get("telem_send_drops") != 12:
         fails.append("gnss1_gps_l5_telem_send not read: %r" % parse_drops(mt2, 1))
+    # A half's one telemetry stream (--telem-pack-host): its send, and each row's drops by chain.
+    mt3 = (
+        'kotekan_buffer_send_dropped_frame_count{stage_name="/gnss1_telem_send"} 5\n'
+        "kotekan_gnss_telem_dropped_frames_total"
+        '{stage_name="/gnss1_gal_e5a_telem_pack",chain="gal_e5a"} 3\n'
+        "kotekan_gnss_telem_dropped_frames_total"
+        '{stage_name="/gnss1_gps_l5_telem_pack",chain="gps_l5"} 0\n'
+        "kotekan_gnss_telem_dropped_frames_total"
+        '{stage_name="/gnss0_gps_l5_telem_pack",chain="gps_l5"} 9\n'
+    )
+    d3 = parse_drops(mt3, 1)
+    if d3.get("telem_send_drops") != 5 or d3.get("telem_row_drops") != {
+        "gal_e5a": 3,
+        "gps_l5": 0,
+    }:
+        fails.append("the half's telemetry drops not read: %r" % d3)
+    if "telem_row_drops" in parse_drops(mt2, 1):
+        fails.append(
+            "row drops read from a config without them: %r" % parse_drops(mt2, 1)
+        )
 
     if fails:
         print("FAIL:\n  " + "\n  ".join(fails))
         return 1
     print(
-        "ok: sk_url_for, sk_summary (clean/jam/band/empty), parse_drops (per-gpu + dpdk max)"
+        "ok: sk_url_for, sk_summary (clean/jam/band/empty), parse_drops (per-gpu, per-row + "
+        "dpdk max)"
     )
     return 0
 

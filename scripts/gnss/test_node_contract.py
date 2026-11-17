@@ -22,7 +22,11 @@ each half's record host, whose rows, read by gnss_fleet.assembler_rows, must be 
 assemblers; GNSS_CONTRACT_RECORDS_HOSTED=DIR7 (DIR5's flags and --record-host) likewise
 against DIR5. With GNSS_CONTRACT_COMBINE=DIR8 (DIR7's flags and --combine-host) its contract must be
 DIR7's plus each half's combine host, whose rows, read by gnss_fleet.combiner_rows, must be DIR7's
-combiners; GNSS_CONTRACT_COMBINE_ALONE=DIR9 (--combine-host alone) likewise against DIR.
+combiners; GNSS_CONTRACT_COMBINE_ALONE=DIR9 (--combine-host alone) likewise against DIR. With
+GNSS_CONTRACT_TELEM=DIR10 (DIR8's flags and --telem-pack-host) its contract must be DIR8's but for
+each half's telemetry host and one GnssTelemSend in place of its chains' bufferSends, to the same
+address, with the host's rows, read by gnss_fleet.telem_rows, DIR8's packs;
+GNSS_CONTRACT_TELEM_ALONE=DIR11 (--telem-pack-host alone) likewise against DIR.
 """
 import collections
 import copy
@@ -156,6 +160,16 @@ def test_counts(base, cfg):
         ),
         "stage_chain names all 30 combiners, each one rest_surface serves (%d)"
         % len(cmb),
+    )
+    tel = [e for e in cen["gnss_fleet.stage_chain"] if e.startswith("telem ")]
+    check(
+        len(tel) == 30
+        and all(
+            re.match(r"telem /gnss(\d)_(\w+)_telem_pack -> \2, sends \2/cx52\.\1$", e)
+            for e in tel
+        ),
+        "stage_chain names all 30 telemetry packs, each sending its chain from its half (%s)"
+        % [e for e in tel if not re.search(r"-> (\w+), sends \1/", e)][:3],
     )
     held = held_zeros(cfg)
     check(
@@ -359,6 +373,52 @@ def test_mutations(cfg, head, base, d):
         and len(facet_lines(lines, "rest")) == 16 * 3,
         "top-level tools: the moved combiners leave the census (%d lines) and rest (%d)"
         % (len(cen), len(facet_lines(lines, "rest"))),
+    )
+
+    packs = [k for k in cfg if k.startswith("gnss0_") and k.endswith("_telem_pack")]
+
+    def move_packs(c):
+        """gnss0's telemetry packs as rows of one host, as --telem-pack-host hosts them."""
+        rows = {k[: -len("_telem_pack")]: c.pop(k) for k in packs}
+        workers = [
+            {"rows": [k], "cpu_affinity": r.pop("cpu_affinity")}
+            for k, r in rows.items()
+        ]
+        for r in rows.values():
+            del r["kotekan_stage"]
+        c["gnss0_telem"] = {
+            "kotekan_stage": "GnssTelemPack",
+            "cpu_affinity": sorted({x for w in workers for x in w["cpu_affinity"]}),
+            "chains": rows,
+            "workers": workers,
+        }
+
+    s, lines = run("moved telemetry packs", move_packs)
+    check(
+        len(packs) == 16
+        and lines
+        == [
+            "+ placement: cpu /gnss0_telem = %r" % s["placement"]["cpu"]["/gnss0_telem"]
+        ],
+        "the moved telemetry packs show only as their host's cores: %s" % lines[:4],
+    )
+
+    # The same move read through a telem_rows that sees only top-level stages: the census and
+    # the telemetry identity lose gnss0's packs.
+    tel_of = nc.gnss_fleet.telem_rows
+    nc.gnss_fleet.telem_rows = lambda c: [(n, b) for n, b in tel_of(c) if n in c]
+    try:
+        s, lines = run("moved telemetry packs, top-level tools", move_packs)
+    finally:
+        nc.gnss_fleet.telem_rows = tel_of
+    lost = ["- census: gnss_fleet.stage_chain telem /%s -> " % k for k in packs]
+    cen = facet_lines(lines, "census")
+    check(
+        len(cen) == 16
+        and all(any(ln.startswith(x) for ln in cen) for x in lost)
+        and len(facet_lines(lines, "identity")) == 16 * 5,
+        "top-level tools: the moved packs leave the census (%d lines) and identity (%d)"
+        % (len(cen), len(facet_lines(lines, "identity"))),
     )
 
 
@@ -665,6 +725,95 @@ def test_combine(a_dir, c_dir):
     )
 
 
+def test_telem(a_dir, t_dir):
+    """A config generated with --telem-pack-host against the same flags without it."""
+    apath, tpath = os.path.join(a_dir, NAME), os.path.join(t_dir, NAME)
+    acfg, tcfg = nc.load(apath), nc.load(tpath)
+    a_s, t_s = nc.snapshot(apath, NODE, NODE), nc.snapshot(tpath, NODE, NODE)
+    lines = nc.diff(a_s, t_s)
+    sends = {
+        u: v for u, v in a_s["identity"]["send"].items() if u.endswith("_telem_send")
+    }
+    want = sorted(
+        ["- identity: send %s = %r" % (u, v) for u, v in sends.items()]
+        + [
+            "+ identity: send /gnss%d_telem_send = %r"
+            % (g, t_s["identity"]["send"].get("/gnss%d_telem_send" % g))
+            for g in (0, 1)
+        ]
+        + [
+            "+ placement: cpu %s = %r" % (u, t_s["placement"]["cpu"][u])
+            for u in (
+                "/gnss0_telem",
+                "/gnss0_telem_send",
+                "/gnss1_telem",
+                "/gnss1_telem_send",
+            )
+        ]
+        + ["- placement: cpu %s = %r" % (u, a_s["placement"]["cpu"][u]) for u in sends]
+        + [
+            "%s placement: numa %s = %r" % (sign, b, snap["placement"]["numa"][b])
+            for sign, snap in (("-", a_s), ("+", t_s))
+            for b in snap["placement"]["numa"]
+            if re.match(r"gnss\d(_\w+)?_telem_buf$", b)
+        ]
+    )
+    addr = set(sends.values())
+    check(
+        len(sends) == 30
+        and len(addr) == 1
+        and {t_s["identity"]["send"].get("/gnss%d_telem_send" % g) for g in (0, 1)}
+        == addr
+        and sorted(lines) == want,
+        "telem: the contract is that without the flag but for each half's host, buffer and "
+        "send, to the one address its chains sent to (%s)"
+        % sorted(set(lines) ^ set(want))[:5],
+    )
+    packs = {
+        k: v
+        for k, v in acfg.items()
+        if isinstance(v, dict) and v.get("kotekan_stage") == "GnssTelemPack"
+    }
+    rows = dict(nc.gnss_fleet.telem_rows(tcfg))
+    bufs = {g: [] for g in (0, 1)}
+    for k, v in packs.items():
+        bufs[int(k[4])].append(acfg[v.pop("out_buf")])
+    out = {k: r.pop("out_buf") for k, r in rows.items()}
+    bad = []
+    if not (len(packs) == 30 and rows == packs):
+        bad.append("rows are not the packs (%d, %d)" % (len(packs), len(rows)))
+    for g in (0, 1):
+        tb = tcfg.get("gnss%d_telem_buf" % g) or {}
+        if {o for k, o in out.items() if k.startswith("gnss%d_" % g)} != {
+            "gnss%d_telem_buf" % g
+        }:
+            bad.append("gnss%d: rows write another buffer" % g)
+        if tb.get("num_frames") != sum(b["num_frames"] for b in bufs[g]) or tb.get(
+            "frame_size"
+        ) != max(b["frame_size"] for b in bufs[g]):
+            bad.append("gnss%d_telem_buf size" % g)
+        send = tcfg.get("gnss%d_telem_send" % g) or {}
+        if send.get("kotekan_stage") != "GnssTelemSend" or not send.get("drop_frames"):
+            bad.append("gnss%d_telem_send" % g)
+
+    def others(c):
+        return {
+            k: v
+            for k, v in c.items()
+            if not re.match(r"gnss\d(_\w+)?_telem_(pack|buf|send)$", k)
+            and not re.match(r"gnss\d_telem$", k)
+        }
+
+    if others(acfg) != others(tcfg):
+        bad.append("blocks outside the telemetry legs")
+    check(
+        not bad,
+        "telem: each half's rows are its packs, writing one buffer as deep as theirs and as "
+        "wide as the widest, sent by one GnssTelemSend, and nothing else changes (%s)"
+        % bad,
+    )
+
+
 def test_replay(dump):
     """rest_surface of the replay's config against what its stages registered."""
     cpath = os.path.join(dump, "config.json")
@@ -727,6 +876,8 @@ def main():
         records_hosted = os.environ.get("GNSS_CONTRACT_RECORDS_HOSTED")
         combine = os.environ.get("GNSS_CONTRACT_COMBINE")
         combine_alone = os.environ.get("GNSS_CONTRACT_COMBINE_ALONE")
+        telem = os.environ.get("GNSS_CONTRACT_TELEM")
+        telem_alone = os.environ.get("GNSS_CONTRACT_TELEM_ALONE")
         tests = (
             [
                 lambda: test_counts(base, cfg),
@@ -748,6 +899,8 @@ def main():
                 else []
             )
             + ([lambda: test_combine(d, combine_alone)] if combine_alone else [])
+            + ([lambda: test_telem(combine, telem)] if combine and telem else [])
+            + ([lambda: test_telem(d, telem_alone)] if telem_alone else [])
         )
         for t in tests:
             try:

@@ -1942,6 +1942,11 @@ RECORD_ROW_KEYS = (
 COMBINE_ROW_KEYS = ("in_bufs", "n_prn", "chain", "out_buf")
 
 
+# The keys a chain's telemetry pack keeps in its row of gnss<g>_telem (--telem-pack-host):
+# GnssTelemPack's ROW_KEYS, as RECORD_ROW_KEYS. The rows' out_buf is the host's.
+TELEM_ROW_KEYS = ("in_buf", "chain", "n_prn", "max_prn", "n_chan", "channel_ids")
+
+
 def host_form(blocks, pres, stage, row_keys, name):
     """The half's per-chain stages <pre><stage> as rows of one stage, `name`, each keyed by the
     chain's prefix less its trailing underscore, so the host names it as the stage it replaces.
@@ -1978,6 +1983,39 @@ def combine_host_form(blocks, pres, gpu):
     host_form(blocks, pres, "n2combine", COMBINE_ROW_KEYS, f"gnss{gpu}_combine")
     for p in pres:
         blocks[f"gnss{gpu}_combine"]["chains"][p["pre"][:-1]]["chain"] = p["name"]
+
+
+def telem_host_form(blocks, pres, gpu):
+    """--telem-pack-host: the half's telemetry packs as rows of one GnssTelemPack, gnss<g>_telem
+    (host_form), writing one telem_buf, gnss<g>_telem_buf, which one GnssTelemSend,
+    gnss<g>_telem_send, ships to the gather, each frame at its own length. The buffer holds the
+    widest row's frames, as many as the rows' own buffers together, so that each row keeps its
+    slack; the send is paced at the sum of the rows' rates. Each row keeps its chain, inst, window
+    state and seq, so the frames on the wire are the rows' own."""
+    bufs = [blocks.pop(p["pre"] + "telem_buf") for p in pres]
+    sends = [blocks.pop(p["pre"] + "telem_send") for p in pres]
+    host_form(blocks, pres, "telem_pack", TELEM_ROW_KEYS, f"gnss{gpu}_telem")
+    host = blocks[f"gnss{gpu}_telem"]
+    for row in host["chains"].values():
+        del row["out_buf"]
+    host["out_buf"] = f"gnss{gpu}_telem_buf"
+    blocks[f"gnss{gpu}_telem_buf"] = dict(
+        bufs[0],
+        num_frames=sum(b["num_frames"] for b in bufs),
+        frame_size=max(b["frame_size"] for b in bufs),
+    )
+    per_row = ("buf", "max_pacing_rate_mbps")
+    for k in set().union(*sends) - set(per_row):
+        if any(k not in a or a[k] != sends[0][k] for a in sends):
+            raise SystemExit(
+                f"gnss{gpu}: --telem-pack-host needs {k} the same on every chain's telem_send"
+            )
+    blocks[f"gnss{gpu}_telem_send"] = dict(
+        sends[0],
+        kotekan_stage="GnssTelemSend",
+        buf=f"gnss{gpu}_telem_buf",
+        max_pacing_rate_mbps=round(sum(a["max_pacing_rate_mbps"] for a in sends), 3),
+    )
 
 
 def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
@@ -2377,6 +2415,8 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
         record_host_form(blocks, pres, gpu)
     if args.combine_host:
         combine_host_form(blocks, pres, gpu)
+    if args.telem_pack_host:
+        telem_host_form(blocks, pres, gpu)
     merged["in_buffers"] = primary["in_buffers"]
     merged["out_buffers"] = out_buffers
     merged["commands"] = (
@@ -3903,6 +3943,16 @@ def main():
         "combiner as a row of its chains block (keyed by its gnss_row, on the chain's own REST "
         "paths and record buffer), each row on a worker thread of its own pinned to the chain's "
         "combiner core, instead of one stage per chain.",
+    )
+    ap.add_argument(
+        "--telem-pack-host",
+        action="store_true",
+        help="one GnssTelemPack per GPU half (gnss<g>_telem), hosting every chain's telemetry "
+        "pack as a row of its chains block (keyed by its gnss_row, with the chain's own chain "
+        "and inst tags, window state and seq), each row on a worker thread of its own on the "
+        "telemetry core, writing one buffer that one GnssTelemSend (gnss<g>_telem_send) ships "
+        "to the gather, each frame at its own length, instead of a pack, buffer and bufferSend "
+        "per chain. The frames are the chains' own; the half sends one TCP stream.",
     )
     ap.add_argument(
         "--psi-synth",

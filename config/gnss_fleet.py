@@ -172,6 +172,12 @@ def combiner_rows(cfg):
     return host_rows(cfg, "GnssCoherentCombiner", "_n2combine")
 
 
+def telem_rows(cfg):
+    """host_rows of the telemetry packs (GnssTelemPack), a row of gnss<g>_telem
+    (gen_chord_gnss_config.py --telem-pack-host) named `<row key>_telem_pack`."""
+    return host_rows(cfg, "GnssTelemPack", "_telem_pack")
+
+
 class Fleet:
     """The fleet list (manifest `nodes:`) joined with the site's node table.
 

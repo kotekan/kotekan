@@ -6,7 +6,7 @@
 
 Each chain's four host-stage blocks (<pre>_n2assemble_tiles, <pre>_n2assemble, <pre>_n2combine,
 <pre>_telem_pack) are copied verbatim, a row of a host as the stage it stands for
-(gnss_fleet.assembler_rows, gnss_fleet.combiner_rows), except that the buffer keys name the
+(gnss_fleet.assembler_rows, combiner_rows, telem_rows), except that the buffer keys name the
 replay's buffers and cpu_affinity is empty. A --gpu-rows config is refused. The test reads the
 result through GNSS_REPLAY_CONFIG=OUT.json. The default chains are gnss0's gps_l5 and gal_e5a,
 which share channels and PRNs, and glo_l2oc, the chain with a record_cp_mod_chips.
@@ -35,6 +35,7 @@ def extract(config_path, chains=DEFAULT_CHAINS):
     stages = dict(cfg)
     stages.update(gnss_fleet.assembler_rows(cfg))
     stages.update(gnss_fleet.combiner_rows(cfg))
+    stages.update(gnss_fleet.telem_rows(cfg))
     out = []
     for pre in chains:
 

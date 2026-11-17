@@ -20,7 +20,8 @@ The facets:
              host (GnssCoherentCombiner::main_thread), conditions restated
   identity   the names other stages and processes key on: each assembler's ProjBoard group,
              lane owner and cube sender, GnssN2Project board_group, cudaGnssBeamDump
-             beam_lane_owner, the telemetry header fields and frame size, bufferSend addresses
+             beam_lane_owner, each telemetry pack's header fields and wire frame size, per row
+             of a telemetry host, and the bufferSend and GnssTelemSend addresses
   placement  numa_node of every buffer and cpu_affinity of every stage, a host's rows at their
              workers' cores beside the host; a gnss<g>_ buffer off NUMA node g is listed as
              misplaced
@@ -32,7 +33,8 @@ The facets:
              with its (negative) timeout
   census     what elem_shared_ref, lane_relay, gen_fleet, viscap_read and gnss_fleet.stage_chain
              find in the config, each by its own code; stage_chain names each combiner
-             gnss_fleet.combiner_rows finds
+             gnss_fleet.combiner_rows finds and each telemetry pack gnss_fleet.telem_rows finds,
+             with the chain and inst it sends
 
 snapshot refuses a config that sets a test-only key (TEST_ONLY) anywhere: such a key must never
 reach a node.
@@ -53,6 +55,7 @@ sys.path.insert(0, os.path.join(K, "config"))
 sys.path.insert(0, os.path.join(K, "python", "scripts", "gnss"))
 sys.path.insert(0, os.path.join(HERE, "site"))
 import elem_shared_ref  # noqa: E402
+from gnss_record_layout import telem_frame_bytes  # noqa: E402
 import gen_fleet  # noqa: E402
 import gnss_fleet  # noqa: E402
 import lane_relay  # noqa: E402
@@ -106,25 +109,30 @@ def _get(scope, key, default=None):
 
 
 def _host(u, s):
-    """Whether top-level block u hosts record assembler or combiner rows
-    (gen_chord_gnss_config.py --record-host, --combine-host)."""
+    """Whether top-level block u hosts record assembler, combiner or telemetry pack rows
+    (gen_chord_gnss_config.py --record-host, --combine-host, --telem-pack-host)."""
     return (
         u.count("/") == 1
         and s[0].get("kotekan_stage")
-        in ("GnssGpuRecordAssemble", "GnssCoherentCombiner")
+        in ("GnssGpuRecordAssemble", "GnssCoherentCombiner", "GnssTelemPack")
         and "chains" in s[0]
     )
 
 
 def _stages(cfg, kind=None):
     """(unique_name, scope) of every stage, with a host's rows in place of the host, each as the
-    stage it stands for (gnss_fleet.assembler_rows, gnss_fleet.combiner_rows), scoped [its
+    stage it stands for (gnss_fleet.assembler_rows, combiner_rows, telem_rows), scoped [its
     block, the root]. A row named as a top-level block is a ValueError: kotekan refuses the
     config."""
     out = [
         (u, s) for u, s in _blocks(cfg) if "kotekan_stage" in s[0] and not _host(u, s)
     ]
-    for n, b in gnss_fleet.assembler_rows(cfg) + gnss_fleet.combiner_rows(cfg):
+    rows = (
+        gnss_fleet.assembler_rows(cfg)
+        + gnss_fleet.combiner_rows(cfg)
+        + gnss_fleet.telem_rows(cfg)
+    )
+    for n, b in rows:
         if cfg.get(n) is b:
             continue  # a top-level stage, listed above
         if n in cfg:
@@ -220,7 +228,6 @@ def _cube(u, scope, host):
 
 
 def identity(cfg, host):
-    bufs = _buffers(cfg)
     asm = {}
     for u, s in _stages(cfg, "GnssGpuRecordAssemble"):
         asm[u] = {
@@ -231,7 +238,10 @@ def identity(cfg, host):
     telem = {}
     for u, s in _stages(cfg, "GnssTelemPack"):
         t = {k: _get(s, k) for k in ("chain", "inst", "max_prn", "n_chan")}
-        t["frame_size"] = _get(bufs[_get(s, "out_buf")], "frame_size")
+        # The frame on the wire, which is the row's out_buf frame unless the rows share one.
+        t["frame_size"] = telem_frame_bytes(
+            _get(s, "records_per_frame", 4), t["max_prn"], t["n_chan"]
+        )
         telem[u] = t
     beam = {}
     for u, s in _stages(cfg, "cudaProcess"):
@@ -247,7 +257,8 @@ def identity(cfg, host):
         "telem": telem,
         "send": {
             u: "%s:%s" % (_get(s, "server_ip"), _get(s, "server_port"))
-            for u, s in _stages(cfg, "bufferSend")
+            for u, s in _stages(cfg)
+            if s[0]["kotekan_stage"] in ("bufferSend", "GnssTelemSend")
         },
     }
 
@@ -399,6 +410,16 @@ def census(cfg_path, node, host=None):
     for n, _ in gnss_fleet.combiner_rows(cfg):
         chains.append(
             "combiner /%s -> %s" % (n, gnss_fleet.stage_chain(n, "n2combine"))
+        )
+    for n, b in gnss_fleet.telem_rows(cfg):
+        chains.append(
+            "telem /%s -> %s, sends %s/%s"
+            % (
+                n,
+                gnss_fleet.stage_chain(n, "telem_pack"),
+                _get([b, cfg], "chain"),
+                _get([b, cfg], "inst"),
+            )
         )
     for owner in identity(cfg, node)["beam_lane_owner"].values():
         chains.append(

@@ -62,9 +62,11 @@ def sk_summary(r):
 def parse_drops(metrics_text, gpu):
     """Pull this instance's drop counters out of a node's /metrics dump. buffer-send drops are
     per gnss{gpu} stage (telem: the GPS L5 chain's, gnss{gpu}_gps_l5_telem_send, or
-    gnss{gpu}_telem_send on a config generated before the stages carried the chain key); dpdk
-    misses/ring-full are node-level (shared by both GPUs, reported so a single congested NIC is
-    visible on every instance rather than nowhere)."""
+    gnss{gpu}_telem_send, the half's one telemetry stream with --telem-pack-host or on a config
+    generated before the stages carried the chain key); with --telem-pack-host each chain's
+    windows dropped on the half's full telemetry buffer are telem_row_drops, {chain: count};
+    dpdk misses/ring-full are node-level (shared by both GPUs, reported so a single congested
+    NIC is visible on every instance rather than nowhere)."""
     out = {}
     srch = re.search(
         r'kotekan_buffer_send_dropped_frame_count\{stage_name="/gnss%d_srch_send"\}\s+([0-9.eE+-]+)'
@@ -76,10 +78,17 @@ def parse_drops(metrics_text, gpu):
         r"\s+([0-9.eE+-]+)" % gpu,
         metrics_text,
     )
+    rows = re.findall(
+        r'kotekan_gnss_telem_dropped_frames_total\{stage_name="/gnss%d_[^"]*",chain="([^"]*)"\}'
+        r"\s+([0-9.eE+-]+)" % gpu,
+        metrics_text,
+    )
     if srch:
         out["srch_send_drops"] = int(float(srch.group(1)))
     if telem:
         out["telem_send_drops"] = int(float(telem.group(1)))
+    if rows:
+        out["telem_row_drops"] = {c: int(float(n)) for c, n in rows}
     miss = [
         int(float(x))
         for x in re.findall(

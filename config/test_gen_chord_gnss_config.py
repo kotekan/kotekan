@@ -652,6 +652,121 @@ def test_combine_host_form():
     )
 
 
+def test_telem_row_keys_are_the_stages():
+    """TELEM_ROW_KEYS is GnssTelemPack's ROW_KEYS."""
+    with open(os.path.join(ROOT, "lib", "stages", "gnss", "GnssTelemPack.cpp")) as f:
+        src = f.read()
+    m = re.search(r"GnssTelemPack::ROW_KEYS = \{(.*?)\};", src, re.S)
+    keys = set(re.findall(r'"(\w+)"', m.group(1))) if m else {"<ROW_KEYS missing>"}
+    check(
+        keys == set(g.TELEM_ROW_KEYS),
+        "TELEM_ROW_KEYS is the stage's row keys (only in one: %s)"
+        % sorted(keys ^ set(g.TELEM_ROW_KEYS)),
+    )
+
+
+def test_telem_host_form():
+    """telem_host_form: the packs as rows of gnss<g>_telem writing one gnss<g>_telem_buf, as
+    deep as their buffers together and as wide as the widest, which one GnssTelemSend ships at
+    the sum of their pacing; a send key that differs between the chains is refused."""
+
+    def pack(pre, core, max_prn):
+        return {
+            "kotekan_stage": "GnssTelemPack",
+            "in_buf": pre + "n2rec_buf",
+            "out_buf": pre + "telem_buf",
+            "chain": pre[6:-1],
+            "inst": "cx52.0",
+            "n_prn": 32,
+            "max_prn": max_prn,
+            "n_chan": 4,
+            "channel_ids": [1, 2, 3, 4],
+            "cpu_affinity": [core],
+        }
+
+    def send(pre, mbps):
+        return {
+            "kotekan_stage": "bufferSend",
+            "buf": pre + "telem_buf",
+            "server_ip": "10.0.0.1",
+            "server_port": 11060,
+            "drop_frames": True,
+            "max_pacing_rate_mbps": mbps,
+            "cpu_affinity": [36],
+        }
+
+    def blocks():
+        out = {}
+        for pre, max_prn, size, mbps in (
+            ("gnss0_b_", 14, 1000, 1.25),
+            ("gnss0_a_", 32, 2000, 2.5),
+        ):
+            out[pre + "telem_pack"] = pack(pre, 35, max_prn)
+            out[pre + "telem_buf"] = {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "gnss_pool",
+                "num_frames": 32,
+                "frame_size": size,
+            }
+            out[pre + "telem_send"] = send(pre, mbps)
+        return out
+
+    pres = [{"pre": "gnss0_b_"}, {"pre": "gnss0_a_"}]
+    b = blocks()
+    g.telem_host_form(b, pres, 0)
+    rows = {
+        "gnss0_"
+        + c: {
+            "in_buf": "gnss0_%s_n2rec_buf" % c,
+            "chain": c,
+            "n_prn": 32,
+            "max_prn": m,
+            "n_chan": 4,
+            "channel_ids": [1, 2, 3, 4],
+        }
+        for c, m in (("a", 32), ("b", 14))
+    }
+    want = {
+        "gnss0_telem": {
+            "kotekan_stage": "GnssTelemPack",
+            "inst": "cx52.0",
+            "cpu_affinity": [35],
+            "chains": rows,
+            "workers": [
+                {"rows": ["gnss0_b"], "cpu_affinity": [35]},
+                {"rows": ["gnss0_a"], "cpu_affinity": [35]},
+            ],
+            "out_buf": "gnss0_telem_buf",
+        },
+        "gnss0_telem_buf": {
+            "kotekan_buffer": "standard",
+            "metadata_pool": "gnss_pool",
+            "num_frames": 64,
+            "frame_size": 2000,
+        },
+        "gnss0_telem_send": dict(
+            send("gnss0_", 3.75), kotekan_stage="GnssTelemSend", buf="gnss0_telem_buf",
+        ),
+    }
+    check(
+        b == want,
+        "telem_host_form: one host, one buffer and one GnssTelemSend for the half (%s)"
+        % json.dumps(b, sort_keys=True)[:400],
+    )
+    b = blocks()
+    b["gnss0_a_telem_send"]["send_timeout"] = 2
+    try:
+        g.telem_host_form(b, pres, 0)
+        msg = None
+    except SystemExit as e:
+        msg = str(e)
+    check(
+        msg
+        == "gnss0: --telem-pack-host needs send_timeout the same on every chain's telem_send",
+        "telem_host_form refuses a send key the chains differ on (%s)" % msg,
+    )
+
+
 def test_paths_in_the_kotekan_tree():
     """A recipe records a file in the kotekan tree relative to that tree, wherever the tree
     is, and a relative input not there from the cwd is looked for in it."""
@@ -1580,6 +1695,71 @@ def test_combine_host():
             and sorted(k for k in hosted if re.fullmatch(r"gnss\d_combine", k))
             == ["gnss0_combine", "gnss1_combine"],
             "%s: one host per half, and nothing else changes" % extra,
+        )
+
+
+def test_telem_pack_host():
+    """--telem-pack-host, alone or with --combine-host, moves each half's telemetry packs into
+    gnss<g>_telem, writing gnss<g>_telem_buf for gnss<g>_telem_send, and changes nothing else:
+    read by gnss_fleet.telem_rows, the host's rows are the packs without the flag, less their
+    out_buf, and each sends the chain and inst it did."""
+    if kotekan_src.SRC is None:
+        print("  [SKIP] node config: no kotekan tree to render the base from")
+        return
+    for extra in ([], ["--combine-host"]):
+        exc, plain = _lane_transfer_node(flags=extra)
+        exc_h, hosted = _lane_transfer_node(flags=extra + ["--telem-pack-host"])
+        check(
+            exc is None and exc_h is None,
+            "%s: the node configs generate (%s, %s)" % (extra, exc, exc_h),
+        )
+        if None in (plain, hosted):
+            continue
+        packs = {
+            k: v
+            for k, v in plain.items()
+            if isinstance(v, dict) and v.get("kotekan_stage") == "GnssTelemPack"
+        }
+        rows = dict(gnss_fleet.telem_rows(hosted))
+        bufs = {g_: [] for g_ in (0, 1)}
+        for k, v in packs.items():
+            bufs[int(k[4])].append(plain[v.pop("out_buf")])
+        check(
+            len(packs) == 6
+            and {k: dict(r, out_buf=None) for k, r in rows.items()}
+            == {k: dict(v, out_buf=None) for k, v in packs.items()},
+            "%s: the hosts' rows are the packs without the flag (%d, %d)"
+            % (extra, len(packs), len(rows)),
+        )
+        bad = []
+        for g_ in (0, 1):
+            buf = hosted.get("gnss%d_telem_buf" % g_) or {}
+            if buf.get("num_frames") != sum(
+                b["num_frames"] for b in bufs[g_]
+            ) or buf.get("frame_size") != max(b["frame_size"] for b in bufs[g_]):
+                bad.append("gnss%d_telem_buf %s" % (g_, buf))
+            send = hosted.get("gnss%d_telem_send" % g_) or {}
+            if (
+                send.get("kotekan_stage") != "GnssTelemSend"
+                or send.get("buf") != "gnss%d_telem_buf" % g_
+                or send.get("server_port") != g.TELEM_PORT
+            ):
+                bad.append("gnss%d_telem_send %s" % (g_, send))
+
+        def others(c):
+            return {
+                k: v
+                for k, v in c.items()
+                if not re.match(r"gnss\d(_\w+)?_telem_(pack|buf|send)$", k)
+                and not re.match(r"gnss\d_telem$", k)
+            }
+
+        if others(plain) != others(hosted):
+            bad.append("blocks outside the telemetry legs")
+        check(
+            not bad,
+            "%s: one buffer as deep as the rows' and as wide as the widest, one GnssTelemSend "
+            "per half, and nothing else changes (%s)" % (extra, bad),
         )
 
 
