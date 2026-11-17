@@ -123,7 +123,9 @@ private:
     struct Row {
         Row(kotekan::Config& config, const gnss::HostRow& row);
         Buffer* in_buf = nullptr;
+        int in_id = 0;
         Buffer* out_buf = nullptr; ///< nullptr when the config has no out_buf
+        int out_id = 0;
         /// The emit's records when there is no out_buf.
         std::vector<float> scratch;
         std::atomic<uint64_t> records_done{0};
@@ -135,6 +137,9 @@ private:
     std::vector<std::string> _rest_paths;
 
     void run_row(size_t row);
+    /// Fold row @p row's next record into its chain, reading it as consumer @p consumer, and
+    /// emit when one is due. Returns false when shutting down.
+    bool take_record(size_t row, const std::string& consumer);
 };
 
 #endif // GNSS_COHERENT_COMBINER_HPP

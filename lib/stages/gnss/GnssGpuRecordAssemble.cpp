@@ -6,7 +6,6 @@
 #include "gnssChanPower.hpp"    // for ChanPower
 #include "gnssProjSubspace.hpp" // for ProjBoard
 
-#include <sched.h>       // for CPU_SETSIZE
 #include <set>           // for set
 #include <sys/syscall.h> // for SYS_gettid
 #include <unistd.h>      // for syscall
@@ -39,7 +38,7 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     Stage(config, unique_name, buffer_container,
           std::bind(&GnssGpuRecordAssemble::main_thread, this)),
     _host_rows(gnss::host_rows(config, unique_name, "_n2assemble", ROW_KEYS, ROW_ONLY_KEYS)) {
-    _workers = read_workers(config, unique_name);
+    _workers = gnss::host_workers(config, unique_name, _host_rows);
     for (const gnss::HostRow& hr : _host_rows) {
         // Exact paths: a row must not take its input from the host block or the root.
         const bool in = config.exists(hr.cfg_path, "in_buf");
@@ -92,63 +91,12 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
                 gnss::rest_register_unique(hr.name + "/" + v.verb, v.post, _rest_paths);
         }
     }
-    for (const Worker& w : _workers)
+    for (const gnss::HostWorker& w : _workers)
         register_inputs(w);
     gnss::rest_register_chains(unique_name, _host_rows, _rest_paths);
 }
 
-std::vector<GnssGpuRecordAssemble::Worker>
-GnssGpuRecordAssemble::read_workers(Config& config, const std::string& unique_name) {
-    std::vector<Worker> out;
-    if (!config.exists(unique_name, "workers")) {
-        for (size_t i = 0; i < _host_rows.size(); ++i)
-            out.push_back({_host_rows[i].name, {}, {i}});
-        return out;
-    }
-    if (_host_rows[0].key.empty())
-        FATAL_ERROR("{:s}: workers needs a chains block", unique_name);
-    const nlohmann::json ws = config.get_value(unique_name, "workers");
-    if (!ws.is_array() || ws.empty())
-        FATAL_ERROR("{:s}: workers must be a non-empty list", unique_name);
-    // The worker of each row, ws.size() while it has none.
-    std::vector<size_t> of(_host_rows.size(), ws.size());
-    for (size_t k = 0; k < ws.size(); ++k) {
-        const nlohmann::json& e = ws[k];
-        if (!e.is_object() || !e.contains("rows") || !e["rows"].is_array() || e["rows"].empty()
-            || !e.contains("cpu_affinity") || !e["cpu_affinity"].is_array()
-            || e["cpu_affinity"].empty())
-            FATAL_ERROR("{:s}: worker {:d} needs rows and cpu_affinity, each a non-empty list",
-                        unique_name, k);
-        Worker w{unique_name + "/w" + std::to_string(k), {}, {}};
-        for (const nlohmann::json& c : e["cpu_affinity"]) {
-            if (!c.is_number_integer() || c.get<int64_t>() < 0 || c.get<int64_t>() >= CPU_SETSIZE)
-                FATAL_ERROR("{:s}: worker {:d} has cpu_affinity entry {:s}, not a core",
-                            unique_name, k, c.dump());
-            w.cpus.push_back(c.get<int>());
-        }
-        for (const nlohmann::json& key : e["rows"]) {
-            size_t i = 0;
-            while (i < _host_rows.size()
-                   && !(key.is_string() && key.get<std::string>() == _host_rows[i].key))
-                ++i;
-            if (i == _host_rows.size())
-                FATAL_ERROR("{:s}: worker {:d} runs {:s}, which is not a row of chains",
-                            unique_name, k, key.dump());
-            if (of[i] < ws.size())
-                FATAL_ERROR("{:s}: row {:s} is in workers {:d} and {:d}", unique_name,
-                            _host_rows[i].key, of[i], k);
-            of[i] = k;
-            w.rows.push_back(i);
-        }
-        out.push_back(w);
-    }
-    for (size_t i = 0; i < _host_rows.size(); ++i)
-        if (of[i] == ws.size())
-            FATAL_ERROR("{:s}: row {:s} is in no worker", unique_name, _host_rows[i].key);
-    return out;
-}
-
-void GnssGpuRecordAssemble::register_inputs(const Worker& w) {
+void GnssGpuRecordAssemble::register_inputs(const gnss::HostWorker& w) {
     std::set<Buffer*> taken;
     for (size_t a = 0; a < w.rows.size(); ++a) {
         const Row& row = _rows[w.rows[a]];
@@ -183,7 +131,7 @@ void GnssGpuRecordAssemble::main_thread() {
     }
     std::vector<std::string> names;
     std::vector<std::vector<int>> cpus;
-    for (const Worker& w : _workers) {
+    for (const gnss::HostWorker& w : _workers) {
         // A worker of one row takes the thread name its row's own stage had.
         names.push_back(w.rows.size() == 1 ? _host_rows[w.rows[0]].name : w.name);
         cpus.push_back(w.cpus);
@@ -200,7 +148,7 @@ void GnssGpuRecordAssemble::run_pinned(size_t w) {
 }
 
 void GnssGpuRecordAssemble::run_worker(size_t w) {
-    const Worker& wk = _workers[w];
+    const gnss::HostWorker& wk = _workers[w];
     while (!stop_thread) {
         for (size_t pos = 0; pos < wk.rows.size(); ++pos) {
             Row& row = _rows[wk.rows[pos]];
@@ -265,7 +213,7 @@ void GnssGpuRecordAssemble::read_gpu_row(Config& config, const gnss::HostRow& hr
     row.tag = g.tag();
 }
 
-bool GnssGpuRecordAssemble::assemble_frames(const Worker& w, size_t pos) {
+bool GnssGpuRecordAssemble::assemble_frames(const gnss::HostWorker& w, size_t pos) {
     const Row& first = _rows[w.rows[pos]];
     Buffer* const ctl_buf = first.ctl_buf;
     Buffer* const tiles_buf = first.tiles_buf;

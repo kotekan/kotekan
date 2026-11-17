@@ -119,22 +119,13 @@ private:
     };
     const std::vector<gnss::HostRow> _host_rows;
     std::deque<Row> _rows;
-    /// A thread of the host: its rows, run in order every frame, read their inputs as consumer
-    /// @c name. Without @c workers, one per row, named for the row and bound to the stage's
-    /// cpu_affinity (no @c cpus).
-    struct Worker {
-        std::string name;
-        std::vector<int> cpus;
-        std::vector<size_t> rows;
-    };
-    std::vector<Worker> _workers;
+    /// Its threads: each runs its rows in order every frame (gnss::host_workers).
+    std::vector<gnss::HostWorker> _workers;
     /// The REST paths this host registered.
     std::vector<std::string> _rest_paths;
 
-    /// The workers from the @c workers block, or one per row without it.
-    std::vector<Worker> read_workers(kotekan::Config& config, const std::string& unique_name);
     /// Register worker @p w as the consumer of its rows' input buffers, once each.
-    void register_inputs(const Worker& w);
+    void register_inputs(const gnss::HostWorker& w);
     void run_worker(size_t w);
     /// run_worker on a thread of its own, counted among the stage's threads.
     void run_pinned(size_t w);
@@ -143,7 +134,7 @@ private:
     /// As worker @p w, wait for the next tiles and control-block frames of its row at @p pos,
     /// assemble from them the frame of that row and of each later row of @p w that reads the
     /// same two buffers, and release both. Returns false when shutting down.
-    bool assemble_frames(const Worker& w, size_t pos);
+    bool assemble_frames(const gnss::HostWorker& w, size_t pos);
     /// Take @p row's slice of a GPU half's tiles and control block from its gnss_row.
     void read_gpu_row(kotekan::Config& config, const gnss::HostRow& hr, Row& row);
     /// Pack row @p row's completed window into its cube_buf and mark it full, or count it

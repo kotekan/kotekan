@@ -40,6 +40,27 @@ std::vector<HostRow> host_rows(kotekan::Config& config, const std::string& uniqu
                                const std::string& suffix, const std::vector<std::string>& row_keys,
                                const std::vector<std::string>& row_only_keys);
 
+/// A thread of a host stage, which runs its rows in order and reads their inputs as one consumer.
+struct HostWorker {
+    /// Its consumer name.
+    std::string name;
+    /// The cores it is bound to; empty for a row's own thread, on the stage's cores.
+    std::vector<int> cpus;
+    /// Its rows, as indices into the host's rows, in the order it runs them.
+    std::vector<size_t> rows;
+};
+
+/**
+ * @brief The workers of host stage @p unique_name, whose rows are @p rows.
+ *
+ * Without a @c workers key, one per row, named for the row and with no cores. With one, worker k
+ * of `workers: [{rows: [row keys], cpu_affinity: [cores]}, ...]`, named `<unique_name>/w<k>`.
+ * Workers need a @c chains block, and every row must be in exactly one worker. Any violation is
+ * FATAL.
+ */
+std::vector<HostWorker> host_workers(kotekan::Config& config, const std::string& unique_name,
+                                     const std::vector<HostRow>& rows);
+
 /// Register a GET callback at @p path and add @p path to @p paths, FATAL if @p path already has
 /// a callback.
 void rest_register_unique(const std::string& path,

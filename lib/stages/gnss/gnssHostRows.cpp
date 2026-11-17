@@ -6,6 +6,7 @@
 
 #include <mutex>     // for mutex, lock_guard
 #include <pthread.h> // for pthread_setaffinity_np, pthread_setname_np
+#include <sched.h>   // for CPU_SETSIZE
 #include <set>       // for set
 #include <thread>    // for thread
 
@@ -60,6 +61,57 @@ std::vector<HostRow> host_rows(Config& config, const std::string& unique_name,
         if (!row_names.insert(row.name).second)
             FATAL_ERROR_NON_OO("{:s}: row name {:s} is already in use", unique_name, row.name);
     return rows;
+}
+
+std::vector<HostWorker> host_workers(Config& config, const std::string& unique_name,
+                                     const std::vector<HostRow>& rows) {
+    std::vector<HostWorker> out;
+    if (!config.exists(unique_name, "workers")) {
+        for (size_t i = 0; i < rows.size(); ++i)
+            out.push_back({rows[i].name, {}, {i}});
+        return out;
+    }
+    if (rows[0].key.empty())
+        FATAL_ERROR_NON_OO("{:s}: workers needs a chains block", unique_name);
+    const json ws = config.get_value(unique_name, "workers");
+    if (!ws.is_array() || ws.empty())
+        FATAL_ERROR_NON_OO("{:s}: workers must be a non-empty list", unique_name);
+    // The worker of each row, ws.size() while it has none.
+    std::vector<size_t> of(rows.size(), ws.size());
+    for (size_t k = 0; k < ws.size(); ++k) {
+        const json& e = ws[k];
+        if (!e.is_object() || !e.contains("rows") || !e["rows"].is_array() || e["rows"].empty()
+            || !e.contains("cpu_affinity") || !e["cpu_affinity"].is_array()
+            || e["cpu_affinity"].empty())
+            FATAL_ERROR_NON_OO("{:s}: worker {:d} needs rows and cpu_affinity, each a non-empty "
+                               "list",
+                               unique_name, k);
+        HostWorker w{unique_name + "/w" + std::to_string(k), {}, {}};
+        for (const json& c : e["cpu_affinity"]) {
+            if (!c.is_number_integer() || c.get<int64_t>() < 0 || c.get<int64_t>() >= CPU_SETSIZE)
+                FATAL_ERROR_NON_OO("{:s}: worker {:d} has cpu_affinity entry {:s}, not a core",
+                                   unique_name, k, c.dump());
+            w.cpus.push_back(c.get<int>());
+        }
+        for (const json& key : e["rows"]) {
+            size_t i = 0;
+            while (i < rows.size() && !(key.is_string() && key.get<std::string>() == rows[i].key))
+                ++i;
+            if (i == rows.size())
+                FATAL_ERROR_NON_OO("{:s}: worker {:d} runs {:s}, which is not a row of chains",
+                                   unique_name, k, key.dump());
+            if (of[i] < ws.size())
+                FATAL_ERROR_NON_OO("{:s}: row {:s} is in workers {:d} and {:d}", unique_name,
+                                   rows[i].key, of[i], k);
+            of[i] = k;
+            w.rows.push_back(i);
+        }
+        out.push_back(w);
+    }
+    for (size_t i = 0; i < rows.size(); ++i)
+        if (of[i] == ws.size())
+            FATAL_ERROR_NON_OO("{:s}: row {:s} is in no worker", unique_name, rows[i].key);
+    return out;
 }
 
 void rest_register_unique(const std::string& path,

@@ -3,10 +3,8 @@
 #include "GnssChanMetadata.hpp" // for get_gnss_chan_metadata (the record's absolute hop)
 #include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
 #include "gnssHostRows.hpp"     // for host_rows, rest_register_unique, run_rows, release_host
-#include "visUtil.hpp"          // for frameID
 
 #include <functional> // for bind
-#include <optional>   // for optional
 #include <string>     // for string
 
 using kotekan::bufferContainer;
@@ -63,52 +61,51 @@ void GnssCoherentCombiner::main_thread() {
 }
 
 void GnssCoherentCombiner::run_row(size_t r) {
+    while (!stop_thread)
+        if (!take_record(r, _host_rows[r].name))
+            break;
+}
+
+bool GnssCoherentCombiner::take_record(size_t r, const std::string& consumer) {
     Row& row = _rows[r];
     const std::string& name = _host_rows[r].name;
     Buffer* in_buf = row.in_buf;
     Buffer* out_buf = row.out_buf;
     gnss::CombinerChain& chain = row.chain;
 
-    frameID in_id(in_buf);
-    std::optional<frameID> out_id;
-    if (out_buf)
-        out_id.emplace(out_buf);
+    float* in = (float*)in_buf->wait_for_full_frame(consumer, row.in_id);
+    if (in == nullptr)
+        return false;
 
-    long long n_roll = 0; // total records seen
+    // Absolute hop index of this record's window, from the frame metadata
+    // (GnssGpuRecordAssemble sets sample_seq to the window start). Every node's sample_seq
+    // derives from the same F-engine counter, so equal hop is the same window exactly, with
+    // no tolerance as UTC would need; the fleet DLL groups on it. cur_hop is this record's
+    // hop, for the per-record export; win_hop labels the emitted window (its newest record,
+    // as ref_utc is).
+    long long cur_hop = -1;
+    {
+        const GnssChanMetadata* mi = get_gnss_chan_metadata(in_buf, row.in_id);
+        cur_hop = (mi && mi->sample_seq >= 0) ? mi->sample_seq / chain.fft_len() : -1;
+    }
+    const bool emit = chain.ingest(in, cur_hop);
 
-    while (!stop_thread) {
-        row.records_done.store((uint64_t)n_roll);
-        float* in = (float*)in_buf->wait_for_full_frame(name, in_id);
-        if (in == nullptr)
-            break;
+    in_buf->mark_frame_empty(consumer, row.in_id);
+    row.in_id = (row.in_id + 1) % in_buf->num_frames;
 
-        // Absolute hop index of this record's window, from the frame metadata
-        // (GnssGpuRecordAssemble sets sample_seq to the window start). Every node's sample_seq
-        // derives from the same F-engine counter, so equal hop is the same window exactly, with
-        // no tolerance as UTC would need; the fleet DLL groups on it. cur_hop is this record's
-        // hop, for the per-record export; win_hop labels the emitted window (its newest record,
-        // as ref_utc is).
-        long long cur_hop = -1;
-        {
-            const GnssChanMetadata* mi = get_gnss_chan_metadata(in_buf, in_id);
-            cur_hop = (mi && mi->sample_seq >= 0) ? mi->sample_seq / chain.fft_len() : -1;
-        }
-        const bool emit = chain.ingest(in, cur_hop);
-
-        in_buf->mark_frame_empty(name, in_id++);
-
-        ++n_roll;
-        if (!emit)
-            continue;
-
+    if (emit) {
         float* out = row.scratch.data();
         if (out_buf) {
-            out = (float*)out_buf->wait_for_empty_frame(name, *out_id);
+            out = (float*)out_buf->wait_for_empty_frame(name, row.out_id);
             if (out == nullptr)
-                break;
+                return false;
         }
         chain.emit(out);
-        if (out_buf)
-            out_buf->mark_frame_full(name, (*out_id)++);
+        if (out_buf) {
+            out_buf->mark_frame_full(name, row.out_id);
+            row.out_id = (row.out_id + 1) % out_buf->num_frames;
+        }
     }
+    row.records_done.store(row.records_done.load() + 1);
+    return true;
 }
