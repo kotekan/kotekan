@@ -17,12 +17,17 @@ host_rfi_s012tilde_ringbuffer{{ n.sfx }}:
     numa_node: {{ n.id }}
 {%- endif %}
 
-# uint64 "S012tilde" [Trfi, F, 3]: S0, S1 and S2 summed over the good feeds.
+# S0, S1 and S2 summed over the good feeds. The names and scalings are those of the
+# cudaRFIS012tilde ring: IncoherentBeamPower reads them when it starts and checks every frame
+# against them.
 host_rfi_s012tilde_buffer{{ n.sfx }}:
     kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
     value_type: uint64
     extents: [samples_per_data_set / rfi_downsampling_factor, num_local_freq, 3]
+    quantity_name: "S012tilde"
+    dimnames: ["Trfi", "F", "S"]
+    dimscalings: [rfi_downsampling_factor, 1, 1]
     metadata_pool: main_pool
 {%- if n.id %}
     numa_node: {{ n.id }}
