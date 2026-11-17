@@ -1643,6 +1643,8 @@ void stall_child(const std::vector<ChainSpec>& cs, Hold hold, const std::string&
 /// Records each row of the combiner stall test is fed, one every CMB_STALL_DT_S, and chain 0's
 /// record at which its feeder or its taker is held.
 constexpr int CMB_STALL_RECORDS = 1000, CMB_STALL_AT = 200;
+/// The PRN of every record the combiner stall test feeds.
+constexpr float CMB_STALL_PRN = 7.0f;
 constexpr double CMB_STALL_DT_S = 0.004;
 
 /// What the combiner stall test holds: chain 0's feeder, so that its worker waits for chain 0's
@@ -1651,9 +1653,10 @@ constexpr double CMB_STALL_DT_S = 0.004;
 enum class CmbHold { input, output };
 
 /// The combiner stall test's child: the chains' combiners as rows of one host on two workers
-/// (chain i on worker i % 2). A feeder per chain writes CMB_STALL_RECORDS empty records, each with
-/// its window's sample_seq, one every CMB_STALL_DT_S, into a 4-deep in_buf; integration_length 10
-/// emits every record, labelled with its hop, into a 4-deep out_buf that a taker per chain reads.
+/// (chain i on worker i % 2). A feeder per chain writes CMB_STALL_RECORDS empty records of PRN
+/// CMB_STALL_PRN, each with its window's sample_seq, one every CMB_STALL_DT_S, into a 4-deep
+/// in_buf, setting each frame's PRNs to 0 as soon as it is released; integration_length 10 emits
+/// every record, labelled with its hop, into a 4-deep out_buf that a taker per chain reads.
 /// @p hold holds for STALL_HOLD_S at chain 0's record CMB_STALL_AT. Writes {"t0": start, "fed":
 /// [[time of record j] per chain], "taken": [[[time, hop]...] per chain], "hold": [start, end]} to
 /// @p out_path.
@@ -1712,14 +1715,22 @@ void cmb_stall_child(const std::vector<ChainSpec>& cs, CmbHold hold, const std::
         threads.emplace_back([&, i] {
             Buffer* b = in[i];
             const int64_t rec_samples = (int64_t)cs[i].hops_per_record * cs[i].fft_len;
+            const size_t stride = gnss::record_stride(cs[i].combine.at("n_elements").get<int>());
             for (int j = 0; j < CMB_STALL_RECORDS; ++j) {
                 if (i == 0 && j == CMB_STALL_AT && hold == CmbHold::input)
                     hold_here();
+                const int id = j % b->num_frames;
+                float* f = (float*)b->wait_for_empty_frame("feeder", id);
+                if (f == nullptr)
+                    return;
+                // Poisoned as soon as the combiner releases it, so a read after the release
+                // takes PRN 0.
+                for (int p = 0; p < cs[i].n_prn; ++p)
+                    f[p * stride + gnss::REC_PRN] = 0.0f;
                 while (now_s() < t0 + j * CMB_STALL_DT_S)
                     std::this_thread::sleep_for(std::chrono::microseconds(100));
-                const int id = j % b->num_frames;
-                if (b->wait_for_empty_frame("feeder", id) == nullptr)
-                    return;
+                for (int p = 0; p < cs[i].n_prn; ++p)
+                    f[p * stride + gnss::REC_PRN] = CMB_STALL_PRN;
                 b->allocate_new_metadata_object(id);
                 get_gnss_chan_metadata(b, id)->sample_seq = (REC_BASE + j) * rec_samples;
                 fed[i][j] = now_s();
@@ -1728,6 +1739,7 @@ void cmb_stall_child(const std::vector<ChainSpec>& cs, CmbHold hold, const std::
         });
         threads.emplace_back([&, i] {
             Buffer* b = out[i];
+            const size_t stride = gnss::record_stride(cs[i].combine.at("n_elements").get<int>());
             for (int j = 0; j < CMB_STALL_RECORDS; ++j) {
                 const int id = j % b->num_frames;
                 const uint8_t* f = b->wait_for_full_frame("taker", id);
@@ -1737,7 +1749,11 @@ void cmb_stall_child(const std::vector<ChainSpec>& cs, CmbHold hold, const std::
                     hold_here();
                 int64_t hop;
                 std::memcpy(&hop, f + gnss::CMB_HOP_SLOT * sizeof(float), sizeof(hop));
-                taken[i].push_back({now_s(), hop});
+                // A poisoned PRN read shows as the record's hop negated.
+                bool poisoned = false;
+                for (int p = 0; p < cs[i].n_prn; ++p)
+                    poisoned |= ((const float*)f)[p * stride + gnss::REC_PRN] != CMB_STALL_PRN;
+                taken[i].push_back({now_s(), poisoned ? -hop : hop});
                 b->mark_frame_empty("taker", id);
             }
         });
@@ -2436,8 +2452,9 @@ BOOST_AUTO_TEST_CASE(workers_stall) {
 /// The combiners as rows of one host whose rows run on workers, each taking a record of each of
 /// its rows in turn as one consumer of their in_bufs, give the baseline's digests with more rows
 /// than workers; with GNSS_REPLAY_FULL=1 also with one worker per row and with one worker, without
-/// out_buf, and beside assemblers on one worker per row that read their rows of the half's tiles
-/// and control blocks, as gen_chord_gnss_config.py --record-host --combine-host builds a node.
+/// out_buf, and beside assemblers that read their rows of the half's tiles and control blocks, on
+/// one worker per row each, as gen_chord_gnss_config.py --record-host --combine-host builds a
+/// node, and on two workers each, so that one record worker feeds each combine worker's rows.
 BOOST_AUTO_TEST_CASE(combine_workers) {
     const Digests& base = baseline();
     const int n = (int)chains().size();
@@ -2452,9 +2469,11 @@ BOOST_AUTO_TEST_CASE(combine_workers) {
         }
         runs.push_back(runs[0]);
         runs.back().combiner_out_buf = false;
-        runs.push_back(runs[0]);
-        runs.back().cmb_workers = runs.back().workers = n;
-        runs.back().fold = runs.back().gpu_rows = true;
+        for (int w : {n, 2}) {
+            runs.push_back(runs[0]);
+            runs.back().cmb_workers = runs.back().workers = w;
+            runs.back().fold = runs.back().gpu_rows = true;
+        }
     }
     for (const Scenario& x : runs) {
         const Digests d = run_scenario(chains(), x);
@@ -2511,7 +2530,8 @@ BOOST_AUTO_TEST_CASE(combine_workers_swap_one_row) {
 /// i % 2), holding for STALL_HOLD_S first chain 0's input, so that worker 0 waits for its next
 /// record, and then chain 0's out_buf consumer, so that worker 0 blocks in an emit. Chain 1, on
 /// worker 1, keeps up through either hold; chain 2 shares worker 0 and stalls with chain 0; then
-/// every row takes every record once, in order, the held rows included.
+/// every row takes every record once, in order, the held rows included, and reads none after
+/// releasing it.
 BOOST_AUTO_TEST_CASE(combine_workers_stall) {
     if (!full_run())
         return;
@@ -2551,7 +2571,7 @@ BOOST_AUTO_TEST_CASE(combine_workers_stall) {
                 late[i] = std::max(late[i], fed[r] - (t0 + r * CMB_STALL_DT_S));
             BOOST_CHECK_MESSAGE(got == want, what << ": " << s.pre << " took " << got.size()
                                                   << " records, not each of " << want.size()
-                                                  << " once in order");
+                                                  << " once in order, none read after release");
             BOOST_CHECK_MESSAGE(after[i] > 0, what << ": " << s.pre
                                                    << " took nothing after the "
                                                       "hold");
