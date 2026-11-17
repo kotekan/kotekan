@@ -16,6 +16,7 @@
 #include <condition_variable> // for condition_variable
 #include <mutex>              // for mutex
 #include <netinet/in.h>       // for sockaddr_in
+#include <stddef.h>           // for size_t
 #include <stdint.h>           // for uint32_t
 #include <string>             // for string, basic_string
 
@@ -105,6 +106,11 @@ public:
 
     /// Adds the target server to the pipeline graph
     void add_graph_details(kotekan::PipelineGraph& graph) const override;
+
+protected:
+    /// The leading bytes of frame @p frame_id that are sent, buf->frame_size by default. A
+    /// subclass whose frames carry their own length may send less, never more.
+    virtual size_t frame_send_bytes(int frame_id);
 
 private:
     /// The input buffer to send frames from.

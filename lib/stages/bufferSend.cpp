@@ -156,10 +156,10 @@ void bufferSend::main_thread() {
                             buf->buffer_name, frame_id);
             }
             auto metadata_size = meta->get_serialized_size();
-            auto frame_size = buf->frame_size;
+            const size_t frame_size = frame_send_bytes(frame_id);
             bufferFrameHeader header;
             header.metadata_size = static_cast<uint32_t>(meta->get_serialized_size());
-            header.frame_size = static_cast<uint32_t>(buf->frame_size);
+            header.frame_size = static_cast<uint32_t>(frame_size);
             // Flag a tracker update on the first frame of every connection, not
             // only when this side's tracker hash changes: a receiver that
             // (re)started after us holds no upstream configs and has no way to
@@ -286,6 +286,10 @@ void bufferSend::main_thread() {
 
     close_connection();
     connect_thread.join();
+}
+
+size_t bufferSend::frame_send_bytes(int) {
+    return buf->frame_size;
 }
 
 void bufferSend::close_connection() {
