@@ -58,8 +58,9 @@ struct IncoherentCandidate {
  * @brief Searches power summed over feeds for dispersed pulses, one time sample at a time.
  *
  * Each channel keeps an exponential running mean and variance and is normalized by them. Channels
- * that are missing, in a fixed band, noisier than their neighbours or drifting are masked. The
- * channel average is subtracted at each time (zero DM). The normalized samples are summed along
+ * that are missing, in a fixed band, noisier than their neighbours or drifting (the means of
+ * 64-sample blocks vary more than white noise allows) are masked. The channel average is
+ * subtracted at each time (zero DM). The normalized samples are summed along
  * each trial DM's dispersion curve with delays rounded to the nearest sample, relative to the top
  * channel. Each sum is tried at several widths against a baseline from the samples on both sides,
  * and normalized by its own running variance.
@@ -125,10 +126,14 @@ private:
         return &w[(size_t)channel * buffer_len + (size_t)(sample - base)];
     }
 
+    // A channel in the sample being added: no data or no statistics yet, normalized but masked,
+    // or in the search.
+    enum class ChannelState : uint8_t { missing, masked, used };
+
     const IncoherentSearchParams p;
-    const int F;
-    const int D;
-    const int W;
+    const int F;    // channels
+    const int D;    // trial DMs
+    const int W;    // pulse widths
     const double a; // weight of one sample in a running statistic
     // In samples:
     int64_t holdoff = 0;
@@ -138,38 +143,41 @@ private:
     int64_t lookahead = 0;    // sums needed after a window's start
 
     // Per channel
-    std::vector<double> mean, var;
-    std::vector<int64_t> count;
-    std::vector<float> ref; // sigma/mean reference from the neighbours, in units of thermal
-    std::vector<uint8_t> band_ok, state;
+    std::vector<double> mean, var;   // running mean and variance of the power
+    std::vector<int64_t> count;      // updates of mean and var
+    std::vector<float> ref;          // sigma/mean of the neighbours, in units of thermal
+    std::vector<uint8_t> band_ok;    // 0 in a fixed masked band
+    std::vector<ChannelState> state; // in the sample being added
+    std::vector<float> scratch;      // normalized value in the sample being added
+    // Drift test: the sum of the current block of normalized samples, and the running variance
+    // of the block means in units of that of white noise.
     std::vector<double> block_sum, drift;
-    std::vector<float> scratch;
 
     // Normalized samples [channel][time] in steps of 1/32 sigma, a linear buffer that is shifted
     // down when full. The samples are limited to a few sigma, so 8 bits lose nothing, and the
     // dedispersion is bound by the memory it reads.
     std::vector<int8_t> w;
-    int64_t buffer_len = 0;
-    int64_t keep = 0;
-    int64_t base = 0; // sample index of column 0
-    int64_t ns = 0;   // samples added
+    int64_t buffer_len = 0; // samples per channel in w
+    int64_t keep = 0;       // samples that a shift keeps
+    int64_t base = 0;       // sample index of column 0
+    int64_t ns = 0;         // samples added
     int num_used = 0;
 
     // Per DM
-    std::vector<int32_t> delay; // [D][F]
-    std::vector<int64_t> max_delay;
+    std::vector<int32_t> delay;     // [D][F], in samples, relative to the top channel
+    std::vector<int64_t> max_delay; // the bottom channel's delay
     int64_t max_delay_all = 0;
     double sweep_per_dm = 0;        // samples of sweep across the band per unit DM
     std::vector<int64_t> next_sum;  // first top-channel time not yet dedispersed
     std::vector<int64_t> next_eval; // first window start not yet evaluated
     int64_t history_len = 0;
-    std::vector<float> history; // [D][history_len + chunk]: the most recent sums
-    std::vector<int64_t> history_n;
-    std::vector<double> sum_var; // [D][W]
-    std::vector<int64_t> sum_count;
-    std::vector<double> sigma_floor; // [W]
+    std::vector<float> history;      // [D][history_len + chunk]: the most recent sums
+    std::vector<int64_t> history_n;  // sums held in history
+    std::vector<double> sum_var;     // [D][W]: running variance of each width's statistic
+    std::vector<int64_t> sum_count;  // [D][W]: updates of sum_var
+    std::vector<double> sigma_floor; // [W]: lower limit of the sigma that divides a statistic
 
-    std::vector<Event> events;
+    std::vector<Event> events; // open candidates, and reported ones that still absorb residue
     std::vector<IncoherentCandidate> candidates;
     double max_snr_seen = 0;
 };

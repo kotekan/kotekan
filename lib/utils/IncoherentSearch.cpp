@@ -7,7 +7,8 @@
 #include <stdexcept>
 
 namespace {
-// Dispersion delay in ms = dispersion_ms * DM * (difference of GHz^-2)
+// Dispersion delay in ms = dispersion_ms * DM * (difference of GHz^-2). basebandApiManager::K_DM
+// is the same constant in Hz^2 s.
 const double dispersion_ms = 4.148808;
 // Pulse widths tried, in samples
 const std::array<int, 5> widths = {1, 2, 4, 8, 16};
@@ -33,6 +34,15 @@ const int64_t unclipped_updates = 64;
 const double update_clip = 5.0;
 // A sample merges into a candidate at another DM only below this fraction of its S/N
 const double residue_fraction = 0.3;
+// A sample merges into a candidate within this many samples of it, plus the sweep between the
+// two DMs
+const int merge_slack = 20;
+// A running statistic is used after this many seconds of updates
+const double settle_s = 1.0;
+// A candidate is reported this many seconds after its first sample above threshold
+const double close_after_s = 2.0;
+// Seconds between updates of the neighbours' reference
+const double ref_interval_s = 0.5;
 } // namespace
 
 IncoherentSearch::IncoherentSearch(const IncoherentSearchParams& params) :
@@ -43,9 +53,9 @@ IncoherentSearch::IncoherentSearch(const IncoherentSearchParams& params) :
         throw std::invalid_argument("IncoherentSearch: invalid parameters");
 
     holdoff = std::llround(p.holdoff_s / p.sample_s);
-    min_count = std::llround(1.0 / p.sample_s);
-    close_after = std::llround(2.0 / p.sample_s);
-    ref_interval = std::max<int64_t>(1, std::llround(0.5 / p.sample_s));
+    min_count = std::llround(settle_s / p.sample_s);
+    close_after = std::llround(close_after_s / p.sample_s);
+    ref_interval = std::max<int64_t>(1, std::llround(ref_interval_s / p.sample_s));
 
     mean.assign(F, 0.0);
     var.assign(F, 0.0);
@@ -54,7 +64,7 @@ IncoherentSearch::IncoherentSearch(const IncoherentSearchParams& params) :
     block_sum.assign(F, 0.0);
     drift.assign(F, 0.0);
     scratch.assign(F, 0.0f);
-    state.assign(F, 0);
+    state.assign(F, ChannelState::missing);
     band_ok.assign(F, 1);
     for (int c = 0; c < F; ++c) {
         const double f = p.freq0_mhz + p.dfreq_mhz * c;
@@ -117,6 +127,7 @@ void IncoherentSearch::update_reference() {
 }
 
 bool IncoherentSearch::add_sample(const float* power) {
+    // When the buffer is full, shift it down to its newest `keep` samples.
     if (ns - base == buffer_len) {
         const int64_t drop = buffer_len - keep;
         for (int c = 0; c < F; ++c)
@@ -126,13 +137,13 @@ bool IncoherentSearch::add_sample(const float* power) {
     if (ns % ref_interval == 0)
         update_reference();
 
-    // Normalize by the statistics before this sample, then update them.
-    enum { missing = 0, known = 1, used = 2 };
+    // Normalize each channel by its statistics before this sample, decide whether it is used,
+    // then update the statistics.
     double zero_dm = 0;
     int n_used = 0;
     for (int c = 0; c < F; ++c) {
         const double x = power[c];
-        state[c] = missing;
+        state[c] = ChannelState::missing;
         scratch[c] = 0;
         if (!(x > 0))
             continue;
@@ -147,8 +158,8 @@ bool IncoherentSearch::add_sample(const float* power) {
             scratch[c] = (float)std::clamp(d / sd, -sample_clip, sample_clip);
             const bool quiet = sd <= mask_threshold * ref[c] * p.thermal * mean[c];
             const bool steady = drift[c] <= drift_threshold;
-            state[c] = band_ok[c] && quiet && steady ? used : known;
-            if (state[c] == used) {
+            state[c] = band_ok[c] && quiet && steady ? ChannelState::used : ChannelState::masked;
+            if (state[c] == ChannelState::used) {
                 zero_dm += scratch[c];
                 ++n_used;
             }
@@ -166,15 +177,20 @@ bool IncoherentSearch::add_sample(const float* power) {
         zero_dm /= n_used;
     num_used = n_used;
 
+    // Store the sample less the average of the used channels (zero DM). A masked channel stores
+    // 0 but stays in the drift test, so that it can come back.
     const int64_t col = ns - base;
     for (int c = 0; c < F; ++c) {
-        const double v = state[c] == used ? (scratch[c] - zero_dm) * sample_scale : 0.0;
+        const double v =
+            state[c] == ChannelState::used ? (scratch[c] - zero_dm) * sample_scale : 0.0;
         w[(size_t)c * buffer_len + col] = (int8_t)std::lround(std::clamp(v, -127.0, 127.0));
-        if (state[c] != missing)
+        if (state[c] != ChannelState::missing)
             block_sum[c] += scratch[c] - zero_dm;
     }
     ++ns;
 
+    // Drift test: the running variance of the means of drift_block samples, scaled so that
+    // white noise gives 1.
     if (ns % drift_block == 0) {
         const int64_t blocks = ns / drift_block;
         const double weight = std::max(std::min(1.0, a * drift_block), 1.0 / blocks);
@@ -184,6 +200,7 @@ bool IncoherentSearch::add_sample(const float* power) {
             block_sum[c] = 0;
         }
     }
+    // Search once per chunk of samples.
     if (ns % chunk != 0)
         return false;
     dedisperse_chunk();
@@ -323,7 +340,7 @@ void IncoherentSearch::merge_hits(const std::vector<Hit>& hits) {
         bool merged = false;
         for (Event& e : events) {
             const double ddm = std::abs(dm - p.dms[e.best.dm_index]);
-            if (std::abs((double)(hit.sample - e.best.sample)) > 20 + sweep_per_dm * ddm)
+            if (std::abs((double)(hit.sample - e.best.sample)) > merge_slack + sweep_per_dm * ddm)
                 continue;
             // The same pulse while the two sweeps differ by a few of the widest window
             const bool same_pulse = sweep_per_dm * ddm <= 4.0 * widths.back();
@@ -361,6 +378,9 @@ void IncoherentSearch::close_events() {
                  events.end());
 }
 
+// S/N of the candidate's window in each block of channels: the sum of the stored samples along
+// the dispersion curve over the root of their number. A channel counts when its first sample is
+// not 0, which leaves out the masked channels (and the rare used sample that rounds to 0).
 void IncoherentSearch::band_occupancy(IncoherentCandidate& cand, const Hit& hit) const {
     const int32_t* const dl = &delay[(size_t)hit.dm_index * F];
     const int wd = widths[hit.width_index];

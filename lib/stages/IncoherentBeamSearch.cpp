@@ -61,12 +61,8 @@ using kotekan::prometheus::Metrics;
  * @conf dm_max            Double. Highest trial DM. Default 1500.
  * @conf dm_step_min       Double. Step between trial DMs at dm_min. Default 0.12.
  * @conf dm_step_max       Double. Step at dm_max; in between it grows as a power of the DM.
- *                         Default 0.56. A DM error of e delays the bottom of 300-1600 MHz by
- *                         44.5 ms * e against the top, so the step follows from the sample
- *                         length, and from the smearing within a channel, which grows with
- *                         the DM. With 1.31 ms samples the defaults keep 94 % of the S/N of
- *                         a 1 ms pulse on average and 78 % at the worst DM (5 ms: 97 % and
- *                         89 %).
+ *                         Default 0.56. With 1.31 ms samples the defaults keep 94 % of the
+ *                         S/N of a 1 ms pulse on average.
  * @conf mask_bands_mhz    List of [low, high]. Frequency ranges that are never searched.
  * @conf mask_freq_ids     List of int. FPGA frequency ids that are never searched.
  * @conf threshold         Double. S/N above which a candidate is reported. Default 8.
@@ -212,6 +208,7 @@ public:
                 started = true;
                 far_run = 0;
             } else if (far || seq % period != phase || first + frame_samples <= next_sample) {
+                // Far, off the sample grid, or already searched.
                 dropped_frames_counter.inc();
                 in_buf->mark_frame_empty(unique_name, in_id++);
                 continue;
