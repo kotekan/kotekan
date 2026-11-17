@@ -17,6 +17,10 @@ from DIR3 only in the placement of the tiles and ctl buffers: 60 per-chain ones 
 ones in, on the half's NUMA node, holding the same bytes. With GNSS_CONTRACT_HOSTED=DIR5 (the
 same node generated with --fold-epl --gpu-rows --inject-host) its contract must equal DIR4's, and
 each half must have one injector whose rows, merged with its own keys, are DIR4's injectors.
+With GNSS_CONTRACT_RECORDS=DIR6 (DIR4's flags and --record-host) its contract must be DIR4's plus
+each half's record host, whose rows, read by gnss_fleet.assembler_rows, must be DIR4's
+assemblers; GNSS_CONTRACT_RECORDS_HOSTED=DIR7 (DIR5's flags and --record-host) likewise
+against DIR5.
 """
 import collections
 import copy
@@ -242,9 +246,45 @@ def test_mutations(cfg, head, base, d):
     moved = [k for k in cfg if k.startswith("gnss0_") and k.endswith("_n2assemble")]
 
     def move(c):
-        c["gnss0_records"] = {"chains": {k: c.pop(k) for k in moved}}
+        """gnss0's assemblers as rows of one host, as --record-host hosts them."""
+        rows = {k[: -len("_n2assemble")]: c.pop(k) for k in moved}
+        workers = [
+            {"rows": [k], "cpu_affinity": r.pop("cpu_affinity")}
+            for k, r in rows.items()
+        ]
+        for r in rows.values():
+            del r["kotekan_stage"]
+        c["gnss0_records"] = {
+            "kotekan_stage": "GnssGpuRecordAssemble",
+            "cpu_affinity": sorted({x for w in workers for x in w["cpu_affinity"]}),
+            "chains": rows,
+            "workers": workers,
+        }
 
     s, lines = run("moved blocks", move)
+    check(
+        lines
+        == [
+            "+ placement: cpu /gnss0_records = %r"
+            % s["placement"]["cpu"]["/gnss0_records"]
+        ],
+        "the moved blocks show only as their host's cores: %s" % lines[:4],
+    )
+
+    # The same move read by tools that see only a top-level stage per assembler, as before
+    # gnss_fleet.assembler_rows read hosts: elem_shared_ref and lane_relay find none of gnss0's.
+    rows_of = nc.gnss_fleet.assembler_rows
+
+    def top_level(c):
+        return [(n, b) for n, b in rows_of(c) if n in c]
+
+    nc.gnss_fleet.assembler_rows = top_level
+    nc.elem_shared_ref._REFS.clear()
+    try:
+        s, lines = run("moved blocks, top-level tools", move)
+    finally:
+        nc.gnss_fleet.assembler_rows = rows_of
+        nc.elem_shared_ref._REFS.clear()
     cen = s["census"]
     was = base["census"]
     for tool in ("elem_shared_ref.endpoints", "lane_relay.inst_stage"):
@@ -252,23 +292,13 @@ def test_mutations(cfg, head, base, d):
         had = [e for e in was[tool] if e.startswith(("gnss0_", "0: "))]
         check(
             had and not g0,
-            "%s finds none of the moved gnss0 assemblers (had %d, now %d)"
+            "top-level tools: %s finds none of the moved gnss0 assemblers (had %d, now %d)"
             % (tool, len(had), len(g0)),
         )
-    held = held_zeros(cfg)
-    read = tool_zeros(cen)
     check(
-        set(moved) <= set(read)
-        and any(held[k] for k in moved)
-        and not any(read[k] for k in moved),
-        "config_zeros, asked about each moved gnss0 assembler, reads none of its zeros",
+        facet_lines(lines, "census") and facet_lines(lines, "rest"),
+        "top-level tools: the moved blocks show in census and rest",
     )
-    lost = [e for e in cen["gnss_fleet.stage_chain"] if e.startswith("owner /gnss0_")]
-    check(
-        len(lost) == len(moved) and all(e.endswith("-> None") for e in lost),
-        "lane_relay.OWNER parses none of the %d moved gnss0 lane owners" % len(lost),
-    )
-    check(facet_lines(lines, "census"), "the moved blocks show in census")
 
 
 def test_fold(base, cfg, d):
@@ -428,6 +458,69 @@ def test_hosted(rows_dir, hosted_dir):
     )
 
 
+def test_records(rows_dir, rec_dir):
+    """A config generated with --record-host against the same flags without it."""
+    rpath, hpath = os.path.join(rows_dir, NAME), os.path.join(rec_dir, NAME)
+    rcfg, hcfg = nc.load(rpath), nc.load(hpath)
+    hs = nc.snapshot(hpath, NODE, NODE)
+    lines = nc.diff(nc.snapshot(rpath, NODE, NODE), hs)
+    want = [
+        "+ placement: cpu /gnss%d_records = %r"
+        % (g, hs["placement"]["cpu"]["/gnss%d_records" % g])
+        for g in (0, 1)
+    ]
+    check(
+        sorted(lines) == want,
+        "records: the contract is that without the flag, plus each half's host (%s)"
+        % lines[:5],
+    )
+    asm = {
+        k: v
+        for k, v in rcfg.items()
+        if isinstance(v, dict) and v.get("kotekan_stage") == "GnssGpuRecordAssemble"
+    }
+    rows = dict(nc.gnss_fleet.assembler_rows(hcfg))
+    check(
+        len(asm) == 30 and rows == asm,
+        "records: the hosts' rows, merged with their host's keys and their worker's cores, "
+        "are the assemblers without the flag (%d, %d)" % (len(asm), len(rows)),
+    )
+    bad = []
+    for g in (0, 1):
+        host = hcfg.get("gnss%d_records" % g) or {}
+        keys = [r["name"] for r in hcfg["gnss%d_n2dual" % g]["gnss_rows"]]
+        workers = [
+            {"rows": [k], "cpu_affinity": asm[k + "_n2assemble"]["cpu_affinity"]}
+            for k in keys
+        ]
+        if host.get("workers") != workers or sorted(host.get("chains") or {}) != sorted(
+            keys
+        ):
+            bad.append("gnss%d: one worker per row in gnss_rows order on its core" % g)
+        if host.get("cpu_affinity") != sorted(
+            {c for w in workers for c in w["cpu_affinity"]}
+        ):
+            bad.append("gnss%d: host cores" % g)
+        for k, r in (host.get("chains") or {}).items():
+            if set(r) & set(host) or not {"out_buf", "prns", "channel_ids"} <= set(r):
+                bad.append("gnss%d: row %s keys" % (g, k))
+
+    def others(c):
+        return {
+            k: v
+            for k, v in c.items()
+            if not (k.endswith("_n2assemble") or re.match(r"gnss\d_records$", k))
+        }
+
+    if others(rcfg) != others(hcfg):
+        bad.append("blocks outside the assemblers")
+    check(
+        not bad,
+        "records: each half's host runs every row on its own worker on its core, sets no row "
+        "key, and nothing else changes (%s)" % bad,
+    )
+
+
 def test_replay(dump):
     """rest_surface of the replay's config against what its stages registered."""
     cpath = os.path.join(dump, "config.json")
@@ -486,6 +579,8 @@ def main():
         folded = os.environ.get("GNSS_CONTRACT_FOLDED")
         rows = os.environ.get("GNSS_CONTRACT_ROWS")
         hosted = os.environ.get("GNSS_CONTRACT_HOSTED")
+        records = os.environ.get("GNSS_CONTRACT_RECORDS")
+        records_hosted = os.environ.get("GNSS_CONTRACT_RECORDS_HOSTED")
         tests = (
             [
                 lambda: test_counts(base, cfg),
@@ -495,6 +590,12 @@ def main():
             + ([lambda: test_fold(base, cfg, folded)] if folded else [])
             + ([lambda: test_rows(folded, rows)] if folded and rows else [])
             + ([lambda: test_hosted(rows, hosted)] if rows and hosted else [])
+            + ([lambda: test_records(rows, records)] if rows and records else [])
+            + (
+                [lambda: test_records(hosted, records_hosted)]
+                if hosted and records_hosted
+                else []
+            )
         )
         for t in tests:
             try:

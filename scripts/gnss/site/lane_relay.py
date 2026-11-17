@@ -148,14 +148,15 @@ class Gpu:
 
 def inst_stage(cfg, gpu):
     """The assembler on this GPU that serves get_lane_inst, or None: one with lane transfers
-    and at least two lane channels (GnssGpuRecordAssemble's _inst_on). The GPS L5 one first,
-    then SBAS L5, then the one with the most channels."""
+    and at least two lane channels (GnssGpuRecordAssemble's _inst_on), a stage of its own or a
+    row of gnss<g>_records (gnss_fleet.assembler_rows). The GPS L5 one first, then SBAS L5,
+    then the one with the most channels."""
     names = []
-    for k, v in cfg.items():
+    for k, v in gnss_fleet.assembler_rows(cfg):
         if not re.match(r"^gnss%d_" % gpu, k):
             continue
         chain = gnss_fleet.stage_chain(k, "n2assemble")
-        if not chain or not isinstance(v, dict) or not v.get("lane_transfer_freq_ids"):
+        if not chain or not v.get("lane_transfer_freq_ids"):
             continue
         if (
             len(v.get("channel_ids") or []) < 2

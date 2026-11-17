@@ -47,6 +47,7 @@ chains:), the band the generator copies into it, so GPS and SBAS L5 share l5.
 import argparse
 import concurrent.futures
 import glob
+import hashlib
 import json
 import math
 import os
@@ -56,6 +57,7 @@ import time
 import urllib.request
 
 import numpy as np
+import yaml
 
 K = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..")
@@ -85,14 +87,32 @@ def nodes():
     return [n for n in have if n in fleet]
 
 
+_REFS = {}  # config path -> (digest of its bytes, {assembler: elem_sum_shared_ref})
+
+
+def assemblers(node):
+    """{assembler: its elem_sum_shared_ref ([] without one)} of the record assemblers in the
+    node's generated config, whether stages of their own or rows of gnss<g>_records
+    (gnss_fleet.assembler_rows), parsed again whenever the file's bytes change."""
+    path = GEN % node
+    with open(path, "rb") as f:
+        text = f.read()
+    digest = hashlib.sha1(text).hexdigest()
+    if _REFS.get(path, (None,))[0] != digest:
+        cfg = yaml.load(text, Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader))
+        _REFS[path] = (
+            digest,
+            {
+                name: b.get("elem_sum_shared_ref") or []
+                for name, b in gnss_fleet.assembler_rows(cfg)
+                if re.match(r"gnss[01][a-z0-9_]*n2assemble$", name)
+            },
+        )
+    return _REFS[path][1]
+
+
 def endpoints():
-    out = []
-    for n in nodes():
-        for st in re.findall(
-            r"^(gnss[01][a-z0-9_]*n2assemble):", open(GEN % n).read(), re.M
-        ):
-            out.append((n, st))
-    return out
+    return [(n, st) for n in nodes() for st in assemblers(n)]
 
 
 _BANDS = {}  # chain key -> shared-ref-band, filled by band_of's first call
@@ -324,14 +344,7 @@ def config_zeros(node, stage):
     """The elements one assembler's generated config holds at 0 in elem_sum_shared_ref: the
     inputs the generator took out (bffs's flagged inputs, config/gnss_bad_inputs.json). Empty
     if the config carries no reference."""
-    with open(GEN % node) as fh:
-        txt = fh.read()
-    m = re.search(
-        r"^%s:\n(?:  .*\n)*?  elem_sum_shared_ref:\n((?:  - .*\n)+)" % re.escape(stage),
-        txt,
-        re.M,
-    )
-    v = [float(x) for x in re.findall(r"- (\S+)", m.group(1))] if m else []
+    v = [float(x) for x in assemblers(node).get(stage, [])]
     return {e for e in range(len(v) // 2) if v[2 * e] == 0.0 and v[2 * e + 1] == 0.0}
 
 

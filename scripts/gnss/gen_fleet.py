@@ -394,20 +394,21 @@ def check_prns(man, rise_deg=RISE_DEG, hours=24.0, step_min=10.0):
     return 1 if bad else 0
 
 
-_COMBINE = re.compile(r"^gnss(\d+)_\w*n2combine$")
+_ASSEMBLE = re.compile(r"^gnss(\d+)_\w*n2assemble$")
 
 
 def built_instances(text):
-    """{chain: {gpu}} of the chains a generated node config builds: one n2combine stage per
-    chain instance (gnss<g><tag>_n2combine, read by gnss_fleet.stage_chain)."""
+    """{chain: {gpu}} of the chains a generated node config builds: one record assembler per
+    chain instance (gnss<g><tag>_n2assemble, a stage of its own or a row of gnss<g>_records:
+    gnss_fleet.assembler_rows), read by gnss_fleet.stage_chain."""
     cfg = yaml.load(
         _split_header(text)[1], Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader)
     )
     out = {}
-    for k in cfg or {}:
-        m = _COMBINE.match(str(k))
+    for k, _ in gnss_fleet.assembler_rows(cfg):
+        m = _ASSEMBLE.match(k)
         if m:
-            chain = gnss_fleet.stage_chain(str(k), "n2combine")
+            chain = gnss_fleet.stage_chain(k, "n2assemble")
             out.setdefault(chain, set()).add(int(m.group(1)))
     return out
 

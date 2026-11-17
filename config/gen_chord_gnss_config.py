@@ -696,8 +696,10 @@ def load_summary(out, cfg, gpus):
     load = {}
     for k, v in out.items():
         if k.startswith("gnss") and isinstance(v, dict) and "cpu_affinity" in v:
-            for c in v["cpu_affinity"]:
-                load.setdefault(c, []).append(v.get("kotekan_stage", "?"))
+            # A record host's work runs on its workers' cores.
+            for w in v.get("workers") or [v]:
+                for c in w["cpu_affinity"]:
+                    load.setdefault(c, []).append(v.get("kotekan_stage", "?"))
     busiest = sorted(load.items(), key=lambda kv: -len(kv[1]))[:3]
     pool = {c for g in gpus for c in gnss_cores(cfg["runtime"], g)}
     return (
@@ -1913,6 +1915,50 @@ def inject_host_form(injects, gpu):
     injects[:] = [host]
 
 
+# The keys a chain's record assembler keeps in its row of gnss<g>_records (--record-host):
+# GnssGpuRecordAssemble's ROW_KEYS, which every row sets itself, and its ROW_ONLY_KEYS, which
+# no host block may set. Any other key sits once on the host when every chain of the half has
+# it at one value, and stays in the rows otherwise.
+RECORD_ROW_KEYS = (
+    "out_buf",
+    "prns",
+    "channel_ids",
+    "beam_cube_chain",
+    "cube_buf",
+    "ctl_buf",
+    "elem_sum_shared_ref",
+    "fg_total",
+    "gnss_row",
+    "in_buf",
+    "lane_transfer_freq_ids",
+    "record_cp_mod_chips",
+    "tiles_buf",
+)
+
+
+def record_host_form(blocks, pres, gpu):
+    """--record-host: the half's record assemblers as rows of one GnssGpuRecordAssemble,
+    gnss<g>_records, each keyed by its gnss_row, the name of the stage it replaces less
+    _n2assemble, so its REST paths, buffer client names, lane owners and cube sender stay that
+    stage's. Each row runs on a worker of its own, in gnss_rows order, on that stage's core; the
+    host's cpu_affinity is the union of its workers'. The rows keep their record buffers and
+    cube streams."""
+    asms = [blocks.pop(p["pre"] + "n2assemble") for p in pres]
+    host = {
+        k: v
+        for k, v in asms[0].items()
+        if k not in RECORD_ROW_KEYS + ("cpu_affinity",)
+        and all(k in a and a[k] == v for a in asms)
+    }
+    host["cpu_affinity"] = sorted({c for a in asms for c in a["cpu_affinity"]})
+    host["chains"], host["workers"] = {}, []
+    for p, a in zip(pres, asms):
+        key = p["pre"][:-1]
+        host["chains"][key] = {k: v for k, v in a.items() if k not in host}
+        host["workers"].append({"rows": [key], "cpu_affinity": a["cpu_affinity"]})
+    blocks[f"gnss{gpu}_records"] = host
+
+
 def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
     """One cudaProcess per GPU for every path-B chain on it.
 
@@ -2306,6 +2352,8 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
         gpu_rows_form(blocks, merged, injects, corr, outputs, out_buffers, pres, gpu)
     if args.inject_host:
         inject_host_form(injects, gpu)
+    if args.record_host:
+        record_host_form(blocks, pres, gpu)
     merged["in_buffers"] = primary["in_buffers"]
     merged["out_buffers"] = out_buffers
     merged["commands"] = (
@@ -3817,6 +3865,15 @@ def main():
         "control-block upload per frame for the half.",
     )
     ap.add_argument(
+        "--record-host",
+        action="store_true",
+        help="with --gpu-rows: one GnssGpuRecordAssemble per GPU half (gnss<g>_records), "
+        "hosting every chain's record assembler as a row of its chains block (keyed by its "
+        "gnss_row, on the chain's own REST paths, record buffer and cube stream), each row on a "
+        "worker thread of its own pinned to the chain's assembler core, instead of one stage "
+        "per chain.",
+    )
+    ap.add_argument(
         "--psi-synth",
         action="store_true",
         help="cudaGnssChordTrack psi_synth on every chain: replica synthesis from per-PRN "
@@ -4241,6 +4298,11 @@ def main():
     if args.inject_host and not args.gpu_rows:
         raise SystemExit(
             "--inject-host requires --gpu-rows: its rows are the half's gnss_rows"
+        )
+    if args.record_host and not args.gpu_rows:
+        raise SystemExit(
+            "--record-host requires --gpu-rows: its rows read the half's tiles and control "
+            "blocks"
         )
     if args.gpu_rows and args.vis_capture:
         raise SystemExit(

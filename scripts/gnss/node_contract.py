@@ -15,14 +15,15 @@ and compares its per-chain paths with CONFIG's rest facet.
 The facets:
 
   rest       the per-chain REST paths kotekan registers: the inject's four, per row of a
-             hosted inject (gnssTrackChain.cpp), the assembler's (GnssGpuRecordAssemble's
-             constructor) and the combiner's (GnssCoherentCombiner::main_thread), conditions
-             restated
+             hosted inject (gnssTrackChain.cpp), the assembler's, per row of a record host
+             (GnssGpuRecordAssemble's constructor) and the combiner's
+             (GnssCoherentCombiner::main_thread), conditions restated
   identity   the names other stages and processes key on: each assembler's ProjBoard group,
              lane owner and cube sender, GnssN2Project board_group, cudaGnssBeamDump
              beam_lane_owner, the telemetry header fields and frame size, bufferSend addresses
-  placement  numa_node of every buffer and cpu_affinity of every stage; a gnss<g>_ buffer off
-             NUMA node g is listed as misplaced
+  placement  numa_node of every buffer and cpu_affinity of every stage, a record host's rows
+             at their workers' cores beside the host; a gnss<g>_ buffer off NUMA node g is
+             listed as misplaced
   stall      per chain, the GPU frames of slack before cudaOutputData blocks the half:
              min(tiles, ctl) + epl + usable rec frames / records per frame, keyed by its
              adapter, or by its assembler when that reads the tiles and ctl itself, with its own
@@ -103,12 +104,28 @@ def _get(scope, key, default=None):
     return default
 
 
+def _record_host(u, s):
+    """Whether top-level block u hosts record assembler rows (gen_chord_gnss_config.py
+    --record-host)."""
+    return (
+        u.count("/") == 1
+        and s[0].get("kotekan_stage") == "GnssGpuRecordAssemble"
+        and "chains" in s[0]
+    )
+
+
 def _stages(cfg, kind=None):
-    return [
+    """(unique_name, scope) of every stage, with a record host's rows in place of the host, each
+    as the stage it stands for (gnss_fleet.assembler_rows), scoped [its block, the root]."""
+    out = [
         (u, s)
         for u, s in _blocks(cfg)
-        if "kotekan_stage" in s[0] and kind in (None, s[0]["kotekan_stage"])
+        if "kotekan_stage" in s[0] and not _record_host(u, s)
     ]
+    out += [
+        ("/" + n, [b, cfg]) for n, b in gnss_fleet.assembler_rows(cfg) if n not in cfg
+    ]
+    return [(u, s) for u, s in out if kind in (None, s[0]["kotekan_stage"])]
 
 
 def _buffers(cfg):
@@ -237,9 +254,10 @@ def placement(cfg):
         m = re.match(r"gnss(\d)_", name)
         if m and numa[name] != int(m.group(1)):
             misplaced.append(name)
+    hosts = [(u, s) for u, s in _blocks(cfg) if _record_host(u, s)]
     return {
         "numa": numa,
-        "cpu": {u: _get(s, "cpu_affinity", []) for u, s in _stages(cfg)},
+        "cpu": {u: _get(s, "cpu_affinity", []) for u, s in _stages(cfg) + hosts},
         "misplaced": misplaced,
     }
 

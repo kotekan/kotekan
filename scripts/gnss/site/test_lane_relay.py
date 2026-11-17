@@ -93,6 +93,7 @@ def test_repo_tables_name_chains():
 
 
 def test_inst_stage():
+    asm = {"kotekan_stage": "GnssGpuRecordAssemble"}
     cfg = {
         "gnss0_gps_l5_n2assemble": {"channel_ids": [1, 2, 3]},
         "gnss0_sbas_l5_n2assemble": {
@@ -112,6 +113,8 @@ def test_inst_stage():
             "lane_transfer_freq_ids": [6200],
         },
     }
+    for v in cfg.values():
+        v.update(asm)
     check(
         lane_relay.inst_stage(cfg, 0) == "gnss0_sbas_l5_n2assemble",
         "SBAS L5 when the GPS one transfers nothing",
@@ -124,6 +127,23 @@ def test_inst_stage():
     check(
         lane_relay.inst_stage(cfg, 0) == "gnss0_gps_l5_n2assemble",
         "the GPS L5 one first",
+    )
+    hosted = {
+        "gnss%d_records"
+        % g: dict(
+            asm,
+            chains={
+                k[: -len("_n2assemble")]: {x: y for x, y in v.items() if x not in asm}
+                for k, v in cfg.items()
+                if k.startswith("gnss%d" % g)
+            },
+        )
+        for g in (0, 1)
+    }
+    check(
+        [lane_relay.inst_stage(hosted, g) for g in (0, 1)]
+        == [lane_relay.inst_stage(cfg, g) for g in (0, 1)],
+        "the same from the rows of record hosts",
     )
     check(
         lane_relay.inst_stage(

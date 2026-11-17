@@ -269,29 +269,30 @@ def test_repo_chains_follow_the_fleet():
 
 def test_built_instances_matches_derived():
     want = {"gps_l5": {0, 1}, "gps_l2c": {1}, "gal_e5a": {0}}
-    text = "# header\n" + yaml.safe_dump(
-        {
-            "gnss0_gps_l5_n2combine": {},
-            "gnss1_gps_l5_n2combine": {},
-            "gnss1_gps_l2c_n2combine": {},
-            "gnss0_gal_e5a_n2combine": {},
-            "gnss0_gal_e5a_n2assemble": {},
-        }
-    )
-    got = gen_fleet.built_instances(text)
+    asm = {"kotekan_stage": "GnssGpuRecordAssemble"}
+
+    def config(names):
+        return "# header\n" + yaml.safe_dump(
+            dict({n + "_n2assemble": asm for n in names}, gnss1_gal_e5a_n2combine={})
+        )
+
+    keys = ["gnss0_gps_l5", "gnss1_gps_l5", "gnss1_gps_l2c", "gnss0_gal_e5a"]
+    got = gen_fleet.built_instances(config(keys))
     check(
-        got == want, "one n2combine per chain instance is read from a config (%s)" % got
+        got == want,
+        "one record assembler per chain instance is read from a config (%s)" % got,
     )
-    old = "# header\n" + yaml.safe_dump(
-        {
-            "gnss0_n2combine": {},
-            "gnss1_n2combine": {},
-            "gnss1_l2c_n2combine": {},
-            "gnss0_e5a_n2combine": {},
-        }
+    got = gen_fleet.built_instances(
+        config(["gnss0", "gnss1", "gnss1_l2c", "gnss0_e5a"])
     )
-    got = gen_fleet.built_instances(old)
     check(got == want, "and from a config with the band tags (%s)" % got)
+    hosted = {
+        "gnss%d_records"
+        % g: dict(asm, chains={k: {} for k in keys if k.startswith("gnss%d" % g)})
+        for g in (0, 1)
+    }
+    got = gen_fleet.built_instances("# header\n" + yaml.safe_dump(hosted))
+    check(got == want, "and from the rows of record hosts (%s)" % got)
     fl = six()
     d = gen_fleet.derived_instances(fl, "cx44")
     check(
@@ -433,15 +434,63 @@ def test_check_instances_names_a_mismatch():
     m = manifest({"cx44": {}}, {"common": {}})
     m["chains"] = m["chains"][:1]
     fl = gf.Fleet(m, site())
-    text = "# h\n" + yaml.safe_dump({"gnss0_n2combine": {}, "gnss1_n2combine": {}})
+    asm = {"kotekan_stage": "GnssGpuRecordAssemble"}
+    text = "# h\n" + yaml.safe_dump({"gnss0_n2assemble": asm, "gnss1_n2assemble": asm})
     check(
         gen_fleet.check_instances(fl, {"cx44": text}) == [], "a matching node is quiet"
     )
-    text = "# h\n" + yaml.safe_dump({"gnss0_n2combine": {}})
+    text = "# h\n" + yaml.safe_dump({"gnss0_n2assemble": asm})
     probs = gen_fleet.check_instances(fl, {"cx44": text})
     check(
         len(probs) == 1 and probs[0].startswith("cx44: the generator builds"),
         "a GPU the generator did not build is named (%s)" % probs,
+    )
+
+
+def test_assembler_rows():
+    """assembler_rows reads a record assembler as a stage of its own or as a row of a host, by
+    the stage it stands for, its block the host's keys overlaid with its own and its worker's
+    cores, so both forms read alike; a host's `stage_chain` reads no chain."""
+    one = {
+        "gnss0_gal_e5a_n2assemble": {
+            "kotekan_stage": "GnssGpuRecordAssemble",
+            "cpu_affinity": [33],
+            "prns": [1],
+            "elem_proj_sys": "E",
+        },
+        "gnss0_gps_l5_n2assemble": {
+            "kotekan_stage": "GnssGpuRecordAssemble",
+            "cpu_affinity": [32],
+            "prns": [2],
+            "elem_proj_sys": "E",
+        },
+        "gnss0_gps_l5_n2combine": {"kotekan_stage": "GnssCoherentCombiner"},
+        "gnss0_gps_l5_n2rec_buf": {"kotekan_buffer": "standard"},
+    }
+    hosted = {
+        "gnss0_records": {
+            "kotekan_stage": "GnssGpuRecordAssemble",
+            "cpu_affinity": [32, 33],
+            "elem_proj_sys": "E",
+            "chains": {"gnss0_gps_l5": {"prns": [2]}, "gnss0_gal_e5a": {"prns": [1]}},
+            "workers": [
+                {"rows": ["gnss0_gps_l5"], "cpu_affinity": [32]},
+                {"rows": ["gnss0_gal_e5a"], "cpu_affinity": [33]},
+            ],
+        },
+        "gnss0_gps_l5_n2combine": {"kotekan_stage": "GnssCoherentCombiner"},
+    }
+    want = [(k, v) for k, v in sorted(one.items()) if k.endswith("_n2assemble")]
+    check(gf.assembler_rows(one) == want, "assembler_rows: the stages of their own")
+    check(gf.assembler_rows(hosted) == want, "assembler_rows: the host's rows alike")
+    del hosted["gnss0_records"]["workers"]
+    check(
+        [b["cpu_affinity"] for _, b in gf.assembler_rows(hosted)] == [[32, 33]] * 2,
+        "assembler_rows: rows without workers on the host's cores",
+    )
+    check(
+        gf.stage_chain("gnss0_records", "n2assemble") is None,
+        "stage_chain reads no chain from a record host's name",
     )
 
 

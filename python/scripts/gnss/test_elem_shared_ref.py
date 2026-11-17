@@ -26,6 +26,7 @@ import tempfile
 import unittest
 
 import numpy as np
+import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import elem_shared_ref as esr  # noqa: E402
@@ -265,7 +266,9 @@ class TestPostZeros(unittest.TestCase):
                 "gnss0_n2assemble:\n  elem_positions_epoch: E\n  elem_sum_shared_ref:\n"
                 + "".join("  - %s\n" % x for x in flat)
                 + "  elem_sum_shared_ref_mode: live\n"
+                "  kotekan_stage: GnssGpuRecordAssemble\n"
                 "gnss1_e5a_n2assemble:\n  elem_positions_epoch: E\n  elem_sum: true\n"
+                "  kotekan_stage: GnssGpuRecordAssemble\n"
             )
         self.snap = os.path.join(self.d, "ref.json")
         with open(self.snap, "w") as fh:
@@ -280,6 +283,31 @@ class TestPostZeros(unittest.TestCase):
         shutil.rmtree(self.d)
 
     def test_config_zeros(self):
+        self.assertEqual(esr.config_zeros("cx51", "gnss0_n2assemble"), {1, 3})
+        self.assertEqual(esr.config_zeros("cx51", "gnss1_e5a_n2assemble"), set())
+
+    def test_rows_of_a_record_host(self):
+        """The same from the rows of gnss<g>_records, rewritten in place of the stages."""
+        path = esr.GEN % "cx51"
+        with open(path) as fh:
+            cfg = yaml.safe_load(fh)
+        host = {
+            "gnss%s_records"
+            % k[4]: {
+                "kotekan_stage": "GnssGpuRecordAssemble",
+                "elem_positions_epoch": "E",
+                "chains": {k[: -len("_n2assemble")]: v},
+            }
+            for k, v in cfg.items()
+        }
+        for v in cfg.values():
+            del v["kotekan_stage"], v["elem_positions_epoch"]
+        with open(path, "w") as fh:
+            yaml.safe_dump(host, fh)
+        self.assertEqual(
+            esr.endpoints(),
+            [("cx51", "gnss0_n2assemble"), ("cx51", "gnss1_e5a_n2assemble")],
+        )
         self.assertEqual(esr.config_zeros("cx51", "gnss0_n2assemble"), {1, 3})
         self.assertEqual(esr.config_zeros("cx51", "gnss1_e5a_n2assemble"), set())
 
@@ -310,7 +338,10 @@ class TestWatchFirstTake(unittest.TestCase):
         self.d = tempfile.mkdtemp()
         for n in NODES:
             with open(os.path.join(self.d, "chord_gnss_%s_multi.yaml" % n), "w") as fh:
-                fh.write("gnss0_gps_l1ca_n2assemble:\n  elem_positions_epoch: E\n")
+                fh.write(
+                    "gnss0_gps_l1ca_n2assemble:\n  elem_positions_epoch: E\n"
+                    "  kotekan_stage: GnssGpuRecordAssemble\n"
+                )
         self.snap = os.path.join(self.d, "ref.json")
         flat = [[1.0, 0.0]] * (2 * N_HALF)
         with open(self.snap, "w") as fh:

@@ -32,6 +32,7 @@ the covering-channel computation (instances, expand_chains) and stage_chain impo
 chord_band_plan lazily.
 """
 import argparse
+import operator
 import os
 import re
 import sys
@@ -133,6 +134,30 @@ def stage_chain(name, stage):
         _STAGE_CHAINS.update({c: c for c in chains})
         _STAGE_CHAINS[""] = prim
     return _STAGE_CHAINS.get(m.group(1) or "")
+
+
+def assembler_rows(cfg):
+    """[(name, block)] of the record assemblers in a parsed node config, by name. A top-level
+    GnssGpuRecordAssemble block is one, named by its key, unless it hosts rows (`chains:`,
+    gen_chord_gnss_config.py --record-host): then each row is one, named `<row key>_n2assemble`
+    as the host names it, which is the stage it stands for (its REST prefix, lane owner and cube
+    sender). A row's block is the host's keys overlaid with its own, with its worker's
+    cpu_affinity where the host has `workers`: the block of that stage."""
+    out = []
+    for k, v in (cfg or {}).items():
+        if not isinstance(v, dict) or v.get("kotekan_stage") != "GnssGpuRecordAssemble":
+            continue
+        if "chains" not in v:
+            out.append((k, v))
+            continue
+        host = {h: x for h, x in v.items() if h not in ("chains", "workers")}
+        cpus = {r: w["cpu_affinity"] for w in v.get("workers") or [] for r in w["rows"]}
+        for key, row in v["chains"].items():
+            block = dict(host, **row)
+            if key in cpus:
+                block["cpu_affinity"] = cpus[key]
+            out.append((key + "_n2assemble", block))
+    return sorted(out, key=operator.itemgetter(0))
 
 
 class Fleet:

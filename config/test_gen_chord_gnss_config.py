@@ -477,6 +477,99 @@ def test_psi_synth_needs_epl():
     check(not fake.urls, "the refusal probes nothing")
 
 
+def test_record_host_needs_gpu_rows():
+    """--record-host is refused without --gpu-rows, before anything is probed."""
+    with fleet(FakeFleet(None)) as fake:
+        exc, _, _ = run_main(["--base", BASE, "--node", "cx19", "--record-host"])
+    check(
+        exc is not None and "--gpu-rows" in exc,
+        "--record-host alone is refused naming --gpu-rows (%r)" % (exc,),
+    )
+    check(not fake.urls, "the refusal probes nothing")
+
+
+def test_record_row_keys_are_the_stages():
+    """RECORD_ROW_KEYS is GnssGpuRecordAssemble's ROW_KEYS and ROW_ONLY_KEYS: a key it leaves
+    out could land on the host, where the stage refuses it or a row would inherit it."""
+    with open(
+        os.path.join(ROOT, "lib", "stages", "gnss", "GnssGpuRecordAssemble.cpp")
+    ) as f:
+        src = f.read()
+    keys = set()
+    for name in ("ROW_KEYS", "ROW_ONLY_KEYS"):
+        m = re.search(r"GnssGpuRecordAssemble::%s = \{(.*?)\};" % name, src, re.S)
+        keys |= (
+            set(re.findall(r'"(\w+)"', m.group(1))) if m else {"<%s missing>" % name}
+        )
+    check(
+        keys == set(g.RECORD_ROW_KEYS),
+        "RECORD_ROW_KEYS is the stage's row keys (only in one: %s)"
+        % sorted(keys ^ set(g.RECORD_ROW_KEYS)),
+    )
+
+
+def test_record_host_form():
+    """record_host_form: keys every chain shares at one value go on the host, the rest and
+    every RECORD_ROW_KEYS key stay in the rows, each row its own worker on its core."""
+    blocks = {
+        "gnss1_a_n2assemble": {
+            "kotekan_stage": "GnssGpuRecordAssemble",
+            "cpu_affinity": [57],
+            "out_buf": "gnss1_a_n2rec_buf",
+            "prns": [1],
+            "channel_ids": [7],
+            "ctl_buf": "gnss1_rows_ctl_buf",
+            "elem_proj_sys": "G",
+            "chan_export": True,
+        },
+        "gnss1_b_n2assemble": {
+            "kotekan_stage": "GnssGpuRecordAssemble",
+            "cpu_affinity": [50],
+            "out_buf": "gnss1_b_n2rec_buf",
+            "prns": [1],
+            "channel_ids": [7],
+            "ctl_buf": "gnss1_rows_ctl_buf",
+            "elem_proj_sys": "E",
+            "chan_export": True,
+            "record_cp_mod_chips": 1.0,
+        },
+        "gnss1_b_n2rec_buf": {"kotekan_buffer": "standard"},
+    }
+    g.record_host_form(blocks, [{"pre": "gnss1_b_"}, {"pre": "gnss1_a_"}], 1)
+    want = {
+        "kotekan_stage": "GnssGpuRecordAssemble",
+        "chan_export": True,
+        "cpu_affinity": [50, 57],
+        "chains": {
+            "gnss1_a": {
+                "out_buf": "gnss1_a_n2rec_buf",
+                "prns": [1],
+                "channel_ids": [7],
+                "ctl_buf": "gnss1_rows_ctl_buf",
+                "elem_proj_sys": "G",
+            },
+            "gnss1_b": {
+                "out_buf": "gnss1_b_n2rec_buf",
+                "prns": [1],
+                "channel_ids": [7],
+                "ctl_buf": "gnss1_rows_ctl_buf",
+                "elem_proj_sys": "E",
+                "record_cp_mod_chips": 1.0,
+            },
+        },
+        "workers": [
+            {"rows": ["gnss1_b"], "cpu_affinity": [50]},
+            {"rows": ["gnss1_a"], "cpu_affinity": [57]},
+        ],
+    }
+    check(
+        sorted(blocks) == ["gnss1_b_n2rec_buf", "gnss1_records"]
+        and blocks["gnss1_records"] == want,
+        "record_host_form hosts the rows in gnss_rows order (%s)"
+        % json.dumps(blocks.get("gnss1_records"), sort_keys=True)[:300],
+    )
+
+
 def test_paths_in_the_kotekan_tree():
     """A recipe records a file in the kotekan tree relative to that tree, wherever the tree
     is, and a relative input not there from the cwd is looked for in it."""
