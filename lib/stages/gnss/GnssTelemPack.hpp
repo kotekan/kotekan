@@ -85,9 +85,11 @@ public:
 
 private:
     struct Row {
-        Row(kotekan::Config& config, const gnss::HostRow& row);
-        Buffer* in_buf = nullptr;
-        Buffer* out_buf = nullptr;
+        Row(kotekan::Config& config, const gnss::HostRow& row, Buffer* in, Buffer* out);
+        Buffer* in_buf;
+        frameID in_id;
+        Buffer* out_buf;
+        frameID out_id;
         gnss::TelemChain chain;
     };
     const std::vector<gnss::HostRow> _host_rows;
@@ -96,9 +98,12 @@ private:
     std::vector<std::string> _rest_paths;
 
     void run_row(size_t row);
+    /// Pack row @p row's next record, reading it as consumer @p consumer, and write its window
+    /// out once complete. Returns false when shutting down.
+    bool take_record(size_t row, const std::string& consumer);
     /// Write row @p row's accumulated window out and reset. No-op if nothing is open.
     /// Returns false if the output buffer shut down (the caller must exit).
-    bool flush(size_t row, frameID& out_id);
+    bool flush(size_t row);
 };
 
 #endif // GNSS_TELEM_PACK_HPP
