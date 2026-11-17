@@ -85,19 +85,21 @@ TelemChain::TelemChain(Config& config, const std::string& cfg_path, const std::s
     _row_of.assign((size_t)_n_prn, -1);
 }
 
-void TelemChain::check_bufs(const Buffer* in_buf, const Buffer* out_buf) {
+void TelemChain::check_bufs(const Buffer* in_buf, const Buffer* out_buf, bool exact) {
     // Each sender ships only its own comb columns; TELEM_MAX_CHAN is the format's ceiling.
     const size_t need = gnss::telem_frame_bytes(_rec_per_frame, _max_prn, _n_chan);
-    if ((size_t)out_buf->frame_size != need) {
-        // Exact, not ">=": bufferSend ships the whole buffer frame, so padding would cross the
-        // link for nothing, and bufferRecv drops the connection when a frame exceeds the
-        // gather's receive buffer. The config generator sizes out_buf from the same three
-        // numbers.
+    if ((size_t)out_buf->frame_size < need || (exact && (size_t)out_buf->frame_size != need)) {
+        // Exact for a row's own out_buf: bufferSend ships the whole buffer frame, so padding
+        // would cross the link for nothing, and bufferRecv drops the connection when a frame
+        // exceeds the gather's receive buffer. The config generator sizes out_buf from the same
+        // three numbers. A shared out_buf holds its widest row's frames, and GnssTelemSend
+        // ships each frame at its own length.
         FATAL_ERROR("GnssTelemPack[{:s}]: out_buf frame is {:d} B but the wire format needs "
-                    "exactly {:d} B ({:d} records x {:d} PRN x {:d} floats + {:d} B header). The "
+                    "{:s} {:d} B ({:d} records x {:d} PRN x {:d} floats + {:d} B header). The "
                     "gather's receive buffer must be sized from the SAME two numbers.",
-                    _name, (size_t)out_buf->frame_size, need, _rec_per_frame, _max_prn,
-                    gnss::telem_row_floats(_n_chan), sizeof(gnss::TelemHeader));
+                    _name, (size_t)out_buf->frame_size, exact ? "exactly" : "at least", need,
+                    _rec_per_frame, _max_prn, gnss::telem_row_floats(_n_chan),
+                    sizeof(gnss::TelemHeader));
         return;
     }
     const size_t in_need = gnss::frame_floats(_n_prn, _n_elem, _n_chan) * sizeof(float);
@@ -215,6 +217,16 @@ int64_t TelemChain::pack(uint8_t* frame) {
     std::memcpy(frame, &h, sizeof(h));
     std::memcpy(frame + sizeof(h), _rows.data(), _rows.size() * sizeof(float));
 
+    reset();
+    return h.wstart0;
+}
+
+void TelemChain::drop() {
+    _seq++;
+    reset();
+}
+
+void TelemChain::reset() {
     _cur_win = -1;
     _cur_present = 0;
     _cur_utc0 = 0.0;
@@ -222,7 +234,6 @@ int64_t TelemChain::pack(uint8_t* frame) {
     // The row map belongs to the window that just went out; the next window builds its own.
     std::fill(_row_of.begin(), _row_of.end(), -1);
     _map_built = false;
-    return h.wstart0;
 }
 
 } // namespace gnss

@@ -25,9 +25,16 @@ class TelemChain : public kotekan::kotekanLogging {
 public:
     TelemChain(kotekan::Config& config, const std::string& cfg_path, const std::string& name);
 
-    /// FATAL unless @p out_buf's frames are exactly one wire frame and @p in_buf's hold a record
-    /// frame.
-    void check_bufs(const Buffer* in_buf, const Buffer* out_buf);
+    /// FATAL unless @p out_buf's frames hold one wire frame, exactly when @p exact, and
+    /// @p in_buf's a record frame.
+    void check_bufs(const Buffer* in_buf, const Buffer* out_buf, bool exact = true);
+    /// The chain and instance tags every frame carries.
+    const std::string& chain() const {
+        return _chain;
+    }
+    const std::string& inst() const {
+        return _inst;
+    }
 
     /// Whether a record at @p wstart has a slot; a record without one is counted dropped.
     bool on_grid(int64_t wstart);
@@ -45,8 +52,13 @@ public:
     }
     /// Write the open window into @p frame, an out_buf frame, and reset. Returns its wstart0.
     int64_t pack(uint8_t* frame);
+    /// Drop the open window and reset. Its seq is skipped, so the receiver reads it as lost.
+    void drop();
 
 private:
+    /// Close the open window: none is open after.
+    void reset();
+
     const std::string _name;
 
     std::string _chain, _inst;

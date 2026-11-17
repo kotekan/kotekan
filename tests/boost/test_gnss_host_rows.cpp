@@ -9,21 +9,26 @@
 #include "GnssCoherentCombiner.hpp"  // for GnssCoherentCombiner
 #include "GnssGpuRecordAssemble.hpp" // for GnssGpuRecordAssemble
 #include "GnssTelemPack.hpp"         // for GnssTelemPack
+#include "GnssTelemSend.hpp"         // for GnssTelemSend
 #include "bufferContainer.hpp"       // for bufferContainer
 #include "gnssGpuRows.hpp"           // for gpu_rows
 #include "gnssHostRows.hpp"          // for host_rows, rest_register_unique
+#include "gnssTelem.hpp"             // for telem_frame_bytes
 #include "kotekanLogging.hpp"        // for FatalError
 #include "kotekanMode.hpp"           // for kotekanMode
+#include "metadata.hpp"              // for metadataPool
 #include "prometheusMetrics.hpp"     // for Metrics
 #include "restServer.hpp"            // for restServer, connectionInstance
 #include "util.h"                    // for string_tail
 
+#include "fmt.hpp"  // for format
 #include "json.hpp" // for json
 
 #include <boost/test/included/unit_test.hpp>
 #include <chrono>
 #include <csignal>
 #include <cstdio>
+#include <cstring>
 #include <fstream>
 #include <functional>
 #include <map>
@@ -97,15 +102,18 @@ void construct(const json& cfg) {
     Host h(config, "/host", bc);
 }
 
-/// For each of @p row_keys, a host whose block sets every key but whose second row lacks that one
-/// FATALs naming it.
+/// For each of @p row_keys and @p row_extra, a host whose block sets @p row_keys, but whose second
+/// row lacks that one of the keys every row sets, FATALs naming it.
 template<typename Host>
-void check_row_keys(const std::vector<std::string>& row_keys) {
-    for (const auto& k : row_keys) {
+void check_row_keys(const std::vector<std::string>& row_keys,
+                    const std::vector<std::string>& row_extra = {}) {
+    std::vector<std::string> keys = row_keys;
+    keys.insert(keys.end(), row_extra.begin(), row_extra.end());
+    for (const auto& k : keys) {
         json host = keys_block(row_keys);
-        json lacking = keys_block(row_keys);
+        json lacking = keys_block(keys);
         lacking.erase(k);
-        host["chains"] = {{"gnss0_a", keys_block(row_keys)}, {"gnss0_b", lacking}};
+        host["chains"] = {{"gnss0_a", keys_block(keys)}, {"gnss0_b", lacking}};
         const std::string msg = fatal_of([&] { construct<Host>(config_with(host)); });
         BOOST_CHECK_MESSAGE(msg == "/host: row gnss0_b does not set " + k, k << ": " << msg);
     }
@@ -191,6 +199,42 @@ json combine_config(const std::vector<std::string>& keys, const json& workers) {
     return combiner_config(bufs, keys[0].substr(0, 5) + "_combine", host);
 }
 
+/// A telemetry host block at /gnss0_telem whose rows @p keys (gnss0_<chain>) read in_buf
+/// rec_<key>, carry chain <chain> and write gnss0_telem_buf, a 2-PRN 1-channel frame deep 8, with
+/// the buffers they name and the metadata pool their frames take, and @p workers.
+json telem_config(const std::vector<std::string>& keys, const json& workers) {
+    json cfg = {{"log_level", "warn"},
+                {"cpu_affinity", {0}},
+                {"telescope", {{"num_polarizations", 2}, {"num_dishes", 2}}},
+                {"gnss_pool",
+                 {{"kotekan_metadata_pool", "GnssChanMetadata"}, {"num_metadata_objects", 64}}}};
+    json host = {{"kotekan_stage", "GnssTelemPack"},
+                 {"inst", "node.0"},
+                 {"n_prn", 2},
+                 {"max_prn", 2},
+                 {"n_chan", 1},
+                 {"channel_ids", {100}},
+                 {"hops_per_record", 2048},
+                 {"fft_len", 16384},
+                 {"out_buf", "gnss0_telem_buf"},
+                 {"workers", workers}};
+    for (const auto& k : keys) {
+        host["chains"][k] = {{"in_buf", "rec_" + k}, {"chain", k.substr(6)},
+                             {"n_prn", 2},           {"max_prn", 2},
+                             {"n_chan", 1},          {"channel_ids", {100}}};
+        cfg["rec_" + k] = {{"kotekan_buffer", "standard"},
+                           {"metadata_pool", "gnss_pool"},
+                           {"num_frames", 2},
+                           {"frame_size", 1 << 16}};
+    }
+    cfg["gnss0_telem_buf"] = {{"kotekan_buffer", "standard"},
+                              {"metadata_pool", "gnss_pool"},
+                              {"num_frames", 8},
+                              {"frame_size", gnss::telem_frame_bytes(4, 2, 1)}};
+    cfg["gnss0_telem"] = host;
+    return cfg;
+}
+
 /// The FatalError message of starting @p cfg's stages, "" for none.
 std::string start_fatal(const json& cfg) {
     return fatal_of([&] {
@@ -229,7 +273,8 @@ BOOST_AUTO_TEST_CASE(rows_and_paths) {
 BOOST_AUTO_TEST_CASE(row_missing_key_is_fatal) {
     check_row_keys<GnssGpuRecordAssemble>(GnssGpuRecordAssemble::ROW_KEYS);
     check_row_keys<GnssCoherentCombiner>(GnssCoherentCombiner::ROW_KEYS);
-    check_row_keys<GnssTelemPack>(GnssTelemPack::ROW_KEYS);
+    // A telemetry row sets out_buf unless the host block does.
+    check_row_keys<GnssTelemPack>(GnssTelemPack::ROW_KEYS, {"out_buf"});
 }
 
 // A GPU half's gnss_rows: two rows of one shape (32 PRN x 6 channels), as gnss0_gps_l5 and
@@ -798,6 +843,207 @@ BOOST_AUTO_TEST_CASE(combine_rows_label_their_metrics) {
                 throw FatalError("series differ");
             if (std::set<std::string>(host.begin(), host.end()).size() != host.size())
                 throw FatalError("series repeat");
+        }),
+        "");
+}
+
+// The telemetry rows of one host share the out_buf on its block: each row's frame must fit it,
+// no two rows may send one chain and inst, and no row may set an out_buf of its own as well. The
+// rows are partitioned among the workers as the other hosts' are.
+BOOST_AUTO_TEST_CASE(telem_rows_share_one_out_buf) {
+    const std::vector<std::string> abc = {"gnss0_a", "gnss0_b", "gnss0_c"};
+    auto w = [](const std::vector<std::string>& rows) {
+        return json{{"rows", rows}, {"cpu_affinity", {0}}};
+    };
+    const std::string h = "/gnss0_telem: ";
+    const json one_each = {w({"gnss0_a"}), w({"gnss0_b"}), w({"gnss0_c"})};
+    BOOST_CHECK_EQUAL(start_fatal(telem_config(abc, one_each)), "");
+    // The widest row's frame does not fit.
+    json cfg = telem_config(abc, one_each);
+    cfg["gnss0_telem"]["chains"]["gnss0_b"]["max_prn"] = 3;
+    BOOST_CHECK_EQUAL(start_fatal(cfg),
+                      fmt::format("GnssTelemPack[/gnss0_b_telem_pack]: out_buf frame is {:d} B but "
+                                  "the wire format needs at least {:d} B (4 records x 3 PRN x {:d} "
+                                  "floats + {:d} B header). The gather's receive buffer must be "
+                                  "sized from the SAME two numbers.",
+                                  gnss::telem_frame_bytes(4, 2, 1),
+                                  gnss::telem_frame_bytes(4, 3, 1), gnss::telem_row_floats(1),
+                                  sizeof(gnss::TelemHeader)));
+    // A frame larger than every row's is fine on a shared out_buf.
+    cfg = telem_config(abc, one_each);
+    cfg["gnss0_telem"]["chains"]["gnss0_b"]["max_prn"] = 1;
+    BOOST_CHECK_EQUAL(start_fatal(cfg), "");
+    // Two rows of one chain and inst.
+    cfg = telem_config(abc, one_each);
+    cfg["gnss0_telem"]["chains"]["gnss0_c"]["chain"] = "a";
+    BOOST_CHECK_EQUAL(start_fatal(cfg),
+                      h
+                          + "two rows send chain a inst node.0; the gather would merge their "
+                            "streams");
+    // Another inst is another sender.
+    cfg["gnss0_telem"]["chains"]["gnss0_c"]["inst"] = "node.1";
+    BOOST_CHECK_EQUAL(start_fatal(cfg), "");
+    // A row's own out_buf beside the host's.
+    cfg = telem_config(abc, one_each);
+    cfg["gnss0_telem"]["chains"]["gnss0_b"]["out_buf"] = "gnss0_telem_buf";
+    BOOST_CHECK_EQUAL(start_fatal(cfg),
+                      h + "row gnss0_b sets out_buf, which the host block sets for every row");
+    // Without the host's out_buf, every row sets its own.
+    cfg = telem_config(abc, one_each);
+    cfg["gnss0_telem"].erase("out_buf");
+    BOOST_CHECK_EQUAL(start_fatal(cfg), h + "row gnss0_a does not set out_buf");
+    // The partition.
+    BOOST_CHECK_EQUAL(
+        start_fatal(telem_config(abc, {w({"gnss0_a", "gnss0_c"}), w({"gnss0_b", "gnss0_a"})})),
+        h + "row gnss0_a is in workers 0 and 1");
+    BOOST_CHECK_EQUAL(start_fatal(telem_config(abc, {w({"gnss0_a"}), w({"gnss0_b"})})),
+                      h + "row gnss0_c is in no worker");
+    cfg = telem_config(abc, json::array({w(abc)}));
+    cfg["gnss0_telem"]["chains"]["gnss0_b"]["in_buf"] = "rec_gnss0_a";
+    BOOST_CHECK_EQUAL(start_fatal(cfg),
+                      "/gnss0_b_telem_pack: /gnss0_telem/w0 reads rec_gnss0_a for two rows");
+}
+
+/// A GnssTelemSend whose frame_send_bytes the test can call.
+struct TelemSendProbe : GnssTelemSend {
+    using GnssTelemSend::frame_send_bytes;
+    using GnssTelemSend::GnssTelemSend;
+};
+
+// GnssTelemSend sends each frame of a buffer sized for a wider row at the length its header
+// gives, and a frame whose header gives more than the buffer frame whole.
+BOOST_AUTO_TEST_CASE(telem_send_sends_each_frame_at_its_length) {
+    BOOST_CHECK_EQUAL(fatal_of([] {
+                          json cfg = {{"log_level", "warn"},
+                                      {"cpu_affinity", {0}},
+                                      {"send", {{"buf", "telem_buf"}, {"server_ip", "127.0.0.1"}}}};
+                          kotekan::Config config;
+                          config.update_config(cfg);
+                          auto pool = metadataPool::create(4, 64, "pool", "GnssChanMetadata");
+                          Buffer buf(2, gnss::telem_frame_bytes(4, 32, 6), pool, "telem_buf",
+                                     "standard", 0, false, false, std::vector<int>{}, false);
+                          kotekan::bufferContainer bc;
+                          bc.add_buffer("telem_buf", &buf);
+                          TelemSendProbe send(config, "/send", bc);
+                          gnss::TelemHeader h;
+                          std::memset(&h, 0, sizeof(h));
+                          h.n_rec = 4;
+                          h.n_prn = 14;
+                          h.max_chan = 2;
+                          std::memcpy(buf.frames[0], &h, sizeof(h));
+                          h.n_prn = 33;
+                          h.max_chan = 6;
+                          std::memcpy(buf.frames[1], &h, sizeof(h));
+                          if (send.frame_send_bytes(0) != gnss::telem_frame_bytes(4, 14, 2)
+                              || send.frame_send_bytes(1) != buf.frame_size)
+                              throw FatalError("sent " + std::to_string(send.frame_send_bytes(0))
+                                               + " and " + std::to_string(send.frame_send_bytes(1))
+                                               + " bytes");
+                      }),
+                      "");
+}
+
+// A telemetry host on workers and the GnssTelemSend of its out_buf stop, are deleted and start
+// again in one process: the host releases its rows, REST paths and dropped-frame metrics, and the
+// send its connection thread.
+BOOST_AUTO_TEST_CASE(telem_host_restarts_in_one_process) {
+    json cfg =
+        telem_config({"gnss0_a", "gnss0_b"}, {{{"rows", {"gnss0_a"}}, {"cpu_affinity", {0}}},
+                                              {{"rows", {"gnss0_b"}}, {"cpu_affinity", {0}}}});
+    // Port 1 on loopback refuses: the send stays in its connect loop.
+    cfg["gnss0_telem_send"] = {{"kotekan_stage", "GnssTelemSend"},
+                               {"buf", "gnss0_telem_buf"},
+                               {"server_ip", "127.0.0.1"},
+                               {"server_port", 1},
+                               {"reconnect_time", 30},
+                               {"use_config_tracker", false}};
+    BOOST_CHECK_EQUAL(fatal_of([&] { start_stop_start(cfg, {"/gnss0_telem/chains"}); }), "");
+}
+
+// A telemetry host's workers run as threads of the stage, each named for its row if it has one,
+// as is its consumer of the row's in_buf, and bound to its own cpu_affinity; the rows' shared
+// out_buf has one producer, the host.
+BOOST_AUTO_TEST_CASE(telem_workers_are_pinned_threads_of_the_stage) {
+    cpu_set_t allowed;
+    CPU_ZERO(&allowed);
+    BOOST_REQUIRE(sched_getaffinity(0, sizeof(allowed), &allowed) == 0);
+    std::vector<int> cores;
+    for (int c = 0; c < CPU_SETSIZE && cores.size() < 2; ++c)
+        if (CPU_ISSET(c, &allowed))
+            cores.push_back(c);
+    if (cores.size() < 2) {
+        BOOST_TEST_MESSAGE("fewer than 2 cores allowed: worker pinning not checked");
+        return;
+    }
+    BOOST_CHECK_EQUAL(
+        fatal_of([&] {
+            const std::vector<std::string> abc = {"gnss0_a", "gnss0_b", "gnss0_c"};
+            json cfg =
+                telem_config(abc, {{{"rows", {"gnss0_a", "gnss0_c"}}, {"cpu_affinity", {cores[0]}}},
+                                   {{"rows", {"gnss0_b"}}, {"cpu_affinity", {cores[1]}}}});
+            cfg["cpu_affinity"] = {cores[1]};
+            kotekan::Config config;
+            config.update_config(cfg);
+            kotekan::bufferContainer bc;
+            std::vector<std::unique_ptr<Buffer>> bufs;
+            for (const auto& k : abc) {
+                bufs.push_back(std::make_unique<Buffer>(2, 1 << 16, nullptr, "rec_" + k, "standard",
+                                                        0, false, false, std::vector<int>{},
+                                                        false));
+                bc.add_buffer("rec_" + k, bufs.back().get());
+            }
+            Buffer out(8, gnss::telem_frame_bytes(4, 2, 1), nullptr, "gnss0_telem_buf", "standard",
+                       0, false, false, std::vector<int>{}, false);
+            bc.add_buffer("gnss0_telem_buf", &out);
+            GnssTelemPack host(config, "/gnss0_telem", bc);
+            if (out.get_producer_names() != std::vector<std::string>{"/gnss0_telem"})
+                throw FatalError("gnss0_telem_buf has another producer");
+            const std::vector<std::vector<std::string>> readers = {
+                {"/gnss0_telem/w0"}, {"/gnss0_b_telem_pack"}, {"/gnss0_telem/w0"}};
+            for (size_t i = 0; i < bufs.size(); ++i) {
+                std::string s;
+                for (const std::string& n : bufs[i]->get_consumer_names())
+                    s += " " + n;
+                if (bufs[i]->get_consumer_names() != readers[i])
+                    throw FatalError("rec_" + abc[i] + " consumers" + s);
+            }
+            const std::map<std::string, int> want = {
+                {string_tail("/gnss0_telem", 15), cores[1]},
+                {string_tail("/gnss0_telem/w0", 15), cores[0]},
+                {string_tail("/gnss0_b_telem_pack", 15), cores[1]}};
+            auto seen = [&] {
+                std::map<std::string, int> got;
+                for (pid_t tid : host.get_tids()) {
+                    std::ifstream f("/proc/self/task/" + std::to_string(tid) + "/comm");
+                    std::string comm;
+                    std::getline(f, comm);
+                    cpu_set_t set;
+                    CPU_ZERO(&set);
+                    if (sched_getaffinity(tid, sizeof(set), &set) != 0 || CPU_COUNT(&set) != 1)
+                        return got;
+                    for (int c = 0; c < CPU_SETSIZE; ++c)
+                        if (CPU_ISSET(c, &set))
+                            got[comm] = c;
+                }
+                return got;
+            };
+            host.start();
+            const auto t0 = std::chrono::steady_clock::now();
+            std::map<std::string, int> got;
+            while ((got = seen()) != want
+                   && std::chrono::steady_clock::now() - t0 < std::chrono::seconds(10))
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            host.stop();
+            for (auto& b : bufs)
+                b->send_shutdown_signal();
+            out.send_shutdown_signal();
+            host.join();
+            if (got != want) {
+                std::string s;
+                for (const auto& [n, c] : got)
+                    s += " " + n + ":" + std::to_string(c);
+                throw FatalError("threads" + s);
+            }
         }),
         "");
 }

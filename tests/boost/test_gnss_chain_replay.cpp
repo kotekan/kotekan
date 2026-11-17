@@ -38,6 +38,7 @@
 #include "gnssTelem.hpp"             // for TelemHeader, telem_frame_bytes
 #include "gnss_replay_frames.hpp"    // for ChainSpec, Sky, Scenario, write_ctl, write_tiles
 #include "metadata.hpp"              // for metadataPool
+#include "prometheusMetrics.hpp"     // for Metrics
 #include "restClient.hpp"            // for restClient
 #include "restServer.hpp"            // for restServer
 #include "version.h"                 // for get_git_commit_hash
@@ -61,6 +62,7 @@
 #include <pthread.h>
 #include <sched.h>
 #include <set>
+#include <sstream>
 #include <string>
 #include <sys/wait.h>
 #include <thread>
@@ -335,6 +337,11 @@ std::string telem_host(int gpu) {
     return "/gnss" + std::to_string(gpu) + "_telem";
 }
 
+/// With Scenario::telem_shared: the GPU half's telemetry buffer.
+std::string telem_shared_buf(const std::vector<ChainSpec>& cs) {
+    return "gnss" + std::to_string(cs[0].gpu) + "_telem_buf";
+}
+
 /// One host block with a `chains:` row per entry of @p blocks (chain prefix -> its one-row
 /// block): a key equal in every block and in neither @p row_keys nor @p row_only_keys is set once
 /// on the host, every other key in each row.
@@ -494,7 +501,19 @@ json build_config(const std::vector<ChainSpec>& cs, const Scenario& sc,
                 rows.push_back(cs[i].pre);
             cmb["workers"].push_back({{"rows", rows}, {"cpu_affinity", cpus}});
         }
-        cfg[telem_host(cs[0].gpu).substr(1)] = host_block(rows_tp, GnssTelemPack::ROW_KEYS, {});
+        json& tel = cfg[telem_host(cs[0].gpu).substr(1)];
+        tel = host_block(rows_tp, GnssTelemPack::ROW_KEYS, {});
+        if (sc.telem_shared) {
+            for (json& row : tel["chains"])
+                row.erase("out_buf");
+            tel["out_buf"] = telem_shared_buf(cs);
+        }
+        for (int w = 0; w < sc.telem_workers; ++w) {
+            json rows = json::array();
+            for (size_t i = w; i < cs.size(); i += sc.telem_workers)
+                rows.push_back(cs[i].pre);
+            tel["workers"].push_back({{"rows", rows}, {"cpu_affinity", cpus}});
+        }
     }
     return cfg;
 }
@@ -650,6 +669,46 @@ void take_epl(ChainRun& R, const uint8_t* f, int n) {
         read_pin_epl(R, f);
 }
 
+/// Counts telemetry frame @p id of @p b against @p R if its records are not all present or its
+/// metadata does not carry its wstart0.
+void check_telem(ChainRun& R, Buffer* b, int id) {
+    gnss::TelemHeader th;
+    std::memcpy(&th, b->frames[id], sizeof(th));
+    if (th.present != (1u << R.s->n_rec) - 1u)
+        ++R.telem_bad;
+    const GnssChanMetadata* m = get_gnss_chan_metadata(b, id);
+    if (m == nullptr || m->sample_seq != th.wstart0)
+        ++R.telem_bad_meta;
+}
+
+/// With Scenario::telem_shared: digests each frame of the half's telemetry buffer @p b, at its
+/// own length, as a frame of the chain its header names.
+void capture_telem_shared(std::vector<ChainRun*> runs, Buffer* b) {
+    const std::string name = "capture_telem";
+    int id = 0;
+    while (true) {
+        const uint8_t* f = b->wait_for_full_frame(name, id);
+        if (f == nullptr)
+            return;
+        gnss::TelemHeader th;
+        std::memcpy(&th, f, sizeof(th));
+        const std::string chain(th.chain, strnlen(th.chain, gnss::TELEM_NAME));
+        ChainRun* R = nullptr;
+        for (ChainRun* r : runs)
+            if (r->s->telem.at("chain").get<std::string>() == chain)
+                R = r;
+        if (R == nullptr)
+            child_fail(82, "a telemetry frame of chain " + chain + ", which no row sends");
+        const int n = R->count[TELEM].load();
+        R->hashes[TELEM].push_back(
+            fnv1a64(f, std::min(gnss::telem_frame_bytes(th), b->frame_size)));
+        check_telem(*R, b, id);
+        b->mark_frame_empty(name, id);
+        id = (id + 1) % b->num_frames;
+        R->count[TELEM].store(n + 1);
+    }
+}
+
 void capture(ChainRun* R, int kind) {
     Buffer* b = R->buf[kind].get();
     const std::string name = std::string("capture_") + KIND[kind];
@@ -699,15 +758,8 @@ void capture(ChainRun* R, int kind) {
             h = fnv1a64(f, b->frame_size);
             if (kind == CMB)
                 R->cmb_rows.push_back(cmb_slot_rows(*R->s, (const float*)f));
-            if (kind == TELEM) {
-                gnss::TelemHeader th;
-                std::memcpy(&th, f, sizeof(th));
-                if (th.present != (1u << R->s->n_rec) - 1u)
-                    ++R->telem_bad;
-                const GnssChanMetadata* m = get_gnss_chan_metadata(b, id);
-                if (m == nullptr || m->sample_seq != th.wstart0)
-                    ++R->telem_bad_meta;
-            }
+            if (kind == TELEM)
+                check_telem(*R, b, id);
         }
         if (kind != EPL)
             R->hashes[kind].push_back(h);
@@ -740,13 +792,15 @@ bool combined(ChainRun& R, int k) {
 
 /// With Scenario::cmb_workers a worker takes a record of each of its rows in turn, so a chain's
 /// records are combined only once every chain of the frame is fed: then its combiner is waited
-/// for, and read, after the frame (combined_after).
+/// for, and read, after the frame (combined_after). Scenario::telem_workers' telemetry likewise,
+/// and the combiners with it, as a record frame is released only once its telemetry row took it.
 bool quiescent(ChainRun& R, int k) {
     const int n_rec = R.s->n_rec;
     const bool epl = R.sc->fold || (R.buf[EPL]->is_frame_empty(0) && R.count[EPL].load() == k + 1);
     return R.ctl->is_frame_empty(0) && R.tiles->is_frame_empty(0) && epl
            && R.buf[CUBE]->get_num_full_frames() == 0 && R.count[REC].load() == n_rec * (k + 1)
-           && R.count[TELEM].load() == k + 1 && (R.sc->cmb_workers > 0 || combined(R, k))
+           && (R.sc->telem_workers > 0 || R.count[TELEM].load() == k + 1)
+           && (R.sc->cmb_workers > 0 || R.sc->telem_workers > 0 || combined(R, k))
            && sides_quiescent(R, k);
 }
 
@@ -835,6 +889,17 @@ void wait_combined(ChainRun& R, int k) {
                                        "{:d} cmb {:d}",
                                        R.s->pre, k, R.count[REC].load(),
                                        R.cmb->records_done(R.cmb_row), R.count[CMB].load()));
+        std::this_thread::sleep_for(std::chrono::microseconds(200));
+    }
+}
+
+/// With Scenario::telem_workers, waits for @p R's telemetry frame of frame @p k.
+void wait_telem(ChainRun& R, int k) {
+    const auto t0 = std::chrono::steady_clock::now();
+    while (R.count[TELEM].load() != k + 1) {
+        if (std::chrono::steady_clock::now() - t0 > std::chrono::seconds(30))
+            child_fail(71, fmt::format("{:s}: telemetry frame {:d} not in 30 s ({:d} so far)",
+                                       R.s->pre, k, R.count[TELEM].load()));
         std::this_thread::sleep_for(std::chrono::microseconds(200));
     }
 }
@@ -1244,6 +1309,20 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
         runs.push_back(std::move(R));
     }
 
+    // With Scenario::telem_shared: the half's telemetry buffer, sized for the widest row.
+    std::unique_ptr<Buffer> telem_shared;
+    if (sc.telem_shared) {
+        size_t bytes = 0;
+        for (const ChainSpec& s : cs)
+            bytes = std::max(bytes, gnss::telem_frame_bytes(
+                                        s.n_rec, s.telem.at("max_prn").get<int>(), s.n_chan));
+        telem_shared = std::make_unique<Buffer>(4 * (int)cs.size(), bytes, pool,
+                                                telem_shared_buf(cs), "standard", 0, false, false,
+                                                std::vector<int>{}, true, sc.prefill);
+        bc.add_buffer(telem_shared_buf(cs), telem_shared.get());
+        telem_shared->register_consumer("capture_telem");
+    }
+
     kotekan::Config config;
     config.update_config(build_config(cs, sc, cpus));
     std::vector<std::unique_ptr<kotekan::Stage>> hosts;
@@ -1291,12 +1370,20 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
         if (sc.fold)
             std::memset(R->as->epl_frame(R->as_row), sc.prefill, R->buf[EPL]->frame_size);
         for (int k = 0; k < N_KIND; ++k)
-            if ((k != CMB || sc.combiner_out_buf) && (k != EPL || !sc.fold))
+            if ((k != CMB || sc.combiner_out_buf) && (k != EPL || !sc.fold)
+                && (k != TELEM || !sc.telem_shared))
                 R->cap[k] = std::thread(capture, R.get(), k);
+    }
+    std::thread telem_cap;
+    if (sc.telem_shared) {
+        std::vector<ChainRun*> rs;
+        for (auto& R : runs)
+            rs.push_back(R.get());
+        telem_cap = std::thread(capture_telem_shared, rs, telem_shared.get());
     }
 
     // See quiescent().
-    const bool combined_after = sc.cmb_workers > 0;
+    const bool combined_after = sc.cmb_workers > 0 || sc.telem_workers > 0;
     Digests d;
     for (int k = 0; k < sc.n_frames; ++k) {
         g_frame.store(k);
@@ -1352,6 +1439,9 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
                 std::memset(sc.fold ? R->as->epl_frame(R->as_row) : R->buf[EPL]->frames[0], 0xA5,
                             R->buf[EPL]->frame_size);
         }
+        if (sc.telem_workers > 0)
+            for (auto& R : runs)
+                wait_telem(*R, k);
         // With combined_after, the combiners' captures and GETs of the frame, as above.
         if (combined_after) {
             const bool checkpoint =
@@ -1786,6 +1876,139 @@ void cmb_stall_child(const std::vector<ChainSpec>& cs, CmbHold hold, const std::
 
     json out_j = {
         {"t0", t0}, {"fed", fed}, {"taken", taken}, {"hold", {g_hold_t0.load(), g_hold_t1.load()}}};
+    std::ofstream f(out_path);
+    f << out_j.dump();
+    f.close();
+    if (!f)
+        child_fail(75, "cannot write " + out_path);
+    std::fflush(nullptr);
+    _exit(0);
+}
+
+// ---- the telemetry stall child ----
+
+/// Records each row of the telemetry stall test is fed, one every TELEM_STALL_DT_S, the frame of
+/// the half's telemetry buffer at which its reader is held, and that buffer's depth.
+constexpr int TELEM_STALL_RECORDS = 1000, TELEM_STALL_AT = 50, TELEM_STALL_DEPTH = 8;
+constexpr double TELEM_STALL_DT_S = 0.004;
+
+/// The telemetry stall test's child: the chains' telemetry packs as rows of one host on one
+/// worker each, writing one TELEM_STALL_DEPTH-deep out_buf. A feeder per chain writes
+/// TELEM_STALL_RECORDS records, one every TELEM_STALL_DT_S, each with its sample_seq, into a 4-deep
+/// in_buf; a reader, standing in for GnssTelemSend, takes the out_buf's frames and holds for
+/// STALL_HOLD_S at its frame TELEM_STALL_AT. Writes {"t0": start, "fed": [[time of record j] per
+/// chain], "taken": [[time, chain index, seq, win, present]...], "hold": [start, end],
+/// "dropped": [dropped-frame count per chain]} to @p out_path.
+void telem_stall_child(const std::vector<ChainSpec>& cs, const std::string& out_path) {
+    for (int sig : {SIGSEGV, SIGBUS, SIGFPE, SIGILL, SIGABRT, SIGALRM})
+        std::signal(sig, SIG_DFL);
+    g_out_path = out_path;
+    std::signal(SIGTERM, on_sigterm);
+    alarm(120);
+    const std::vector<int> cpus = allowed_cpus();
+    kotekan::restServer::instance().start("127.0.0.1", 0);
+    auto pool = metadataPool::create(16 * (int)cs.size() + TELEM_STALL_DEPTH, 64, "pool",
+                                     "GnssChanMetadata");
+    kotekan::bufferContainer bc;
+    std::vector<std::unique_ptr<Buffer>> in;
+    std::map<std::string, json> rows;
+    size_t out_bytes = 0;
+    for (const ChainSpec& s : cs) {
+        in.push_back(std::make_unique<Buffer>(
+            4, gnss::frame_floats(s.n_prn, s.n_live, s.n_chan) * sizeof(float), pool,
+            buf_name(s, "n2rec_buf"), "standard", 0, false, false, std::vector<int>{}, true, 0));
+        bc.add_buffer(buf_name(s, "n2rec_buf"), in.back().get());
+        in.back()->register_producer("feeder");
+        json tp = s.telem;
+        tp["in_buf"] = buf_name(s, "n2rec_buf");
+        tp["cpu_affinity"] = cpus;
+        rows[s.pre] = tp;
+        out_bytes =
+            std::max(out_bytes,
+                     gnss::telem_frame_bytes(s.n_rec, s.telem.at("max_prn").get<int>(), s.n_chan));
+    }
+    Buffer out(TELEM_STALL_DEPTH, out_bytes, pool, telem_shared_buf(cs), "standard", 0, false,
+               false, std::vector<int>{}, true, 0);
+    bc.add_buffer(telem_shared_buf(cs), &out);
+    out.register_consumer("send");
+    json cfg = {{"log_level", "warn"}, {"cpu_affinity", cpus}};
+    json& h = cfg[telem_host(cs[0].gpu).substr(1)];
+    h = host_block(rows, GnssTelemPack::ROW_KEYS, {});
+    h["out_buf"] = telem_shared_buf(cs);
+    for (const ChainSpec& s : cs)
+        h["workers"].push_back({{"rows", {s.pre}}, {"cpu_affinity", cpus}});
+    kotekan::Config config;
+    config.update_config(cfg);
+    GnssTelemPack host(config, telem_host(cs[0].gpu), bc);
+    host.start();
+
+    const double t0 = now_s() + 0.2;
+    std::vector<std::vector<double>> fed(cs.size(), std::vector<double>(TELEM_STALL_RECORDS, 0.0));
+    std::vector<std::thread> feeders;
+    for (size_t i = 0; i < cs.size(); ++i)
+        feeders.emplace_back([&, i] {
+            const ChainSpec& s = cs[i];
+            Buffer* b = in[i].get();
+            const int64_t rec_samples = (int64_t)s.hops_per_record * s.fft_len;
+            for (int j = 0; j < TELEM_STALL_RECORDS; ++j) {
+                const int id = j % b->num_frames;
+                float* f = (float*)b->wait_for_empty_frame("feeder", id);
+                if (f == nullptr)
+                    return;
+                while (now_s() < t0 + j * TELEM_STALL_DT_S)
+                    std::this_thread::sleep_for(std::chrono::microseconds(100));
+                f[gnss::REC_PRN] = (float)s.prns[0];
+                f[gnss::REC_P_ENERGY] = 1.0f;
+                b->allocate_new_metadata_object(id);
+                get_gnss_chan_metadata(b, id)->sample_seq = (REC_BASE + j) * rec_samples;
+                fed[i][j] = now_s();
+                b->mark_frame_full("feeder", id);
+            }
+        });
+    json taken = json::array();
+    std::thread reader([&] {
+        for (int k = 0;; ++k) {
+            const int id = k % out.num_frames;
+            const uint8_t* f = out.wait_for_full_frame("send", id);
+            if (f == nullptr)
+                return;
+            if (k == TELEM_STALL_AT)
+                hold_here();
+            gnss::TelemHeader th;
+            std::memcpy(&th, f, sizeof(th));
+            const std::string chain(th.chain, strnlen(th.chain, gnss::TELEM_NAME));
+            int idx = -1;
+            for (size_t i = 0; i < cs.size(); ++i)
+                if (cs[i].telem.at("chain").get<std::string>() == chain)
+                    idx = (int)i;
+            taken.push_back({now_s(), idx, th.seq, th.win, th.present});
+            out.mark_frame_empty("send", id);
+        }
+    });
+    for (std::thread& t : feeders)
+        t.join();
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    host.stop();
+    for (auto& b : in)
+        b->send_shutdown_signal();
+    out.send_shutdown_signal();
+    host.join();
+    reader.join();
+
+    std::vector<double> dropped(cs.size(), 0.0);
+    std::istringstream metrics(kotekan::prometheus::Metrics::instance().serialize());
+    for (std::string line; std::getline(metrics, line);)
+        for (size_t i = 0; i < cs.size(); ++i)
+            if (line.rfind("kotekan_gnss_telem_dropped_frames_total{stage_name=\"/" + cs[i].pre
+                               + "_telem_pack\"",
+                           0)
+                == 0)
+                dropped[i] = std::stod(line.substr(line.rfind(' ') + 1));
+    json out_j = {{"t0", t0},
+                  {"fed", fed},
+                  {"taken", taken},
+                  {"hold", {g_hold_t0.load(), g_hold_t1.load()}},
+                  {"dropped", dropped}};
     std::ofstream f(out_path);
     f << out_j.dump();
     f.close();
@@ -2506,6 +2729,33 @@ BOOST_AUTO_TEST_CASE(combine_workers) {
     }
 }
 
+/// The telemetry packs as rows of one host that write one out_buf, which one capture reads and
+/// sorts by chain, give the baseline's digests, each frame read at its own length, on one worker
+/// per row as gen_chord_gnss_config.py --telem-pack-host builds a node; with GNSS_REPLAY_FULL=1
+/// also with more rows than workers, with one worker and without a workers block.
+BOOST_AUTO_TEST_CASE(telem_rows) {
+    const Digests& base = baseline();
+    const int n = (int)chains().size();
+    std::vector<Scenario> runs(1, base_scenario());
+    runs[0].cold_ref = true;
+    runs[0].rows = true;
+    runs[0].telem_shared = true;
+    runs[0].telem_workers = n;
+    if (full_run())
+        for (int w : {2, 1, 0}) {
+            runs.push_back(runs[0]);
+            runs.back().telem_workers = w;
+        }
+    for (const Scenario& x : runs) {
+        const Digests d = run_scenario(chains(), x);
+        BOOST_CHECK_MESSAGE(changed(base, d).empty(),
+                            x.telem_workers << " telemetry workers: " << join(changed(base, d)));
+        BOOST_CHECK(base.live == d.live);
+        BOOST_CHECK(base.pins == d.pins);
+        BOOST_CHECK(base.slots == d.slots);
+    }
+}
+
 /// A PRN swap on one row of a combine host on workers, with more rows than workers: the run
 /// equals the same swap through one stage per chain, the swapped row restarts the slot cold
 /// (PIN_B1), and the other rows, on its worker and on the other, keep their slot's PRN and ADR
@@ -2608,6 +2858,68 @@ BOOST_AUTO_TEST_CASE(combine_workers_stall) {
         BOOST_CHECK_MESSAGE(during[0] == 0 && during[2] <= 8,
                             what << ": chains 0 and 2 took " << during[0] << " and " << during[2]
                                  << " records in the hold");
+    }
+}
+
+/// The telemetry packs as rows of one host, writing one out_buf on a worker each, with that
+/// out_buf's reader held for STALL_HOLD_S: the feeders, standing in for the record assemblers,
+/// are never held, each row drops and counts the windows that find the out_buf full and skips
+/// their seq, and after the hold every row's frames come again, complete and in order.
+BOOST_AUTO_TEST_CASE(telem_host_stall) {
+    const std::vector<ChainSpec>& cs = synthetic();
+    char path[] = "/tmp/gnss_replay_XXXXXX";
+    const int fd = mkstemp(path);
+    BOOST_REQUIRE(fd >= 0);
+    close(fd);
+    const int rc = run_forked([&] { telem_stall_child(cs, path); });
+    std::ifstream in(path);
+    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    unlink(path);
+    BOOST_REQUIRE_MESSAGE(rc == 0, "child exit " << rc << " " << text);
+    const json j = json::parse(text);
+    const double h0 = j.at("hold")[0].get<double>(), h1 = j.at("hold")[1].get<double>();
+    const double t0 = j.at("t0").get<double>();
+    BOOST_REQUIRE_MESSAGE(h1 - h0 >= STALL_HOLD_S, "no hold");
+    for (size_t i = 0; i < cs.size(); ++i) {
+        const ChainSpec& s = cs[i];
+        const std::vector<double> fed = j.at("fed").at(i).get<std::vector<double>>();
+        double late = 0.0;
+        for (int r = 0; r < TELEM_STALL_RECORDS; ++r)
+            late = std::max(late, fed[r] - (t0 + r * TELEM_STALL_DT_S));
+        const int per_win = s.telem.at("records_per_frame").get<int>();
+        const int windows = TELEM_STALL_RECORDS / per_win;
+        const int win0 = (int)(REC_BASE / per_win);
+        int got = 0, after = 0, incomplete = 0, disorder = 0;
+        int64_t last_seq = -1, last_win = -1, gaps = 0;
+        for (const json& t : j.at("taken")) {
+            if (t[1].get<int>() != (int)i)
+                continue;
+            const int64_t seq = t[2].get<int64_t>(), win = t[3].get<int64_t>();
+            ++got;
+            after += t[0].get<double>() > h1;
+            incomplete += t[4].get<uint32_t>() != (1u << per_win) - 1u;
+            disorder += seq <= last_seq || win <= last_win;
+            gaps += seq - last_seq - 1;
+            last_seq = seq;
+            last_win = win;
+        }
+        const int dropped = (int)j.at("dropped").at(i).get<double>();
+        BOOST_TEST_MESSAGE(fmt::format("{:s}: {:d} windows, {:d} sent ({:d} after the {:.2f} s "
+                                       "hold), {:d} dropped, seq gaps {:d}; feeder at most "
+                                       "{:.3f} s late",
+                                       s.pre, windows, got, after, h1 - h0, dropped, gaps, late));
+        BOOST_CHECK_MESSAGE(late < 0.1, s.pre << ": the feeder was held " << late << " s");
+        BOOST_CHECK_MESSAGE(dropped > 0, s.pre << ": no window was dropped in the hold");
+        BOOST_CHECK_MESSAGE(got + dropped == windows, s.pre << ": " << got << " sent and "
+                                                            << dropped << " dropped of " << windows
+                                                            << " windows");
+        BOOST_CHECK_MESSAGE(gaps == dropped && last_seq == windows - 1,
+                            s.pre << ": seq gaps " << gaps << ", last seq " << last_seq);
+        BOOST_CHECK_MESSAGE(last_win == win0 + windows - 1, s.pre << ": last window " << last_win);
+        BOOST_CHECK_MESSAGE(disorder == 0 && incomplete == 0, s.pre << ": " << disorder
+                                                                    << " frames out of order, "
+                                                                    << incomplete << " incomplete");
+        BOOST_CHECK_MESSAGE(after > 0, s.pre << ": nothing sent after the hold");
     }
 }
 

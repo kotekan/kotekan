@@ -104,6 +104,12 @@ struct Scenario {
     /// With rows: the combiners' host runs its rows on this many workers, chain i on worker
     /// i % cmb_workers; 0 runs each row on its own thread, without a workers block.
     int cmb_workers = 0;
+    /// With rows: the telemetry packs' rows write one out_buf on the host block, which one
+    /// capture reads, sorting its frames by their chain tag.
+    bool telem_shared = false;
+    /// With rows: the telemetry packs' host runs its rows on this many workers, chain i on
+    /// worker i % telem_workers; 0 runs each row on its own thread, without a workers block.
+    int telem_workers = 0;
     /// The chain (ChainSpec::idx) whose swap_slot swaps PRN at swap_frame; -1 for every chain.
     int swap_chain = -1;
 };
