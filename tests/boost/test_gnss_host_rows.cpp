@@ -623,8 +623,8 @@ BOOST_AUTO_TEST_CASE(combine_workers_restart_in_one_process) {
                       "");
 }
 
-// A combine host's workers run as threads of the stage, each named for its row if it has one
-// and bound to its own cpu_affinity.
+// A combine host's workers run as threads of the stage, each named for its row if it has one,
+// as is its consumer of the row's in_buf, and bound to its own cpu_affinity.
 BOOST_AUTO_TEST_CASE(combine_workers_are_pinned_threads_of_the_stage) {
     cpu_set_t allowed;
     CPU_ZERO(&allowed);
@@ -655,6 +655,16 @@ BOOST_AUTO_TEST_CASE(combine_workers_are_pinned_threads_of_the_stage) {
                 bc.add_buffer("rec_" + k, bufs.back().get());
             }
             GnssCoherentCombiner host(config, "/gnss0_combine", bc);
+            // A worker of one row reads its in_buf under its row's name.
+            const std::vector<std::vector<std::string>> readers = {
+                {"/gnss0_combine/w0"}, {"/gnss0_b_n2combine"}, {"/gnss0_combine/w0"}};
+            for (size_t i = 0; i < bufs.size(); ++i) {
+                std::string s;
+                for (const std::string& n : bufs[i]->get_consumer_names())
+                    s += " " + n;
+                if (bufs[i]->get_consumer_names() != readers[i])
+                    throw FatalError("rec_" + abc[i] + " consumers" + s);
+            }
             // Each thread's name and its cores, as the kernel has them.
             const std::map<std::string, int> want = {
                 {string_tail("/gnss0_combine", 15), cores[1]},

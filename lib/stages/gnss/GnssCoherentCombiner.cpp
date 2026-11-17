@@ -59,8 +59,12 @@ void GnssCoherentCombiner::register_inputs(const gnss::HostWorker& w) {
         if (!taken.insert(b).second)
             FATAL_ERROR("{:s}: {:s} reads {:s} for two rows", _host_rows[i].name, w.name,
                         b->buffer_name);
-        b->register_consumer(w.name);
+        b->register_consumer(consumer_name(w));
     }
+}
+
+const std::string& GnssCoherentCombiner::consumer_name(const gnss::HostWorker& w) const {
+    return w.rows.size() == 1 ? _host_rows[w.rows[0]].name : w.name;
 }
 
 GnssCoherentCombiner::~GnssCoherentCombiner() {
@@ -80,8 +84,7 @@ void GnssCoherentCombiner::main_thread() {
     std::vector<std::string> names;
     std::vector<std::vector<int>> cpus;
     for (const gnss::HostWorker& w : _workers) {
-        // A worker of one row takes the thread name its row's own stage had.
-        names.push_back(w.rows.size() == 1 ? _host_rows[w.rows[0]].name : w.name);
+        names.push_back(consumer_name(w));
         cpus.push_back(w.cpus);
     }
     gnss::run_workers(names, cpus,
@@ -99,7 +102,7 @@ void GnssCoherentCombiner::run_worker(size_t w) {
     const gnss::HostWorker& wk = _workers[w];
     while (!stop_thread)
         for (size_t r : wk.rows)
-            if (!take_record(r, wk.name))
+            if (!take_record(r, consumer_name(wk)))
                 return;
 }
 

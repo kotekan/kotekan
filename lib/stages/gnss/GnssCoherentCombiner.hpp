@@ -36,8 +36,8 @@
  * thread, under the REST paths, buffer client names and metric stage_name of the one-row stage
  * `<key>_n2combine` it replaces, its metrics also labelled chain=`<key>`, and serves the rows at
  * `<unique_name>/chains`. With @c workers its rows run on pinned threads instead, each taking one
- * record of each of its rows in turn and reading their in_bufs as one consumer,
- * `<unique_name>/w<k>`.
+ * record of each of its rows in turn and reading their in_bufs as one consumer, named for its row
+ * when it runs one, else `<unique_name>/w<k>`.
  *
  * Temporal integration is an exponential moving average with time constant
  * K = @c integration_length records (alpha = 1/K), updated every record and emitted every K/10
@@ -94,7 +94,9 @@
  *                           `<unique_name>/w<k>`. Every row is in exactly one worker, and the rows
  *                           of a worker read distinct in_bufs. They also share the thread: a row
  *                           whose record has not come, or whose out_buf is full, holds the others,
- *                           and on a busy core they get one thread's share of it.
+ *                           and on a busy core they get one thread's share of it. So rows fed by
+ *                           one thread that writes n records of a row before the next row's
+ *                           deadlock unless their in_bufs hold at least n - 1 frames.
  *
  * @buffer in_bufs A list of one buffer: the node's records (gnssRecord.hpp tracker layout: a
  *                 RECORD_FLOATS header plus n_elements element blocks per PRN).
@@ -150,6 +152,8 @@ private:
 
     /// Register worker @p w as the consumer of its rows' in_bufs.
     void register_inputs(const gnss::HostWorker& w);
+    /// Worker @p w's consumer and thread name: its row's name when it runs one, else its own.
+    const std::string& consumer_name(const gnss::HostWorker& w) const;
     void run_worker(size_t w);
     /// run_worker on a thread of its own, counted among the stage's threads.
     void run_pinned(size_t w);

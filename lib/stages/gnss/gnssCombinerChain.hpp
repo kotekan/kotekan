@@ -204,11 +204,12 @@ private:
     bool _bit_export = false;
     std::vector<NavObs> _st_nav_obs; ///< last emit's observations per PRN (under _st_mtx)
 
-    /// Real-time cost. The derived quantity is the duty cycle, CPU-seconds per second of data:
-    /// (d ingest_us + d emit_us) / (d records x record period). Below 1 the stage keeps up; at 1
-    /// it is saturated, more buffering only postpones the drops, and the drop rate stops
-    /// measuring cost. Times are microseconds; the per-emit gauges show spikes the counters
-    /// average away.
+    /// Real-time cost. The derived quantity is the duty cycle, wall-clock seconds in ingest and
+    /// emit per second of data: (d ingest_us + d emit_us) / (d records x record period). Below 1
+    /// the stage keeps up; at 1 it is saturated, more buffering only postpones the drops, and the
+    /// drop rate stops measuring cost. On a core shared with other threads it counts their time
+    /// too, so it is not the chain's CPU use. Times are microseconds; the per-emit gauges show
+    /// spikes the counters average away.
     kotekan::prometheus::Counter* _m_ingest_us = nullptr;    ///< cumulative record-ingest time
     kotekan::prometheus::Counter* _m_emit_us = nullptr;      ///< cumulative emit time
     kotekan::prometheus::Counter* _m_records = nullptr;      ///< records consumed (the data clock)
