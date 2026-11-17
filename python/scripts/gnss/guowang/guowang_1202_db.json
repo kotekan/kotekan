@@ -453,6 +453,7 @@
    "measured_utc": "2026-10-30T11:00:04Z",
    "source": "2026-10-30 baseband dump chunk 52",
    "sep_deg": 0.13,
+   "note": "theta from the 2026-10-30 dump's own reference: tag_early_us of input 116 applied (inputs differ by 0.02 us)",
    "last_observed_utc": "2026-10-30T11:00:04Z",
    "last_checked_utc": "2026-10-30T11:00:04Z",
    "last_checked_sep_deg": 0.13,
@@ -460,8 +461,7 @@
    "passes_silent": 0,
    "passes": [
     ["2026-10-30T11:00:04Z", 0.13, true]
-   ],
-   "note": "theta from the 2026-10-30 dump's own reference: tag_early_us of input 116 applied (inputs differ by 0.02 us)"
+   ]
   },
   "DIGUI-28": {
    "status": "transmitting",
