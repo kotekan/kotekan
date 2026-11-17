@@ -276,7 +276,7 @@ buffer_recv_incoherent_power:
 
 # Pulse search of the summed power: 300-1600 MHz, DM 3-1500. The step between trial DMs is
 # 0.12 up to DM 100 and grows to 0.56 at DM 1500: incoherent_num_dm trials (the stage logs the
-# number). The fixed masks are the aeronautical band and GNSS. It needs 1 GB. Timed on recv1
+# number). The fixed masks are listed with the stage. It needs 1 GB. Timed on recv1
 # with 6144 channels and the 4281 trials from DM 100: 8 threads search 2.2 s of data per
 # second (6 threads 1.8 s); the trials below DM 100 add 19 %.
 {% set incoherent_num_dm = 5089 %}
@@ -290,7 +290,31 @@ incoherent_beam_search:
     num_feeds: num_elements
     dm_min: 3
     dm_knee: 100
-    mask_bands_mhz: [[1010, 1130], [1164, 1300], [1559, 1610]]
+    # CHORD's static RFI mask, chord_util.rfi.BAD_FREQUENCIES["chord"] (bdfd697), with two
+    # changes for a search for pulses: all of 1010-1130 MHz, where aircraft transmit in
+    # pulses, in place of its two Mode S lines, and GNSS L1, which is above its data.
+    mask_bands_mhz:
+        - [356, 390]        # mobile services
+        - [449.41, 450.98]
+        - [454.88, 456.05]
+        - [457.62, 459.18]
+        - [483.01, 485.35]
+        - [487.70, 494.34]  # UHF TV channel 17
+        - [517.97, 525]
+        - [529.10, 536.52]  # UHF TV channel 24
+        - [564.65, 578]     # UHF TV channels 30 and 31
+        - [584, 590]        # UHF TV channel 33
+        - [596, 602]        # UHF TV channel 35
+        - [617, 652]        # 600 MHz mobile
+        - [717, 728]        # 700 and 800 MHz cellular
+        - [729, 745.12]
+        - [746, 756]
+        - [758, 768]
+        - [824, 849]
+        - [869, 894]
+        - [1010, 1130]      # aircraft: DME, secondary radar, ADS-B
+        - [1135, 1315]      # navigation, GNSS, the 23 cm amateur band
+        - [1559, 1610]      # GNSS L1
     candidate_file: /mnt/cs00/data/incoherent_beam_search/candidates.jsonl
     dm_file: /mnt/cs00/data/incoherent_beam_search/trial_dms.json
 {%- if incoherent_write_sums | default(false) %}
