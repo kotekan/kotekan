@@ -184,7 +184,8 @@ void GnssGpuRecordAssemble::main_thread() {
     std::vector<std::string> names;
     std::vector<std::vector<int>> cpus;
     for (const Worker& w : _workers) {
-        names.push_back(w.name);
+        // A worker of one row takes the thread name its row's own stage had.
+        names.push_back(w.rows.size() == 1 ? _host_rows[w.rows[0]].name : w.name);
         cpus.push_back(w.cpus);
     }
     gnss::run_workers(names, cpus,
@@ -272,6 +273,18 @@ bool GnssGpuRecordAssemble::assemble_frames(const Worker& w, size_t pos) {
     const uint8_t* ctl = ctl_buf->wait_for_full_frame(w.name, ctl_id);
     if (ctl == nullptr)
         return false;
+    // In a GPU half's shared array each block must be its row's: shape checks cannot tell two
+    // rows of one shape apart.
+    for (size_t p = pos; p < w.rows.size(); ++p) {
+        const Row& row = _rows[w.rows[p]];
+        if (row.tiles_buf != tiles_buf)
+            continue;
+        const int64_t tag = ((const gnss_gpu::FrameHdr*)(ctl + row.ctl_offset))->_pad1;
+        if (tag != row.tag)
+            FATAL_ERROR("{:s}: the control block at byte {:d} of ctl_buf carries row tag {:#x}, "
+                        "this row expects {:#x} (magic, chain id, row, fg_offset, 16 bits each)",
+                        _host_rows[w.rows[p]].name, row.ctl_offset, tag, row.tag);
+    }
     const int32_t* tiles = (const int32_t*)tiles_buf->wait_for_full_frame(w.name, tiles_id);
     if (tiles == nullptr)
         return false;
@@ -284,13 +297,6 @@ bool GnssGpuRecordAssemble::assemble_frames(const Worker& w, size_t pos) {
             continue;
         const std::string& name = _host_rows[w.rows[pos]].name;
         const uint8_t* block = ctl + row.ctl_offset;
-        // In a GPU half's shared array the block must be this row's: shape checks cannot tell
-        // two rows of one shape apart.
-        const int64_t tag = ((const gnss_gpu::FrameHdr*)block)->_pad1;
-        if (tag != row.tag)
-            FATAL_ERROR("{:s}: the control block at byte {:d} of ctl_buf carries row tag {:#x}, "
-                        "this row expects {:#x} (magic, chain id, row, fg_offset, 16 bits each)",
-                        name, row.ctl_offset, tag, row.tag);
         if (!meta || !meta->has_fpga_seq_num())
             FATAL_ERROR("{:s}: tiles frame {:d} carries no CHORD metadata with a sequence number",
                         name, tiles_id);

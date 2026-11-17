@@ -15,13 +15,18 @@
 #include "kotekanLogging.hpp"        // for FatalError
 #include "kotekanMode.hpp"           // for kotekanMode
 #include "restServer.hpp"            // for restServer, connectionInstance
+#include "util.h"                    // for string_tail
 
 #include "json.hpp" // for json
 
 #include <boost/test/included/unit_test.hpp>
 #include <chrono>
 #include <csignal>
+#include <fstream>
 #include <functional>
+#include <map>
+#include <memory>
+#include <sched.h>
 #include <string>
 #include <sys/wait.h>
 #include <thread>
@@ -468,4 +473,78 @@ BOOST_AUTO_TEST_CASE(record_workers_restart_in_one_process) {
                                "/gnss0_c_n2assemble/get_spectrum", "/gnss0_records/chains"});
                       }),
                       "");
+}
+
+// A record host's workers run as threads of the stage, each named for its row if it has one
+// and bound to its own cpu_affinity.
+BOOST_AUTO_TEST_CASE(record_workers_are_pinned_threads_of_the_stage) {
+    cpu_set_t allowed;
+    CPU_ZERO(&allowed);
+    BOOST_REQUIRE(sched_getaffinity(0, sizeof(allowed), &allowed) == 0);
+    std::vector<int> cores;
+    for (int c = 0; c < CPU_SETSIZE && cores.size() < 2; ++c)
+        if (CPU_ISSET(c, &allowed))
+            cores.push_back(c);
+    if (cores.size() < 2) {
+        BOOST_TEST_MESSAGE("fewer than 2 cores allowed: worker pinning not checked");
+        return;
+    }
+    BOOST_CHECK_EQUAL(
+        fatal_of([&] {
+            const std::vector<std::string> abc = {"gnss0_a", "gnss0_b", "gnss0_c"};
+            json cfg = record_config(
+                abc, {{{"rows", {"gnss0_a", "gnss0_c"}}, {"cpu_affinity", {cores[0]}}},
+                      {{"rows", {"gnss0_b"}}, {"cpu_affinity", {cores[1]}}}});
+            cfg["cpu_affinity"] = {cores[1]};
+            kotekan::Config config;
+            config.update_config(cfg);
+            kotekan::bufferContainer bc;
+            std::vector<std::unique_ptr<Buffer>> bufs;
+            for (const auto& k : abc)
+                for (const std::string b : {"epl_", "rec_"}) {
+                    bufs.push_back(std::make_unique<Buffer>(2, 1 << 16, nullptr, b + k, "standard",
+                                                            0, false, false, std::vector<int>{},
+                                                            false));
+                    bc.add_buffer(b + k, bufs.back().get());
+                }
+            GnssGpuRecordAssemble host(config, "/gnss0_records", bc);
+            // Each thread's name and its cores, as the kernel has them.
+            const std::map<std::string, int> want = {
+                {string_tail("/gnss0_records", 15), cores[1]},
+                {string_tail("/gnss0_records/w0", 15), cores[0]},
+                {string_tail("/gnss0_b_n2assemble", 15), cores[1]}};
+            auto seen = [&] {
+                std::map<std::string, int> out;
+                for (pid_t tid : host.get_tids()) {
+                    std::ifstream f("/proc/self/task/" + std::to_string(tid) + "/comm");
+                    std::string comm;
+                    std::getline(f, comm);
+                    cpu_set_t set;
+                    CPU_ZERO(&set);
+                    if (sched_getaffinity(tid, sizeof(set), &set) != 0 || CPU_COUNT(&set) != 1)
+                        return out;
+                    for (int c = 0; c < CPU_SETSIZE; ++c)
+                        if (CPU_ISSET(c, &set))
+                            out[comm] = c;
+                }
+                return out;
+            };
+            host.start();
+            const auto t0 = std::chrono::steady_clock::now();
+            std::map<std::string, int> got;
+            while ((got = seen()) != want
+                   && std::chrono::steady_clock::now() - t0 < std::chrono::seconds(10))
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            host.stop();
+            for (auto& b : bufs)
+                b->send_shutdown_signal();
+            host.join();
+            if (got != want) {
+                std::string s;
+                for (const auto& [n, c] : got)
+                    s += " " + n + ":" + std::to_string(c);
+                throw FatalError("threads" + s);
+            }
+        }),
+        "");
 }

@@ -59,9 +59,12 @@
  * @conf chains   Map (optional). One row per entry; each sets ROW_KEYS itself, alone sets
  *                ROW_ONLY_KEYS, and reads every other key from this block.
  * @conf workers  List (optional, with chains). Worker k, `{rows: [row keys], cpu_affinity:
- *                [cores]}`, runs its rows in that order on one thread bound to its cores. Every
- *                row is in exactly one worker. Rows of one worker share tiles_buf and ctl_buf
- *                both or neither, and never in_buf.
+ *                [cores]}`, runs its rows in that order on one thread bound to its cores, named
+ *                for its row if it has one. Every row is in exactly one worker. Rows of one
+ *                worker share tiles_buf and ctl_buf both or neither, and never in_buf. They also
+ *                share the thread: a row waiting on a full out_buf holds the next one, so they
+ *                must not feed one consumer that reads them in lockstep, and on a busy core
+ *                they get one thread's share of it.
  */
 class GnssGpuRecordAssemble : public kotekan::Stage {
 public:
