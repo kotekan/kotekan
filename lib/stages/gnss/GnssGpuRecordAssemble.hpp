@@ -30,7 +30,10 @@
  * gnss::RecordChain; this stage moves its frames. With a @c chains block it hosts one chain per
  * row (see gnss::host_rows), each with its own buffers and thread, under the REST paths, buffer
  * client names, metric labels and board owners of the one-row stage `<key>_n2assemble` it
- * replaces, and serves the rows at `<unique_name>/chains`.
+ * replaces, and serves the rows at `<unique_name>/chains`. With @c workers its rows run on
+ * pinned threads instead, each running its rows in order every frame and reading their inputs
+ * as one consumer, `<unique_name>/w<k>`: a frame of tiles_buf and ctl_buf that several rows
+ * read is released once every worker has assembled its rows' frames from it.
  *
  * A row reads its gnssGpuChain frames from @c in_buf (GnssN2RecordAssemble's output), or, with
  * @c tiles_buf and @c ctl_buf, assembles each one itself from the tiles and the control block
@@ -55,6 +58,10 @@
  *                (G, E, C or R), which names its satellites in the bright-satellite projection.
  * @conf chains   Map (optional). One row per entry; each sets ROW_KEYS itself, alone sets
  *                ROW_ONLY_KEYS, and reads every other key from this block.
+ * @conf workers  List (optional, with chains). Worker k, `{rows: [row keys], cpu_affinity:
+ *                [cores]}`, runs its rows in that order on one thread bound to its cores. Every
+ *                row is in exactly one worker. Rows of one worker share tiles_buf and ctl_buf
+ *                both or neither, and never in_buf.
  */
 class GnssGpuRecordAssemble : public kotekan::Stage {
 public:
@@ -66,7 +73,7 @@ public:
     void main_thread() override;
 
     /// Row @p row's own gnssGpuChain frame when it reads tiles_buf and ctl_buf, else null. Stable
-    /// only while the row waits for input.
+    /// only while the row's worker waits for input.
     uint8_t* epl_frame(size_t row) {
         return _rows[row].epl.get();
     }
@@ -85,6 +92,9 @@ private:
         Buffer* tiles_buf = nullptr;
         Buffer* ctl_buf = nullptr;
         int tiles_id = 0, ctl_id = 0;
+        /// Its frame holds the next tiles and control-block frames, assembled by its worker with
+        /// an earlier row's, and its records are not yet run.
+        bool assembled = false;
         gnss_gpu::EplShape epl_shape{};
         /// With gnss_row: the block's offset in ctl_buf and the row tag it must carry; else
         /// 0, the tag of a chain's own control block.
@@ -106,15 +116,31 @@ private:
     };
     const std::vector<gnss::HostRow> _host_rows;
     std::deque<Row> _rows;
+    /// A thread of the host: its rows, run in order every frame, read their inputs as consumer
+    /// @c name. Without @c workers, one per row, named for the row and bound to the stage's
+    /// cpu_affinity (no @c cpus).
+    struct Worker {
+        std::string name;
+        std::vector<int> cpus;
+        std::vector<size_t> rows;
+    };
+    std::vector<Worker> _workers;
     /// The REST paths this host registered.
     std::vector<std::string> _rest_paths;
 
-    void run_row(size_t row);
+    /// The workers from the @c workers block, or one per row without it.
+    std::vector<Worker> read_workers(kotekan::Config& config, const std::string& unique_name);
+    /// Register worker @p w as the consumer of its rows' input buffers, once each.
+    void register_inputs(const Worker& w);
+    void run_worker(size_t w);
+    /// run_worker on a thread of its own, counted among the stage's threads.
+    void run_pinned(size_t w);
     /// Run row @p row's records of its input frame @p in. Returns false when shutting down.
     bool run_records(size_t row, const uint8_t* in);
-    /// Assemble row @p row's next frame from its tiles and control block and release both.
-    /// Returns the frame, or null when shutting down.
-    const uint8_t* next_epl_frame(size_t row);
+    /// As worker @p w, wait for the next tiles and control-block frames of its row at @p pos,
+    /// assemble from them the frame of that row and of each later row of @p w that reads the
+    /// same two buffers, and release both. Returns false when shutting down.
+    bool assemble_frames(const Worker& w, size_t pos);
     /// Take @p row's slice of a GPU half's tiles and control block from its gnss_row.
     void read_gpu_row(kotekan::Config& config, const gnss::HostRow& hr, Row& row);
     /// Pack row @p row's completed window into its cube_buf and mark it full, or count it

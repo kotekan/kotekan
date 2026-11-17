@@ -66,6 +66,11 @@ void release_host(const std::vector<HostRow>& rows, const std::vector<std::strin
 /// thread of its own bound to @p cpus at its start, and return once every call has.
 void run_rows(size_t n_rows, const std::vector<int>& cpus, const std::function<void(size_t)>& run);
 
+/// Call @p run for each worker k on a thread of its own, named for the tail of @p names[k] and
+/// bound to @p cpus[k] at its start, and return once every call has.
+void run_workers(const std::vector<std::string>& names, const std::vector<std::vector<int>>& cpus,
+                 const std::function<void(size_t)>& run);
+
 } // namespace gnss
 
 #endif // GNSS_HOST_ROWS_HPP

@@ -2,9 +2,10 @@
 
 #include "kotekanLogging.hpp"    // for FATAL_ERROR_NON_OO, ERROR_NON_OO, FatalError
 #include "prometheusMetrics.hpp" // for Metrics
+#include "util.h"                // for string_tail
 
 #include <mutex>     // for mutex, lock_guard
-#include <pthread.h> // for pthread_setaffinity_np
+#include <pthread.h> // for pthread_setaffinity_np, pthread_setname_np
 #include <set>       // for set
 #include <thread>    // for thread
 
@@ -26,7 +27,7 @@ void run_row(const std::function<void(size_t)>& run, size_t row) {
         run(row);
     } catch (const FatalError& e) {
         // FATAL_ERROR already called exit_kotekan, as for a stage's own thread.
-        ERROR_NON_OO("GNSS host row {:d} caught FatalError: {:s}", row, e.what());
+        ERROR_NON_OO("GNSS host thread {:d} caught FatalError: {:s}", row, e.what());
     }
 }
 } // namespace
@@ -123,6 +124,25 @@ void run_rows(size_t n_rows, const std::vector<int>& cpus, const std::function<v
         pthread_setaffinity_np(threads.back().native_handle(), sizeof(cpu_set_t), &cpuset);
     }
     run_row(run, 0);
+    for (std::thread& t : threads)
+        t.join();
+}
+
+void run_workers(const std::vector<std::string>& names, const std::vector<std::vector<int>>& cpus,
+                 const std::function<void(size_t)>& run) {
+    std::vector<std::thread> threads;
+    for (size_t k = 0; k < names.size(); ++k) {
+        threads.emplace_back(run_row, std::cref(run), k);
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        for (int c : cpus[k])
+            CPU_SET(c, &cpuset);
+        const int err =
+            pthread_setaffinity_np(threads.back().native_handle(), sizeof(cpu_set_t), &cpuset);
+        if (err)
+            ERROR_NON_OO("Failed to bind {:s} to its cpu_affinity, error code {:d}", names[k], err);
+        pthread_setname_np(threads.back().native_handle(), string_tail(names[k], 15).c_str());
+    }
     for (std::thread& t : threads)
         t.join();
 }

@@ -98,6 +98,9 @@ struct Scenario {
     /// true, with gpu_rows: one pair of buffers that every assembler reads, as on a node; the
     /// chains then read each frame concurrently.
     bool gpu_rows_shared = false;
+    /// With rows: the assemblers' host runs its rows on this many workers, chain i on worker
+    /// i % workers; 0 runs each row on its own thread, without a workers block.
+    int workers = 0;
 };
 
 /// Record index of frame 0's first record: a multiple of every window length the chains use

@@ -15,8 +15,9 @@
 // control run; GNSS_REPLAY_FULL=1 adds the determinism, mutation and prefill
 // controls, a run whose combiners have no out_buf and one whose combiners keep slot state across
 // a PRN swap. Every run also replays the chains as rows of three host stages (Scenario::rows), and
-// with assemblers that read the tiles and control blocks themselves (Scenario::fold); each must
-// give the baseline's digests.
+// with assemblers that read the tiles and control blocks themselves (Scenario::fold), also on
+// workers (Scenario::workers); each must give the baseline's digests. workers_stall holds one
+// worker with the frames running free.
 
 #include "Config.hpp"                // for Config
 #include "GnssChanMetadata.hpp"      // for GnssChanMetadata, get_gnss_chan_metadata
@@ -52,9 +53,11 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <map>
 #include <memory>
+#include <pthread.h>
 #include <sched.h>
 #include <set>
 #include <string>
@@ -471,8 +474,15 @@ json build_config(const std::vector<ChainSpec>& cs, const Scenario& sc,
         }
     }
     if (sc.rows) {
-        cfg[records_host(cs[0].gpu).substr(1)] = host_block(
-            rows_as, GnssGpuRecordAssemble::ROW_KEYS, GnssGpuRecordAssemble::ROW_ONLY_KEYS);
+        json& rec = cfg[records_host(cs[0].gpu).substr(1)];
+        rec = host_block(rows_as, GnssGpuRecordAssemble::ROW_KEYS,
+                         GnssGpuRecordAssemble::ROW_ONLY_KEYS);
+        for (int w = 0; w < sc.workers; ++w) {
+            json rows = json::array();
+            for (size_t i = w; i < cs.size(); i += sc.workers)
+                rows.push_back(cs[i].pre);
+            rec["workers"].push_back({{"rows", rows}, {"cpu_affinity", cpus}});
+        }
         cfg[combine_host(cs[0].gpu).substr(1)] = host_block(rows_cb, GnssCoherentCombiner::ROW_KEYS,
                                                             GnssCoherentCombiner::ROW_ONLY_KEYS);
         cfg[telem_host(cs[0].gpu).substr(1)] = host_block(rows_tp, GnssTelemPack::ROW_KEYS, {});
@@ -1073,6 +1083,21 @@ void feed(const std::vector<std::unique_ptr<ChainRun>>& runs, ChainRun& R, const
     R.tiles->mark_frame_full("feeder", 0);
 }
 
+/// One band-power pass before any frame: chan_noise_norm weights from the first record.
+void publish_band_power(const std::vector<ChainSpec>& cs) {
+    std::vector<int> fids;
+    for (const auto& s : cs)
+        for (int f : s.channel_ids)
+            if (std::find(fids.begin(), fids.end(), f) == fids.end())
+                fids.push_back(f);
+    const int ne = max_live(cs);
+    std::vector<double> power;
+    for (int f : fids)
+        for (int e = 0; e < ne; ++e)
+            power.push_back(1.0 + 0.001 * (f % 97) + 0.01 * e);
+    gnss::ChanPower::instance().publish(fids, power, ne);
+}
+
 int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::string& out_path) {
     // Boost.Test's handlers would report a crash from inside the child and carry on; the parent
     // reports the signal instead.
@@ -1212,20 +1237,7 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
             R->stages.emplace_back(c.cmb);
         }
     }
-    // One band-power pass before any frame: chan_noise_norm weights from the first record.
-    {
-        std::vector<int> fids;
-        for (const auto& s : cs)
-            for (int f : s.channel_ids)
-                if (std::find(fids.begin(), fids.end(), f) == fids.end())
-                    fids.push_back(f);
-        const int ne = max_live(cs);
-        std::vector<double> power;
-        for (int f : fids)
-            for (int e = 0; e < ne; ++e)
-                power.push_back(1.0 + 0.001 * (f % 97) + 0.01 * e);
-        gnss::ChanPower::instance().publish(fids, power, ne);
-    }
+    publish_band_power(cs);
     for (auto& h : hosts)
         h->start();
     for (auto& R : runs) {
@@ -1374,16 +1386,205 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
     _exit(0);
 }
 
+// ---- the stall child ----
+
+/// Frames the stall test feeds, the depth of its tiles and control-block buffers (as
+/// gen_chord_gnss_config.py's FOLD_EPL_DEPTH), and how long it holds a worker.
+constexpr int STALL_FRAMES = 40, STALL_DEPTH = 8;
+constexpr double STALL_HOLD_S = 2.0;
+/// The record of chain 0 at which its record consumer, or worker 0, is held.
+constexpr int STALL_AT = 40;
+
+/// What the stall test holds: chain 0's record consumer, or worker 0 itself between its reads of
+/// the tiles and control blocks (from the assemblers' clock, on that worker's thread).
+enum class Hold { rec, worker };
+
+double now_s() {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
+
+std::atomic<int> g_taken0{0};
+std::atomic<bool> g_hold_worker{false}, g_held{false};
+std::atomic<double> g_hold_t0{0.0}, g_hold_t1{0.0};
+
+/// Holds the calling thread for STALL_HOLD_S, once, and notes when.
+void hold_here() {
+    if (g_held.exchange(true))
+        return;
+    g_hold_t0.store(now_s());
+    std::this_thread::sleep_for(std::chrono::duration<double>(STALL_HOLD_S));
+    g_hold_t1.store(now_s());
+}
+
+/// The assemblers' clock in the stall test: with Hold::worker it holds worker 0 once chain 0's
+/// record consumer has taken STALL_AT records.
+double stall_clock() {
+    if (g_hold_worker.load() && !g_held.load() && g_taken0.load() >= STALL_AT) {
+        char name[16] = {0};
+        pthread_getname_np(pthread_self(), name, sizeof(name));
+        const std::string n(name);
+        if (n.size() >= 3 && n.compare(n.size() - 3, 3, "/w0") == 0)
+            hold_here();
+    }
+    return gnss::steady_now_s();
+}
+
+/// The stall test's child: the chains as rows of one GPU half on two workers (chain i on worker
+/// i % 2) reading one pair of tiles and control-block buffers STALL_DEPTH frames deep, fed as
+/// fast as the workers release them, every row's records taken by a consumer of its own. One of
+/// @p hold holds for STALL_HOLD_S. Writes {"fed": [time of frame k], "taken": [[[time, first
+/// sample]...] per chain], "hold": [start, end]} to @p out_path.
+void stall_child(const std::vector<ChainSpec>& cs, Hold hold, const std::string& out_path) {
+    for (int sig : {SIGSEGV, SIGBUS, SIGFPE, SIGILL, SIGABRT, SIGALRM})
+        std::signal(sig, SIG_DFL);
+    g_out_path = out_path;
+    std::signal(SIGTERM, on_sigterm);
+    alarm(120);
+    g_hold_worker.store(hold == Hold::worker);
+    const std::vector<int> cpus = allowed_cpus();
+    kotekan::restServer::instance().start("127.0.0.1", 0);
+    Scenario sc = base_scenario();
+    sc.fold = sc.gpu_rows = sc.gpu_rows_shared = sc.rows = true;
+    sc.workers = 2;
+    const Sky sky = sky_for(sc);
+    const json layout = gpu_rows_of(cs);
+    const size_t ctl_b =
+        layout.back().at("ctl_offset").get<size_t>() + layout.back().at("ctl_bytes").get<size_t>();
+    const size_t tiles_b =
+        (size_t)cs[0].n_rec * fg_total(cs) * n_tile(cs[0]) * 512 * sizeof(int32_t);
+    auto pool = metadataPool::create(64 * (int)cs.size(), 64, "pool", "GnssChanMetadata");
+    auto tiles_pool =
+        metadataPool::create(STALL_DEPTH, sizeof(chordMetadata), "tiles_pool", "chordMetadata");
+    kotekan::bufferContainer bc;
+    std::vector<std::unique_ptr<Buffer>> bufs;
+    auto add = [&](int frames, size_t bytes, std::shared_ptr<metadataPool> p,
+                   const std::string& name) {
+        bufs.push_back(std::make_unique<Buffer>(frames, bytes, p, name, "standard", 0, false, false,
+                                                std::vector<int>{}, true, 0xA5));
+        bc.add_buffer(name, bufs.back().get());
+        return bufs.back().get();
+    };
+    Buffer* ctl = add(STALL_DEPTH, ctl_b, pool, rows_buf(cs, "ctl_buf"));
+    Buffer* tiles = add(STALL_DEPTH, tiles_b, tiles_pool, rows_buf(cs, "tiles_buf"));
+    ctl->register_producer("feeder");
+    tiles->register_producer("feeder");
+    std::vector<Buffer*> rec, cube;
+    for (const ChainSpec& s : cs) {
+        rec.push_back(add(4, gnss::frame_floats(s.n_prn, s.n_live, s.n_chan) * sizeof(float), pool,
+                          buf_name(s, "n2rec_buf")));
+        cube.push_back(
+            add(4,
+                gnss::cube_frame_bytes(s.assemble.value("beam_cube_max_prn", s.n_prn),
+                                       s.assemble.value("beam_cube_max_bins", s.n_chan), s.n_live),
+                pool, buf_name(s, "cube_buf")));
+        rec.back()->register_consumer("taker");
+        cube.back()->register_consumer("drain");
+    }
+    kotekan::Config config;
+    config.update_config(build_config(cs, sc, cpus));
+    publish_band_power(cs);
+    GnssGpuRecordAssemble host(config, records_host(cs[0].gpu), bc, &stall_clock);
+    host.start();
+
+    std::vector<double> fed(STALL_FRAMES, 0.0);
+    std::thread feeder([&] {
+        std::vector<uint8_t> own_ctl;
+        std::vector<int32_t> own_tiles;
+        for (int k = 0; k < STALL_FRAMES; ++k) {
+            const int id = k % STALL_DEPTH;
+            uint8_t* ctl_f = ctl->wait_for_empty_frame("feeder", id);
+            int32_t* tiles_f = (int32_t*)tiles->wait_for_empty_frame("feeder", id);
+            if (ctl_f == nullptr || tiles_f == nullptr)
+                return;
+            int64_t hop0 = 0;
+            for (size_t i = 0; i < cs.size(); ++i) {
+                const ChainSpec& s = cs[i];
+                const json& row = layout.at(i);
+                own_ctl.assign(gnss_gpu::ctl_bytes(s.n_prn, s.n_chan), 0);
+                own_tiles.assign((size_t)s.n_rec * s.n_chan * n_tile(s) * 512, 0);
+                write_ctl(own_ctl.data(), own_ctl.size(), s, sky, sc, k);
+                write_tiles(own_tiles.data(), own_tiles.size(), s, sky, sc, k);
+                auto* hdr = (gnss_gpu::FrameHdr*)own_ctl.data();
+                hdr->_pad1 =
+                    gnss_gpu::row_tag(row.at("chain_id").get<int>(), row.at("row").get<int>(),
+                                      row.at("fg_offset").get<int>());
+                hop0 = hdr->seq0 / s.fft_len;
+                std::memcpy(ctl_f + row.at("ctl_offset").get<size_t>(), own_ctl.data(),
+                            own_ctl.size());
+                const size_t slice = (size_t)s.n_chan * n_tile(s) * 512;
+                for (int r = 0; r < s.n_rec; ++r)
+                    std::memcpy(tiles_f
+                                    + ((size_t)r * fg_total(cs) + row.at("fg_offset").get<int>())
+                                          * n_tile(s) * 512,
+                                own_tiles.data() + r * slice, slice * sizeof(int32_t));
+            }
+            tiles->allocate_new_metadata_object(id);
+            get_chord_metadata(tiles, id)->set_fpga_seq_num(hop0);
+            fed[k] = now_s();
+            ctl->mark_frame_full("feeder", id);
+            tiles->mark_frame_full("feeder", id);
+        }
+    });
+    std::vector<std::vector<std::pair<double, int64_t>>> taken(cs.size());
+    std::vector<std::thread> takers;
+    for (size_t i = 0; i < cs.size(); ++i)
+        takers.emplace_back([&, i] {
+            Buffer* b = rec[i];
+            for (int j = 0; j < STALL_FRAMES * cs[i].n_rec; ++j) {
+                const int id = j % b->num_frames;
+                if (b->wait_for_full_frame("taker", id) == nullptr)
+                    return;
+                const GnssChanMetadata* m = get_gnss_chan_metadata(b, id);
+                taken[i].push_back({now_s(), m ? m->sample_seq : -1});
+                if (i == 0) {
+                    g_taken0.store(j + 1);
+                    if (hold == Hold::rec && j == STALL_AT)
+                        hold_here();
+                }
+                b->mark_frame_empty("taker", id);
+            }
+        });
+    std::vector<std::thread> drains;
+    for (Buffer* b : cube)
+        drains.emplace_back([b] {
+            for (int id = 0; b->wait_for_full_frame("drain", id) != nullptr;
+                 id = (id + 1) % b->num_frames)
+                b->mark_frame_empty("drain", id);
+        });
+    feeder.join();
+    for (std::thread& t : takers)
+        t.join();
+    host.stop();
+    for (auto& b : bufs)
+        b->send_shutdown_signal();
+    host.join();
+    for (std::thread& t : drains)
+        t.join();
+
+    json out = {{"fed", fed},
+                {"taken", taken},
+                {"hold", {g_hold_t0.load(), g_hold_t1.load()}},
+                {"n_rec", cs[0].n_rec}};
+    std::ofstream f(out_path);
+    f << out.dump();
+    f.close();
+    if (!f)
+        child_fail(75, "cannot write " + out_path);
+    std::fflush(nullptr);
+    _exit(0);
+}
+
 // ---- the parent ----
 
-/// Runs @p sc in a forked child, which writes its digests to @p path. Returns its exit code.
-int run_child(const std::vector<ChainSpec>& cs, const Scenario& sc, const char* path) {
+/// Runs @p child in a forked child, which must _exit. Returns its exit code.
+int run_forked(const std::function<void()>& child) {
     std::fflush(nullptr);
     const pid_t pid = fork();
     BOOST_REQUIRE(pid >= 0);
     if (pid == 0) {
         try {
-            child_main(cs, sc, path);
+            child();
         } catch (const std::exception& e) {
             child_fail(76, std::string("exception: ") + e.what());
         }
@@ -1402,6 +1603,11 @@ int run_child(const std::vector<ChainSpec>& cs, const Scenario& sc, const char* 
     if (WIFSIGNALED(status))
         BOOST_FAIL("replay child killed by signal " << WTERMSIG(status));
     return WEXITSTATUS(status);
+}
+
+/// Runs @p sc in a forked child, which writes its digests to @p path. Returns its exit code.
+int run_child(const std::vector<ChainSpec>& cs, const Scenario& sc, const char* path) {
+    return run_forked([&] { child_main(cs, sc, path); });
 }
 
 Digests run_scenario(const std::vector<ChainSpec>& cs, const Scenario& sc) {
@@ -1931,6 +2137,115 @@ BOOST_AUTO_TEST_CASE(gpu_rows) {
         BOOST_CHECK_MESSAGE(d.streams.at(s.pre + ".epl") == base.streams.at(s.pre + ".epl"),
                             "gpu rows shared: " << s.pre << ".epl");
     BOOST_CHECK(base.pins == d.pins);
+}
+
+/// The chains as rows of one GPU half on one host whose rows run on workers, each reading its
+/// rows' tiles and control blocks as one consumer, give the baseline's digests with one worker
+/// per row, with more rows than workers and with one worker; with GNSS_REPLAY_FULL=1 also as
+/// rows reading the adapters' epl frames. With one pair of buffers that every worker reads, as on
+/// a node, the workers process each frame concurrently, so only the epl frames can be compared,
+/// except with one worker, which runs every row of the frame in turn.
+BOOST_AUTO_TEST_CASE(workers) {
+    const Digests& base = baseline();
+    const int n = (int)chains().size();
+    for (int w : {n, 2, 1}) {
+        Scenario sc = base_scenario();
+        sc.cold_ref = true;
+        sc.fold = true;
+        sc.gpu_rows = true;
+        sc.rows = true;
+        sc.workers = w;
+        Digests d = run_scenario(chains(), sc);
+        BOOST_CHECK_MESSAGE(changed(base, d).empty(), w << " workers: " << join(changed(base, d)));
+        BOOST_CHECK(base.live == d.live);
+        BOOST_CHECK(base.pins == d.pins);
+        BOOST_CHECK(base.slots == d.slots);
+        sc.gpu_rows_shared = true;
+        d = run_scenario(chains(), sc);
+        for (const auto& s : chains())
+            BOOST_CHECK_MESSAGE(d.streams.at(s.pre + ".epl") == base.streams.at(s.pre + ".epl"),
+                                w << " workers, shared: " << s.pre << ".epl");
+        BOOST_CHECK(base.pins == d.pins);
+        if (w == 1)
+            BOOST_CHECK_MESSAGE(changed(base, d).empty(),
+                                "1 worker, shared: " << join(changed(base, d)));
+    }
+    if (!full_run())
+        return;
+    Scenario sc = base_scenario();
+    sc.cold_ref = true;
+    sc.rows = true;
+    sc.workers = 2;
+    const Digests d = run_scenario(chains(), sc);
+    BOOST_CHECK_MESSAGE(changed(base, d).empty(),
+                        "unfolded, 2 workers: " << join(changed(base, d)));
+    BOOST_CHECK(base.live == d.live);
+    BOOST_CHECK(base.slots == d.slots);
+}
+
+/// Two workers, more rows than workers (chain i on worker i % 2), holding first chain 0's record
+/// consumer for STALL_HOLD_S at its record STALL_AT, and then worker 0 itself between its reads of
+/// the tiles and control blocks. While worker 0 is held, worker 1 runs on until the feeder has
+/// used the buffers' depth and is blocked; then every row takes every record of every frame once,
+/// in order, the held rows included.
+BOOST_AUTO_TEST_CASE(workers_stall) {
+    const std::vector<ChainSpec>& cs = synthetic();
+    for (const Hold hold : {Hold::rec, Hold::worker}) {
+        const char* what = hold == Hold::rec ? "record consumer held" : "worker held";
+        char path[] = "/tmp/gnss_replay_XXXXXX";
+        const int fd = mkstemp(path);
+        BOOST_REQUIRE(fd >= 0);
+        close(fd);
+        const int rc = run_forked([&] { stall_child(cs, hold, path); });
+        std::ifstream in(path);
+        const std::string text((std::istreambuf_iterator<char>(in)),
+                               std::istreambuf_iterator<char>());
+        unlink(path);
+        BOOST_REQUIRE_MESSAGE(rc == 0, what << ": child exit " << rc << " " << text);
+        const json j = json::parse(text);
+        const double h0 = j.at("hold")[0].get<double>(), h1 = j.at("hold")[1].get<double>();
+        BOOST_REQUIRE_MESSAGE(h1 - h0 >= STALL_HOLD_S, what << ": no hold");
+        const std::vector<double> fed = j.at("fed").get<std::vector<double>>();
+        int fed_max = -1, fed_late = 0;
+        for (int k = 0; k < STALL_FRAMES; ++k) {
+            fed_max = fed[k] < h1 ? k : fed_max;
+            fed_late += fed[k] > h0 + 0.5 && fed[k] < h1;
+        }
+        // The last frame of which each worker's rows took a record before the hold ended.
+        int last[2] = {-1, -1};
+        for (size_t i = 0; i < cs.size(); ++i) {
+            const ChainSpec& s = cs[i];
+            const int64_t rec_samples = (int64_t)s.hops_per_record * s.fft_len;
+            std::vector<int64_t> want, got;
+            int after = 0;
+            for (int k = 0; k < STALL_FRAMES * s.n_rec; ++k)
+                want.push_back((REC_BASE + k) * rec_samples);
+            for (const json& t : j.at("taken").at(i)) {
+                got.push_back(t[1].get<int64_t>());
+                const int frame = (int)((got.back() / rec_samples - REC_BASE) / s.n_rec);
+                if (t[0].get<double>() < h1)
+                    last[i % 2] = std::max(last[i % 2], frame);
+                else
+                    ++after;
+            }
+            BOOST_CHECK_MESSAGE(got == want, what << ": " << s.pre << " took " << got.size()
+                                                  << " records, not each of " << want.size()
+                                                  << " once in order");
+            BOOST_CHECK_MESSAGE(after > 0, what << ": " << s.pre << " took nothing after the hold");
+        }
+        BOOST_TEST_MESSAGE(fmt::format("{:s}: {:.2f} s; fed frames 0-{:d} before its end, {:d} "
+                                       "in its last {:.1f} s; worker 0 at frame {:d}, worker 1 "
+                                       "at {:d}",
+                                       what, h1 - h0, fed_max, fed_late, h1 - h0 - 0.5, last[0],
+                                       last[1]));
+        BOOST_CHECK_MESSAGE(fed_late == 0, what << ": the feeder was not blocked");
+        BOOST_CHECK_MESSAGE(last[1] == fed_max, what << ": worker 1 stopped at frame " << last[1]
+                                                     << ", the feeder at " << fed_max);
+        BOOST_CHECK_MESSAGE(fed_max - last[0] >= STALL_DEPTH
+                                && fed_max - last[0] <= STALL_DEPTH + 1,
+                            what << ": the feeder ran " << fed_max - last[0]
+                                 << " frames ahead of worker 0, not the depth " << STALL_DEPTH);
+    }
 }
 
 /// A row FATALs on another row's control block: chain A's and B's rows swapping their ctl_offset

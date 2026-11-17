@@ -147,6 +147,38 @@ json combiner_config(const std::vector<std::string>& bufs, const std::string& na
     return cfg;
 }
 
+/// A record host block at /gnss0_records whose rows @p keys read in_buf epl_<key> and write
+/// rec_<key>, with the buffers they name, and @p workers.
+json record_config(const std::vector<std::string>& keys, const json& workers) {
+    json cfg = {{"log_level", "warn"},
+                {"cpu_affinity", {0}},
+                {"telescope", {{"num_polarizations", 2}, {"num_dishes", 2}}}};
+    json host = {{"kotekan_stage", "GnssGpuRecordAssemble"},
+                 {"n_elements", 2},
+                 {"sample_rate", 3.2e9},
+                 {"spectrum_window_samples", 1e9},
+                 {"workers", workers}};
+    for (const auto& k : keys) {
+        host["chains"][k] = {
+            {"in_buf", "epl_" + k}, {"out_buf", "rec_" + k}, {"prns", {1}}, {"channel_ids", {100}}};
+        for (const std::string b : {"epl_", "rec_"})
+            cfg[b + k] = {
+                {"kotekan_buffer", "standard"}, {"num_frames", 2}, {"frame_size", 1 << 16}};
+    }
+    cfg["gnss0_records"] = host;
+    return cfg;
+}
+
+/// The FatalError message of starting @p cfg's stages, "" for none.
+std::string start_fatal(const json& cfg) {
+    return fatal_of([&] {
+        kotekan::Config config;
+        config.update_config(cfg);
+        kotekan::kotekanMode mode(config);
+        mode.initalize_stages();
+    });
+}
+
 } // namespace
 
 // Claims its row names in this process, so they differ from the other cases'.
@@ -374,6 +406,66 @@ BOOST_AUTO_TEST_CASE(host_restarts_in_one_process) {
                               combiner_config({"rec_a", "rec_b"}, "gnss0_combine", rows),
                               {"/gnss0_a_n2combine/get_status", "/gnss0_b_n2combine/get_status",
                                "/gnss0_combine/chains"});
+                      }),
+                      "");
+}
+
+// A record host's workers partition its rows: each row in exactly one worker, each worker with
+// rows and cores, and no input buffer read twice by one worker.
+BOOST_AUTO_TEST_CASE(record_workers_partition_the_rows) {
+    const std::vector<std::string> abc = {"gnss0_a", "gnss0_b", "gnss0_c"};
+    auto w = [](const std::vector<std::string>& rows) {
+        return json{{"rows", rows}, {"cpu_affinity", {0}}};
+    };
+    const std::string h = "/gnss0_records: ";
+    BOOST_CHECK_EQUAL(start_fatal(record_config(abc, {w({"gnss0_a", "gnss0_c"}), w({"gnss0_b"})})),
+                      "");
+    BOOST_CHECK_EQUAL(
+        start_fatal(record_config(abc, {w({"gnss0_a", "gnss0_c"}), w({"gnss0_b", "gnss0_a"})})),
+        h + "row gnss0_a is in workers 0 and 1");
+    BOOST_CHECK_EQUAL(start_fatal(record_config(abc, {w({"gnss0_a"}), w({"gnss0_b"})})),
+                      h + "row gnss0_c is in no worker");
+    // More workers than rows leaves one without rows.
+    BOOST_CHECK_EQUAL(
+        start_fatal(record_config(abc, {w({"gnss0_a"}), w({"gnss0_b"}), w({"gnss0_c"}), w({})})),
+        h + "worker 3 needs rows and cpu_affinity, each a non-empty list");
+    BOOST_CHECK_EQUAL(
+        start_fatal(record_config(abc, {w({"gnss0_a", "gnss0_b"}), w({"gnss0_c", "gnss0_x"})})),
+        h + "worker 1 runs \"gnss0_x\", which is not a row of chains");
+    BOOST_CHECK_EQUAL(start_fatal(record_config(abc, json::array({{{"rows", abc}}}))),
+                      h + "worker 0 needs rows and cpu_affinity, each a non-empty list");
+    BOOST_CHECK_EQUAL(
+        start_fatal(record_config(abc, json::array({{{"rows", abc}, {"cpu_affinity", {-1}}}}))),
+        h + "worker 0 has cpu_affinity entry -1, not a core");
+    BOOST_CHECK_EQUAL(start_fatal(record_config(abc, json::array())),
+                      h + "workers must be a non-empty list");
+    // Two rows of one worker reading one in_buf.
+    json cfg = record_config(abc, json::array({w(abc)}));
+    cfg["gnss0_records"]["chains"]["gnss0_b"]["in_buf"] = "epl_gnss0_a";
+    BOOST_CHECK_EQUAL(start_fatal(cfg), "/gnss0_b_n2assemble: /gnss0_records/w0 reads epl_gnss0_a "
+                                        "for two rows that do not share both tiles_buf and "
+                                        "ctl_buf");
+    // Workers need a chains block.
+    cfg = record_config(abc, json::array({w(abc)}));
+    cfg["gnss0_records"].erase("chains");
+    cfg["gnss0_records"].update({{"in_buf", "epl_gnss0_a"},
+                                 {"out_buf", "rec_gnss0_a"},
+                                 {"prns", {1}},
+                                 {"channel_ids", {100}}});
+    BOOST_CHECK_EQUAL(start_fatal(cfg), h + "workers needs a chains block");
+}
+
+// A record host on workers releases its rows and REST paths when deleted, so it starts again in
+// the same process.
+BOOST_AUTO_TEST_CASE(record_workers_restart_in_one_process) {
+    const json workers = {{{"rows", {"gnss0_a", "gnss0_c"}}, {"cpu_affinity", {0}}},
+                          {{"rows", {"gnss0_b"}}, {"cpu_affinity", {0}}}};
+    BOOST_CHECK_EQUAL(fatal_of([&] {
+                          start_stop_start(
+                              record_config({"gnss0_a", "gnss0_b", "gnss0_c"}, workers),
+                              {"/gnss0_a_n2assemble/get_spectrum",
+                               "/gnss0_b_n2assemble/set_sat_geometry",
+                               "/gnss0_c_n2assemble/get_spectrum", "/gnss0_records/chains"});
                       }),
                       "");
 }
