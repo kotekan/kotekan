@@ -117,6 +117,7 @@ add_library(
     RfiMaskSum.cpp
     DtvRfiMask.cpp
     NDArrayTimeConcat.cpp
+    IncoherentBeamPower.cpp
     RfiFrameMask.cpp
     RfiSKMetrics.cpp
     CountLostPLSamplesScalar.cpp
