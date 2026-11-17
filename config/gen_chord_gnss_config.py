@@ -1943,8 +1943,9 @@ COMBINE_ROW_KEYS = ("in_bufs", "n_prn", "out_buf")
 
 def host_form(blocks, pres, stage, row_keys, name):
     """The half's per-chain stages <pre><stage> as rows of one stage, `name`, each keyed by the
-    chain's prefix less its trailing underscore, so the host names it as the stage it replaces. Each row runs on a worker of its own, in gnss_rows order, on that stage's core;
-    the host's cpu_affinity is the union of its workers'."""
+    chain's prefix less its trailing underscore, so the host names it as the stage it replaces.
+    Each row runs on a worker of its own, in gnss_rows order, on that stage's core; the host's
+    cpu_affinity is the union of its workers'."""
     stages = [blocks.pop(p["pre"] + stage) for p in pres]
     host = {
         k: v

@@ -7,9 +7,9 @@
 Each chain's four host-stage blocks (<pre>_n2assemble_tiles, <pre>_n2assemble, <pre>_n2combine,
 <pre>_telem_pack) are copied verbatim, a row of a host as the stage it stands for
 (gnss_fleet.assembler_rows, gnss_fleet.combiner_rows), except that the buffer keys name the
-replay's buffers and cpu_affinity is empty. The test reads the result through
-GNSS_REPLAY_CONFIG=OUT.json. The default chains are gnss0's gps_l5 and gal_e5a, which share
-channels and PRNs, and glo_l2oc, the chain with a record_cp_mod_chips.
+replay's buffers and cpu_affinity is empty. A --gpu-rows config is refused. The test reads the
+result through GNSS_REPLAY_CONFIG=OUT.json. The default chains are gnss0's gps_l5 and gal_e5a,
+which share channels and PRNs, and glo_l2oc, the chain with a record_cp_mod_chips.
 """
 import argparse
 import json
@@ -46,6 +46,12 @@ def extract(config_path, chains=DEFAULT_CHAINS):
             b["cpu_affinity"] = []
             return b
 
+        if "gnss_row" in stages.get(pre + "_n2assemble", {}):
+            raise ValueError(
+                f"{config_path}: a --gpu-rows config has no {pre}_n2assemble_tiles,"
+                " which the replay needs; extract from the node's config without"
+                " --gpu-rows"
+            )
         adapter, assemble = block("_n2assemble_tiles"), block("_n2assemble")
         combine, telem = block("_n2combine"), block("_telem_pack")
         adapter.update(
