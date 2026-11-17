@@ -22,7 +22,8 @@ void FloatPhaseUpdate::compute_phases(uint8_t* out_frame_int, const timespec& gp
 
     // Getting UTC time in ISO format from the GPS time in Unix format.
     struct tm* utc_time;
-    utc_time = gmtime(&gps_time.tv_sec);  // NOTE: &gps_time.tv_sec since gps_time is passed by reference.
+    utc_time =
+        gmtime(&gps_time.tv_sec); // NOTE: &gps_time.tv_sec since gps_time is passed by reference.
 
     // Calculating the UT1 Julian Day from the UTC time and date.
     uint year = utc_time->tm_year + 1900;
@@ -33,11 +34,14 @@ void FloatPhaseUpdate::compute_phases(uint8_t* out_frame_int, const timespec& gp
     }
     uint day = utc_time->tm_mday;
     uint hour = utc_time->tm_hour;
-    float JD = 2 - int(year / 100.) + int(int(year / 100.) / 4.) + int(365.25 * year)  // NOTE: See this conversion for Skyfield.
-               + int(30.6001 * (month + 1)) + day + 1720994.5; 
+    float JD = 2 - int(year / 100.) + int(int(year / 100.) / 4.)
+               + int(365.25 * year) // NOTE: See this conversion for Skyfield.
+               + int(30.6001 * (month + 1)) + day + 1720994.5;
 
     double UT = (hour) + (utc_time->tm_min / 60.)
-               + (utc_time->tm_sec + _DUT1 + gps_time.tv_nsec / 1.e9) / 3600.;  // NOTE: DUT1 could be made a double value in struct _beam_coord containing DUT1 = UT1-UTC in seconds.
+                + (utc_time->tm_sec + _DUT1 + gps_time.tv_nsec / 1.e9)
+                      / 3600.; // NOTE: DUT1 could be made a double value in struct _beam_coord
+                               // containing DUT1 = UT1-UTC in seconds.
     double JD_UT1 = JD + UT / 24.;
 
     // Calculating the Local Stellar Angle (LSA).
@@ -54,17 +58,20 @@ void FloatPhaseUpdate::compute_phases(uint8_t* out_frame_int, const timespec& gp
 
     // Calculating the hour angle and phases for all frequencies in a frame for each pointing.
     for (uint32_t b = beam_offset; b < (_num_local_beams + beam_offset); b++) {
-        // Special case for forming a beam at the telescope zenith, e.g. only apply gains, no phases.  
+        // Special case for forming a beam at the telescope zenith, e.g. only apply gains, no
+        // phases.
         if (_beam_coord.scaling[b] == 1) {
             for (uint32_t i = 0; i < _num_elements * _num_local_freq * 2; ++i) {
-                out_frame[b * _num_elements * _num_local_freq * 2 + i] = gains_frame[b * _num_elements * _num_local_freq * 2 + i];
+                out_frame[b * _num_elements * _num_local_freq * 2 + i] =
+                    gains_frame[b * _num_elements * _num_local_freq * 2 + i];
             }
             continue;
         }
-        double hour_angle  = LSA - _beam_coord.right_ascension[b];
+        double hour_angle = LSA - _beam_coord.right_ascension[b];
 
-        double alt = sin(_beam_coord.declination[b] * D2R) * sin(_inst_lat * D2R)
-                     + cos(_beam_coord.declination[b] * D2R) * cos(_inst_lat * D2R) * cos(hour_angle * D2R);
+        double alt =
+            sin(_beam_coord.declination[b] * D2R) * sin(_inst_lat * D2R)
+            + cos(_beam_coord.declination[b] * D2R) * cos(_inst_lat * D2R) * cos(hour_angle * D2R);
         alt = asin(std::clamp(alt, -1.0, 1.0));
         double az = (sin(_beam_coord.declination[b] * D2R) - sin(alt) * sin(_inst_lat * D2R))
                     / (cos(alt) * cos(_inst_lat * D2R));
@@ -75,9 +82,9 @@ void FloatPhaseUpdate::compute_phases(uint8_t* out_frame_int, const timespec& gp
         double projection_angle, effective_angle, offset_distance;
 
         // Looping over all frequencies in the frame.
-        for(uint32_t i = 0; i < _num_local_freq; i++) {
+        for (uint32_t i = 0; i < _num_local_freq; i++) {
             // Looping over the feeds.
-            for(size_t j = 0; j < feed_locations.size(); j++) {
+            for (size_t j = 0; j < feed_locations.size(); j++) {
                 double dist_x = feed_locations[j].first;
                 double dist_y = feed_locations[j].second;
 
@@ -86,12 +93,13 @@ void FloatPhaseUpdate::compute_phases(uint8_t* out_frame_int, const timespec& gp
                 effective_angle = projection_angle - az;
 
                 double delay_real = cos(TAU * cos(effective_angle) * cos(alt) * offset_distance
-                                       * frequencies_in_frame[i] * one_over_c);
-                double delay_imag = -sin(TAU * cos(effective_angle) * cos(-alt) * offset_distance
                                         * frequencies_in_frame[i] * one_over_c);
+                double delay_imag = -sin(TAU * cos(effective_angle) * cos(-alt) * offset_distance
+                                         * frequencies_in_frame[i] * one_over_c);
 
                 // Looping over 2 polarisations.
-                // Make sure that the gains are in accordance with the feed locations and frequencies.
+                // Make sure that the gains are in accordance with the feed locations and
+                // frequencies.
                 for (int p = 0; p < 2; p++) {
                     uint elem_id = p * _num_elements / 2 + j;
                     uint offset = b * _num_local_freq * _num_elements + i * _num_elements;
@@ -102,7 +110,7 @@ void FloatPhaseUpdate::compute_phases(uint8_t* out_frame_int, const timespec& gp
                         - delay_imag * gains_frame[(offset + elem_id) * 2 + 1];
                     out_frame[(offset + elem_id) * 2 + 1] =
                         delay_real * gains_frame[(offset + elem_id) * 2 + 1]
-                        + delay_imag * gains_frame[(offset + elem_id) * 2]; 
+                        + delay_imag * gains_frame[(offset + elem_id) * 2];
                 }
             }
         }
