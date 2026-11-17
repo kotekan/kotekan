@@ -116,15 +116,19 @@ def _record_host(u, s):
 
 def _stages(cfg, kind=None):
     """(unique_name, scope) of every stage, with a record host's rows in place of the host, each
-    as the stage it stands for (gnss_fleet.assembler_rows), scoped [its block, the root]."""
+    as the stage it stands for (gnss_fleet.assembler_rows), scoped [its block, the root]. A row
+    named as a top-level block is a ValueError: kotekan refuses the config."""
     out = [
         (u, s)
         for u, s in _blocks(cfg)
         if "kotekan_stage" in s[0] and not _record_host(u, s)
     ]
-    out += [
-        ("/" + n, [b, cfg]) for n, b in gnss_fleet.assembler_rows(cfg) if n not in cfg
-    ]
+    for n, b in gnss_fleet.assembler_rows(cfg):
+        if cfg.get(n) is b:
+            continue  # a top-level assembler, listed above
+        if n in cfg:
+            raise ValueError("record host row %s is also a top-level block" % n)
+        out.append(("/" + n, [b, cfg]))
     return [(u, s) for u, s in out if kind in (None, s[0]["kotekan_stage"])]
 
 

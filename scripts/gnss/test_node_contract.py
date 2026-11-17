@@ -519,6 +519,17 @@ def test_records(rows_dir, rec_dir):
         "records: each half's host runs every row on its own worker on its core, sets no row "
         "key, and nothing else changes (%s)" % bad,
     )
+    name, block = rows.popitem()
+    hcfg[name] = block
+    try:
+        nc.rest_surface(hcfg)
+        refused = ""
+    except ValueError as e:
+        refused = str(e)
+    check(
+        name in refused,
+        "records: a row named as a top-level block is refused: %r" % refused,
+    )
 
 
 def test_replay(dump):
