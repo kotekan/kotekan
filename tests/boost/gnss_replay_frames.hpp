@@ -101,6 +101,11 @@ struct Scenario {
     /// With rows: the assemblers' host runs its rows on this many workers, chain i on worker
     /// i % workers; 0 runs each row on its own thread, without a workers block.
     int workers = 0;
+    /// With rows: the combiners' host runs its rows on this many workers, chain i on worker
+    /// i % cmb_workers; 0 runs each row on its own thread, without a workers block.
+    int cmb_workers = 0;
+    /// The chain (ChainSpec::idx) whose swap_slot swaps PRN at swap_frame; -1 for every chain.
+    int swap_chain = -1;
 };
 
 /// Record index of frame 0's first record: a multiple of every window length the chains use
@@ -136,10 +141,15 @@ inline double energy_at(const ChainSpec& s, const Scenario& sc, int frame, int r
     return (s.idx == 1 && frame == sc.dark_r0_frame) ? e * (1.0 + 0.02 * rec) : e;
 }
 
+/// Whether @p slot of chain @p s swaps PRN at swap_frame.
+inline bool swaps(const ChainSpec& s, const Scenario& sc, int slot) {
+    return slot == sc.swap_slot && (sc.swap_chain < 0 || s.idx == sc.swap_chain);
+}
+
 /// The PRN in @p slot at @p frame: the configured one, or the swapped one from swap_frame on.
 inline int prn_at(const ChainSpec& s, const Scenario& sc, int frame, int slot) {
     const int prn = s.prns[(size_t)slot];
-    return (slot == sc.swap_slot && frame >= sc.swap_frame) ? prn + 100 : prn;
+    return (swaps(s, sc, slot) && frame >= sc.swap_frame) ? prn + 100 : prn;
 }
 
 /// Does @p slot despread record @p rec of @p frame? Planted PRNs, every fourth slot from 2
@@ -242,7 +252,7 @@ inline void write_ctl(uint8_t* f, size_t bytes, const ChainSpec& s, const Sky& s
                 continue;
             const bool was = (r > 0) ? runs(s, sc, sky, frame, r - 1, p)
                                      : (frame > 0 && runs(s, sc, sky, frame - 1, s.n_rec - 1, p));
-            const bool fresh = !was || (frame == sc.swap_frame && r == 0 && p == sc.swap_slot)
+            const bool fresh = !was || (frame == sc.swap_frame && r == 0 && swaps(s, sc, p))
                                || (frame == sc.reanchor_frame && r == 0 && p == sc.reanchor_slot);
             c.run = 1;
             c.reanchored = fresh ? 1 : 3;

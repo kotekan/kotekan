@@ -33,8 +33,11 @@
  *
  * The integration itself is a gnss::CombinerChain; this stage moves its frames. With a
  * @c chains block it hosts one chain per row (see gnss::host_rows), each with its own buffers and
- * thread, under the REST paths, buffer client names and metric labels of the one-row stage
- * `<key>_n2combine` it replaces, and serves the rows at `<unique_name>/chains`.
+ * thread, under the REST paths, buffer client names and metric stage_name of the one-row stage
+ * `<key>_n2combine` it replaces, its metrics also labelled chain=`<key>`, and serves the rows at
+ * `<unique_name>/chains`. With @c workers its rows run on pinned threads instead, each taking one
+ * record of each of its rows in turn and reading their in_bufs as one consumer,
+ * `<unique_name>/w<k>`.
  *
  * Temporal integration is an exponential moving average with time constant
  * K = @c integration_length records (alpha = 1/K), updated every record and emitted every K/10
@@ -85,6 +88,13 @@
  *                           swap), its state restarts cold, as GnssGpuRecordAssemble's does.
  * @conf chains              Map (optional). One row per entry; each sets ROW_KEYS itself, alone
  *                           sets ROW_ONLY_KEYS, and reads every other key from this block.
+ * @conf workers             List (optional, with chains). Worker k, `{rows: [row keys],
+ *                           cpu_affinity: [cores]}`, runs its rows in that order on one thread
+ *                           bound to its cores, named for its row when it runs one, else
+ *                           `<unique_name>/w<k>`. Every row is in exactly one worker, and the rows
+ *                           of a worker read distinct in_bufs. They also share the thread: a row
+ *                           whose record has not come, or whose out_buf is full, holds the others,
+ *                           and on a busy core they get one thread's share of it.
  *
  * @buffer in_bufs A list of one buffer: the node's records (gnssRecord.hpp tracker layout: a
  *                 RECORD_FLOATS header plus n_elements element blocks per PRN).
@@ -133,10 +143,16 @@ private:
     };
     const std::vector<gnss::HostRow> _host_rows;
     std::deque<Row> _rows;
+    /// Its threads: each takes a record of each of its rows in turn (gnss::host_workers).
+    const std::vector<gnss::HostWorker> _workers;
     /// The REST paths this host registered.
     std::vector<std::string> _rest_paths;
 
-    void run_row(size_t row);
+    /// Register worker @p w as the consumer of its rows' in_bufs.
+    void register_inputs(const gnss::HostWorker& w);
+    void run_worker(size_t w);
+    /// run_worker on a thread of its own, counted among the stage's threads.
+    void run_pinned(size_t w);
     /// Fold row @p row's next record into its chain, reading it as consumer @p consumer, and
     /// emit when one is due. Returns false when shutting down.
     bool take_record(size_t row, const std::string& consumer);

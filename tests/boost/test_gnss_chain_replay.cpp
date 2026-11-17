@@ -16,8 +16,9 @@
 // controls, a run whose combiners have no out_buf and one whose combiners keep slot state across
 // a PRN swap. Every run also replays the chains as rows of three host stages (Scenario::rows), and
 // with assemblers that read the tiles and control blocks themselves (Scenario::fold), also on
-// workers (Scenario::workers); each must give the baseline's digests. workers_stall holds one
-// worker with the frames running free.
+// workers (Scenario::workers), and with the combiners on workers (Scenario::cmb_workers); each must
+// give the baseline's digests. workers_stall, and with GNSS_REPLAY_FULL=1 combine_workers_stall,
+// hold one worker with the frames or records running free.
 
 #include "Config.hpp"                // for Config
 #include "GnssChanMetadata.hpp"      // for GnssChanMetadata, get_gnss_chan_metadata
@@ -483,8 +484,15 @@ json build_config(const std::vector<ChainSpec>& cs, const Scenario& sc,
                 rows.push_back(cs[i].pre);
             rec["workers"].push_back({{"rows", rows}, {"cpu_affinity", cpus}});
         }
-        cfg[combine_host(cs[0].gpu).substr(1)] = host_block(rows_cb, GnssCoherentCombiner::ROW_KEYS,
-                                                            GnssCoherentCombiner::ROW_ONLY_KEYS);
+        json& cmb = cfg[combine_host(cs[0].gpu).substr(1)];
+        cmb = host_block(rows_cb, GnssCoherentCombiner::ROW_KEYS,
+                         GnssCoherentCombiner::ROW_ONLY_KEYS);
+        for (int w = 0; w < sc.cmb_workers; ++w) {
+            json rows = json::array();
+            for (size_t i = w; i < cs.size(); i += sc.cmb_workers)
+                rows.push_back(cs[i].pre);
+            cmb["workers"].push_back({{"rows", rows}, {"cpu_affinity", cpus}});
+        }
         cfg[telem_host(cs[0].gpu).substr(1)] = host_block(rows_tp, GnssTelemPack::ROW_KEYS, {});
     }
     return cfg;
@@ -721,14 +729,23 @@ bool sides_quiescent(const ChainRun& R, int k) {
     return true;
 }
 
+/// Whether @p R's combiner has taken every record of frames 0..k, and its out_buf every emit.
+bool combined(ChainRun& R, int k) {
+    const int n_rec = R.s->n_rec;
+    return R.buf[REC]->get_num_full_frames() == 0
+           && R.cmb->records_done(R.cmb_row) == (uint64_t)n_rec * (k + 1)
+           && (!R.sc->combiner_out_buf || R.count[CMB].load() == n_rec * (k + 1) / R.emit_every);
+}
+
+/// With Scenario::cmb_workers a worker takes a record of each of its rows in turn, so a chain's
+/// records are combined only once every chain of the frame is fed: then its combiner is waited
+/// for, and read, after the frame (combined_after).
 bool quiescent(ChainRun& R, int k) {
     const int n_rec = R.s->n_rec;
     const bool epl = R.sc->fold || (R.buf[EPL]->is_frame_empty(0) && R.count[EPL].load() == k + 1);
     return R.ctl->is_frame_empty(0) && R.tiles->is_frame_empty(0) && epl
-           && R.buf[REC]->get_num_full_frames() == 0 && R.buf[CUBE]->get_num_full_frames() == 0
-           && R.count[REC].load() == n_rec * (k + 1) && R.count[TELEM].load() == k + 1
-           && R.cmb->records_done(R.cmb_row) == (uint64_t)n_rec * (k + 1)
-           && (!R.sc->combiner_out_buf || R.count[CMB].load() == n_rec * (k + 1) / R.emit_every)
+           && R.buf[CUBE]->get_num_full_frames() == 0 && R.count[REC].load() == n_rec * (k + 1)
+           && R.count[TELEM].load() == k + 1 && (R.sc->cmb_workers > 0 || combined(R, k))
            && sides_quiescent(R, k);
 }
 
@@ -805,6 +822,18 @@ void wait_quiescent(ChainRun& R, int k) {
                                        R.s->pre, k, R.count[EPL].load(), R.count[REC].load(),
                                        R.cmb->records_done(R.cmb_row), R.count[CMB].load(),
                                        R.count[TELEM].load()));
+        std::this_thread::sleep_for(std::chrono::microseconds(200));
+    }
+}
+
+void wait_combined(ChainRun& R, int k) {
+    const auto t0 = std::chrono::steady_clock::now();
+    while (!combined(R, k)) {
+        if (std::chrono::steady_clock::now() - t0 > std::chrono::seconds(30))
+            child_fail(71, fmt::format("{:s} not combined 30 s after frame {:d}: rec {:d} combined "
+                                       "{:d} cmb {:d}",
+                                       R.s->pre, k, R.count[REC].load(),
+                                       R.cmb->records_done(R.cmb_row), R.count[CMB].load()));
         std::this_thread::sleep_for(std::chrono::microseconds(200));
     }
 }
@@ -912,44 +941,58 @@ void slot_digests(const std::string& verb, const json& rows, int k, json& out) {
     }
 }
 
-/// Every GET the chain serves, digested, and the parts the checks read kept in @p live.
-void fire_gets(ChainRun& R, unsigned short port, const std::string& u, int k, Digests& d) {
+/// GET @p path of chain @p R after frame @p k, digested, and the parts the checks read kept in
+/// @p live.
+void take_get(ChainRun& R, unsigned short port, const std::string& path, int k, Digests& d) {
     const std::string c = "/" + R.s->pre + "_n2combine";
     const std::string cp = "@" + std::to_string(k);
-    for (const auto& path : {u + "/get_elem_cal", u + "/get_spectrum", u + "/get_lane_inst",
-                             c + "/get_status", c + "/get_records", c + "/get_elements"}) {
-        const json j = rest(port, path, json{});
-        const std::string verb = path.substr(path.rfind('/') + 1);
-        const std::string body = j.dump();
-        d.streams[R.s->pre + ".rest." + verb + cp] = {fnv1a64(body.data(), body.size())};
-        // The combiner's replies also give the per-slot digests at the checkpoint.
-        if (R.sc->mut == Mutation::none && path.compare(0, c.size() + 1, c + "/") == 0)
-            slot_digests(verb, j, k, d.slots[R.s->pre]["own"]);
-        json& L = d.live[R.s->pre];
-        if (verb == "get_elem_cal" && j.contains("prns")) {
-            json rows = json::array();
-            for (const auto& r : j["prns"])
-                rows.push_back({r["prn"], r["warm"], r["shadow_warm"]});
-            L["elem_cal" + cp] = rows;
-            if (j.contains("proj"))
-                L["proj" + cp] = json::array({j["proj"]["mode"], j["proj"]["k"]});
-        } else if (verb == "get_status" && j.is_array()) {
-            json rows = json::array();
-            for (const auto& r : j)
-                rows.push_back({r["prn"], r["amplitude"], r["adr_arc"], r["coh_amplitude"],
-                                r["deep_records"], r["adr_records"]});
-            L["status" + cp] = rows;
-        } else if (verb == "get_records" && j.is_array()) {
-            json rows = json::object();
-            for (const auto& r : j) {
-                double lo = 1e300;
-                for (const auto& x : r["records"])
-                    lo = std::min(lo, x[0].get<double>());
-                rows[std::to_string(r["prn"].get<int>())] = lo;
-            }
-            L["records_min_hop" + cp] = rows;
+    const json j = rest(port, path, json{});
+    const std::string verb = path.substr(path.rfind('/') + 1);
+    const std::string body = j.dump();
+    d.streams[R.s->pre + ".rest." + verb + cp] = {fnv1a64(body.data(), body.size())};
+    // The combiner's replies also give the per-slot digests at the checkpoint.
+    if (R.sc->mut == Mutation::none && path.compare(0, c.size() + 1, c + "/") == 0)
+        slot_digests(verb, j, k, d.slots[R.s->pre]["own"]);
+    json& L = d.live[R.s->pre];
+    if (verb == "get_elem_cal" && j.contains("prns")) {
+        json rows = json::array();
+        for (const auto& r : j["prns"])
+            rows.push_back({r["prn"], r["warm"], r["shadow_warm"]});
+        L["elem_cal" + cp] = rows;
+        if (j.contains("proj"))
+            L["proj" + cp] = json::array({j["proj"]["mode"], j["proj"]["k"]});
+    } else if (verb == "get_status" && j.is_array()) {
+        json rows = json::array();
+        for (const auto& r : j)
+            rows.push_back({r["prn"], r["amplitude"], r["adr_arc"], r["coh_amplitude"],
+                            r["deep_records"], r["adr_records"]});
+        L["status" + cp] = rows;
+    } else if (verb == "get_records" && j.is_array()) {
+        json rows = json::object();
+        for (const auto& r : j) {
+            double lo = 1e300;
+            for (const auto& x : r["records"])
+                lo = std::min(lo, x[0].get<double>());
+            rows[std::to_string(r["prn"].get<int>())] = lo;
         }
+        L["records_min_hop" + cp] = rows;
     }
+}
+
+/// Every GET of the chain's combiner, as take_get.
+void fire_combiner_gets(ChainRun& R, unsigned short port, int k, Digests& d) {
+    const std::string c = "/" + R.s->pre + "_n2combine";
+    for (const char* v : {"/get_status", "/get_records", "/get_elements"})
+        take_get(R, port, c + v, k, d);
+}
+
+/// Every GET of the chain's assembler @p u, and with @p combiner its combiner's, as take_get.
+void fire_gets(ChainRun& R, unsigned short port, const std::string& u, int k, Digests& d,
+               bool combiner) {
+    for (const char* v : {"/get_elem_cal", "/get_spectrum", "/get_lane_inst"})
+        take_get(R, port, u + v, k, d);
+    if (combiner)
+        fire_combiner_gets(R, port, k, d);
 }
 
 /// Frames after which the combiners' GETs are read per slot: the first four after the start and
@@ -1251,6 +1294,8 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
                 R->cap[k] = std::thread(capture, R.get(), k);
     }
 
+    // See quiescent().
+    const bool combined_after = sc.cmb_workers > 0;
     Digests d;
     for (int k = 0; k < sc.n_frames; ++k) {
         g_frame.store(k);
@@ -1274,7 +1319,7 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
             wait_quiescent(*R, k);
             if (sc.fold)
                 capture_fold(*R, k);
-            if (!sc.combiner_out_buf)
+            if (!sc.combiner_out_buf && !combined_after)
                 capture_scratch(*R, k);
             capture_side(*R, k);
             const std::string u = assembler_name(s, R->idx, sc);
@@ -1282,7 +1327,7 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
             const bool checkpoint =
                 std::find(sc.checkpoints.begin(), sc.checkpoints.end(), k) != sc.checkpoints.end();
             if (checkpoint)
-                fire_gets(*R, port, u, k, d);
+                fire_gets(*R, port, u, k, d, !combined_after);
             // The per-slot GETs, which only the unmutated runs' checks read. get_records is the
             // costly one, so it is read only where the swap checks compare it: the chain's own
             // from the swap on, and the side combiners' on "cold". The side combiners are read
@@ -1290,7 +1335,7 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
             // frame before it (its raw S4); "others" from the frame before the swap.
             if (sc.mut == Mutation::none && slot_frame(sc, k)) {
                 const std::string c = "/" + s.pre + "_n2combine";
-                if (!checkpoint) // fire_gets read them
+                if (!checkpoint && !combined_after) // fire_gets read them
                     read_slot_gets(port, c, k, k >= sc.swap_frame, d.slots[s.pre]["own"]);
                 const int first = (s.n_rec * sc.swap_frame / R->emit_every + 1) * R->emit_every;
                 for (const SideCombiner& x : R->side)
@@ -1305,6 +1350,21 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
             if (sc.refill_a5)
                 std::memset(sc.fold ? R->as->epl_frame(R->as_row) : R->buf[EPL]->frames[0], 0xA5,
                             R->buf[EPL]->frame_size);
+        }
+        // With combined_after, the combiners' captures and GETs of the frame, as above.
+        if (combined_after) {
+            const bool checkpoint =
+                std::find(sc.checkpoints.begin(), sc.checkpoints.end(), k) != sc.checkpoints.end();
+            for (auto& R : runs) {
+                wait_combined(*R, k);
+                if (!sc.combiner_out_buf)
+                    capture_scratch(*R, k);
+                if (checkpoint)
+                    fire_combiner_gets(*R, port, k, d);
+                else if (sc.mut == Mutation::none && slot_frame(sc, k))
+                    read_slot_gets(port, "/" + R->s->pre + "_n2combine", k, k >= sc.swap_frame,
+                                   d.slots[R->s->pre]["own"]);
+            }
         }
         if (std::find(sc.checkpoints.begin(), sc.checkpoints.end(), k) != sc.checkpoints.end())
             snapshot_board(k, d);
@@ -1571,6 +1631,128 @@ void stall_child(const std::vector<ChainSpec>& cs, Hold hold, const std::string&
                 {"n_rec", cs[0].n_rec}};
     std::ofstream f(out_path);
     f << out.dump();
+    f.close();
+    if (!f)
+        child_fail(75, "cannot write " + out_path);
+    std::fflush(nullptr);
+    _exit(0);
+}
+
+// ---- the combiner stall child ----
+
+/// Records each row of the combiner stall test is fed, one every CMB_STALL_DT_S, and chain 0's
+/// record at which its feeder or its taker is held.
+constexpr int CMB_STALL_RECORDS = 1000, CMB_STALL_AT = 200;
+constexpr double CMB_STALL_DT_S = 0.004;
+
+/// What the combiner stall test holds: chain 0's feeder, so that its worker waits for chain 0's
+/// next record, or chain 0's taker, so that its worker blocks in an emit on chain 0's full
+/// out_buf.
+enum class CmbHold { input, output };
+
+/// The combiner stall test's child: the chains' combiners as rows of one host on two workers
+/// (chain i on worker i % 2). A feeder per chain writes CMB_STALL_RECORDS empty records, each with
+/// its window's sample_seq, one every CMB_STALL_DT_S, into a 4-deep in_buf; integration_length 10
+/// emits every record, labelled with its hop, into a 4-deep out_buf that a taker per chain reads.
+/// @p hold holds for STALL_HOLD_S at chain 0's record CMB_STALL_AT. Writes {"t0": start, "fed":
+/// [[time of record j] per chain], "taken": [[[time, hop]...] per chain], "hold": [start, end]} to
+/// @p out_path.
+void cmb_stall_child(const std::vector<ChainSpec>& cs, CmbHold hold, const std::string& out_path) {
+    for (int sig : {SIGSEGV, SIGBUS, SIGFPE, SIGILL, SIGABRT, SIGALRM})
+        std::signal(sig, SIG_DFL);
+    g_out_path = out_path;
+    std::signal(SIGTERM, on_sigterm);
+    alarm(120);
+    const std::vector<int> cpus = allowed_cpus();
+    kotekan::restServer::instance().start("127.0.0.1", 0);
+    auto pool = metadataPool::create(16 * (int)cs.size(), 64, "pool", "GnssChanMetadata");
+    kotekan::bufferContainer bc;
+    std::vector<std::unique_ptr<Buffer>> bufs;
+    std::vector<Buffer*> in, out;
+    std::map<std::string, json> rows;
+    for (const ChainSpec& s : cs) {
+        const size_t bytes = (size_t)s.n_prn
+                             * gnss::record_stride(s.combine.at("n_elements").get<int>())
+                             * sizeof(float);
+        for (const char* role : {"n2rec_buf", "n2cmb_buf"}) {
+            bufs.push_back(std::make_unique<Buffer>(4, bytes, pool, buf_name(s, role), "standard",
+                                                    0, false, false, std::vector<int>{}, true, 0));
+            bc.add_buffer(buf_name(s, role), bufs.back().get());
+        }
+        in.push_back(bufs[bufs.size() - 2].get());
+        out.push_back(bufs.back().get());
+        in.back()->register_producer("feeder");
+        out.back()->register_consumer("taker");
+        json cb = s.combine;
+        cb["integration_length"] = 10;
+        cb["in_bufs"] = {buf_name(s, "n2rec_buf")};
+        cb["out_buf"] = buf_name(s, "n2cmb_buf");
+        cb["cpu_affinity"] = cpus;
+        rows[s.pre] = cb;
+    }
+    json cfg = {{"log_level", "warn"}, {"cpu_affinity", cpus}};
+    json& h = cfg[combine_host(cs[0].gpu).substr(1)];
+    h = host_block(rows, GnssCoherentCombiner::ROW_KEYS, GnssCoherentCombiner::ROW_ONLY_KEYS);
+    for (int w = 0; w < 2; ++w) {
+        json r = json::array();
+        for (size_t i = w; i < cs.size(); i += 2)
+            r.push_back(cs[i].pre);
+        h["workers"].push_back({{"rows", r}, {"cpu_affinity", cpus}});
+    }
+    kotekan::Config config;
+    config.update_config(cfg);
+    GnssCoherentCombiner host(config, combine_host(cs[0].gpu), bc);
+    host.start();
+
+    const double t0 = now_s() + 0.2;
+    std::vector<std::vector<double>> fed(cs.size(), std::vector<double>(CMB_STALL_RECORDS, 0.0));
+    std::vector<std::vector<std::pair<double, int64_t>>> taken(cs.size());
+    std::vector<std::thread> threads;
+    for (size_t i = 0; i < cs.size(); ++i) {
+        threads.emplace_back([&, i] {
+            Buffer* b = in[i];
+            const int64_t rec_samples = (int64_t)cs[i].hops_per_record * cs[i].fft_len;
+            for (int j = 0; j < CMB_STALL_RECORDS; ++j) {
+                if (i == 0 && j == CMB_STALL_AT && hold == CmbHold::input)
+                    hold_here();
+                while (now_s() < t0 + j * CMB_STALL_DT_S)
+                    std::this_thread::sleep_for(std::chrono::microseconds(100));
+                const int id = j % b->num_frames;
+                if (b->wait_for_empty_frame("feeder", id) == nullptr)
+                    return;
+                b->allocate_new_metadata_object(id);
+                get_gnss_chan_metadata(b, id)->sample_seq = (REC_BASE + j) * rec_samples;
+                fed[i][j] = now_s();
+                b->mark_frame_full("feeder", id);
+            }
+        });
+        threads.emplace_back([&, i] {
+            Buffer* b = out[i];
+            for (int j = 0; j < CMB_STALL_RECORDS; ++j) {
+                const int id = j % b->num_frames;
+                const uint8_t* f = b->wait_for_full_frame("taker", id);
+                if (f == nullptr)
+                    return;
+                if (i == 0 && j == CMB_STALL_AT && hold == CmbHold::output)
+                    hold_here();
+                int64_t hop;
+                std::memcpy(&hop, f + gnss::CMB_HOP_SLOT * sizeof(float), sizeof(hop));
+                taken[i].push_back({now_s(), hop});
+                b->mark_frame_empty("taker", id);
+            }
+        });
+    }
+    for (std::thread& t : threads)
+        t.join();
+    host.stop();
+    for (auto& b : bufs)
+        b->send_shutdown_signal();
+    host.join();
+
+    json out_j = {
+        {"t0", t0}, {"fed", fed}, {"taken", taken}, {"hold", {g_hold_t0.load(), g_hold_t1.load()}}};
+    std::ofstream f(out_path);
+    f << out_j.dump();
     f.close();
     if (!f)
         child_fail(75, "cannot write " + out_path);
@@ -2248,6 +2430,145 @@ BOOST_AUTO_TEST_CASE(workers_stall) {
                                 && fed_max - last[0] <= STALL_DEPTH + 1,
                             what << ": the feeder ran " << fed_max - last[0]
                                  << " frames ahead of worker 0, not the depth " << STALL_DEPTH);
+    }
+}
+
+/// The combiners as rows of one host whose rows run on workers, each taking a record of each of
+/// its rows in turn as one consumer of their in_bufs, give the baseline's digests with more rows
+/// than workers; with GNSS_REPLAY_FULL=1 also with one worker per row and with one worker, without
+/// out_buf, and beside assemblers on one worker per row that read their rows of the half's tiles
+/// and control blocks, as gen_chord_gnss_config.py --record-host --combine-host builds a node.
+BOOST_AUTO_TEST_CASE(combine_workers) {
+    const Digests& base = baseline();
+    const int n = (int)chains().size();
+    std::vector<Scenario> runs(1, base_scenario());
+    runs[0].cold_ref = true;
+    runs[0].rows = true;
+    runs[0].cmb_workers = 2;
+    if (full_run()) {
+        for (int w : {n, 1}) {
+            runs.push_back(runs[0]);
+            runs.back().cmb_workers = w;
+        }
+        runs.push_back(runs[0]);
+        runs.back().combiner_out_buf = false;
+        runs.push_back(runs[0]);
+        runs.back().cmb_workers = runs.back().workers = n;
+        runs.back().fold = runs.back().gpu_rows = true;
+    }
+    for (const Scenario& x : runs) {
+        const Digests d = run_scenario(chains(), x);
+        BOOST_CHECK_MESSAGE(changed(base, d).empty(),
+                            x.cmb_workers << " combine workers, out_buf " << x.combiner_out_buf
+                                          << ", record workers " << x.workers << ": "
+                                          << join(changed(base, d)));
+        BOOST_CHECK(base.live == d.live);
+        BOOST_CHECK(base.pins == d.pins);
+        BOOST_CHECK(base.slots == d.slots);
+    }
+}
+
+/// A PRN swap on one row of a combine host on workers, with more rows than workers: the run
+/// equals the same swap through one stage per chain, the swapped row restarts the slot cold
+/// (PIN_B1), and the other rows, on its worker and on the other, keep their slot's PRN and ADR
+/// arc.
+BOOST_AUTO_TEST_CASE(combine_workers_swap_one_row) {
+    if (!full_run())
+        return;
+    Scenario sc = base_scenario();
+    sc.swap_chain = 1;
+    const Digests stages = run_scenario(chains(), sc);
+    sc.rows = true;
+    sc.cmb_workers = 2;
+    const Digests d = run_scenario(chains(), sc);
+    BOOST_CHECK_MESSAGE(changed(stages, d).empty(),
+                        "one row swapped, 2 combine workers: " << join(changed(stages, d)));
+    BOOST_CHECK(stages.live == d.live);
+    BOOST_CHECK(stages.slots == d.slots);
+    for (const ChainSpec& s : chains()) {
+        const json& L = d.live.at(s.pre);
+        const int was = s.prns[(size_t)sc.swap_slot];
+        const json before = L.at("status@29").at((size_t)sc.swap_slot);
+        const json after = L.at("status@59").at((size_t)sc.swap_slot);
+        BOOST_CHECK_EQUAL(before[0].get<int>(), was);
+        if (s.idx == sc.swap_chain) {
+            const double swap_hop =
+                (double)(REC_BASE + (int64_t)s.n_rec * sc.swap_frame) * s.hops_per_record;
+            BOOST_CHECK_EQUAL(after[0].get<int>(), was + 100);
+            BOOST_CHECK_MESSAGE(before[2] != after[2], s.pre << ": the ADR arc did not break");
+            BOOST_CHECK_MESSAGE(
+                L.at("records_min_hop@59").at(std::to_string(was + 100)).get<double>() >= swap_hop,
+                s.pre << ": get_records holds a record from before the swap");
+        } else {
+            BOOST_CHECK_EQUAL(after[0].get<int>(), was);
+            BOOST_CHECK_MESSAGE(before[2] == after[2], s.pre << ": the ADR arc broke: " << before[2]
+                                                             << " -> " << after[2]);
+        }
+    }
+}
+
+/// The combiners as rows of one host on two workers, more rows than workers (chain i on worker
+/// i % 2), holding for STALL_HOLD_S first chain 0's input, so that worker 0 waits for its next
+/// record, and then chain 0's out_buf consumer, so that worker 0 blocks in an emit. Chain 1, on
+/// worker 1, keeps up through either hold; chain 2 shares worker 0 and stalls with chain 0; then
+/// every row takes every record once, in order, the held rows included.
+BOOST_AUTO_TEST_CASE(combine_workers_stall) {
+    if (!full_run())
+        return;
+    const std::vector<ChainSpec>& cs = synthetic();
+    BOOST_REQUIRE(cs.size() == 3);
+    for (const CmbHold hold : {CmbHold::input, CmbHold::output}) {
+        const char* what = hold == CmbHold::input ? "input held" : "out_buf consumer held";
+        char path[] = "/tmp/gnss_replay_XXXXXX";
+        const int fd = mkstemp(path);
+        BOOST_REQUIRE(fd >= 0);
+        close(fd);
+        const int rc = run_forked([&] { cmb_stall_child(cs, hold, path); });
+        std::ifstream in(path);
+        const std::string text((std::istreambuf_iterator<char>(in)),
+                               std::istreambuf_iterator<char>());
+        unlink(path);
+        BOOST_REQUIRE_MESSAGE(rc == 0, what << ": child exit " << rc << " " << text);
+        const json j = json::parse(text);
+        const double h0 = j.at("hold")[0].get<double>(), h1 = j.at("hold")[1].get<double>();
+        const double t0 = j.at("t0").get<double>();
+        BOOST_REQUIRE_MESSAGE(h1 - h0 >= STALL_HOLD_S, what << ": no hold");
+        int during[3] = {0, 0, 0}, after[3] = {0, 0, 0};
+        double late[3] = {0.0, 0.0, 0.0};
+        for (size_t i = 0; i < cs.size(); ++i) {
+            const ChainSpec& s = cs[i];
+            std::vector<int64_t> want, got;
+            for (int r = 0; r < CMB_STALL_RECORDS; ++r)
+                want.push_back((REC_BASE + r) * s.hops_per_record);
+            for (const json& t : j.at("taken").at(i)) {
+                got.push_back(t[1].get<int64_t>());
+                const double at = t[0].get<double>();
+                during[i] += at > h0 + 0.25 && at < h1 - 0.05;
+                after[i] += at >= h1;
+            }
+            const std::vector<double> fed = j.at("fed").at(i).get<std::vector<double>>();
+            for (int r = 0; r < CMB_STALL_RECORDS; ++r)
+                late[i] = std::max(late[i], fed[r] - (t0 + r * CMB_STALL_DT_S));
+            BOOST_CHECK_MESSAGE(got == want, what << ": " << s.pre << " took " << got.size()
+                                                  << " records, not each of " << want.size()
+                                                  << " once in order");
+            BOOST_CHECK_MESSAGE(after[i] > 0, what << ": " << s.pre
+                                                   << " took nothing after the "
+                                                      "hold");
+        }
+        const double held_s = h1 - h0 - 0.3;
+        BOOST_TEST_MESSAGE(
+            fmt::format("{:s}: {:.2f} s; records taken in it by chain 0 (held) {:d}, "
+                        "chain 1 (other worker) {:d}, chain 2 (held worker) {:d}; "
+                        "feeders at most {:.3f} / {:.3f} / {:.3f} s late",
+                        what, h1 - h0, during[0], during[1], during[2], late[0], late[1], late[2]));
+        BOOST_CHECK_MESSAGE(during[1] >= 0.8 * held_s / CMB_STALL_DT_S,
+                            what << ": chain 1 took " << during[1] << " records in the hold");
+        BOOST_CHECK_MESSAGE(late[1] < 0.1,
+                            what << ": chain 1's feeder was held " << late[1] << " s");
+        BOOST_CHECK_MESSAGE(during[0] == 0 && during[2] <= 8,
+                            what << ": chains 0 and 2 took " << during[0] << " and " << during[2]
+                                 << " records in the hold");
     }
 }
 

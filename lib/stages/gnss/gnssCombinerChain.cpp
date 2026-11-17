@@ -23,7 +23,28 @@ static constexpr double DEEP_RATE_MAX_HZ = 25.0;
 // Peak/median the rate search must reach before its rate is applied.
 static constexpr double DEEP_RATE_MIN_Q = 10.0;
 
-CombinerChain::CombinerChain(Config& config, const std::string& cfg_path, const std::string& name) {
+namespace {
+/// Counter @p metric of stage @p name, labelled chain=@p chain unless that is empty.
+kotekan::prometheus::Counter& add_counter(const std::string& metric, const std::string& name,
+                                          const std::string& chain) {
+    auto& m = kotekan::prometheus::Metrics::instance();
+    if (chain.empty())
+        return m.add_counter(metric, name);
+    return m.add_counter(metric, name, {"chain"}).labels({chain});
+}
+
+/// Gauge @p metric of stage @p name, labelled chain=@p chain unless that is empty.
+kotekan::prometheus::Gauge& add_gauge(const std::string& metric, const std::string& name,
+                                      const std::string& chain) {
+    auto& m = kotekan::prometheus::Metrics::instance();
+    if (chain.empty())
+        return m.add_gauge(metric, name);
+    return m.add_gauge(metric, name, {"chain"}).labels({chain});
+}
+} // namespace
+
+CombinerChain::CombinerChain(Config& config, const std::string& cfg_path, const std::string& name,
+                             const std::string& chain) {
     set_log_level(config.get<std::string>(cfg_path, "log_level"));
     set_log_prefix(name);
     _n_elements = config.get<int>(cfg_path, "n_elements");
@@ -95,16 +116,12 @@ CombinerChain::CombinerChain(Config& config, const std::string& cfg_path, const 
     // Real-time cost (see the hpp). Duty cycle = (d ingest_us + d emit_us) / (d records x record
     // period): below 1 the stage keeps up; at or above 1 it is saturated and more buffering only
     // delays the drops.
-    {
-        using namespace kotekan::prometheus;
-        auto& m = Metrics::instance();
-        _m_ingest_us = &m.add_counter("kotekan_gnss_combiner_ingest_time_us_total", name);
-        _m_emit_us = &m.add_counter("kotekan_gnss_combiner_emit_time_us_total", name);
-        _m_records = &m.add_counter("kotekan_gnss_combiner_records_total", name);
-        _m_emits = &m.add_counter("kotekan_gnss_combiner_emits_total", name);
-        _m_last_emit_us = &m.add_gauge("kotekan_gnss_combiner_last_emit_time_us", name);
-        _m_last_emit_prns = &m.add_gauge("kotekan_gnss_combiner_last_emit_prns", name);
-    }
+    _m_ingest_us = &add_counter("kotekan_gnss_combiner_ingest_time_us_total", name, chain);
+    _m_emit_us = &add_counter("kotekan_gnss_combiner_emit_time_us_total", name, chain);
+    _m_records = &add_counter("kotekan_gnss_combiner_records_total", name, chain);
+    _m_emits = &add_counter("kotekan_gnss_combiner_emits_total", name, chain);
+    _m_last_emit_us = &add_gauge("kotekan_gnss_combiner_last_emit_time_us", name, chain);
+    _m_last_emit_prns = &add_gauge("kotekan_gnss_combiner_last_emit_prns", name, chain);
     _navbuf.assign(_n_prn, {});
     _navsky.assign(_n_prn, {});
     _navutc.assign(_n_prn, {});

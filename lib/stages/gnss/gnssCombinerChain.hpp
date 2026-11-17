@@ -25,11 +25,13 @@ namespace gnss {
  *
  * Per input record the host calls ingest(); when it returns true the host calls emit() with
  * the frame the emit is written to. The config is read at @c cfg_path; @c name prefixes the log
- * lines and labels the metrics. A one-row host passes its unique_name as both.
+ * lines and is the metrics' stage_name, and a @c chain, when set, labels them as well. A one-row
+ * host passes its unique_name as both and no chain.
  */
 class CombinerChain : public kotekan::kotekanLogging {
 public:
-    CombinerChain(kotekan::Config& config, const std::string& cfg_path, const std::string& name);
+    CombinerChain(kotekan::Config& config, const std::string& cfg_path, const std::string& name,
+                  const std::string& chain = "");
 
     /// FATAL unless every frame of @p in_buf, and of @p out_buf when there is one, holds n_prn
     /// records.

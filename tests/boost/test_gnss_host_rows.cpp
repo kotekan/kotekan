@@ -14,6 +14,7 @@
 #include "gnssHostRows.hpp"          // for host_rows, rest_register_unique
 #include "kotekanLogging.hpp"        // for FatalError
 #include "kotekanMode.hpp"           // for kotekanMode
+#include "prometheusMetrics.hpp"     // for Metrics
 #include "restServer.hpp"            // for restServer, connectionInstance
 #include "util.h"                    // for string_tail
 
@@ -22,11 +23,13 @@
 #include <boost/test/included/unit_test.hpp>
 #include <chrono>
 #include <csignal>
+#include <cstdio>
 #include <fstream>
 #include <functional>
 #include <map>
 #include <memory>
 #include <sched.h>
+#include <sstream>
 #include <string>
 #include <sys/wait.h>
 #include <thread>
@@ -172,6 +175,18 @@ json record_config(const std::vector<std::string>& keys, const json& workers) {
     }
     cfg["gnss0_records"] = host;
     return cfg;
+}
+
+/// A combiner host block at /gnss0_combine whose rows @p keys read in_bufs [rec_<key>], with the
+/// buffers they name, and @p workers.
+json combine_config(const std::vector<std::string>& keys, const json& workers) {
+    json host = {{"workers", workers}};
+    std::vector<std::string> bufs;
+    for (const auto& k : keys) {
+        host["chains"][k] = {{"in_bufs", {"rec_" + k}}, {"n_prn", 1}};
+        bufs.push_back("rec_" + k);
+    }
+    return combiner_config(bufs, "gnss0_combine", host);
 }
 
 /// The FatalError message of starting @p cfg's stages, "" for none.
@@ -547,4 +562,218 @@ BOOST_AUTO_TEST_CASE(record_workers_are_pinned_threads_of_the_stage) {
             }
         }),
         "");
+}
+
+// A combine host's workers partition its rows: each row in exactly one worker, each worker with
+// rows and cores, and no in_buf read for two rows by one worker.
+BOOST_AUTO_TEST_CASE(combine_workers_partition_the_rows) {
+    const std::vector<std::string> abc = {"gnss0_a", "gnss0_b", "gnss0_c"};
+    auto w = [](const std::vector<std::string>& rows) {
+        return json{{"rows", rows}, {"cpu_affinity", {0}}};
+    };
+    const std::string h = "/gnss0_combine: ";
+    BOOST_CHECK_EQUAL(start_fatal(combine_config(abc, {w({"gnss0_a", "gnss0_c"}), w({"gnss0_b"})})),
+                      "");
+    BOOST_CHECK_EQUAL(
+        start_fatal(combine_config(abc, {w({"gnss0_a", "gnss0_c"}), w({"gnss0_b", "gnss0_a"})})),
+        h + "row gnss0_a is in workers 0 and 1");
+    BOOST_CHECK_EQUAL(start_fatal(combine_config(abc, {w({"gnss0_a"}), w({"gnss0_b"})})),
+                      h + "row gnss0_c is in no worker");
+    BOOST_CHECK_EQUAL(
+        start_fatal(combine_config(abc, {w({"gnss0_a"}), w({"gnss0_b"}), w({"gnss0_c"}), w({})})),
+        h + "worker 3 needs rows and cpu_affinity, each a non-empty list");
+    BOOST_CHECK_EQUAL(
+        start_fatal(combine_config(abc, {w({"gnss0_a", "gnss0_b"}), w({"gnss0_c", "gnss0_x"})})),
+        h + "worker 1 runs \"gnss0_x\", which is not a row of chains");
+    BOOST_CHECK_EQUAL(start_fatal(combine_config(abc, json::array({{{"rows", abc}}}))),
+                      h + "worker 0 needs rows and cpu_affinity, each a non-empty list");
+    BOOST_CHECK_EQUAL(
+        start_fatal(combine_config(abc, json::array({{{"rows", abc}, {"cpu_affinity", {-1}}}}))),
+        h + "worker 0 has cpu_affinity entry -1, not a core");
+    BOOST_CHECK_EQUAL(start_fatal(combine_config(abc, json::array())),
+                      h + "workers must be a non-empty list");
+    BOOST_CHECK_EQUAL(start_fatal(combine_config(abc, {{"rows", abc}})),
+                      h + "workers must be a non-empty list");
+    // Two rows of one worker reading one in_buf; of two workers, it is two consumers.
+    json cfg = combine_config(abc, json::array({w(abc)}));
+    cfg["gnss0_combine"]["chains"]["gnss0_b"]["in_bufs"] = {"rec_gnss0_a"};
+    BOOST_CHECK_EQUAL(start_fatal(cfg),
+                      "/gnss0_b_n2combine: /gnss0_combine/w0 reads rec_gnss0_a for two rows");
+    cfg = combine_config(abc, {w({"gnss0_a", "gnss0_c"}), w({"gnss0_b"})});
+    cfg["gnss0_combine"]["chains"]["gnss0_b"]["in_bufs"] = {"rec_gnss0_a"};
+    BOOST_CHECK_EQUAL(start_fatal(cfg), "");
+    // Workers need a chains block.
+    cfg = combine_config(abc, json::array({w(abc)}));
+    cfg["gnss0_combine"].erase("chains");
+    cfg["gnss0_combine"].update({{"in_bufs", {"rec_gnss0_a"}}, {"n_prn", 1}});
+    BOOST_CHECK_EQUAL(start_fatal(cfg), h + "workers needs a chains block");
+}
+
+// A combine host on workers releases its rows, REST paths and metrics when deleted, so it starts
+// again in the same process.
+BOOST_AUTO_TEST_CASE(combine_workers_restart_in_one_process) {
+    const json workers = {{{"rows", {"gnss0_a", "gnss0_c"}}, {"cpu_affinity", {0}}},
+                          {{"rows", {"gnss0_b"}}, {"cpu_affinity", {0}}}};
+    BOOST_CHECK_EQUAL(fatal_of([&] {
+                          start_stop_start(
+                              combine_config({"gnss0_a", "gnss0_b", "gnss0_c"}, workers),
+                              {"/gnss0_a_n2combine/get_status", "/gnss0_b_n2combine/get_elements",
+                               "/gnss0_c_n2combine/get_status", "/gnss0_combine/chains"});
+                      }),
+                      "");
+}
+
+// A combine host's workers run as threads of the stage, each named for its row if it has one
+// and bound to its own cpu_affinity.
+BOOST_AUTO_TEST_CASE(combine_workers_are_pinned_threads_of_the_stage) {
+    cpu_set_t allowed;
+    CPU_ZERO(&allowed);
+    BOOST_REQUIRE(sched_getaffinity(0, sizeof(allowed), &allowed) == 0);
+    std::vector<int> cores;
+    for (int c = 0; c < CPU_SETSIZE && cores.size() < 2; ++c)
+        if (CPU_ISSET(c, &allowed))
+            cores.push_back(c);
+    if (cores.size() < 2) {
+        BOOST_TEST_MESSAGE("fewer than 2 cores allowed: worker pinning not checked");
+        return;
+    }
+    BOOST_CHECK_EQUAL(
+        fatal_of([&] {
+            const std::vector<std::string> abc = {"gnss0_a", "gnss0_b", "gnss0_c"};
+            json cfg = combine_config(
+                abc, {{{"rows", {"gnss0_a", "gnss0_c"}}, {"cpu_affinity", {cores[0]}}},
+                      {{"rows", {"gnss0_b"}}, {"cpu_affinity", {cores[1]}}}});
+            cfg["cpu_affinity"] = {cores[1]};
+            kotekan::Config config;
+            config.update_config(cfg);
+            kotekan::bufferContainer bc;
+            std::vector<std::unique_ptr<Buffer>> bufs;
+            for (const auto& k : abc) {
+                bufs.push_back(std::make_unique<Buffer>(2, 1 << 16, nullptr, "rec_" + k, "standard",
+                                                        0, false, false, std::vector<int>{},
+                                                        false));
+                bc.add_buffer("rec_" + k, bufs.back().get());
+            }
+            GnssCoherentCombiner host(config, "/gnss0_combine", bc);
+            // Each thread's name and its cores, as the kernel has them.
+            const std::map<std::string, int> want = {
+                {string_tail("/gnss0_combine", 15), cores[1]},
+                {string_tail("/gnss0_combine/w0", 15), cores[0]},
+                {string_tail("/gnss0_b_n2combine", 15), cores[1]}};
+            auto seen = [&] {
+                std::map<std::string, int> out;
+                for (pid_t tid : host.get_tids()) {
+                    std::ifstream f("/proc/self/task/" + std::to_string(tid) + "/comm");
+                    std::string comm;
+                    std::getline(f, comm);
+                    cpu_set_t set;
+                    CPU_ZERO(&set);
+                    if (sched_getaffinity(tid, sizeof(set), &set) != 0 || CPU_COUNT(&set) != 1)
+                        return out;
+                    for (int c = 0; c < CPU_SETSIZE; ++c)
+                        if (CPU_ISSET(c, &set))
+                            out[comm] = c;
+                }
+                return out;
+            };
+            host.start();
+            const auto t0 = std::chrono::steady_clock::now();
+            std::map<std::string, int> got;
+            while ((got = seen()) != want
+                   && std::chrono::steady_clock::now() - t0 < std::chrono::seconds(10))
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            host.stop();
+            for (auto& b : bufs)
+                b->send_shutdown_signal();
+            host.join();
+            if (got != want) {
+                std::string s;
+                for (const auto& [n, c] : got)
+                    s += " " + n + ":" + std::to_string(c);
+                throw FatalError("threads" + s);
+            }
+        }),
+        "");
+}
+
+/// The combiner metric series, each line without its value, of stages @p names started from
+/// @p cfg, once every one of rows @p keys (in_buf rec_<key>) has folded in a record.
+std::vector<std::string> combiner_series(const json& cfg, const std::vector<std::string>& names,
+                                         const std::vector<std::string>& keys) {
+    kotekan::Config config;
+    config.update_config(cfg);
+    kotekan::bufferContainer bc;
+    std::vector<std::unique_ptr<Buffer>> bufs;
+    for (const auto& k : keys) {
+        bufs.push_back(std::make_unique<Buffer>(2, 1 << 16, nullptr, "rec_" + k, "standard", 0,
+                                                false, false, std::vector<int>{}, true, 0));
+        bc.add_buffer("rec_" + k, bufs.back().get());
+        bufs.back()->register_producer("feeder");
+    }
+    std::vector<std::unique_ptr<GnssCoherentCombiner>> stages;
+    for (const auto& n : names)
+        stages.push_back(std::make_unique<GnssCoherentCombiner>(config, n, bc));
+    for (auto& st : stages)
+        st->start();
+    for (auto& b : bufs) {
+        b->wait_for_empty_frame("feeder", 0);
+        b->mark_frame_full("feeder", 0);
+    }
+    auto done = [&] {
+        size_t n = 0;
+        for (auto& st : stages)
+            for (size_t r = 0; r < (names.size() == 1 ? keys.size() : 1); ++r)
+                n += st->records_done(r);
+        return n;
+    };
+    const auto t0 = std::chrono::steady_clock::now();
+    while (done() < keys.size()) {
+        if (std::chrono::steady_clock::now() - t0 > std::chrono::seconds(10))
+            throw FatalError("the combiners took no record");
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    std::vector<std::string> out;
+    std::istringstream in(kotekan::prometheus::Metrics::instance().serialize());
+    for (std::string line; std::getline(in, line);)
+        if (line.compare(0, 22, "kotekan_gnss_combiner_") == 0)
+            out.push_back(line.substr(0, line.find("} ") + 1));
+    for (auto& st : stages)
+        st->stop();
+    for (auto& b : bufs)
+        b->send_shutdown_signal();
+    for (auto& st : stages)
+        st->join();
+    return out;
+}
+
+// A combine host's rows keep the metric series of the one-row stages they replace, stage_name
+// included, each with a chain label, its row key, added.
+BOOST_AUTO_TEST_CASE(combine_rows_label_their_metrics) {
+    BOOST_CHECK_EQUAL(fatal_of([] {
+                          const std::vector<std::string> ab = {"gnss0_a", "gnss0_b"};
+                          json one = combiner_config({"rec_gnss0_a"}, "gnss0_a_n2combine",
+                                                     {{"in_bufs", {"rec_gnss0_a"}}, {"n_prn", 1}});
+                          one["gnss0_b_n2combine"] = one["gnss0_a_n2combine"];
+                          one["gnss0_b_n2combine"]["in_bufs"] = {"rec_gnss0_b"};
+                          const std::vector<std::string> stages = combiner_series(
+                              one, {"/gnss0_a_n2combine", "/gnss0_b_n2combine"}, ab);
+                          const json workers = {{{"rows", {"gnss0_a"}}, {"cpu_affinity", {0}}},
+                                                {{"rows", {"gnss0_b"}}, {"cpu_affinity", {0}}}};
+                          const std::vector<std::string> host =
+                              combiner_series(combine_config(ab, workers), {"/gnss0_combine"}, ab);
+                          std::vector<std::string> want;
+                          for (std::string l : stages) {
+                              const size_t a = l.find("stage_name=\"/") + 13;
+                              const std::string key = l.substr(a, l.find("_n2combine\"", a) - a);
+                              want.push_back(l.substr(0, l.size() - 1) + ",chain=\"" + key + "\"}");
+                          }
+                          for (const auto& l : stages)
+                              std::printf("one-row stage: %s\n", l.c_str());
+                          for (const auto& l : host)
+                              std::printf("host row:      %s\n", l.c_str());
+                          std::fflush(stdout);
+                          if (stages.size() != 12 || host != want)
+                              throw FatalError("series differ");
+                      }),
+                      "");
 }
