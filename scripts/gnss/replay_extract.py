@@ -65,6 +65,8 @@ def extract(config_path, chains=DEFAULT_CHAINS):
             cube_buf=pre + "_cube_buf",
         )
         combine.update(in_bufs=[pre + "_n2rec_buf"], out_buf=pre + "_n2cmb_buf")
+        # A combine host row's metric label: the replay sets its own on the rows it hosts.
+        combine.pop("chain", None)
         telem.update(in_buf=pre + "_n2rec_buf", out_buf=pre + "_telem_buf")
         out.append(
             {

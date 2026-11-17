@@ -29,6 +29,7 @@
 #include <map>
 #include <memory>
 #include <sched.h>
+#include <set>
 #include <sstream>
 #include <string>
 #include <sys/wait.h>
@@ -177,16 +178,17 @@ json record_config(const std::vector<std::string>& keys, const json& workers) {
     return cfg;
 }
 
-/// A combiner host block at /gnss0_combine whose rows @p keys read in_bufs [rec_<key>], with the
-/// buffers they name, and @p workers.
+/// A combiner host block at /gnss<g>_combine, g the half of the first of @p keys, whose rows
+/// @p keys (gnss<g>_<chain>) read in_bufs [rec_<key>] and carry chain <chain>, with the buffers
+/// they name, and @p workers.
 json combine_config(const std::vector<std::string>& keys, const json& workers) {
     json host = {{"workers", workers}};
     std::vector<std::string> bufs;
     for (const auto& k : keys) {
-        host["chains"][k] = {{"in_bufs", {"rec_" + k}}, {"n_prn", 1}};
+        host["chains"][k] = {{"in_bufs", {"rec_" + k}}, {"n_prn", 1}, {"chain", k.substr(6)}};
         bufs.push_back("rec_" + k);
     }
-    return combiner_config(bufs, "gnss0_combine", host);
+    return combiner_config(bufs, keys[0].substr(0, 5) + "_combine", host);
 }
 
 /// The FatalError message of starting @p cfg's stages, "" for none.
@@ -419,8 +421,8 @@ BOOST_AUTO_TEST_CASE(host_restarts_in_one_process) {
                       }),
                       "");
     const json rows = {{"chains",
-                        {{"gnss0_a", {{"in_bufs", {"rec_a"}}, {"n_prn", 1}}},
-                         {"gnss0_b", {{"in_bufs", {"rec_b"}}, {"n_prn", 1}}}}}};
+                        {{"gnss0_a", {{"in_bufs", {"rec_a"}}, {"n_prn", 1}, {"chain", "a"}}},
+                         {"gnss0_b", {{"in_bufs", {"rec_b"}}, {"n_prn", 1}, {"chain", "b"}}}}}};
     BOOST_CHECK_EQUAL(fatal_of([&] {
                           start_stop_start(
                               combiner_config({"rec_a", "rec_b"}, "gnss0_combine", rows),
@@ -707,8 +709,10 @@ BOOST_AUTO_TEST_CASE(combine_workers_are_pinned_threads_of_the_stage) {
 }
 
 /// The combiner metric series, each line without its value, of stages @p names started from
-/// @p cfg, once every one of rows @p keys (in_buf rec_<key>) has folded in a record.
+/// @p cfg, once every one of rows @p keys (in_buf rec_<key>) has folded in a record. Stage k has
+/// @p rows[k] rows.
 std::vector<std::string> combiner_series(const json& cfg, const std::vector<std::string>& names,
+                                         const std::vector<size_t>& rows,
                                          const std::vector<std::string>& keys) {
     kotekan::Config config;
     config.update_config(cfg);
@@ -731,9 +735,9 @@ std::vector<std::string> combiner_series(const json& cfg, const std::vector<std:
     }
     auto done = [&] {
         size_t n = 0;
-        for (auto& st : stages)
-            for (size_t r = 0; r < (names.size() == 1 ? keys.size() : 1); ++r)
-                n += st->records_done(r);
+        for (size_t k = 0; k < stages.size(); ++k)
+            for (size_t r = 0; r < rows[k]; ++r)
+                n += stages[k]->records_done(r);
         return n;
     };
     const auto t0 = std::chrono::steady_clock::now();
@@ -757,33 +761,43 @@ std::vector<std::string> combiner_series(const json& cfg, const std::vector<std:
 }
 
 // A combine host's rows keep the metric series of the one-row stages they replace, stage_name
-// included, each with a chain label, its row key, added.
+// included, each with a chain label, the row's broker chain, added. Chain a runs on both halves,
+// so its label repeats and the series stay distinct by stage_name.
 BOOST_AUTO_TEST_CASE(combine_rows_label_their_metrics) {
-    BOOST_CHECK_EQUAL(fatal_of([] {
-                          const std::vector<std::string> ab = {"gnss0_a", "gnss0_b"};
-                          json one = combiner_config({"rec_gnss0_a"}, "gnss0_a_n2combine",
-                                                     {{"in_bufs", {"rec_gnss0_a"}}, {"n_prn", 1}});
-                          one["gnss0_b_n2combine"] = one["gnss0_a_n2combine"];
-                          one["gnss0_b_n2combine"]["in_bufs"] = {"rec_gnss0_b"};
-                          const std::vector<std::string> stages = combiner_series(
-                              one, {"/gnss0_a_n2combine", "/gnss0_b_n2combine"}, ab);
-                          const json workers = {{{"rows", {"gnss0_a"}}, {"cpu_affinity", {0}}},
-                                                {{"rows", {"gnss0_b"}}, {"cpu_affinity", {0}}}};
-                          const std::vector<std::string> host =
-                              combiner_series(combine_config(ab, workers), {"/gnss0_combine"}, ab);
-                          std::vector<std::string> want;
-                          for (std::string l : stages) {
-                              const size_t a = l.find("stage_name=\"/") + 13;
-                              const std::string key = l.substr(a, l.find("_n2combine\"", a) - a);
-                              want.push_back(l.substr(0, l.size() - 1) + ",chain=\"" + key + "\"}");
-                          }
-                          for (const auto& l : stages)
-                              std::printf("one-row stage: %s\n", l.c_str());
-                          for (const auto& l : host)
-                              std::printf("host row:      %s\n", l.c_str());
-                          std::fflush(stdout);
-                          if (stages.size() != 12 || host != want)
-                              throw FatalError("series differ");
-                      }),
-                      "");
+    BOOST_CHECK_EQUAL(
+        fatal_of([] {
+            const std::vector<std::string> keys = {"gnss0_a", "gnss0_b", "gnss1_a"};
+            json one = combiner_config({}, "gnss0_a_n2combine",
+                                       {{"in_bufs", {"rec_gnss0_a"}}, {"n_prn", 1}});
+            for (const std::string k : {"gnss0_b", "gnss1_a"}) {
+                one[k + "_n2combine"] = one["gnss0_a_n2combine"];
+                one[k + "_n2combine"]["in_bufs"] = {"rec_" + k};
+            }
+            const std::vector<std::string> stages = combiner_series(
+                one, {"/gnss0_a_n2combine", "/gnss0_b_n2combine", "/gnss1_a_n2combine"}, {1, 1, 1},
+                keys);
+            const json workers0 = {{{"rows", {"gnss0_a"}}, {"cpu_affinity", {0}}},
+                                   {{"rows", {"gnss0_b"}}, {"cpu_affinity", {0}}}};
+            const json workers1 = {{{"rows", {"gnss1_a"}}, {"cpu_affinity", {0}}}};
+            json hosts = combine_config({"gnss0_a", "gnss0_b"}, workers0);
+            hosts["gnss1_combine"] = combine_config({"gnss1_a"}, workers1).at("gnss1_combine");
+            const std::vector<std::string> host =
+                combiner_series(hosts, {"/gnss0_combine", "/gnss1_combine"}, {2, 1}, keys);
+            std::vector<std::string> want;
+            for (std::string l : stages) {
+                const size_t a = l.find("stage_name=\"/") + 19;
+                const std::string chain = l.substr(a, l.find("_n2combine\"", a) - a);
+                want.push_back(l.substr(0, l.size() - 1) + ",chain=\"" + chain + "\"}");
+            }
+            for (const auto& l : stages)
+                std::printf("one-row stage: %s\n", l.c_str());
+            for (const auto& l : host)
+                std::printf("host row:      %s\n", l.c_str());
+            std::fflush(stdout);
+            if (stages.size() != 18 || host != want)
+                throw FatalError("series differ");
+            if (std::set<std::string>(host.begin(), host.end()).size() != host.size())
+                throw FatalError("series repeat");
+        }),
+        "");
 }

@@ -34,10 +34,11 @@
  * The integration itself is a gnss::CombinerChain; this stage moves its frames. With a
  * @c chains block it hosts one chain per row (see gnss::host_rows), each with its own buffers and
  * thread, under the REST paths, buffer client names and metric stage_name of the one-row stage
- * `<key>_n2combine` it replaces, its metrics also labelled chain=`<key>`, and serves the rows at
- * `<unique_name>/chains`. With @c workers its rows run on pinned threads instead, each taking one
- * record of each of its rows in turn and reading their in_bufs as one consumer, named for its row
- * when it runs one, else `<unique_name>/w<k>`.
+ * `<key>_n2combine` it replaces, its metrics also labelled with the row's @c chain, and serves
+ * the rows at `<unique_name>/chains`. A chain may be hosted on both GPU halves, so a series is
+ * told apart by its stage_name, never by the label alone. With @c workers its rows run on pinned
+ * threads instead, each taking one record of each of its rows in turn and reading their in_bufs as
+ * one consumer, named for its row when it runs one, else `<unique_name>/w<k>`.
  *
  * Temporal integration is an exponential moving average with time constant
  * K = @c integration_length records (alpha = 1/K), updated every record and emitted every K/10
@@ -86,6 +87,8 @@
  * @conf bit_export          Bool (default false). Publish nav_obs in get_status.
  * @conf reset_on_prn_change Bool (default true). When a slot's records carry a new PRN (a live
  *                           swap), its state restarts cold, as GnssGpuRecordAssemble's does.
+ * @conf chain               String, set by each row of @c chains. The row's broker chain (e.g.
+ *                           gal_e5a), which labels its metrics.
  * @conf chains              Map (optional). One row per entry; each sets ROW_KEYS itself, alone
  *                           sets ROW_ONLY_KEYS, and reads every other key from this block.
  * @conf workers             List (optional, with chains). Worker k, `{rows: [row keys],

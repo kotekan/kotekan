@@ -1937,8 +1937,9 @@ RECORD_ROW_KEYS = (
 
 
 # The keys a chain's combiner keeps in its row of gnss<g>_combine (--combine-host):
-# GnssCoherentCombiner's ROW_KEYS and ROW_ONLY_KEYS, as RECORD_ROW_KEYS.
-COMBINE_ROW_KEYS = ("in_bufs", "n_prn", "out_buf")
+# GnssCoherentCombiner's ROW_KEYS and ROW_ONLY_KEYS, as RECORD_ROW_KEYS. chain, the broker chain
+# that labels the row's metrics, is set by combine_host_form.
+COMBINE_ROW_KEYS = ("in_bufs", "n_prn", "chain", "out_buf")
 
 
 def host_form(blocks, pres, stage, row_keys, name):
@@ -1972,8 +1973,11 @@ def record_host_form(blocks, pres, gpu):
 def combine_host_form(blocks, pres, gpu):
     """--combine-host: the half's combiners as rows of one GnssCoherentCombiner, gnss<g>_combine
     (host_form), so each row's REST paths and metric stage_name stay its stage's. The rows keep
-    their record buffers, and their out_buf with --combiner-out-buf."""
+    their record buffers, and their out_buf with --combiner-out-buf. Each row's chain is its
+    broker chain."""
     host_form(blocks, pres, "n2combine", COMBINE_ROW_KEYS, f"gnss{gpu}_combine")
+    for p in pres:
+        blocks[f"gnss{gpu}_combine"]["chains"][p["pre"][:-1]]["chain"] = p["name"]
 
 
 def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):

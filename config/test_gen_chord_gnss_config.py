@@ -615,7 +615,9 @@ def test_combine_host_form():
         },
         "gnss0_b_n2rec_buf": {"kotekan_buffer": "standard"},
     }
-    g.combine_host_form(blocks, [{"pre": "gnss0_b_"}, {"pre": "gnss0_a_"}], 0)
+    g.combine_host_form(
+        blocks, [{"pre": "gnss0_b_", "name": "b"}, {"pre": "gnss0_a_", "name": "a"}], 0
+    )
     want = {
         "kotekan_stage": "GnssCoherentCombiner",
         "n_elements": 128,
@@ -626,12 +628,14 @@ def test_combine_host_form():
                 "in_bufs": ["gnss0_a_n2rec_buf"],
                 "out_buf": "gnss0_a_n2cmb_buf",
                 "n_prn": 32,
+                "chain": "a",
             },
             "gnss0_b": {
                 "in_bufs": ["gnss0_b_n2rec_buf"],
                 "out_buf": "gnss0_b_n2cmb_buf",
                 "n_prn": 32,
                 "integration_length": 200,
+                "chain": "b",
             },
         },
         "workers": [
@@ -642,7 +646,8 @@ def test_combine_host_form():
     check(
         sorted(blocks) == ["gnss0_b_n2rec_buf", "gnss0_combine"]
         and blocks["gnss0_combine"] == want,
-        "combine_host_form hosts the rows in gnss_rows order, n_prn and out_buf in each "
+        "combine_host_form hosts the rows in gnss_rows order, n_prn, out_buf and the broker "
+        "chain in each "
         "(%s)" % json.dumps(blocks.get("gnss0_combine"), sort_keys=True)[:300],
     )
 
@@ -1558,10 +1563,15 @@ def test_combine_host():
             if isinstance(v, dict) and v.get("kotekan_stage") == "GnssCoherentCombiner"
         }
         rows = dict(gnss_fleet.combiner_rows(hosted))
+        chains = {k: r.pop("chain", None) for k, r in rows.items()}
         check(
             len(cmb) == 6 and rows == cmb,
             "%s: the hosts' rows are the combiners without the flag (%d, %d)"
             % (extra, len(cmb), len(rows)),
+        )
+        check(
+            all(c == gnss_fleet.stage_chain(k, "n2combine") for k, c in chains.items()),
+            "%s: each row's chain is its broker chain (%s)" % (extra, chains),
         )
         others = {k: v for k, v in plain.items() if k not in cmb}
         check(

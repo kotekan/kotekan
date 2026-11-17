@@ -615,10 +615,20 @@ def test_combine(a_dir, c_dir):
         if isinstance(v, dict) and v.get("kotekan_stage") == "GnssCoherentCombiner"
     }
     rows = dict(nc.gnss_fleet.combiner_rows(ccfg))
+    chains = {k: r.pop("chain", None) for k, r in rows.items()}
     check(
         len(cmb) == 30 and rows == cmb,
         "combine: the hosts' rows, merged with their host's keys and their worker's cores, "
         "are the combiners without the flag (%d, %d)" % (len(cmb), len(rows)),
+    )
+    check(
+        all(c == nc.gnss_fleet.stage_chain(k, "n2combine") for k, c in chains.items()),
+        "combine: each row's chain is its broker chain (%s)"
+        % [
+            k
+            for k, c in chains.items()
+            if c != nc.gnss_fleet.stage_chain(k, "n2combine")
+        ],
     )
     bad = []
     for g in (0, 1):

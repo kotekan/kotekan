@@ -459,6 +459,7 @@ json build_config(const std::vector<ChainSpec>& cs, const Scenario& sc,
         if (sc.rows) {
             rows_as[s.pre] = as;
             rows_cb[s.pre] = cb;
+            rows_cb[s.pre]["chain"] = tp.at("chain");
             rows_tp[s.pre] = tp;
         } else {
             cfg[assembler_name(s, (int)i, sc).substr(1)] = as;
@@ -1691,6 +1692,7 @@ void cmb_stall_child(const std::vector<ChainSpec>& cs, CmbHold hold, const std::
         cb["integration_length"] = 10;
         cb["in_bufs"] = {buf_name(s, "n2rec_buf")};
         cb["out_buf"] = buf_name(s, "n2cmb_buf");
+        cb["chain"] = s.telem.at("chain");
         cb["cpu_affinity"] = cpus;
         rows[s.pre] = cb;
     }

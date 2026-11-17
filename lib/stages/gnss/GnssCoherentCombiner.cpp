@@ -16,11 +16,12 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(GnssCoherentCombiner);
 
-const std::vector<std::string> GnssCoherentCombiner::ROW_KEYS = {"in_bufs", "n_prn"};
+const std::vector<std::string> GnssCoherentCombiner::ROW_KEYS = {"in_bufs", "n_prn", "chain"};
 const std::vector<std::string> GnssCoherentCombiner::ROW_ONLY_KEYS = {"out_buf"};
 
 GnssCoherentCombiner::Row::Row(Config& config, const gnss::HostRow& row) :
-    chain(config, row.cfg_path, row.name, row.key) {}
+    chain(config, row.cfg_path, row.name,
+          row.key.empty() ? "" : config.get<std::string>(row.cfg_path, "chain")) {}
 
 GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& unique_name,
                                            bufferContainer& buffer_container) :
