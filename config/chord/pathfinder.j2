@@ -970,6 +970,9 @@ run_recv_rfi_RFImask:
 {% set dtv_runtime_bundle_dir = dtv_runtime_bundle_dir|default("/usr/local/etc/kotekan/chord/dtv_bundles/pathfinder-commissioning-e2e90219") %}
 {% include "dtv.j2" %}
 
+{#- Incoherent-beam power for the pulse search on the recv node (incoherent.j2). #}
+{% include "incoherent.j2" %}
+
 # Only the "normal" (downsampled) PL mask is sent to the GPU. This expands that mask for
 # the 1 bit correlator kernel. Other stages use the downsampled mask directly.
 run_pl_expand:

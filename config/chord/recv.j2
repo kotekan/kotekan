@@ -249,3 +249,74 @@ write_dtv:
         file_name: dtv_{{ p[0] }}
         prefix_hostname: false
 {% endfor %}
+
+# Incoherent-beam power from the X-engine halves (incoherent.j2): frames of 32 time samples
+# (1.31 ms each) over a half's num_local_freq frequencies, 24 per second from each of 16
+# halves. The shape and the port must match incoherent.j2. All halves share one buffer; 1024
+# frames are 2.6 s, which covers the search's passes (0.3 s of data each).
+incoherent_power_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: 1100
+
+incoherent_power_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 1024
+    value_type: uint16
+    extents: [32, {{ num_local_freq }}]
+    quantity_name: "incoherent_beam_power"
+    dimnames: ["Trfi", "F"]
+    dimscalings: [256, 1]
+    metadata_pool: incoherent_power_pool
+
+buffer_recv_incoherent_power:
+    kotekan_stage: bufferRecv
+    use_frame_desc: true
+    buf: incoherent_power_buffer
+    listen_port: 11039
+
+# Pulse search of the summed power: 300-1600 MHz, DM 3-1500. The step between trial DMs is
+# 0.12 up to DM 100 and grows to 0.56 at DM 1500: incoherent_num_dm trials (the stage logs the
+# number). The fixed masks are the aeronautical band and GNSS. It needs 1 GB. Timed on recv1
+# with 6144 channels and the 4281 trials from DM 100: 8 threads search 2.2 s of data per
+# second (6 threads 1.8 s); the trials below DM 100 add 19 %.
+{% set incoherent_num_dm = 5089 %}
+incoherent_beam_search:
+    kotekan_stage: IncoherentBeamSearch
+    cpu_affinity: [4,5,6,7,8,9,10,11]
+    num_threads: 8
+    in_buf: incoherent_power_buffer
+    freq_id_base: 1536
+    num_local_freq: 6656
+    num_feeds: num_elements
+    dm_min: 3
+    dm_knee: 100
+    mask_bands_mhz: [[1010, 1130], [1164, 1300], [1559, 1610]]
+    candidate_file: /mnt/cs00/data/incoherent_beam_search/candidates.jsonl
+    dm_file: /mnt/cs00/data/incoherent_beam_search/trial_dms.json
+{%- if incoherent_write_sums | default(false) %}
+    out_buf: incoherent_sums_buffer
+
+# For tests: the dedispersed sum of every trial DM at every time sample, 13 MB/s (47 GB per
+# hour) before compression. Render with incoherent_write_sums true for a run of an hour or so,
+# not for normal operation. A file holds 64 search passes (21 s); a row of it is the time at
+# the bottom of the band, and trial_dms.json gives each DM's sweep back to the top.
+incoherent_sums_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 8
+    value_type: float32
+    extents: [256, {{ incoherent_num_dm }}]
+    quantity_name: "incoherent_beam_sums"
+    dimnames: ["Trfi", "DM"]
+    dimscalings: [256, 1]
+    metadata_pool: incoherent_power_pool
+
+write_incoherent_sums:
+    kotekan_stage: hdf5FileWrite
+    log_level: warn
+    in_buf: incoherent_sums_buffer
+    base_dir: /mnt/cs00/data/incoherent_beam_search
+    acq_dir: true
+    file_name: incoherent_sums
+    prefix_hostname: false
+    frames_per_file: 64
+{%- endif %}

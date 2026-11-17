@@ -1,0 +1,107 @@
+{#-
+  incoherent.j2, included by pathfinder.j2. Sends each half's incoherent-beam power to the
+  recv node, where IncoherentBeamSearch (recv.j2) searches it for dispersed pulses.
+  cudaRFIS012tilde sums the S012 statistics over the feeds the bad feed mask keeps,
+  cudaCopyFromRingbuffer brings the sums to the host, IncoherentBeamPower reduces them to
+  uint16 power and bufferSend sends that: frames of 32 time samples (1.31 ms each) by
+  num_local_freq, 24 per second, 0.7 MB/s per half. recv.j2 must use the same shape and port.
+-#}
+{% set incoherent_power_port = 11039 %}
+
+{% for n in numa_halves %}
+host_rfi_s012tilde_ringbuffer{{ n.sfx }}:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_uint64
+    metadata_pool: main_pool
+{%- if n.id %}
+    numa_node: {{ n.id }}
+{%- endif %}
+
+# uint64 "S012tilde" [Trfi, F, 3]: S0, S1 and S2 summed over the good feeds.
+host_rfi_s012tilde_buffer{{ n.sfx }}:
+    kotekan_buffer: ndarray
+    num_frames: host_side_buffer_depth
+    value_type: uint64
+    extents: [samples_per_data_set / rfi_downsampling_factor, num_local_freq, 3]
+    metadata_pool: main_pool
+{%- if n.id %}
+    numa_node: {{ n.id }}
+{%- endif %}
+
+host_incoherent_power_buffer{{ n.sfx }}:
+    kotekan_buffer: ndarray
+    num_frames: host_side_buffer_depth
+    value_type: uint16
+    extents: [samples_per_data_set / rfi_downsampling_factor, num_local_freq]
+    quantity_name: "incoherent_beam_power"
+    dimnames: ["Trfi", "F"]
+    dimscalings: [rfi_downsampling_factor, 1]
+    metadata_pool: main_pool
+{%- if n.id %}
+    numa_node: {{ n.id }}
+{%- endif %}
+{% endfor %}
+
+run_rfi_s012tilde:
+{% for n in numa_halves %}
+    gpu_{{ n.id }}:
+        kotekan_stage: cudaProcess
+        gpu_id: {{ n.id }}
+        cuda_stream_base: {{ 15 * stream_base_step }}
+        cpu_affinity: {{ n.gpu_cpus }}
+        in_buffers:
+            host_bf_mask_ringbuffer: host_bf_mask_ringbuffer{{ n.sfx }}
+            host_rfi_s012_ringbuffer: host_rfi_s012_ringbuffer{{ n.sfx }}
+        out_buffers:
+            host_rfi_s012tilde_ringbuffer: host_rfi_s012tilde_ringbuffer{{ n.sfx }}
+        commands:
+        - name: cudaRFIS012tilde
+          rfi_S012_name: rfi_s012
+          bf_mask_name: bf_mask
+          rfi_S012tilde_name: rfi_s012tilde
+          num_times: samples_per_data_set
+          num_frequencies: num_local_freq
+          rfi_num_times: samples_per_data_set / rfi_downsampling_factor
+{% endfor %}
+
+run_recv_rfi_s012tilde:
+{% for n in numa_halves %}
+    gpu_{{ n.id }}:
+        kotekan_stage: cudaProcess
+        gpu_id: {{ n.id }}
+        cuda_stream_base: {{ 16 * stream_base_step }}
+        cpu_affinity: {{ n.gpu_cpus }}
+        in_buffers:
+            host_rfi_s012tilde_ringbuffer_in: host_rfi_s012tilde_ringbuffer{{ n.sfx }}
+        out_buffers:
+            host_rfi_s012tilde_buffer_out: host_rfi_s012tilde_buffer{{ n.sfx }}
+        commands:
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_rfi_s012tilde_ringbuffer_in
+          gpu_mem_input: rfi_s012tilde_buffer
+          output_size: (samples_per_data_set / rfi_downsampling_factor) * num_local_freq * 3 * sizeof_uint64
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_rfi_s012tilde_buffer_out
+{% endfor %}
+
+incoherent_power:
+{% for n in numa_halves %}
+    power_{{ n.id }}:
+        kotekan_stage: IncoherentBeamPower
+        cpu_affinity: {{ n.other_cpus }}
+        in_buf: host_rfi_s012tilde_buffer{{ n.sfx }}
+        out_buf: host_incoherent_power_buffer{{ n.sfx }}
+{% endfor %}
+
+send_incoherent_power:
+{% for n in numa_halves %}
+    power_{{ n.id }}:
+        kotekan_stage: bufferSend
+        cpu_affinity: {{ n.other_cpus }}
+        use_frame_desc: true
+        buf: host_incoherent_power_buffer{{ n.sfx }}
+        server_ip: 10.222.0.51
+        server_port: {{ incoherent_power_port }}
+        reconnect_time: 10
+        drop_frames: true
+{% endfor %}
