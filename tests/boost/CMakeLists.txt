@@ -479,6 +479,11 @@ add_executable(test_IncoherentBeamPower test_IncoherentBeamPower.cpp
 target_link_libraries(test_IncoherentBeamPower PRIVATE kotekan_core kotekan_metadata kotekan_utils
                                                        libexternal)
 
+add_executable(test_IncoherentBeamSearch test_IncoherentBeamSearch.cpp
+                                         ${KOTEKAN_SOURCE_DIR}/lib/stages/IncoherentBeamSearch.cpp)
+target_link_libraries(test_IncoherentBeamSearch PRIVATE kotekan_core kotekan_metadata kotekan_utils
+                                                        libexternal)
+
 add_executable(test_ProcessPacketMask test_ProcessPacketMask.cpp
                                       ${KOTEKAN_SOURCE_DIR}/lib/stages/ProcessPacketMask.cpp)
 target_link_libraries(test_ProcessPacketMask PRIVATE kotekan_core kotekan_metadata kotekan_utils
