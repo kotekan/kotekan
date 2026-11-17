@@ -16,6 +16,16 @@ the UTC 2 ms boundary, measured; drifts ~-0.7 us/day), `status` (transmitting / 
 site, the boresight (az 180, el 62.70) and the TLE cache (`~/.cache/guowang/hulianwang_*.tle`,
 plus `hidden_digui.tle` for the inferred-orbit "H" satellites from `gw_hidden_tle.py`).
 
+What `theta_us` is referenced to is the file's `schema`, and both steps are of 11-17. Schema 2
+put theta on UTC: the reduction's theta plus `tag_early_us` of its reference input, +9.81 us.
+Schema 3 took out the bias of `gw_reduce.py`'s old code replica, which was never Doppler-stretched:
+-0.5 ms x range rate / c + 30.547 ns x the sign of the range rate, 25.7 to 29.6 ns either way on
+the 163 thetas (each keeps `range_rate_m_s` and `replica_corr_ns`). Since 11-17 `gw_reduce.py` and
+`gw_win.py` build the replica with `gwcommon.box_replica`, stretched, and tag each proposal
+`replica: "stretched"`; `guowang_db.py` folds such a theta in as it is and corrects an older one.
+The evidence is in guowang_paper `review/REPLY_GUOWANG_20261117c.md` and `...17d.md`, the raw
+windows reduced both ways in `builds/gw1202/repcheck_20261117/`.
+
 The library grows only through confirmation windows (section 4): a satellite the chain has never
 locked has no theta, and the chain cannot track it. The scheduler targets unconfirmed passes near
 the boresight on purpose, so on a growth night the main-lobe passes are mostly satellites the
