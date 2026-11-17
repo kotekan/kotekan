@@ -14,8 +14,6 @@ const double dispersion_ms = 4.148808;
 const std::array<int, 5> widths = {1, 2, 4, 8, 16};
 // Samples on each side of a pulse window that give its baseline
 const int baseline = 128;
-// Samples dedispersed per pass
-const int chunk = 256;
 // A normalized sample is limited to this many sigma
 const double sample_clip = 3.0;
 // Stored samples are in units of 1 / sample_scale sigma: int8 reaches 4 sigma
@@ -101,6 +99,8 @@ IncoherentSearch::IncoherentSearch(const IncoherentSearchParams& params) :
     sum_var.assign((size_t)D * W, 0.0);
     sum_count.assign((size_t)D * W, 0);
     sigma_floor.assign(W, 0.0);
+    if (p.keep_sums)
+        pass_sums.assign((size_t)D * chunk, 0.0f);
 
     // A candidate's samples are still in the buffer when it is closed: band_occupancy relies on it.
     keep = max_delay_all + lookahead + wmax + 2 * chunk + close_after;
@@ -211,6 +211,7 @@ bool IncoherentSearch::add_sample(const float* power) {
 void IncoherentSearch::dedisperse_chunk() {
     std::vector<Hit> hits;
     double max_snr = 0;
+    std::fill(pass_sums.begin(), pass_sums.end(), 0.0f);
 #pragma omp parallel num_threads(p.num_threads)
     {
         std::vector<Hit> my_hits;
@@ -252,6 +253,9 @@ void IncoherentSearch::dedisperse_chunk() {
             for (int64_t k = 0; k < n; ++k)
                 s[k] = (total[k] + part[k]) / (float)sample_scale;
             next_sum[d] = t0 + n;
+            // The last of these sums reaches the bottom channel at the newest sample.
+            if (p.keep_sums)
+                std::copy(s, s + n, &pass_sums[(size_t)d * chunk + chunk - n]);
             search_dm(d, s, n, prefix, my_hits, my_max);
         }
 #pragma omp critical

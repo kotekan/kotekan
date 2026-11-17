@@ -20,6 +20,7 @@
 #include <fstream>
 #include <json.hpp>
 #include <memory>
+#include <mutex>
 #include <random>
 #include <string>
 #include <thread>
@@ -32,25 +33,47 @@ static bool metric_has(const std::string& line) {
     return kotekan::prometheus::Metrics::instance().serialize().find(line) != std::string::npos;
 }
 
+// The trial DMs the stage makes from the configuration below: steps of 1 from 50 to the knee at
+// 100, growing from there to 3 at 150.
+static std::vector<double> trial_dms() {
+    std::vector<double> dms;
+    const double growth = std::log(3.0) / std::log(150.0 / 100.0);
+    for (double dm = 50; dm <= 150; dm += std::pow(std::max(dm / 100.0, 1.0), growth))
+        dms.push_back(dm);
+    return dms;
+}
+
 // Four halves of 16 channels each, interleaved in frequency as the X-engine halves are, send
 // frames of 32 time samples. 64 channels from 400 MHz: DM 100 sweeps 116 samples.
 struct SearchPipeline {
     static constexpr int halves = 4, T = 32, F = 16, min_freq_id = 2048, period = 256;
-    static constexpr int frames = 8;
-    const std::string path;
+    static constexpr int frames = 8, sum_samples = 256;
+    const std::string path, dm_path;
+    const std::vector<double> dms = trial_dms();
     kotekan::Config config;
     std::shared_ptr<metadataPool> pool;
-    Buffer input;
+    Buffer input, sums;
     kotekan::bufferContainer buffers;
     std::unique_ptr<kotekan::Stage> stage;
     std::mt19937 rng{1};
     int next_slot = 0;
 
+    // The largest dedispersed sum the stage has written, kept by sums_thread.
+    std::thread sums_thread;
+    std::mutex sums_mutex;
+    float largest_sum = 0;
+    int64_t largest_seq = 0; // FPGA sequence number of its row
+    int largest_dm = 0;      // index of its trial DM
+    int64_t sum_frames = 0;
+
     SearchPipeline() :
         path("/tmp/test_IncoherentBeamSearch." + std::to_string(getpid()) + ".jsonl"),
+        dm_path("/tmp/test_IncoherentBeamSearch." + std::to_string(getpid()) + ".dms.json"),
         pool(metadataPool::create(32, sizeof(chordMetadata), "pool", "chordMetadata")),
         input(frames, T * F * sizeof(uint16_t), pool, "input", "standard", 0, false, false,
-              std::vector<int>{}, true) {
+              std::vector<int>{}, true),
+        sums(4, sum_samples * dms.size() * sizeof(float), pool, "sums", "standard", 0, false, false,
+             std::vector<int>{}, true) {
         // Force metadata registration from the static library.
         chordMetadata metadata;
         std::remove(path.c_str());
@@ -58,16 +81,19 @@ struct SearchPipeline {
                               {"log_level", "ERROR"},
                               {"search",
                                {{"in_buf", "input"},
+                                {"out_buf", "sums"},
                                 {"freq_id_base", min_freq_id},
                                 {"num_local_freq", halves * F},
                                 {"num_feeds", 128},
                                 {"dm_min", 50},
+                                {"dm_knee", 100},
                                 {"dm_max", 150},
                                 {"dm_step_min", 1},
                                 {"dm_step_max", 3},
                                 {"holdoff_s", 3},
                                 {"num_threads", 2},
-                                {"candidate_file", path}}}};
+                                {"candidate_file", path},
+                                {"dm_file", dm_path}}}};
         add_test_telescope_config(cfg);
         cfg["gps_time"] = {{"frame0_nano", 1767225600000000000}};
         cfg["num_polarizations"] = 2;
@@ -79,16 +105,44 @@ struct SearchPipeline {
         input.ensure_frame_desc(kotekan::GenericNDArray::describe(
             kotekan::uint16, "incoherent_beam_power", {T, F}, {"Trfi", "F"}, {period, 1}));
         buffers.add_buffer("input", &input);
+        buffers.add_buffer("sums", &sums);
         input.register_producer("test");
+        sums.register_consumer("test");
         auto makers = kotekan::StageFactoryRegistry::get_registered_stages();
         stage.reset(makers.at("IncoherentBeamSearch")->create(config, "/search", buffers));
+        sums_thread = std::thread(&SearchPipeline::read_sums, this);
     }
 
     ~SearchPipeline() {
         input.send_shutdown_signal();
+        sums.send_shutdown_signal();
         stage->stop();
         stage->join();
+        sums_thread.join();
         std::remove(path.c_str());
+        std::remove(dm_path.c_str());
+    }
+
+    // Takes the frames of sums, [time][DM], as the stage writes them.
+    void read_sums() {
+        for (int slot = 0;; slot = (slot + 1) % sums.num_frames) {
+            const float* const frame = (const float*)sums.wait_for_full_frame("test", slot);
+            if (frame == nullptr)
+                return;
+            const int64_t seq = get_chord_metadata(&sums, slot)->get_fpga_seq_num();
+            {
+                std::lock_guard<std::mutex> lock(sums_mutex);
+                ++sum_frames;
+                for (int k = 0; k < sum_samples; ++k)
+                    for (size_t d = 0; d < dms.size(); ++d)
+                        if (frame[k * dms.size() + d] > largest_sum) {
+                            largest_sum = frame[k * dms.size() + d];
+                            largest_seq = seq + (int64_t)k * period;
+                            largest_dm = (int)d;
+                        }
+            }
+            sums.mark_frame_empty("test", slot);
+        }
     }
 
     // Sends num_samples of noise from every half, starting at FPGA sequence number seq0. A
@@ -165,6 +219,23 @@ BOOST_AUTO_TEST_CASE(finds_a_pulse_and_restarts_after_a_jump) {
     BOOST_CHECK_SMALL(cands[0]["unix_time"].get<double>()
                           - (1767225600 + cands[0]["fpga_seq"].get<int64_t>() * 5.12e-6),
                       1e-3);
+
+    // dm_file has the trial DMs. The largest dedispersed sum in the output is the pulse: at
+    // DM 100, in the row of its arrival at the bottom channel, one sweep after the top.
+    std::ifstream dm_file(p.dm_path);
+    const nlohmann::json grid = nlohmann::json::parse(dm_file);
+    BOOST_REQUIRE_EQUAL(grid["dm"].size(), p.dms.size());
+    BOOST_CHECK_CLOSE(grid["dm"].back().get<double>(), p.dms.back(), 1e-9);
+    BOOST_CHECK_EQUAL(grid["dm"][50].get<double>(), 100);
+    {
+        std::lock_guard<std::mutex> lock(p.sums_mutex);
+        const int64_t sweep = grid["sweep_samples"][50].get<int64_t>();
+        BOOST_CHECK_EQUAL(sweep, 116);
+        BOOST_CHECK_GT(p.sum_frames, 12000 / SearchPipeline::sum_samples - 6);
+        BOOST_CHECK_GT(p.largest_sum, 80); // 2 sigma in each of 64 channels
+        BOOST_CHECK_EQUAL(p.largest_dm, 50);
+        BOOST_CHECK_EQUAL(p.largest_seq, seq0 + (8000 + sweep) * SearchPipeline::period);
+    }
 
     // One round of frames 200 s ahead (a sender with a wrong time) is dropped, and the stream
     // goes on.

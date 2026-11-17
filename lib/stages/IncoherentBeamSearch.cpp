@@ -46,6 +46,12 @@ using kotekan::prometheus::Metrics;
  * width in samples, the number of samples above threshold merged into it, and the S/N in each
  * of 16 blocks of channels along its dispersion curve.
  *
+ * With out_buf, every search pass also writes its dedispersed sums (IncoherentSearch::last_sums)
+ * as one frame, for tests: 13 MB/s with the default DMs. Row k of a frame holds, for each trial
+ * DM, the sum along the dispersion curve that reaches the bottom channel at the frame's
+ * fpga_seq_num + k time samples. dm_file lists the trial DMs and each one's sweep from the top
+ * channel to the bottom, which gives the time at the top. The search waits for out_buf.
+ *
  * The search runs in this stage's thread and its OpenMP threads, between frames. in_buf must
  * hold the frames that arrive during one search pass (0.3 s).
  *
@@ -53,16 +59,24 @@ using kotekan::prometheus::Metrics;
  * @buffer in_buf   Power frames of all halves.
  *     @buffer_format   NDArray uint16 [Trfi, F]; 0 marks a missing value.
  *     @buffer_metadata chordMetadata
+ * @buffer out_buf  Optional. Dedispersed sums, one frame per search pass.
+ *     @buffer_format   NDArray float32 [Trfi, DM], 256 time samples by the number of trial DMs
+ *                      (logged at start); 0 where there is no sum.
+ *     @buffer_metadata chordMetadata
  *
  * @conf freq_id_base      Int. FPGA frequency id of the lowest channel searched.
  * @conf num_local_freq    Int. Number of channels searched, upward from freq_id_base.
  * @conf num_feeds         Int. Feeds summed in the power; sets the expected noise.
  * @conf dm_min            Double. Lowest trial DM, pc/cm^3. Default 100.
  * @conf dm_max            Double. Highest trial DM. Default 1500.
- * @conf dm_step_min       Double. Step between trial DMs at dm_min. Default 0.12.
- * @conf dm_step_max       Double. Step at dm_max; in between it grows as a power of the DM.
+ * @conf dm_knee           Double. The step between trial DMs is dm_step_min up to this DM and
+ *                         grows above it. Default dm_min.
+ * @conf dm_step_min       Double. Step between trial DMs up to dm_knee. Default 0.12.
+ * @conf dm_step_max       Double. Step at dm_max; from dm_knee it grows as a power of the DM.
  *                         Default 0.56. With 1.31 ms samples the defaults keep 94 % of the
  *                         S/N of a 1 ms pulse on average.
+ * @conf dm_file           String. File that gets the trial DMs and their sweeps in samples, as
+ *                         JSON: {"dm": [...], "sweep_samples": [...]}. Default none.
  * @conf mask_bands_mhz    List of [low, high]. Frequency ranges that are never searched.
  * @conf mask_freq_ids     List of int. FPGA frequency ids that are never searched.
  * @conf threshold         Double. S/N above which a candidate is reported. Default 8.
@@ -85,7 +99,9 @@ public:
     IncoherentBeamSearch(kotekan::Config& config, const std::string& unique_name,
                          kotekan::bufferContainer& buffers) :
         Stage(config, unique_name, buffers, std::bind(&IncoherentBeamSearch::main_thread, this)),
-        in_buf(get_buffer("in_buf")), freq_id_base(config.get<int>(unique_name, "freq_id_base")),
+        in_buf(get_buffer("in_buf")),
+        out_buf(config.exists(unique_name, "out_buf") ? get_buffer("out_buf") : nullptr),
+        freq_id_base(config.get<int>(unique_name, "freq_id_base")),
         candidates_counter(Metrics::instance().add_counter(
             "kotekan_incoherent_beam_search_candidates_total", unique_name)),
         max_snr_gauge(
@@ -122,13 +138,27 @@ public:
         const double dm_max = config.get_default<double>(unique_name, "dm_max", 1500.0);
         const double step_min = config.get_default<double>(unique_name, "dm_step_min", 0.12);
         const double step_max = config.get_default<double>(unique_name, "dm_step_max", 0.56);
-        if (dm_min <= 0 || dm_max <= dm_min || step_min <= 0 || step_max < step_min)
-            FATAL_ERROR("IncoherentBeamSearch: need 0 < dm_min < dm_max and 0 < dm_step_min <= "
-                        "dm_step_max");
-        // The step grows as a power of the DM, from dm_step_min to dm_step_max.
-        const double growth = std::log(step_max / step_min) / std::log(dm_max / dm_min);
-        for (double dm = dm_min; dm <= dm_max; dm += step_min * std::pow(dm / dm_min, growth))
+        const double dm_knee = config.get_default<double>(unique_name, "dm_knee", dm_min);
+        if (dm_min <= 0 || dm_knee < dm_min || dm_max <= dm_knee || step_min <= 0
+            || step_max < step_min)
+            FATAL_ERROR("IncoherentBeamSearch: need 0 < dm_min <= dm_knee < dm_max and 0 < "
+                        "dm_step_min <= dm_step_max");
+        // The step is dm_step_min up to dm_knee, and grows from there as a power of the DM to
+        // dm_step_max at dm_max.
+        const double growth = std::log(step_max / step_min) / std::log(dm_max / dm_knee);
+        for (double dm = dm_min; dm <= dm_max;
+             dm += step_min * std::pow(std::max(dm / dm_knee, 1.0), growth))
             params.dms.push_back(dm);
+        INFO("IncoherentBeamSearch: {:d} trial DMs", params.dms.size());
+        if (out_buf != nullptr) {
+            out_buf->register_producer(unique_name);
+            out_buf->ensure_frame_desc(kotekan::GenericNDArray::describe(
+                kotekan::float32, "incoherent_beam_sums",
+                {IncoherentSearch::chunk, (std::ptrdiff_t)params.dms.size()}, {"Trfi", "DM"},
+                {period, 1}));
+            out_desc = out_buf->get_frame_desc<kotekan::GenericNDArray>();
+            params.keep_sums = true;
+        }
         params.mask_bands_mhz = config.get_default<std::vector<std::pair<double, double>>>(
             unique_name, "mask_bands_mhz", {});
         for (int id : config.get_default<std::vector<int>>(unique_name, "mask_freq_ids", {})) {
@@ -164,6 +194,21 @@ public:
             candidate_file.open(path, std::ios::app);
             if (!candidate_file)
                 FATAL_ERROR("IncoherentBeamSearch: cannot open candidate_file {:s}", path);
+        }
+
+        const std::string dm_path = config.get_default<std::string>(unique_name, "dm_file", "");
+        if (!dm_path.empty()) {
+            std::vector<int64_t> sweeps;
+            for (int d = 0; d < (int)params.dms.size(); ++d)
+                sweeps.push_back(search->sweep_samples(d));
+            std::error_code ignored;
+            std::filesystem::create_directories(std::filesystem::path(dm_path).parent_path(),
+                                                ignored);
+            std::ofstream dm_file(dm_path);
+            dm_file << nlohmann::json({{"dm", params.dms}, {"sweep_samples", sweeps}}).dump()
+                    << std::endl;
+            if (!dm_file)
+                FATAL_ERROR("IncoherentBeamSearch: cannot write dm_file {:s}", dm_path);
         }
     }
 
@@ -259,8 +304,32 @@ private:
             report();
     }
 
+    // Writes the sums of the search pass that just ran to out_buf, as [time][DM].
+    void write_sums() {
+        uint8_t* const frame = out_buf->wait_for_empty_frame(unique_name, out_id);
+        if (frame == nullptr)
+            return;
+        const std::vector<float>& sums = search->last_sums(); // [DM][time]
+        const size_t num_dm = params.dms.size();
+        float* const out = (float*)frame;
+        for (size_t d = 0; d < num_dm; ++d)
+            for (size_t k = 0; k < IncoherentSearch::chunk; ++k)
+                out[k * num_dm + d] = sums[d * IncoherentSearch::chunk + k];
+
+        out_buf->allocate_new_metadata_object(out_id);
+        const auto meta = get_chord_metadata(out_buf, out_id);
+        meta->set_from_frame_desc(out_desc);
+        const int64_t first = origin + search->num_samples() - IncoherentSearch::chunk;
+        meta->set_fpga_seq_num(first * period + phase);
+        meta->set_time_downsampling_fpga(period);
+        out_buf->mark_frame_full(unique_name, out_id);
+        out_id = (out_id + 1) % out_buf->num_frames;
+    }
+
     // Called after each search pass.
     void report() {
+        if (out_buf != nullptr)
+            write_sums();
         recent_max[num_reports++ % recent_max.size()] = search->take_max_snr();
         max_snr_gauge.set(*std::max_element(recent_max.begin(), recent_max.end()));
         channels_used_gauge.set(search->channels_used());
@@ -288,8 +357,11 @@ private:
     }
 
     Buffer* const in_buf;
+    Buffer* const out_buf; // nullptr when the sums are not written
     const int freq_id_base;
     std::shared_ptr<const kotekan::GenericNDArray> in_desc;
+    std::shared_ptr<const kotekan::GenericNDArray> out_desc;
+    int out_id = 0;
     std::ptrdiff_t frame_samples = 0;
     std::ptrdiff_t frame_freqs = 0;
     int64_t period = 0; // FPGA samples per time sample

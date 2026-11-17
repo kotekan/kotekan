@@ -34,6 +34,8 @@ struct IncoherentSearchParams {
     double holdoff_s = 120.0;
     /// OpenMP threads for the dedispersion
     int num_threads = 4;
+    /// Keep each pass's dedispersed sums for IncoherentSearch::last_sums()
+    bool keep_sums = false;
 };
 
 /// One pulse candidate.
@@ -69,13 +71,16 @@ struct IncoherentCandidate {
  * candidate when they lie within the dispersion sweep between the two DMs and are either close in
  * DM or much weaker (the residue of a bright pulse at another DM).
  *
- * Widths of 1 to 16 samples are tried, in passes of 256 samples; these and the mask thresholds
- * are constants in the source.
+ * Widths of 1 to 16 samples are tried, in passes of `chunk` samples; the widths and the mask
+ * thresholds are constants in the source.
  *
  * The object has no dependencies in kotekan and is not thread safe.
  */
 class IncoherentSearch {
 public:
+    /// Samples per search pass
+    static constexpr int chunk = 256;
+
     explicit IncoherentSearch(const IncoherentSearchParams& params);
 
     /**
@@ -90,6 +95,23 @@ public:
 
     /// Highest S/N of any DM and width since the last call, after the hold-off.
     double take_max_snr();
+
+    /**
+     * @brief The dedispersed sums of the last search pass, [DM][chunk], when params.keep_sums.
+     *
+     * A value is the sum over the channels of their normalized samples along the dispersion
+     * curve, before any width or baseline. Column k is the curve that reaches the bottom
+     * channel at sample num_samples() - chunk + k, so that all DMs fill a pass together; it
+     * left the top channel sweep_samples() earlier. 0 where there is no sum yet.
+     */
+    const std::vector<float>& last_sums() const {
+        return pass_sums;
+    }
+
+    /// Delay of the bottom channel against the top channel at trial DM d, in samples
+    int64_t sweep_samples(int d) const {
+        return max_delay[d];
+    }
 
     /// Samples added so far
     int64_t num_samples() const {
@@ -176,6 +198,7 @@ private:
     std::vector<double> sum_var;     // [D][W]: running variance of each width's statistic
     std::vector<int64_t> sum_count;  // [D][W]: updates of sum_var
     std::vector<double> sigma_floor; // [W]: lower limit of the sigma that divides a statistic
+    std::vector<float> pass_sums;    // [D][chunk] when p.keep_sums: see last_sums()
 
     std::vector<Event> events; // open candidates, and reported ones that still absorb residue
     std::vector<IncoherentCandidate> candidates;
