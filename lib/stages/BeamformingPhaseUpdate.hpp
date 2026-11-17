@@ -30,8 +30,9 @@
  *
  * @conf   num_elements             Int. Number of elements (2 * num_feeds)
  * @conf   num_beams                Int. Number of beams
- * @conf   beam_offset              Int. Offset in the phase buffer frame 
- *                                  N.B. The (offset + num_beams)*beam_size must be <= out_buf.frame_size
+ * @conf   beam_offset              Int. Offset in the phase buffer frame
+ *                                  N.B. The (offset + num_beams)*beam_size must be <=
+ * out_buf.frame_size
  * @conf   inst_lat                 Double. The Instrument latitude
  * @conf   inst_long                Double. The Instrument longitude
  * @conf   num_local_freq           Int. Number of local frequencies

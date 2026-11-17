@@ -6,8 +6,8 @@
 #include "chordMetadata.hpp"
 #include "configUpdater.hpp"  // for configUpdater
 #include "kotekanLogging.hpp" // for DEBUG
-#include "visUtil.hpp"        // for frameID
 #include "util.h"             // for hex_dump
+#include "visUtil.hpp"        // for frameID
 
 
 using kotekan::bufferContainer;
@@ -22,7 +22,8 @@ STAGE_CONSTRUCTOR(BeamformingPhaseUpdate) {
     _num_local_beams = config.get_default<uint32_t>(unique_name, "num_local_beams", _num_beams);
 
     if (_beam_offset + _num_local_beams > _num_beams) {
-        throw std::runtime_error("The offset + num_local_beams is larger than the total number of beams");
+        throw std::runtime_error(
+            "The offset + num_local_beams is larger than the total number of beams");
     }
 
     _inst_lat = config.get<double>(unique_name, "inst_lat");
@@ -37,10 +38,13 @@ STAGE_CONSTRUCTOR(BeamformingPhaseUpdate) {
     // Get feed locations.
     feed_locations =
         config.get<std::vector<std::pair<double, double>>>(unique_name, "feed_positions");
-    if (feed_locations.size() != Telescope::instance().get_grid_size_x() * Telescope::instance().get_grid_size_y()) {
-      FATAL_ERROR("Unepected number of feed_positions that does not match telescope dish count. Expected {:d} but got {:d}.",
-                  Telescope::instance().get_grid_size_x() * Telescope::instance().get_grid_size_y(),
-                  feed_locations.size());
+    if (feed_locations.size()
+        != Telescope::instance().get_grid_size_x() * Telescope::instance().get_grid_size_y()) {
+        FATAL_ERROR("Unepected number of feed_positions that does not match telescope dish count. "
+                    "Expected {:d} but got {:d}.",
+                    Telescope::instance().get_grid_size_x()
+                        * Telescope::instance().get_grid_size_y(),
+                    feed_locations.size());
     }
 
     // Register on buffers
@@ -50,28 +54,27 @@ STAGE_CONSTRUCTOR(BeamformingPhaseUpdate) {
     // only want the metadata, no there is no require_frame_desc here
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
-    out_buf->ensure_frame_desc(
-        kotekan::GenericNDArray::describe(
-            kotekan::float32, "A",
-            {1, _num_local_freq, 2 /* num_polarizations */,
-             _num_beams, ptrdiff_t(Telescope::instance().get_grid_size_x() * Telescope::instance().get_grid_size_y()), 2 /* complex comps */},
-             {"Tbb", "F", "P", "B", "D", "C"},
-             { _phase_lifetime_in_samples, 1, 1, 1, 1, 1}));
+    out_buf->ensure_frame_desc(kotekan::GenericNDArray::describe(
+        kotekan::float32, "A",
+        {1, _num_local_freq, 2 /* num_polarizations */, _num_beams,
+         ptrdiff_t(Telescope::instance().get_grid_size_x()
+                   * Telescope::instance().get_grid_size_y()),
+         2 /* complex comps */},
+        {"Tbb", "F", "P", "B", "D", "C"}, {_phase_lifetime_in_samples, 1, 1, 1, 1, 1}));
     if (config.exists(unique_name.c_str(), "gains_buf")) {
         gains_buf = get_buffer("gains_buf");
         gains_buf->register_consumer(unique_name);
-        gains_buf->require_frame_desc(
-          kotekan::GenericNDArray::describe(
-              kotekan::float16, "A",
-              {1, _num_local_freq, 2 /* num_polarizations */,
-               ptrdiff_t(Telescope::instance().get_grid_size_x()), ptrdiff_t(Telescope::instance().get_grid_size_y()), 2 /* complex comps */},
-               {"TW", "Fbar", "P", "dishN", "dishM", "C"},
-               { _phase_lifetime_in_samples, 1, 1, 1, 1, 1}));
+        gains_buf->require_frame_desc(kotekan::GenericNDArray::describe(
+            kotekan::float16, "A",
+            {1, _num_local_freq, 2 /* num_polarizations */,
+             ptrdiff_t(Telescope::instance().get_grid_size_x()),
+             ptrdiff_t(Telescope::instance().get_grid_size_y()), 2 /* complex comps */},
+            {"TW", "Fbar", "P", "dishN", "dishM", "C"},
+            {_phase_lifetime_in_samples, 1, 1, 1, 1, 1}));
     }
 
     // Listen for DUT1 (UT1 - UTC) offset.
-    std::string DUT1 =
-        config.get_default<std::string>(unique_name, "updatable_config/DUT1", "");
+    std::string DUT1 = config.get_default<std::string>(unique_name, "updatable_config/DUT1", "");
     if (DUT1.length() > 0)
         kotekan::configUpdater::instance().subscribe(
             DUT1, std::bind(&BeamformingPhaseUpdate::update_DUT1, this, std::placeholders::_1));
@@ -113,7 +116,8 @@ bool BeamformingPhaseUpdate::tracking_update_callback(nlohmann::json& json, cons
             return false;
         }
         INFO("[tracking] Updated Beam={:d} RA={:.2f} Dec={:.2f} Scl={:d}", beam_id,
-             _beam_coord.right_ascension[beam_id], _beam_coord.declination[beam_id], _beam_coord.scaling[beam_id]);
+             _beam_coord.right_ascension[beam_id], _beam_coord.declination[beam_id],
+             _beam_coord.scaling[beam_id]);
     }
     return true;
 }
@@ -132,7 +136,8 @@ bool BeamformingPhaseUpdate::update_DUT1(nlohmann::json& json) {
 
 BeamformingPhaseUpdate::~BeamformingPhaseUpdate() {}
 
-void BeamformingPhaseUpdate::copy_scaling(const chordMetadata::beamCoord& beam_coord, float* scaling) {
+void BeamformingPhaseUpdate::copy_scaling(const chordMetadata::beamCoord& beam_coord,
+                                          float* scaling) {
     for (uint32_t i = 0; i < _num_beams; ++i) {
         // In the case that we set scaling to one, we don't want to add the extra factor of
         // 0.5 to the scaling factor, since in the case of scaling == 1, we want no scaling at all.
@@ -183,7 +188,7 @@ void BeamformingPhaseUpdate::main_thread() {
                 // Check if there is a new frame of gains in buffer, if so use it,
                 // if not continute using the existing frame.
                 auto status = gains_buf->wait_for_full_frame_timeout(unique_name,
-                                                          gains_frame_next_id, timeout);
+                                                                     gains_frame_next_id, timeout);
                 if (status == -1) {
                     break;
                 }
@@ -196,7 +201,8 @@ void BeamformingPhaseUpdate::main_thread() {
                     // Update to the new frame.
                     gains_frame =
                         gains_buf->wait_for_full_frame(unique_name, gains_frame_next_id++);
-                    // In case we exit between the timeout wait, and the wait to get the frame pointer.
+                    // In case we exit between the timeout wait, and the wait to get the frame
+                    // pointer.
                     if (gains_frame == nullptr)
                         break;
                 }
