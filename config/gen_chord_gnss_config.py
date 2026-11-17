@@ -696,7 +696,7 @@ def load_summary(out, cfg, gpus):
     load = {}
     for k, v in out.items():
         if k.startswith("gnss") and isinstance(v, dict) and "cpu_affinity" in v:
-            # A record host's work runs on its workers' cores.
+            # A host's work runs on its workers' cores.
             for w in v.get("workers") or [v]:
                 for c in w["cpu_affinity"]:
                     load.setdefault(c, []).append(v.get("kotekan_stage", "?"))
@@ -1936,27 +1936,43 @@ RECORD_ROW_KEYS = (
 )
 
 
-def record_host_form(blocks, pres, gpu):
-    """--record-host: the half's record assemblers as rows of one GnssGpuRecordAssemble,
-    gnss<g>_records, each keyed by its gnss_row, the name of the stage it replaces less
-    _n2assemble, so its REST paths, buffer client names, lane owners and cube sender stay that
-    stage's. Each row runs on a worker of its own, in gnss_rows order, on that stage's core; the
-    host's cpu_affinity is the union of its workers'. The rows keep their record buffers and
-    cube streams."""
-    asms = [blocks.pop(p["pre"] + "n2assemble") for p in pres]
+# The keys a chain's combiner keeps in its row of gnss<g>_combine (--combine-host):
+# GnssCoherentCombiner's ROW_KEYS and ROW_ONLY_KEYS, as RECORD_ROW_KEYS.
+COMBINE_ROW_KEYS = ("in_bufs", "n_prn", "out_buf")
+
+
+def host_form(blocks, pres, stage, row_keys, name):
+    """The half's per-chain stages <pre><stage> as rows of one stage, `name`, each keyed by the
+    chain's prefix less its trailing underscore, so the host names it as the stage it replaces. Each row runs on a worker of its own, in gnss_rows order, on that stage's core;
+    the host's cpu_affinity is the union of its workers'."""
+    stages = [blocks.pop(p["pre"] + stage) for p in pres]
     host = {
         k: v
-        for k, v in asms[0].items()
-        if k not in RECORD_ROW_KEYS + ("cpu_affinity",)
-        and all(k in a and a[k] == v for a in asms)
+        for k, v in stages[0].items()
+        if k not in row_keys + ("cpu_affinity",)
+        and all(k in a and a[k] == v for a in stages)
     }
-    host["cpu_affinity"] = sorted({c for a in asms for c in a["cpu_affinity"]})
+    host["cpu_affinity"] = sorted({c for a in stages for c in a["cpu_affinity"]})
     host["chains"], host["workers"] = {}, []
-    for p, a in zip(pres, asms):
+    for p, a in zip(pres, stages):
         key = p["pre"][:-1]
         host["chains"][key] = {k: v for k, v in a.items() if k not in host}
         host["workers"].append({"rows": [key], "cpu_affinity": a["cpu_affinity"]})
-    blocks[f"gnss{gpu}_records"] = host
+    blocks[name] = host
+
+
+def record_host_form(blocks, pres, gpu):
+    """--record-host: the half's record assemblers as rows of one GnssGpuRecordAssemble,
+    gnss<g>_records (host_form), so each row's REST paths, buffer client names, lane owners and
+    cube sender stay its stage's. The rows keep their record buffers and cube streams."""
+    host_form(blocks, pres, "n2assemble", RECORD_ROW_KEYS, f"gnss{gpu}_records")
+
+
+def combine_host_form(blocks, pres, gpu):
+    """--combine-host: the half's combiners as rows of one GnssCoherentCombiner, gnss<g>_combine
+    (host_form), so each row's REST paths and metric stage_name stay its stage's. The rows keep
+    their record buffers, and their out_buf with --combiner-out-buf."""
+    host_form(blocks, pres, "n2combine", COMBINE_ROW_KEYS, f"gnss{gpu}_combine")
 
 
 def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
@@ -2354,6 +2370,8 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
         inject_host_form(injects, gpu)
     if args.record_host:
         record_host_form(blocks, pres, gpu)
+    if args.combine_host:
+        combine_host_form(blocks, pres, gpu)
     merged["in_buffers"] = primary["in_buffers"]
     merged["out_buffers"] = out_buffers
     merged["commands"] = (
@@ -3872,6 +3890,14 @@ def main():
         "gnss_row, on the chain's own REST paths, record buffer and cube stream), each row on a "
         "worker thread of its own pinned to the chain's assembler core, instead of one stage "
         "per chain.",
+    )
+    ap.add_argument(
+        "--combine-host",
+        action="store_true",
+        help="one GnssCoherentCombiner per GPU half (gnss<g>_combine), hosting every chain's "
+        "combiner as a row of its chains block (keyed by its gnss_row, on the chain's own REST "
+        "paths and record buffer), each row on a worker thread of its own pinned to the chain's "
+        "combiner core, instead of one stage per chain.",
     )
     ap.add_argument(
         "--psi-synth",

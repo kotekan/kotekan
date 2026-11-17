@@ -136,16 +136,15 @@ def stage_chain(name, stage):
     return _STAGE_CHAINS.get(m.group(1) or "")
 
 
-def assembler_rows(cfg):
-    """[(name, block)] of the record assemblers in a parsed node config, by name. A top-level
-    GnssGpuRecordAssemble block is one, named by its key, unless it hosts rows (`chains:`,
-    gen_chord_gnss_config.py --record-host): then each row is one, named `<row key>_n2assemble`
-    as the host names it, which is the stage it stands for (its REST prefix, lane owner and cube
-    sender). A row's block is the host's keys overlaid with its own, with its worker's
-    cpu_affinity where the host has `workers`: the block of that stage."""
+def host_rows(cfg, kotekan_stage, suffix):
+    """[(name, block)] of the stages of type kotekan_stage in a parsed node config, by name. A
+    top-level block is one, named by its key, unless it hosts rows (`chains:`): then each row is
+    one, named `<row key><suffix>` as the host names it, which is the stage it stands for. A
+    row's block is the host's keys overlaid with its own, with its worker's cpu_affinity where
+    the host has `workers`: the block of that stage."""
     out = []
     for k, v in (cfg or {}).items():
-        if not isinstance(v, dict) or v.get("kotekan_stage") != "GnssGpuRecordAssemble":
+        if not isinstance(v, dict) or v.get("kotekan_stage") != kotekan_stage:
             continue
         if "chains" not in v:
             out.append((k, v))
@@ -156,8 +155,21 @@ def assembler_rows(cfg):
             block = dict(host, **row)
             if key in cpus:
                 block["cpu_affinity"] = cpus[key]
-            out.append((key + "_n2assemble", block))
+            out.append((key + suffix, block))
     return sorted(out, key=operator.itemgetter(0))
+
+
+def assembler_rows(cfg):
+    """host_rows of the record assemblers (GnssGpuRecordAssemble), a row of gnss<g>_records
+    (gen_chord_gnss_config.py --record-host) named `<row key>_n2assemble`, its REST prefix, lane
+    owner and cube sender."""
+    return host_rows(cfg, "GnssGpuRecordAssemble", "_n2assemble")
+
+
+def combiner_rows(cfg):
+    """host_rows of the combiners (GnssCoherentCombiner), a row of gnss<g>_combine
+    (gen_chord_gnss_config.py --combine-host) named `<row key>_n2combine`, its REST prefix."""
+    return host_rows(cfg, "GnssCoherentCombiner", "_n2combine")
 
 
 class Fleet:

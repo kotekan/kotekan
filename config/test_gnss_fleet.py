@@ -494,6 +494,56 @@ def test_assembler_rows():
     )
 
 
+def test_combiner_rows():
+    """combiner_rows reads a combiner as a stage of its own or as a row of a host, by the stage
+    it stands for, as assembler_rows reads the assemblers, and neither reads the other's."""
+    one = {
+        "gnss0_gal_e5a_n2combine": {
+            "kotekan_stage": "GnssCoherentCombiner",
+            "cpu_affinity": [41],
+            "in_bufs": ["gnss0_gal_e5a_n2rec_buf"],
+            "n_prn": 32,
+            "record_export": 128,
+        },
+        "gnss0_gps_l5_n2combine": {
+            "kotekan_stage": "GnssCoherentCombiner",
+            "cpu_affinity": [35],
+            "in_bufs": ["gnss0_gps_l5_n2rec_buf"],
+            "n_prn": 32,
+            "record_export": 128,
+        },
+        "gnss0_gps_l5_n2assemble": {"kotekan_stage": "GnssGpuRecordAssemble"},
+    }
+    hosted = {
+        "gnss0_combine": {
+            "kotekan_stage": "GnssCoherentCombiner",
+            "cpu_affinity": [35, 41],
+            "record_export": 128,
+            "chains": {
+                "gnss0_gps_l5": {"in_bufs": ["gnss0_gps_l5_n2rec_buf"], "n_prn": 32},
+                "gnss0_gal_e5a": {"in_bufs": ["gnss0_gal_e5a_n2rec_buf"], "n_prn": 32},
+            },
+            "workers": [
+                {"rows": ["gnss0_gps_l5"], "cpu_affinity": [35]},
+                {"rows": ["gnss0_gal_e5a"], "cpu_affinity": [41]},
+            ],
+        },
+        "gnss0_gps_l5_n2assemble": {"kotekan_stage": "GnssGpuRecordAssemble"},
+    }
+    want = [(k, v) for k, v in sorted(one.items()) if k.endswith("_n2combine")]
+    check(gf.combiner_rows(one) == want, "combiner_rows: the stages of their own")
+    check(gf.combiner_rows(hosted) == want, "combiner_rows: the host's rows alike")
+    check(
+        gf.assembler_rows(hosted)
+        == [("gnss0_gps_l5_n2assemble", hosted["gnss0_gps_l5_n2assemble"])],
+        "assembler_rows reads no combiner row",
+    )
+    check(
+        gf.stage_chain("gnss0_combine", "n2combine") is None,
+        "stage_chain reads no chain from a combine host's name",
+    )
+
+
 def test_live_comb_reads_the_frames():
     """live_comb takes each GPU's comb from its n2_buffer frame's freq_id; a node that does
     not answer, or a frame outside the science band, gives no verdict."""

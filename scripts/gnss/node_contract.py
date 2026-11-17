@@ -16,14 +16,14 @@ The facets:
 
   rest       the per-chain REST paths kotekan registers: the inject's four, per row of a
              hosted inject (gnssTrackChain.cpp), the assembler's, per row of a record host
-             (GnssGpuRecordAssemble's constructor) and the combiner's
-             (GnssCoherentCombiner::main_thread), conditions restated
+             (GnssGpuRecordAssemble's constructor) and the combiner's, per row of a combine
+             host (GnssCoherentCombiner::main_thread), conditions restated
   identity   the names other stages and processes key on: each assembler's ProjBoard group,
              lane owner and cube sender, GnssN2Project board_group, cudaGnssBeamDump
              beam_lane_owner, the telemetry header fields and frame size, bufferSend addresses
-  placement  numa_node of every buffer and cpu_affinity of every stage, a record host's rows
-             at their workers' cores beside the host; a gnss<g>_ buffer off NUMA node g is
-             listed as misplaced
+  placement  numa_node of every buffer and cpu_affinity of every stage, a host's rows at their
+             workers' cores beside the host; a gnss<g>_ buffer off NUMA node g is listed as
+             misplaced
   stall      per chain, the GPU frames of slack before cudaOutputData blocks the half:
              min(tiles, ctl) + epl + usable rec frames / records per frame, keyed by its
              adapter, or by its assembler when that reads the tiles and ctl itself, with its own
@@ -31,7 +31,8 @@ The facets:
              cudaOutputData's tiles and ctl through its records is listed under its own name
              with its (negative) timeout
   census     what elem_shared_ref, lane_relay, gen_fleet, viscap_read and gnss_fleet.stage_chain
-             find in the config, each by its own code
+             find in the config, each by its own code; stage_chain names each combiner
+             gnss_fleet.combiner_rows finds
 
 snapshot refuses a config that sets a test-only key (TEST_ONLY) anywhere: such a key must never
 reach a node.
@@ -104,30 +105,30 @@ def _get(scope, key, default=None):
     return default
 
 
-def _record_host(u, s):
-    """Whether top-level block u hosts record assembler rows (gen_chord_gnss_config.py
-    --record-host)."""
+def _host(u, s):
+    """Whether top-level block u hosts record assembler or combiner rows
+    (gen_chord_gnss_config.py --record-host, --combine-host)."""
     return (
         u.count("/") == 1
-        and s[0].get("kotekan_stage") == "GnssGpuRecordAssemble"
+        and s[0].get("kotekan_stage")
+        in ("GnssGpuRecordAssemble", "GnssCoherentCombiner")
         and "chains" in s[0]
     )
 
 
 def _stages(cfg, kind=None):
-    """(unique_name, scope) of every stage, with a record host's rows in place of the host, each
-    as the stage it stands for (gnss_fleet.assembler_rows), scoped [its block, the root]. A row
-    named as a top-level block is a ValueError: kotekan refuses the config."""
+    """(unique_name, scope) of every stage, with a host's rows in place of the host, each as the
+    stage it stands for (gnss_fleet.assembler_rows, gnss_fleet.combiner_rows), scoped [its
+    block, the root]. A row named as a top-level block is a ValueError: kotekan refuses the
+    config."""
     out = [
-        (u, s)
-        for u, s in _blocks(cfg)
-        if "kotekan_stage" in s[0] and not _record_host(u, s)
+        (u, s) for u, s in _blocks(cfg) if "kotekan_stage" in s[0] and not _host(u, s)
     ]
-    for n, b in gnss_fleet.assembler_rows(cfg):
+    for n, b in gnss_fleet.assembler_rows(cfg) + gnss_fleet.combiner_rows(cfg):
         if cfg.get(n) is b:
-            continue  # a top-level assembler, listed above
+            continue  # a top-level stage, listed above
         if n in cfg:
-            raise ValueError("record host row %s is also a top-level block" % n)
+            raise ValueError("host row %s is also a top-level block" % n)
         out.append(("/" + n, [b, cfg]))
     return [(u, s) for u, s in out if kind in (None, s[0]["kotekan_stage"])]
 
@@ -258,7 +259,7 @@ def placement(cfg):
         m = re.match(r"gnss(\d)_", name)
         if m and numa[name] != int(m.group(1)):
             misplaced.append(name)
-    hosts = [(u, s) for u, s in _blocks(cfg) if _record_host(u, s)]
+    hosts = [(u, s) for u, s in _blocks(cfg) if _host(u, s)]
     return {
         "numa": numa,
         "cpu": {u: _get(s, "cpu_affinity", []) for u, s in _stages(cfg) + hosts},
@@ -395,6 +396,10 @@ def census(cfg_path, node, host=None):
             chains.append(
                 "cube %s -> %s" % (cube, gnss_fleet.stage_chain(cube, "n2assemble"))
             )
+    for n, _ in gnss_fleet.combiner_rows(cfg):
+        chains.append(
+            "combiner /%s -> %s" % (n, gnss_fleet.stage_chain(n, "n2combine"))
+        )
     for owner in identity(cfg, node)["beam_lane_owner"].values():
         chains.append(
             "beam_lane_owner %s -> %s"

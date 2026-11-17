@@ -5,10 +5,11 @@
     scripts/gnss/replay_extract.py CONFIG OUT.json --chains gnss0_gps_l5 gnss0_gal_e5a
 
 Each chain's four host-stage blocks (<pre>_n2assemble_tiles, <pre>_n2assemble, <pre>_n2combine,
-<pre>_telem_pack) are copied verbatim, except that the buffer keys name the replay's buffers and
-cpu_affinity is empty. The test reads the result through GNSS_REPLAY_CONFIG=OUT.json. The
-default chains are gnss0's gps_l5 and gal_e5a, which share channels and PRNs, and glo_l2oc,
-the chain with a record_cp_mod_chips.
+<pre>_telem_pack) are copied verbatim, a row of a host as the stage it stands for
+(gnss_fleet.assembler_rows, gnss_fleet.combiner_rows), except that the buffer keys name the
+replay's buffers and cpu_affinity is empty. The test reads the result through
+GNSS_REPLAY_CONFIG=OUT.json. The default chains are gnss0's gps_l5 and gal_e5a, which share
+channels and PRNs, and glo_l2oc, the chain with a record_cp_mod_chips.
 """
 import argparse
 import json
@@ -17,7 +18,11 @@ import sys
 
 import yaml
 
-from gen_fleet import _split_header
+sys.path.insert(
+    0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "config")
+)
+from gen_fleet import _split_header  # noqa: E402
+import gnss_fleet  # noqa: E402
 
 DEFAULT_CHAINS = ("gnss0_gps_l5", "gnss0_gal_e5a", "gnss0_glo_l2oc")
 
@@ -27,14 +32,17 @@ def extract(config_path, chains=DEFAULT_CHAINS):
     with open(config_path) as f:
         _, body = _split_header(f.read())
     cfg = yaml.load(body, Loader=yaml.CSafeLoader)
+    stages = dict(cfg)
+    stages.update(gnss_fleet.assembler_rows(cfg))
+    stages.update(gnss_fleet.combiner_rows(cfg))
     out = []
     for pre in chains:
 
         def block(suffix):
             key = pre + suffix
-            if key not in cfg:
+            if key not in stages:
                 raise KeyError(f"{config_path}: no {key}")
-            b = dict(cfg[key])
+            b = dict(stages[key])
             b["cpu_affinity"] = []
             return b
 

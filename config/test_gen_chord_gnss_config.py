@@ -33,6 +33,7 @@ BASE = "config/base/live_config_20260730.json"
 sys.path.insert(0, HERE)
 import gen_chord_gnss_config as g  # noqa: E402
 import gnss_chain_table  # noqa: E402
+import gnss_fleet  # noqa: E402
 
 sys.path.append(os.path.join(ROOT, "python", "scripts", "gnss"))
 import kotekan_src  # noqa: E402
@@ -567,6 +568,82 @@ def test_record_host_form():
         and blocks["gnss1_records"] == want,
         "record_host_form hosts the rows in gnss_rows order (%s)"
         % json.dumps(blocks.get("gnss1_records"), sort_keys=True)[:300],
+    )
+
+
+def test_combine_row_keys_are_the_stages():
+    """COMBINE_ROW_KEYS is GnssCoherentCombiner's ROW_KEYS and ROW_ONLY_KEYS."""
+    with open(
+        os.path.join(ROOT, "lib", "stages", "gnss", "GnssCoherentCombiner.cpp")
+    ) as f:
+        src = f.read()
+    keys = set()
+    for name in ("ROW_KEYS", "ROW_ONLY_KEYS"):
+        m = re.search(r"GnssCoherentCombiner::%s = \{(.*?)\};" % name, src, re.S)
+        keys |= (
+            set(re.findall(r'"(\w+)"', m.group(1))) if m else {"<%s missing>" % name}
+        )
+    check(
+        keys == set(g.COMBINE_ROW_KEYS),
+        "COMBINE_ROW_KEYS is the stage's row keys (only in one: %s)"
+        % sorted(keys ^ set(g.COMBINE_ROW_KEYS)),
+    )
+
+
+def test_combine_host_form():
+    """combine_host_form: keys every chain shares at one value go on the host, the rest and
+    every COMBINE_ROW_KEYS key stay in the rows, each row its own worker on its core."""
+    blocks = {
+        "gnss0_a_n2combine": {
+            "kotekan_stage": "GnssCoherentCombiner",
+            "cpu_affinity": [41],
+            "in_bufs": ["gnss0_a_n2rec_buf"],
+            "out_buf": "gnss0_a_n2cmb_buf",
+            "n_prn": 32,
+            "n_elements": 128,
+            "record_export": 128,
+        },
+        "gnss0_b_n2combine": {
+            "kotekan_stage": "GnssCoherentCombiner",
+            "cpu_affinity": [35],
+            "in_bufs": ["gnss0_b_n2rec_buf"],
+            "out_buf": "gnss0_b_n2cmb_buf",
+            "n_prn": 32,
+            "n_elements": 128,
+            "record_export": 128,
+            "integration_length": 200,
+        },
+        "gnss0_b_n2rec_buf": {"kotekan_buffer": "standard"},
+    }
+    g.combine_host_form(blocks, [{"pre": "gnss0_b_"}, {"pre": "gnss0_a_"}], 0)
+    want = {
+        "kotekan_stage": "GnssCoherentCombiner",
+        "n_elements": 128,
+        "record_export": 128,
+        "cpu_affinity": [35, 41],
+        "chains": {
+            "gnss0_a": {
+                "in_bufs": ["gnss0_a_n2rec_buf"],
+                "out_buf": "gnss0_a_n2cmb_buf",
+                "n_prn": 32,
+            },
+            "gnss0_b": {
+                "in_bufs": ["gnss0_b_n2rec_buf"],
+                "out_buf": "gnss0_b_n2cmb_buf",
+                "n_prn": 32,
+                "integration_length": 200,
+            },
+        },
+        "workers": [
+            {"rows": ["gnss0_b"], "cpu_affinity": [35]},
+            {"rows": ["gnss0_a"], "cpu_affinity": [41]},
+        ],
+    }
+    check(
+        sorted(blocks) == ["gnss0_b_n2rec_buf", "gnss0_combine"]
+        and blocks["gnss0_combine"] == want,
+        "combine_host_form hosts the rows in gnss_rows order, n_prn and out_buf in each "
+        "(%s)" % json.dumps(blocks.get("gnss0_combine"), sort_keys=True)[:300],
     )
 
 
@@ -1457,6 +1534,43 @@ def test_combiner_out_buf():
         off == trimmed,
         "--no-combiner-out-buf: the default less every n2cmb_buf, n2sink and combiner out_buf",
     )
+
+
+def test_combine_host():
+    """--combine-host, alone or with --no-combiner-out-buf, moves each half's combiners into
+    gnss<g>_combine and changes nothing else: read by gnss_fleet.combiner_rows, the host's rows
+    are the combiners without the flag, cores included."""
+    if kotekan_src.SRC is None:
+        print("  [SKIP] node config: no kotekan tree to render the base from")
+        return
+    for extra in ([], ["--no-combiner-out-buf"]):
+        exc, plain = _lane_transfer_node(flags=extra)
+        exc_h, hosted = _lane_transfer_node(flags=extra + ["--combine-host"])
+        check(
+            exc is None and exc_h is None,
+            "%s: the node configs generate (%s, %s)" % (extra, exc, exc_h),
+        )
+        if None in (plain, hosted):
+            continue
+        cmb = {
+            k: v
+            for k, v in plain.items()
+            if isinstance(v, dict) and v.get("kotekan_stage") == "GnssCoherentCombiner"
+        }
+        rows = dict(gnss_fleet.combiner_rows(hosted))
+        check(
+            len(cmb) == 6 and rows == cmb,
+            "%s: the hosts' rows are the combiners without the flag (%d, %d)"
+            % (extra, len(cmb), len(rows)),
+        )
+        others = {k: v for k, v in plain.items() if k not in cmb}
+        check(
+            {k: v for k, v in hosted.items() if not re.fullmatch(r"gnss\d_combine", k)}
+            == others
+            and sorted(k for k in hosted if re.fullmatch(r"gnss\d_combine", k))
+            == ["gnss0_combine", "gnss1_combine"],
+            "%s: one host per half, and nothing else changes" % extra,
+        )
 
 
 def test_upper_l_band_node():

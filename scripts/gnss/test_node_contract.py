@@ -20,7 +20,9 @@ each half must have one injector whose rows, merged with its own keys, are DIR4'
 With GNSS_CONTRACT_RECORDS=DIR6 (DIR4's flags and --record-host) its contract must be DIR4's plus
 each half's record host, whose rows, read by gnss_fleet.assembler_rows, must be DIR4's
 assemblers; GNSS_CONTRACT_RECORDS_HOSTED=DIR7 (DIR5's flags and --record-host) likewise
-against DIR5.
+against DIR5. With GNSS_CONTRACT_COMBINE=DIR8 (DIR7's flags and --combine-host) its contract must be
+DIR7's plus each half's combine host, whose rows, read by gnss_fleet.combiner_rows, must be DIR7's
+combiners; GNSS_CONTRACT_COMBINE_ALONE=DIR9 (--combine-host alone) likewise against DIR.
 """
 import collections
 import copy
@@ -143,6 +145,17 @@ def test_counts(base, cfg):
     check(
         owners == 30 and not lost,
         "built_instances holds all %d assemblers' chains (not: %s)" % (owners, lost),
+    )
+    cmb = [e for e in cen["gnss_fleet.stage_chain"] if e.startswith("combiner ")]
+    check(
+        len(cmb) == 30
+        and all(
+            re.match(r"combiner /(gnss\d_\w+)_n2combine -> \w+$", e)
+            and "GET %s/get_status" % e.split(" ")[1] in rest
+            for e in cmb
+        ),
+        "stage_chain names all 30 combiners, each one rest_surface serves (%d)"
+        % len(cmb),
     )
     held = held_zeros(cfg)
     check(
@@ -287,6 +300,7 @@ def test_mutations(cfg, head, base, d):
         nc.elem_shared_ref._REFS.clear()
     cen = s["census"]
     was = base["census"]
+    lever_census, lever_rest = facet_lines(lines, "census"), facet_lines(lines, "rest")
     for tool in ("elem_shared_ref.endpoints", "lane_relay.inst_stage"):
         g0 = [e for e in cen[tool] if e.startswith(("gnss0_", "0: "))]
         had = [e for e in was[tool] if e.startswith(("gnss0_", "0: "))]
@@ -296,8 +310,55 @@ def test_mutations(cfg, head, base, d):
             % (tool, len(had), len(g0)),
         )
     check(
-        facet_lines(lines, "census") and facet_lines(lines, "rest"),
+        lever_census and lever_rest,
         "top-level tools: the moved blocks show in census and rest",
+    )
+
+    combiners = [k for k in cfg if k.startswith("gnss0_") and k.endswith("_n2combine")]
+
+    def move_combiners(c):
+        """gnss0's combiners as rows of one host, as --combine-host hosts them."""
+        rows = {k[: -len("_n2combine")]: c.pop(k) for k in combiners}
+        workers = [
+            {"rows": [k], "cpu_affinity": r.pop("cpu_affinity")}
+            for k, r in rows.items()
+        ]
+        for r in rows.values():
+            del r["kotekan_stage"]
+        c["gnss0_combine"] = {
+            "kotekan_stage": "GnssCoherentCombiner",
+            "cpu_affinity": sorted({x for w in workers for x in w["cpu_affinity"]}),
+            "chains": rows,
+            "workers": workers,
+        }
+
+    s, lines = run("moved combiners", move_combiners)
+    check(
+        len(combiners) == 16
+        and lines
+        == [
+            "+ placement: cpu /gnss0_combine = %r"
+            % s["placement"]["cpu"]["/gnss0_combine"]
+        ],
+        "the moved combiners show only as their host's cores: %s" % lines[:4],
+    )
+
+    # The same move read through a combiner_rows that sees only top-level stages: the census
+    # and the REST surface lose gnss0's combiners.
+    cmb_of = nc.gnss_fleet.combiner_rows
+    nc.gnss_fleet.combiner_rows = lambda c: [(n, b) for n, b in cmb_of(c) if n in c]
+    try:
+        s, lines = run("moved combiners, top-level tools", move_combiners)
+    finally:
+        nc.gnss_fleet.combiner_rows = cmb_of
+    lost = ["- census: gnss_fleet.stage_chain combiner /%s -> " % k for k in combiners]
+    cen = facet_lines(lines, "census")
+    check(
+        len(cen) == 16
+        and all(any(ln.startswith(x) for ln in cen) for x in lost)
+        and len(facet_lines(lines, "rest")) == 16 * 3,
+        "top-level tools: the moved combiners leave the census (%d lines) and rest (%d)"
+        % (len(cen), len(facet_lines(lines, "rest"))),
     )
 
 
@@ -532,6 +593,68 @@ def test_records(rows_dir, rec_dir):
     )
 
 
+def test_combine(a_dir, c_dir):
+    """A config generated with --combine-host against the same flags without it."""
+    apath, cpath = os.path.join(a_dir, NAME), os.path.join(c_dir, NAME)
+    acfg, ccfg = nc.load(apath), nc.load(cpath)
+    cs = nc.snapshot(cpath, NODE, NODE)
+    lines = nc.diff(nc.snapshot(apath, NODE, NODE), cs)
+    want = [
+        "+ placement: cpu /gnss%d_combine = %r"
+        % (g, cs["placement"]["cpu"]["/gnss%d_combine" % g])
+        for g in (0, 1)
+    ]
+    check(
+        sorted(lines) == want,
+        "combine: the contract is that without the flag, plus each half's host (%s)"
+        % lines[:5],
+    )
+    cmb = {
+        k: v
+        for k, v in acfg.items()
+        if isinstance(v, dict) and v.get("kotekan_stage") == "GnssCoherentCombiner"
+    }
+    rows = dict(nc.gnss_fleet.combiner_rows(ccfg))
+    check(
+        len(cmb) == 30 and rows == cmb,
+        "combine: the hosts' rows, merged with their host's keys and their worker's cores, "
+        "are the combiners without the flag (%d, %d)" % (len(cmb), len(rows)),
+    )
+    bad = []
+    for g in (0, 1):
+        host = ccfg.get("gnss%d_combine" % g) or {}
+        keys = [k[: -len("_n2combine")] for k in cmb if k.startswith("gnss%d_" % g)]
+        workers = host.get("workers") or []
+        if sorted(r for w in workers for r in w["rows"]) != sorted(keys) or any(
+            w["cpu_affinity"] != cmb[w["rows"][0] + "_n2combine"]["cpu_affinity"]
+            or len(w["rows"]) != 1
+            for w in workers
+        ):
+            bad.append("gnss%d: one worker per row on its core" % g)
+        if host.get("cpu_affinity") != sorted(
+            {c for w in workers for c in w["cpu_affinity"]}
+        ):
+            bad.append("gnss%d: host cores" % g)
+        for k, r in (host.get("chains") or {}).items():
+            if set(r) & set(host) or not {"in_bufs", "n_prn"} <= set(r):
+                bad.append("gnss%d: row %s keys" % (g, k))
+
+    def others(c):
+        return {
+            k: v
+            for k, v in c.items()
+            if not (k.endswith("_n2combine") or re.match(r"gnss\d_combine$", k))
+        }
+
+    if others(acfg) != others(ccfg):
+        bad.append("blocks outside the combiners")
+    check(
+        not bad,
+        "combine: each half's host runs every row on its own worker on its core, sets no row "
+        "key, and nothing else changes (%s)" % bad,
+    )
+
+
 def test_replay(dump):
     """rest_surface of the replay's config against what its stages registered."""
     cpath = os.path.join(dump, "config.json")
@@ -592,6 +715,8 @@ def main():
         hosted = os.environ.get("GNSS_CONTRACT_HOSTED")
         records = os.environ.get("GNSS_CONTRACT_RECORDS")
         records_hosted = os.environ.get("GNSS_CONTRACT_RECORDS_HOSTED")
+        combine = os.environ.get("GNSS_CONTRACT_COMBINE")
+        combine_alone = os.environ.get("GNSS_CONTRACT_COMBINE_ALONE")
         tests = (
             [
                 lambda: test_counts(base, cfg),
@@ -607,6 +732,12 @@ def main():
                 if hosted and records_hosted
                 else []
             )
+            + (
+                [lambda: test_combine(records_hosted, combine)]
+                if records_hosted and combine
+                else []
+            )
+            + ([lambda: test_combine(d, combine_alone)] if combine_alone else [])
         )
         for t in tests:
             try:
