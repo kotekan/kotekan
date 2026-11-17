@@ -1,5 +1,6 @@
 """Read a frbBuffer dump into python.
 """
+
 import ctypes
 import os
 import io

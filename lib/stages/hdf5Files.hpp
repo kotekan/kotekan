@@ -4,6 +4,7 @@
 #include "DataType.hpp" // for DataType, float16_t
 
 #include <array>                         // for array
+#include <chrono>                        // for system_clock
 #include <highfive/H5DataType.hpp>       // for AtomicType, DataType, H5T_NATIVE_FLOAT
 #include <highfive/bits/h5t_wrapper.hpp> // for h5t_copy, h5t_set_ebias, h5t_set_fields, h5t_se...
 #include <string>                        // for string
@@ -46,6 +47,11 @@ HighFive::DataType chord2hdf5(const kotekan::DataType type);
  */
 std::string file_path_prefix(const std::string& dir, const std::string& file_name,
                              bool prefix_hostname, bool prefix_host_rank, int host_pool_rank);
+
+/**
+ * @brief An acquisition directory: "<base_dir>/acq_YYYYMMDD_HHMMSS_NNNNNNNNN" for time @p t (UTC)
+ */
+std::string acq_dir_path(const std::string& base_dir, std::chrono::system_clock::time_point t);
 
 /**
  * @brief Whether a dimension is a time axis

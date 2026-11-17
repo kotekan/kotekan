@@ -4,7 +4,11 @@
   Included by pathfinder.j2 (X-engine) and recv.j2 (receiver) so both label the same
   element axis from one dish_inputs table; the receiver's hdf5N2Write would write files
   mislabeled if its table ever diverged from the X-engine's at the same connected count.
+  It also sets num_local_freq, which both configs import from here.
 -#}
+{#- Frequency IDs per X-engine GPU: pathfinder.j2 sizes the pipeline with it and recv.j2 the DTV
+    products it receives. Must be divisible by 4 because pl_mask shapes use num_local_freq/4. -#}
+{% set num_local_freq = 464 -%}
 telescope:
     name: CHORDTelescope
     sampling_rate_MHz: 3200.0

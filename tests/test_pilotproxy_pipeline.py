@@ -247,16 +247,31 @@ def test_default_chord_template_leaves_detector_disabled():
     assert "host_dtv_powers_buffer" not in config
 
 
-def test_pathfinder_sends_what_recv_expects():
+@pytest.mark.parametrize("calibration", [False, True])
+def test_pathfinder_sends_what_recv_expects(calibration):
     jinja2 = pytest.importorskip("jinja2")
     yaml = pytest.importorskip("yaml")
     env = jinja2.Environment(loader=jinja2.FileSystemLoader(ROOT / "config/chord"))
     config = yaml.safe_load(
-        env.get_template("pathfinder.j2").render(dtv_write_enabled=True)
+        env.get_template("pathfinder.j2").render(
+            dtv_write_enabled=True, dtv_calibration_mode=calibration
+        )
     )
-    recv = yaml.safe_load(env.get_template("recv.j2").render())
-    products = ["mask", "powers", "fine_support", "fine_powers"]
+    recv = yaml.safe_load(
+        env.get_template("recv.j2").render(dtv_calibration_mode=calibration)
+    )
+    products = ["mask"]
+    if calibration:
+        products += ["powers", "fine_support", "fine_powers"]
     assert sorted(recv["buffer_recv_dtv"]) == sorted(products)
+    assert sorted(recv["write_dtv"]) == sorted(products)
+    assert sorted(k[: -len("_0")] for k in config["send_dtv"] if k.endswith("_0")) == (
+        sorted(products)
+    )
+    detector = config["run_dtv_detector"]["gpu_0"]["commands"][0]
+    assert ("dtv_fine_powers_name" in detector) is calibration
+    # DtvRfiMask reads the fine support in both modes.
+    assert "host_dtv_fine_support_buffer_0" in config
     for product in products:
         sent = config[f"host_dtv_{product}_send_buffer_0"]["extents"]
         sent = [config[e] if isinstance(e, str) else e for e in sent]

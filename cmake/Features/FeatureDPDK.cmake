@@ -6,7 +6,7 @@
 
 # Outputs (for summary/consumers):
 #  - DPDK_REASON : short human explanation for the status
-#  - DPDK_FOUND : Whether DPDK was found (by find_package)
+#  - DPDK_FOUND : Whether DPDK was found (by pkg_check_modules)
 
 include_guard(GLOBAL)
 include(${CMAKE_CURRENT_LIST_DIR}/../Color.cmake)
