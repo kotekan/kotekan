@@ -1497,6 +1497,9 @@ void stall_child(const std::vector<ChainSpec>& cs, Hold hold, const std::string&
             int32_t* tiles_f = (int32_t*)tiles->wait_for_empty_frame("feeder", id);
             if (ctl_f == nullptr || tiles_f == nullptr)
                 return;
+            // As the GPU would: a worker still reading a frame it released reads this.
+            std::memset(ctl_f, 0xA5, ctl->frame_size);
+            std::memset(tiles_f, 0xA5, tiles->frame_size);
             int64_t hop0 = 0;
             for (size_t i = 0; i < cs.size(); ++i) {
                 const ChainSpec& s = cs[i];
