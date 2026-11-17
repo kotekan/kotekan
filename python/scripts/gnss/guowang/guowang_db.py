@@ -16,6 +16,13 @@ conclusive pass, with its history:
   measured_utc, source, sep_deg, ref_input, drift_ns_s, from the closest pass on which it was found
   (a closer pass replaces it only on the same reference input). g2_phase is null for a satellite
   never found. A satellite that stops keeps its code.
+- theta_us is free of the unstretched-replica bias of gw_reduce.py before 2026-11-17 (schema 3). A
+  theta from the fixed reducer says replica "stretched" and is taken as it is. One from an older
+  reduction is corrected as it is folded in, by replica_corr_ns = -0.5 ms x range rate / c + half a
+  16.368 MHz sample x the sign of the range rate, and keeps range_rate_m_s and replica_corr_ns;
+  its range rate comes from guowang_1202_floor_replica.json, beside the library (built once by
+  ~/gnss/builds/gw1202/gw_replica_rates.py). A theta listed there as sign_uncertain is never the
+  reference.
 - last_observed_utc: the newest pass on which the code was found (null: never).
 - last_checked_utc, last_checked_sep_deg: the newest conclusive pass.
 - passes_found, passes_silent, and passes: every conclusive pass, [utc mid-window, closest
@@ -56,12 +63,18 @@ import sys
 DB_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "guowang_1202_db.json"
 )
-SCHEMA = "chord-gnss-guowang-1202-db/2"
+FLOOR_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "guowang_1202_floor_replica.json"
+)
+SCHEMA = "chord-gnss-guowang-1202-db/3"
 SILENT_MAX_SEP_DEG = 4.0
 MIN_LOBE_CHANNELS = 56  # of the lobe's 64: a window with fewer counts for nothing
 CODE_FIELDS = (
     "g2_phase",
     "theta_us",
+    "range_rate_m_s",
+    "replica",
+    "replica_corr_ns",
     "carrier_minus_tle_ppb",
     "measured_utc",
     "source",
@@ -88,6 +101,33 @@ ABOUT_V2 = (
     " places the code at -theta plus the receiver clock it solves from GPS (the joint state),"
     " which carries the live path's own tag delay."
 )
+ABOUT_V3 = (
+    " Schema 3 (2026-11-17): every theta_us is free of the unstretched-replica bias. gw_reduce.py"
+    " before that day tracked the code with a replica that was never Doppler-stretched: it read"
+    " the delay at the middle of the 1 ms code half and tagged it at the code's start, and the"
+    " replica sat one sample late for a receding satellite. A theta measured that way carries"
+    " range_rate_m_s (+ receding, at the centre of the measured chunk) and replica_corr_ns, the"
+    " correction already added to it: -0.5 ms x range rate / c + 30.547 ns x the sign of the"
+    " range rate (guowang_1202_floor_replica.json lists the rate of every such theta;"
+    " guowang_paper review/REPLY_GUOWANG_20261117c.md). A theta from the fixed reducer carries"
+    ' replica "stretched" and no correction. theta_unknown_us is a search centre good to'
+    " microseconds and is unchanged."
+)
+C_M_S = 299792458.0
+HALF_SAMPLE_NS = 0.5e9 / 16.368e6  # gw_reduce tracks at 8 samples per 2.046 Mcps chip
+
+
+def replica_corr_ns(range_rate_m_s):
+    """What a theta measured with gw_reduce's unstretched replica lacks (ns)."""
+    sign = 1 if range_rate_m_s > 0 else -1
+    return -0.5e-3 * range_rate_m_s / C_M_S * 1e9 + HALF_SAMPLE_NS * sign
+
+
+def load_floor(path=FLOOR_PATH):
+    """{"rates": {"<sat>|<measured_utc>": {"range_rate_m_s": ..}}, "sign_uncertain": [keys]} for
+    the thetas of the reductions before 2026-11-17 (unstretched replica)."""
+    with open(path) as fh:
+        return json.load(fh)
 
 
 def utc_theta(db, theta_tag_us, ref_input):
@@ -249,10 +289,15 @@ def newest_tle(cache=os.path.expanduser("~/.cache/guowang")):
     return os.path.join(cache, names[-1]) if names else None
 
 
-def update(db, passes, proposals, catnums, silent_max_sep=SILENT_MAX_SEP_DEG):
-    """Fold conclusive passes and code proposals into db (in place); returns the change list."""
+def update(
+    db, passes, proposals, catnums, silent_max_sep=SILENT_MAX_SEP_DEG, floor=None
+):
+    """Fold conclusive passes and code proposals into db (in place); returns the change list.
+    floor: load_floor(), needed to adopt a theta that is not from the stretched replica."""
     sats = db["satellites"]
     changes = []
+    rates = (floor or {}).get("rates", {})
+    unsure = set((floor or {}).get("sign_uncertain", []))
     # passes and proposals filed under an old name (db["renamed"]) count for the new one
     ren = db.get("renamed", {})
     if ren:
@@ -309,7 +354,12 @@ def update(db, passes, proposals, catnums, silent_max_sep=SILENT_MAX_SEP_DEG):
                 continue
             if ref and p.get("ref_input", ref.get("ref_input")) != ref.get("ref_input"):
                 continue
-            if not ref or p["sep_deg"] < ref["sep_deg"] - 1e-9:
+            # a theta of the unstretched replica (reductions before 2026-11-17) needs its range rate
+            fkey = "%s|%s" % (p.get("sat", name), p["measured_utc"])
+            unstretched = "theta_us" in p and p.get("replica") != "stretched"
+            if unstretched and fkey in unsure:
+                pass  # half a sample either way (range rate near zero): never the reference
+            elif not ref or p["sep_deg"] < ref["sep_deg"] - 1e-9:
                 if ref:
                     changes.append(
                         "%s: code reference now the %.2f deg pass of %s (was %.2f deg)"
@@ -318,6 +368,18 @@ def update(db, passes, proposals, catnums, silent_max_sep=SILENT_MAX_SEP_DEG):
                 ref = {k: p[k] for k in CODE_FIELDS if k in p}
                 if "theta_us" in ref:
                     ref["theta_us"] = utc_theta(db, ref["theta_us"], ref.get("ref_input"))
+                if unstretched:
+                    rate = p.get("range_rate_m_s")
+                    if rate is None:
+                        rate = rates.get(fkey, {}).get("range_rate_m_s")
+                    if rate is None:
+                        raise ValueError(
+                            "no range rate for the unstretched-replica theta %s" % fkey
+                        )
+                    corr = round(replica_corr_ns(rate), 3)
+                    ref.update(range_rate_m_s=rate, replica_corr_ns=corr)
+                    ref["theta_us"] = round(ref["theta_us"] + corr * 1e-3, 4)
+                    ref = {k: ref[k] for k in CODE_FIELDS if k in ref}
             if not any(
                 abs((parse_utc(k) - parse_utc(p["measured_utc"])).total_seconds()) < 300
                 for k in hist
@@ -408,7 +470,7 @@ def update(db, passes, proposals, catnums, silent_max_sep=SILENT_MAX_SEP_DEG):
     db["schema"] = SCHEMA
     db["silent_max_sep_deg"] = silent_max_sep
     db.setdefault("no_sky", [])
-    for about in (ABOUT_V1, ABOUT_V2):
+    for about in (ABOUT_V1, ABOUT_V2, ABOUT_V3):
         if about.strip() not in db.get("about", ""):
             db["about"] = db.get("about", "") + about
     return changes
@@ -435,7 +497,12 @@ def cmd_update(a):
     passes, skipped = read_passes(db, a.reduce_log, a.silent_max_sep)
     proposals = read_proposals(a.proposals)
     changes = update(
-        db, passes, proposals, tle_catnums(a.tle or newest_tle()), a.silent_max_sep
+        db,
+        passes,
+        proposals,
+        tle_catnums(a.tle or newest_tle()),
+        a.silent_max_sep,
+        load_floor(),
     )
     before = open(a.db).read()
     text = dumps(db)

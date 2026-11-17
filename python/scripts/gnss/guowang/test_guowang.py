@@ -281,6 +281,7 @@ class DbTest(unittest.TestCase):
         prop = dict(
             sat="DIGUI-2", g2_phase=20, theta_us=2.0, sep_deg=3.0, ref_input=116
         )
+        prop.update(replica="stretched", range_rate_m_s=1200.0)
         prop["measured_utc"] = "2026-11-02T14:00:38Z"
         with self.assertRaises(ValueError):  # no tag offset for the reference input
             gdb.update(json.loads(gdb.dumps(db)), later, {"DIGUI-2": [prop]}, {})
@@ -289,6 +290,8 @@ class DbTest(unittest.TestCase):
         e = s["DIGUI-2"]
         self.assertEqual((e["status"], e["g2_phase"]), ("transmitting", 20))
         self.assertAlmostEqual(e["theta_us"], 11.813)
+        self.assertEqual((e["replica"], e["range_rate_m_s"]), ("stretched", 1200.0))
+        self.assertNotIn("replica_corr_ns", e)
         self.assertEqual((e["passes_found"], e["passes_silent"]), (1, 1))
         self.assertEqual(e["last_observed_utc"], "2026-11-02T14:00:40Z")
         self.assertTrue(any("no_transmission -> transmitting" in c for c in changes))
@@ -329,6 +332,63 @@ class DbTest(unittest.TestCase):
         e = db["satellites"]["DIGUI-1"]
         self.assertEqual(e["status"], "transmitting")
         self.assertNotIn("status_basis", e)
+
+    def test_unstretched_replica_theta(self):
+        import json
+
+        db = {
+            "about": "",
+            "satellites": {},
+            "tag_early_us": {"116": 9.813},
+            "renamed": {"DIGUI-H1": "DIGUI-2"},
+        }
+
+        def prop(utc, sep, theta, **kw):
+            p = dict(sat="DIGUI-H1", g2_phase=20, theta_us=theta, sep_deg=sep)
+            p.update(ref_input=116, measured_utc=utc, **kw)
+            return {"DIGUI-H1": [p]}
+
+        first = prop("2026-11-02T14:00:38Z", 3.0, 2.0)
+        with self.assertRaises(ValueError):  # the old reducer's theta, no range rate
+            gdb.update(json.loads(gdb.dumps(db)), {}, first, {})
+        floor = {
+            "rates": {
+                "DIGUI-H1|2026-11-02T14:00:38Z": {"range_rate_m_s": 2997.92458},
+                "DIGUI-H1|2026-11-03T14:00:38Z": {"range_rate_m_s": 40.0},
+                "DIGUI-H1|2026-11-04T14:00:38Z": {"range_rate_m_s": -2997.92458},
+            },
+            "sign_uncertain": ["DIGUI-H1|2026-11-03T14:00:38Z"],
+        }
+        gdb.update(db, {}, first, {}, floor=floor)
+        e = db["satellites"]["DIGUI-2"]
+        # receding at 1e-5 c: -0.5 ms x 1e-5 = -5 ns, and half a sample (30.547 ns) up
+        self.assertAlmostEqual(e["replica_corr_ns"], 25.547, places=3)
+        self.assertAlmostEqual(e["theta_us"], 11.813 + 0.025547, places=4)
+        self.assertEqual(e["range_rate_m_s"], 2997.92458)
+        self.assertNotIn("replica", e)
+        before = gdb.dumps(db)
+        gdb.update(db, {}, first, {}, floor=floor)  # folded again: nothing moves
+        self.assertEqual(gdb.dumps(db), before)
+        # a closer pass with the sign of its range rate unknown is a pass, never the reference
+        gdb.update(db, {}, prop("2026-11-03T14:00:38Z", 1.0, 5.0), {}, floor=floor)
+        e = db["satellites"]["DIGUI-2"]
+        self.assertEqual(
+            (e["measured_utc"], e["passes_found"]), ("2026-11-02T14:00:38Z", 2)
+        )
+        # approaching: +5 ns, and half a sample down
+        gdb.update(db, {}, prop("2026-11-04T14:00:38Z", 0.5, 2.0), {}, floor=floor)
+        e = db["satellites"]["DIGUI-2"]
+        self.assertAlmostEqual(e["replica_corr_ns"], -25.547, places=3)
+        self.assertAlmostEqual(e["theta_us"], 11.813 - 0.025547, places=4)
+        # the fixed reducer's theta is taken as it is, and the correction's record goes
+        new = prop("2026-11-05T14:00:38Z", 0.2, 2.0, replica="stretched")
+        new["DIGUI-H1"][0]["range_rate_m_s"] = -800.0
+        gdb.update(db, {}, new, {}, floor=floor)
+        e = db["satellites"]["DIGUI-2"]
+        self.assertAlmostEqual(e["theta_us"], 11.813)
+        self.assertEqual((e["replica"], e["range_rate_m_s"]), ("stretched", -800.0))
+        self.assertNotIn("replica_corr_ns", e)
+        self.assertEqual(json.loads(gdb.dumps(db)), db)
 
     def test_rejected_detection_and_entry_without_evidence(self):
         db = {
