@@ -1655,8 +1655,9 @@ enum class CmbHold { input, output };
 /// The combiner stall test's child: the chains' combiners as rows of one host on two workers
 /// (chain i on worker i % 2). A feeder per chain writes CMB_STALL_RECORDS empty records of PRN
 /// CMB_STALL_PRN, each with its window's sample_seq, one every CMB_STALL_DT_S, into a 4-deep
-/// in_buf, setting each frame's PRNs to 0 as soon as it is released; integration_length 10 emits
-/// every record, labelled with its hop, into a 4-deep out_buf that a taker per chain reads.
+/// in_buf, and a thread per chain sets a record's PRNs to 0 as soon as its frame is released;
+/// integration_length 10 emits every record, labelled with its hop, into a 4-deep out_buf that a
+/// taker per chain reads.
 /// @p hold holds for STALL_HOLD_S at chain 0's record CMB_STALL_AT. Writes {"t0": start, "fed":
 /// [[time of record j] per chain], "taken": [[[time, hop]...] per chain], "hold": [start, end]} to
 /// @p out_path.
@@ -1710,12 +1711,15 @@ void cmb_stall_child(const std::vector<ChainSpec>& cs, CmbHold hold, const std::
     const double t0 = now_s() + 0.2;
     std::vector<std::vector<double>> fed(cs.size(), std::vector<double>(CMB_STALL_RECORDS, 0.0));
     std::vector<std::vector<std::pair<double, int64_t>>> taken(cs.size());
+    // Per chain: the in_buf's frames, and the records fed and the releases poisoned so far.
+    std::vector<std::vector<float*>> frames(cs.size(), std::vector<float*>(in[0]->num_frames));
+    std::vector<std::atomic<int>> n_fed(cs.size()), n_poisoned(cs.size());
     std::vector<std::thread> threads;
     for (size_t i = 0; i < cs.size(); ++i) {
-        threads.emplace_back([&, i] {
+        const size_t stride = gnss::record_stride(cs[i].combine.at("n_elements").get<int>());
+        threads.emplace_back([&, i, stride] {
             Buffer* b = in[i];
             const int64_t rec_samples = (int64_t)cs[i].hops_per_record * cs[i].fft_len;
-            const size_t stride = gnss::record_stride(cs[i].combine.at("n_elements").get<int>());
             for (int j = 0; j < CMB_STALL_RECORDS; ++j) {
                 if (i == 0 && j == CMB_STALL_AT && hold == CmbHold::input)
                     hold_here();
@@ -1723,10 +1727,10 @@ void cmb_stall_child(const std::vector<ChainSpec>& cs, CmbHold hold, const std::
                 float* f = (float*)b->wait_for_empty_frame("feeder", id);
                 if (f == nullptr)
                     return;
-                // Poisoned as soon as the combiner releases it, so a read after the release
-                // takes PRN 0.
-                for (int p = 0; p < cs[i].n_prn; ++p)
-                    f[p * stride + gnss::REC_PRN] = 0.0f;
+                if (j < b->num_frames)
+                    frames[i][id] = f;
+                while (n_poisoned[i].load() < j + 1 - b->num_frames)
+                    std::this_thread::yield();
                 while (now_s() < t0 + j * CMB_STALL_DT_S)
                     std::this_thread::sleep_for(std::chrono::microseconds(100));
                 for (int p = 0; p < cs[i].n_prn; ++p)
@@ -1735,11 +1739,24 @@ void cmb_stall_child(const std::vector<ChainSpec>& cs, CmbHold hold, const std::
                 get_gnss_chan_metadata(b, id)->sample_seq = (REC_BASE + j) * rec_samples;
                 fed[i][j] = now_s();
                 b->mark_frame_full("feeder", id);
+                n_fed[i].store(j + 1);
             }
         });
-        threads.emplace_back([&, i] {
+        // Sets each record's PRNs to 0 as soon as the combiner releases its frame, so that a read
+        // after the release takes PRN 0.
+        threads.emplace_back([&, i, stride] {
+            Buffer* b = in[i];
+            for (int k = 0; k < CMB_STALL_RECORDS; ++k) {
+                const int id = k % b->num_frames;
+                while (n_fed[i].load() <= k || !b->is_frame_empty(id))
+                    std::this_thread::yield();
+                for (int p = 0; p < cs[i].n_prn; ++p)
+                    frames[i][id][p * stride + gnss::REC_PRN] = 0.0f;
+                n_poisoned[i].store(k + 1);
+            }
+        });
+        threads.emplace_back([&, i, stride] {
             Buffer* b = out[i];
-            const size_t stride = gnss::record_stride(cs[i].combine.at("n_elements").get<int>());
             for (int j = 0; j < CMB_STALL_RECORDS; ++j) {
                 const int id = j % b->num_frames;
                 const uint8_t* f = b->wait_for_full_frame("taker", id);
