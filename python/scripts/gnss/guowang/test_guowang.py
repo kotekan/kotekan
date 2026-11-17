@@ -282,9 +282,13 @@ class DbTest(unittest.TestCase):
             sat="DIGUI-2", g2_phase=20, theta_us=2.0, sep_deg=3.0, ref_input=116
         )
         prop["measured_utc"] = "2026-11-02T14:00:38Z"
+        with self.assertRaises(ValueError):  # no tag offset for the reference input
+            gdb.update(json.loads(gdb.dumps(db)), later, {"DIGUI-2": [prop]}, {})
+        db["tag_early_us"] = {"116": 9.813}
         changes = gdb.update(db, later, {"DIGUI-2": [prop]}, {})
         e = s["DIGUI-2"]
         self.assertEqual((e["status"], e["g2_phase"]), ("transmitting", 20))
+        self.assertAlmostEqual(e["theta_us"], 11.813)
         self.assertEqual((e["passes_found"], e["passes_silent"]), (1, 1))
         self.assertEqual(e["last_observed_utc"], "2026-11-02T14:00:40Z")
         self.assertTrue(any("no_transmission -> transmitting" in c for c in changes))

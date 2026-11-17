@@ -196,7 +196,8 @@ def build(
     or None)) that pass within sep_deg of the boresight above el_min in [t_start, t_end] (unix), and the passes
     of the others. A record's clk_s is -theta: the code starts theta after each UTC 2 ms
     boundary, so the broker's code-phase model takes it as the satellite clock; theta_unknown_s
-    where the satellite's is not measured."""
+    where the satellite's is not measured. The library's theta is referenced to UTC (schema 2),
+    so the receiver clock the chain adopts from GPS (--dr-clock-adopt) supplies our tag delay."""
     from skyfield.api import wgs84
 
     site = wgs84.latlon(gp.SITE["lat"], gp.SITE["lon"], elevation_m=gp.SITE["h"])

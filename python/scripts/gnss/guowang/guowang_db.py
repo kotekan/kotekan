@@ -11,7 +11,8 @@ conclusive pass, with its history:
   beam-dump window with at least 56 of the 64 lobe channels, outside the no_sky periods, and either the code was found (any separation) or
   the satellite passed within silent_max_sep_deg of the boresight, where every transmitting
   satellite is found. A miss farther out says nothing and is not counted.
-- the code reference, once the code has been found: g2_phase, theta_us, carrier_minus_tle_ppb,
+- the code reference, once the code has been found: g2_phase, theta_us (referenced to UTC: the
+  reduction's theta plus tag_early_us of its reference input), carrier_minus_tle_ppb,
   measured_utc, source, sep_deg, ref_input, drift_ns_s, from the closest pass on which it was found
   (a closer pass replaces it only on the same reference input). g2_phase is null for a satellite
   never found. A satellite that stops keeps its code.
@@ -55,7 +56,7 @@ import sys
 DB_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "guowang_1202_db.json"
 )
-SCHEMA = "chord-gnss-guowang-1202-db/1"
+SCHEMA = "chord-gnss-guowang-1202-db/2"
 SILENT_MAX_SEP_DEG = 4.0
 MIN_LOBE_CHANNELS = 56  # of the lobe's 64: a window with fewer counts for nothing
 CODE_FIELDS = (
@@ -78,6 +79,23 @@ ABOUT_V1 = (
     " every conclusive pass as [utc mid-window, closest separation deg, found]. guowang_db.py"
     " folds the reductions in; git history is the time record."
 )
+ABOUT_V2 = (
+    " Schema 2 (2026-11-17): theta_us and theta_unknown_us are referenced to UTC, the reduction's"
+    " theta (on our time tags) plus tag_early_us of its reference input: our tags read a signal"
+    " that many us before it arrives, measured on 26 GPS, Galileo and BeiDou satellites in the"
+    " 2026-10-30 baseband dump through the same reduction, +-0.01 us (guowang_paper"
+    " scripts/gnss_rxdelay.py). guowang_db.py adds it as it folds a reduction in. A live chain"
+    " places the code at -theta plus the receiver clock it solves from GPS (the joint state),"
+    " which carries the live path's own tag delay."
+)
+
+
+def utc_theta(db, theta_tag_us, ref_input):
+    """A reduction's theta (on our time tags, beams referenced to ref_input) referenced to UTC."""
+    off = db.get("tag_early_us", {})
+    if str(ref_input) not in off:
+        raise ValueError("no tag_early_us for reference input %s" % ref_input)
+    return round(theta_tag_us + off[str(ref_input)], 4)
 
 
 def utc(t):
@@ -298,6 +316,8 @@ def update(db, passes, proposals, catnums, silent_max_sep=SILENT_MAX_SEP_DEG):
                         % (name, p["sep_deg"], p["measured_utc"], ref["sep_deg"])
                     )
                 ref = {k: p[k] for k in CODE_FIELDS if k in p}
+                if "theta_us" in ref:
+                    ref["theta_us"] = utc_theta(db, ref["theta_us"], ref.get("ref_input"))
             if not any(
                 abs((parse_utc(k) - parse_utc(p["measured_utc"])).total_seconds()) < 300
                 for k in hist
@@ -388,8 +408,9 @@ def update(db, passes, proposals, catnums, silent_max_sep=SILENT_MAX_SEP_DEG):
     db["schema"] = SCHEMA
     db["silent_max_sep_deg"] = silent_max_sep
     db.setdefault("no_sky", [])
-    if ABOUT_V1.strip() not in db.get("about", ""):
-        db["about"] = db.get("about", "") + ABOUT_V1
+    for about in (ABOUT_V1, ABOUT_V2):
+        if about.strip() not in db.get("about", ""):
+            db["about"] = db.get("about", "") + about
     return changes
 
 
