@@ -1,6 +1,7 @@
 // Self-checking accuracy test for the batched F-engine FFTs: seeded noise + a strong tone
 // through the fp16 and TF32 tensor-core FFTs and the fp16 and fp32 cuFFT plans, each
-// checked against a direct double-precision DFT on a few transforms per size.
+// checked against a double-precision FFT on a few transforms per size.
+// With perf: true it also times each implementation at batches that leave L2.
 
 #include "Config.hpp"          // for Config
 #include "Stage.hpp"           // for Stage
@@ -24,25 +25,36 @@ class testTensorFFT : public kotekan::Stage {
 public:
     testTensorFFT(kotekan::Config& config, const std::string& unique_name,
                   kotekan::bufferContainer& buffer_container) :
-        Stage(config, unique_name, buffer_container, [](const kotekan::Stage& stage) {
-            return const_cast<kotekan::Stage&>(stage).main_thread();
-        }) {}
+        Stage(config, unique_name, buffer_container,
+              [](const kotekan::Stage& stage) {
+                  return const_cast<kotekan::Stage&>(stage).main_thread();
+              }),
+        perf(config.get_default<bool>(unique_name, "perf", false)) {}
 
     ~testTensorFFT() override = default;
 
-    // Direct DFT of the transform at base, in double, from the exact fp16 input values.
-    static std::vector<std::complex<double>> dft_ref(const std::vector<__half2>& in, size_t base,
+    // Radix-2 FFT of the transform at base, in double, from the exact fp16 input values.
+    static std::vector<std::complex<double>> fft_ref(const std::vector<__half2>& in, size_t base,
                                                      size_t n) {
-        std::vector<std::complex<double>> ref(n);
-        for (size_t k = 0; k < n; k++) {
-            std::complex<double> acc = 0;
-            for (size_t j = 0; j < n; j++) {
-                const std::complex<double> x(__low2float(in[base + j]), __high2float(in[base + j]));
-                acc += x * std::polar(1.0, -2.0 * M_PI * (double)(j * k % n) / (double)n);
-            }
-            ref[k] = acc;
+        std::vector<std::complex<double>> x(n);
+        for (size_t j = 0, r = 0; j < n; j++) {
+            x[r] = std::complex<double>(__low2float(in[base + j]), __high2float(in[base + j]));
+            size_t bit = n >> 1; // r = bit-reversed j: increment from the top bit down
+            for (; r & bit; bit >>= 1)
+                r ^= bit;
+            r |= bit;
         }
-        return ref;
+        for (size_t len = 2; len <= n; len <<= 1)
+            for (size_t k = 0; k < len / 2; k++) {
+                const std::complex<double> w =
+                    std::polar(1.0, -2.0 * M_PI * (double)k / (double)len);
+                for (size_t i = k; i < n; i += len) {
+                    const std::complex<double> u = x[i], v = x[i + len / 2] * w;
+                    x[i] = u + v;
+                    x[i + len / 2] = u - v;
+                }
+            }
+        return x;
     }
 
     template<typename T2>
@@ -126,7 +138,7 @@ public:
         CHECK_CUDA_ERROR(cudaDeviceSynchronize());
 
         // Event-timed reps of each implementation, for the record alongside the accuracy.
-        {
+        if (perf) {
             cudaEvent_t t0, t1;
             CHECK_CUDA_ERROR(cudaEventCreate(&t0));
             CHECK_CUDA_ERROR(cudaEventCreate(&t1));
@@ -180,12 +192,12 @@ public:
         CHECK_CUDA_ERROR(cudaFree(d_t32));
         CHECK_CUDA_ERROR(cudaFree(d_cu32));
 
-        // The direct DFT is O(n^2): check a few transforms spread over the batch.
+        // Check a few transforms spread over the batch.
         const int ncheck = n >= 4096 ? 4 : 8;
         double w_t16 = 0, w_cu16 = 0, w_t32 = 0, w_cu32 = 0;
         for (int c = 0; c < ncheck; c++) {
             const size_t base = (size_t)c * (batch - 1) / (ncheck - 1) * n;
-            const auto ref = dft_ref(h_in, base, n);
+            const auto ref = fft_ref(h_in, base, n);
             w_t16 = std::max(w_t16, rel_l2(h_t16, base, ref));
             w_cu16 = std::max(w_cu16, rel_l2(h_cu16, base, ref));
             w_t32 = std::max(w_t32, rel_l2(h_t32, base, ref));
@@ -238,21 +250,23 @@ public:
     }
 
     void main_thread() override {
-        // Batches large enough that the working set leaves L2, so the timing lines mean
-        // something; the production four-step shape is n=8192, batch 8192.
         bool ok = check_reorder(4096, 2048);
         ok = check_reorder(512, 256) && ok;
-        ok = run_case(32, 65536) && ok;
-        ok = run_case(64, 65536) && ok;
-        ok = run_case(256, 32768) && ok;
-        ok = run_case(1024, 8192) && ok;
-        ok = run_case(4096, 4096) && ok;
-        ok = run_case(8192, 8192) && ok;
+        // Accuracy runs take 2^20 points per size. With perf: true the batches are large
+        // enough that the working set leaves L2 and the timing lines mean something; the
+        // production four-step shape is n=8192, batch 8192.
+        const size_t cases[][2] = {{32, 65536},  {64, 65536},  {256, 32768},
+                                   {1024, 8192}, {4096, 4096}, {8192, 8192}};
+        for (const auto& c : cases)
+            ok = run_case(c[0], perf ? c[1] : (1 << 20) / c[0]) && ok;
         if (ok)
             TEST_PASSED();
         else
             TEST_FAILED();
     }
+
+private:
+    const bool perf;
 };
 
 REGISTER_KOTEKAN_STAGE(testTensorFFT);
