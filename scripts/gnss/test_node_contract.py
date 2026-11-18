@@ -48,7 +48,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import gen_fleet  # noqa: E402
 import node_contract as nc  # noqa: E402
-from gen_chord_gnss_config import TELEM_HOST_DEPTH  # noqa: E402
+from gen_chord_gnss_config import (  # noqa: E402
+    FOLD_EPL_DEPTH,
+    HALF_REC_DEPTH,
+    TELEM_HOST_DEPTH,
+)
 from gnss_record_layout import rec_offsets  # noqa: E402
 
 NODE = "cx52"
@@ -846,16 +850,20 @@ def test_half_rec(t_dir, h_dir):
             for u in asm
         ]
     )
-    budget = 8 + 1 + (16 - 1) / 4
+    # The tiles and ctl frames, the assembler's own frame, and the record buffer's frames but
+    # the one peek_hold keeps, at 4 records per GPU frame.
+    budget = FOLD_EPL_DEPTH + 1 + (HALF_REC_DEPTH - 1) / 4
+    got = sorted(set(h_s["stall"][u] for u in asm))
     check(
         len(rec_bufs) == 30
         and len(asm) == 30
         and sorted(lines) == want
-        and set(h_s["stall"][u] for u in asm) == {budget}
+        and got == [budget]
+        and budget >= 8.75
         and not h_s["placement"]["misplaced"],
         "half rec: the contract is that without the flag but for one record buffer per half on "
-        "its node, and every assembler's stall budget %r, 8.75 or more (%s)"
-        % (budget, sorted(set(lines) ^ set(want))[:5]),
+        "its node, and every assembler's stall budget %r, 8.75 or more (budgets %s; %s)"
+        % (budget, got, sorted(set(lines) ^ set(want))[:5]),
     )
     bad = []
     for g in (0, 1):
