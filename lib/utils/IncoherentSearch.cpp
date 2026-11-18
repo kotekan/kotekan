@@ -30,7 +30,9 @@ const int drift_block = 64;
 const int64_t unclipped_updates = 64;
 // An update of a running statistic is limited to this many sigma
 const double update_clip = 5.0;
-// A sample merges into a candidate at another DM only below this fraction of its S/N
+// A sample merges into a candidate at another DM only below this fraction of its S/N. The
+// fraction holds where the two sweeps stop being the same pulse and falls from there as one over
+// the difference of DM, as the residue of a pulse does.
 const double residue_fraction = 0.3;
 // A block of channels is left out of a time sample when the sum of its normalized samples
 // exceeds this many sigma
@@ -384,8 +386,9 @@ void IncoherentSearch::merge_hits(const std::vector<Hit>& hits) {
             if (std::abs((double)(hit.sample - e.best.sample)) > merge_slack + sweep_per_dm * ddm)
                 continue;
             // The same pulse while the two sweeps differ by a few of the widest window
-            const bool same_pulse = sweep_per_dm * ddm <= 4.0 * widths.back();
-            if (!same_pulse && hit.snr >= residue_fraction * e.best.snr)
+            const double same_sweep = 4.0 * widths.back();
+            const double sweep = sweep_per_dm * ddm;
+            if (sweep > same_sweep && hit.snr >= residue_fraction * e.best.snr * same_sweep / sweep)
                 continue;
             ++e.num_hits;
             if (!e.reported && hit.snr > e.best.snr)
