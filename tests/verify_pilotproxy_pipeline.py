@@ -205,7 +205,14 @@ def synthetic_calibration(bundle):
             "cfar_rank": len(bulk) // 2,
             "cfar_multiplier_q16": (1 << 14) if index % 2 == 0 else (4 << 16),
             "bulk_mask_words_hex": [f"0x{word:016x}" for word in words],
-            "provenance": {"note": "Synthetic test calibration; not for deployment."},
+            "provenance": {
+                "note": "Synthetic test calibration; not for deployment.",
+                # lets DtvRfiMask switch the mask on in the tests
+                "mask_qualification": {
+                    "test_report_sha256": "0" * 64,
+                    "reviewer": "synthetic test",
+                },
+            },
         }
 
 
