@@ -42,13 +42,14 @@ ibvUdpSend::ibvUdpSend(Config& config, const std::string& unique_name,
     try {
         queue_depth = config.get_default<uint32_t>(unique_name, "queue_depth", 8192);
         const uint32_t max_qp_wr = device.attr.orig_attr.max_qp_wr;
-        if (queue_depth > max_qp_wr || queue_depth < geometry.packets_per_frame)
-            throw std::invalid_argument(
-                fmt::format(fmt("{:s}: queue_depth {:d} must be between packets_per_frame {:d} and "
-                                "the device limit {:d}"),
-                            unique_name, queue_depth, geometry.packets_per_frame, max_qp_wr));
-        max_frames_in_flight =
-            std::min((int)(queue_depth / geometry.packets_per_frame), header_buf->num_frames);
+        if (queue_depth < 2 || queue_depth > max_qp_wr)
+            throw std::invalid_argument(fmt::format(
+                fmt("{:s}: queue_depth {:d} must be between 2 and the device limit {:d}"),
+                unique_name, queue_depth, max_qp_wr));
+        // A frame that fits the QP goes out as one chunk; a bigger one in halves of the QP, so
+        // one chunk can be posted while the other drains.
+        chunk_packets = geometry.packets_per_frame <= queue_depth ? geometry.packets_per_frame
+                                                                  : queue_depth / 2;
         if (geometry.wire_len() - sizeof(ethernet_header) > device.mtu)
             throw std::invalid_argument(
                 fmt::format(fmt("{:s}: packets of {:d} bytes exceed the MTU of {:s} ({:d})"),
@@ -131,16 +132,23 @@ void ibvUdpSend::release() {
 }
 
 void ibvUdpSend::main_thread() {
-    INFO("Sending {:d} byte packets on {:s} ({:s}), {:d} per frame, up to {:d} frames in flight",
+    INFO("Sending {:d} byte packets on {:s} ({:s}), {:d} per frame in chunks of {:d}, queue depth "
+         "{:d}",
          geometry.wire_len(), device.netdev, device.rdma_name, geometry.packets_per_frame,
-         max_frames_in_flight);
+         chunk_packets, queue_depth);
 
     frameID frame_id(header_buf);
+    size_t next_packet = 0; // of frame_id, once acquired
+    bool acquired = false;
     while (!stop_thread) {
-        const int retired = retire_frames();
-        if ((int)in_flight.size() >= max_frames_in_flight) {
-            // The QP is full: sleep on the completion channel until a frame retires. Arm the
-            // CQ, then poll once more before blocking (see wait_for_cq_event).
+        const int retired = retire_chunks();
+        const size_t chunk = std::min(chunk_packets, geometry.packets_per_frame - next_packet);
+        // A frame still in flight cannot be acquired again: that is the next frame_id once
+        // every frame of the ring is in flight.
+        const bool ring_full = !acquired && frames_in_flight == header_buf->num_frames;
+        if (wrs_in_flight + chunk > queue_depth || ring_full) {
+            // Sleep on the completion channel until a chunk retires. Arm the CQ, then poll
+            // once more before blocking (see wait_for_cq_event).
             if (retired)
                 continue;
             if (!cq_armed) {
@@ -153,21 +161,30 @@ void ibvUdpSend::main_thread() {
                 cq_armed = false;
             continue;
         }
-        // Timed wait so completed frames keep retiring while the producer is slow.
-        const int status = header_buf->wait_for_full_frame_timeout(
-            unique_name, frame_id, double_to_ts(current_time() + 0.1));
-        if (status == -1)
-            break;
-        if (status == 1)
-            continue;
-        if (payload_buf->wait_for_full_frame(unique_name, frame_id) == nullptr)
-            break;
-        post_frame(frame_id);
-        frame_id++;
+        if (!acquired) {
+            // Timed wait so completed chunks keep retiring while the producer is slow.
+            const int status = header_buf->wait_for_full_frame_timeout(
+                unique_name, frame_id, double_to_ts(current_time() + 0.1));
+            if (status == -1)
+                break;
+            if (status == 1)
+                continue;
+            if (payload_buf->wait_for_full_frame(unique_name, frame_id) == nullptr)
+                break;
+            acquired = true;
+            frames_in_flight++;
+        }
+        post_chunk(frame_id, next_packet, chunk);
+        next_packet += chunk;
+        if (next_packet == geometry.packets_per_frame) {
+            next_packet = 0;
+            acquired = false;
+            frame_id++;
+        }
     }
 }
 
-int ibvUdpSend::retire_frames() {
+int ibvUdpSend::retire_chunks() {
     ibv_poll_cq_attr poll_attr;
     memset(&poll_attr, 0, sizeof(poll_attr));
     int rc = ibv_start_poll(cq, &poll_attr);
@@ -183,22 +200,27 @@ int ibvUdpSend::retire_frames() {
             FATAL_ERROR("Send on {:s} failed: {:s} (wr_id {:d})", device.netdev,
                         ibv_wc_status_str(cq->status), cq->wr_id);
         }
-        if (in_flight.empty() || cq->wr_id != in_flight.front().second)
+        if (in_flight.empty() || cq->wr_id != in_flight.front().last_wr_id)
             FATAL_ERROR("Unexpected send completion wr_id {:d}, expected {:d}", cq->wr_id,
-                        in_flight.empty() ? -1 : (int64_t)in_flight.front().second);
-        header_buf->mark_frame_empty(unique_name, in_flight.front().first);
-        payload_buf->mark_frame_empty(unique_name, in_flight.front().first);
+                        in_flight.empty() ? -1 : (int64_t)in_flight.front().last_wr_id);
+        const sent_chunk& done = in_flight.front();
+        wrs_in_flight -= done.packets;
+        if (done.frame_done) {
+            header_buf->mark_frame_empty(unique_name, done.frame_id);
+            payload_buf->mark_frame_empty(unique_name, done.frame_id);
+            frames_in_flight--;
+            frames_counter.inc();
+        }
         in_flight.pop_front();
         retired++;
     } while ((rc = ibv_next_poll(cq)) == 0);
     ibv_end_poll(cq);
     if (rc != ENOENT && rc != 0)
         FATAL_ERROR("ibv_next_poll failed: {:s}", strerror(rc));
-    frames_counter.inc(retired);
     return retired;
 }
 
-void ibvUdpSend::post_frame(int frame_id) {
+void ibvUdpSend::post_chunk(int frame_id, size_t first_packet, size_t packets) {
     uint8_t* headers = header_buf->frames[frame_id];
     uint8_t* payload = payload_buf->frames[frame_id];
     const uint32_t header_lkey = header_mrs.lkey(frame_id);
@@ -207,7 +229,7 @@ void ibvUdpSend::post_frame(int frame_id) {
     // An IP length that disagrees with the slot geometry means the producer and this stage
     // were configured with different packet sizes.
     const udp_packet_headers* first = reinterpret_cast<const udp_packet_headers*>(headers);
-    if (first->eth.ether_type == htons(ETHER_TYPE_IPV4)
+    if (first_packet == 0 && first->eth.ether_type == htons(ETHER_TYPE_IPV4)
         && ntohs(first->ip.total_length) != geometry.wire_len() - sizeof(ethernet_header))
         FATAL_ERROR("Frame {:d}: the IP total length {:d} does not match header_size {:d} + "
                     "payload_size {:d}",
@@ -220,11 +242,11 @@ void ibvUdpSend::post_frame(int frame_id) {
     sge[1].length = geometry.payload_size;
     sge[1].lkey = payload_lkey;
 
+    const size_t end = first_packet + packets;
     ibv_wr_start(qpx);
-    for (size_t i = 0; i < geometry.packets_per_frame; i++) {
+    for (size_t i = first_packet; i < end; i++) {
         qpx->wr_id = next_wr_id++;
-        qpx->wr_flags =
-            IBV_SEND_IP_CSUM | (i + 1 == geometry.packets_per_frame ? IBV_SEND_SIGNALED : 0);
+        qpx->wr_flags = IBV_SEND_IP_CSUM | (i + 1 == end ? IBV_SEND_SIGNALED : 0);
         ibv_wr_send(qpx);
         sge[0].addr = (uintptr_t)(headers + i * geometry.header_slot);
         sge[1].addr = (uintptr_t)(payload + i * geometry.payload_slot);
@@ -234,7 +256,8 @@ void ibvUdpSend::post_frame(int frame_id) {
     if (rc)
         FATAL_ERROR("ibv_wr_complete failed for frame {:d}: {:s}", frame_id, strerror(rc));
 
-    in_flight.emplace_back(frame_id, next_wr_id - 1);
-    packets_counter.inc(geometry.packets_per_frame);
-    bytes_counter.inc(geometry.packets_per_frame * geometry.wire_len());
+    in_flight.push_back({frame_id, next_wr_id - 1, packets, end == geometry.packets_per_frame});
+    wrs_in_flight += packets;
+    packets_counter.inc(packets);
+    bytes_counter.inc(packets * geometry.wire_len());
 }

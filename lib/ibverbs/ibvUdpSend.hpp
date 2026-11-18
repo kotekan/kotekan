@@ -11,9 +11,9 @@
 
 #include <deque>              // for deque
 #include <infiniband/verbs.h> // for ibv_cq_ex, ibv_qp, ibv_qp_ex, ibv_comp_channel
+#include <stddef.h>           // for size_t
 #include <stdint.h>           // for uint32_t, uint64_t
 #include <string>             // for string
-#include <utility>            // for pair
 
 /**
  * @class ibvUdpSend
@@ -28,7 +28,9 @@
  *
  * A frame's work requests are posted with one doorbell and only the last one asks for a
  * completion; that completion retires the frame, and both frames are marked empty. Up to
- * queue_depth / packets_per_frame frames are in flight at once.
+ * queue_depth / packets_per_frame frames are in flight at once. A frame of more than
+ * queue_depth packets goes out in chunks of queue_depth / 2, each posted with one doorbell
+ * and completed by its last work request, and is marked empty when its last chunk completes.
  *
  * Raw packet QPs need CAP_NET_RAW: run `setcap cap_net_raw+ep <build>/kotekan/kotekan` after
  * every build, or run as root.
@@ -46,8 +48,8 @@
  * @conf header_slot     Int. See udp_slot_geometry.
  * @conf payload_size    Int. See udp_slot_geometry.
  * @conf payload_slot    Int. See udp_slot_geometry.
- * @conf queue_depth     Int, default 8192. Send work requests the QP holds: at least
- *                       packets_per_frame and at most the device's max_qp_wr.
+ * @conf queue_depth     Int, default 8192. Send work requests the QP holds, at most the
+ *                       device's max_qp_wr; frames of more packets go out in chunks.
  * @conf rate_limit_kbps Int, default 0 (off). Packet pacing rate of the QP in kbit/s.
  *
  * @par Metrics
@@ -65,10 +67,12 @@ public:
     void main_thread() override;
 
 private:
-    /// Polls the CQ and releases the frames whose last packet completed. Returns how many.
-    int retire_frames();
-    /// Posts every packet of frame @p frame_id with one doorbell.
-    void post_frame(int frame_id);
+    /// Polls the CQ, retires the chunks whose last packet completed and releases the frames
+    /// whose last chunk did. Returns how many chunks retired.
+    int retire_chunks();
+    /// Posts packets first_packet .. first_packet + packets - 1 of frame @p frame_id with one
+    /// doorbell.
+    void post_chunk(int frame_id, size_t first_packet, size_t packets);
     /// Destroys the QP, CQ and completion channel; the destructor and a failed constructor.
     void release();
 
@@ -85,10 +89,21 @@ private:
     ibv_qp_ex* qpx = nullptr;
 
     uint32_t queue_depth;
-    int max_frames_in_flight;
+    /// Packets per posted chunk: the whole frame when it fits the QP.
+    size_t chunk_packets;
     uint64_t next_wr_id = 0;
-    /// Frames posted and not yet retired, oldest first, with the wr_id of their last packet.
-    std::deque<std::pair<int, uint64_t>> in_flight;
+    /// A posted run of one frame's packets; only its last work request is signalled.
+    struct sent_chunk {
+        int frame_id;
+        uint64_t last_wr_id;
+        size_t packets;
+        /// The frame's last chunk: its completion releases the frame.
+        bool frame_done;
+    };
+    /// Chunks posted and not yet retired, oldest first.
+    std::deque<sent_chunk> in_flight;
+    size_t wrs_in_flight = 0;
+    int frames_in_flight = 0;
     bool cq_armed = false;
 
     kotekan::prometheus::Counter& packets_counter;
