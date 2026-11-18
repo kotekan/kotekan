@@ -66,7 +66,7 @@ public:
     const RecRow& row(size_t i) const {
         return _rows[i];
     }
-    /// The position of the row at byte @p offset, which is one of them.
+    /// The position of the row at byte @p offset. FATAL unless a row starts there.
     size_t find(int64_t offset) const;
 
     /// Write row @p i's entry and @p wstart into @p frame, and for row 0 the head.

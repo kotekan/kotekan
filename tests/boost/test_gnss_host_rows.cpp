@@ -1512,6 +1512,17 @@ BOOST_AUTO_TEST_CASE(rec_rows_tile_the_frame) {
     rows[2].chain_id = 1;
     BOOST_CHECK_EQUAL(fatal_of([&] { dir_of(rows, frame); }),
                       "/gnss0_records: chain_id 1 is in two rec_rows of gnss0_rec_buf");
+    // A row by its offset, and none at another.
+    BOOST_CHECK_EQUAL(
+        fatal_of([&] {
+            Buffer buf(2, frame, nullptr, "gnss0_rec_buf", "standard", 0, false, false,
+                       std::vector<int>{}, false);
+            gnss::RecDir rec("/gnss0_records", {ABC_REC[2], ABC_REC[0], ABC_REC[1]}, &buf);
+            if (rec.find(ABC_REC[2].offset) != 2)
+                throw FatalError("row 2 is not at its offset");
+            rec.find(ABC_REC[2].offset + 4);
+        }),
+        fmt::format("no rec_row of gnss0_rec_buf starts at byte {:d}", ABC_REC[2].offset + 4));
 }
 
 // The rows of a combine or telemetry host reading a GPU half's record buffer, an in_buf or

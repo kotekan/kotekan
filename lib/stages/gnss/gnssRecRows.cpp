@@ -85,10 +85,10 @@ RecDir::RecDir(const std::string& who, std::vector<RecRow> rows, const Buffer* b
 }
 
 size_t RecDir::find(int64_t offset) const {
-    size_t i = 0;
-    while (i + 1 < _rows.size() && _rows[i].offset != offset)
-        ++i;
-    return i;
+    for (size_t i = 0; i < _rows.size(); ++i)
+        if (_rows[i].offset == offset)
+            return i;
+    FATAL_ERROR_NON_OO("no rec_row of {:s} starts at byte {:d}", _buf, offset);
 }
 
 void RecDir::write(uint8_t* frame, size_t i, int64_t wstart) const {
