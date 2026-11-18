@@ -92,7 +92,9 @@
  * @par Metrics
  * @metric kotekan_gnss_telem_dropped_frames_total
  *         Per row of a shared out_buf (stage_name its one-row stage, chain its chain): windows
- *         dropped because the out_buf was full.
+ *         dropped because the out_buf was full. Frames the send drops itself are counted once
+ *         for all rows, in its kotekan_buffer_send_dropped_frame_count; a row's seq gaps count
+ *         both.
  */
 class GnssTelemPack : public kotekan::Stage {
 public:

@@ -1989,9 +1989,10 @@ def telem_host_form(blocks, pres, gpu):
     """--telem-pack-host: the half's telemetry packs as rows of one GnssTelemPack, gnss<g>_telem
     (host_form), writing one telem_buf, gnss<g>_telem_buf, which one GnssTelemSend,
     gnss<g>_telem_send, ships to the gather, each frame at its own length. The buffer holds the
-    widest row's frames, as many as the rows' own buffers together, so that each row keeps its
-    slack; the send is paced at the sum of the rows' rates. Each row keeps its chain, inst, window
-    state and seq, so the frames on the wire are the rows' own."""
+    widest row's frames, as many as the rows' own buffers together; the half's one connection has
+    far less kernel socket buffer than the rows' own connections had, so it drops windows in a
+    shorter gather stall. The send is paced at the sum of the rows' rates. Each row keeps its
+    chain, inst, window state and seq, so the frames on the wire are the rows' own."""
     bufs = [blocks.pop(p["pre"] + "telem_buf") for p in pres]
     sends = [blocks.pop(p["pre"] + "telem_send") for p in pres]
     host_form(blocks, pres, "telem_pack", TELEM_ROW_KEYS, f"gnss{gpu}_telem")

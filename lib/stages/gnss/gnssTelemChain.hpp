@@ -90,7 +90,7 @@ private:
     std::vector<int> _row_of;
     bool _map_built = false;
 
-    uint64_t _seq = 0;          ///< frames emitted; the receiver reads gaps as loss
+    uint64_t _seq = 0;          ///< windows emitted or dropped; the receiver reads gaps as loss
     uint64_t _dropped = 0;      ///< records that could not be placed (no metadata / bad wstart)
     uint64_t _prn_overflow = 0; ///< windows where more PRNs were live than the wire can carry
 };

@@ -62,9 +62,10 @@ def sk_summary(r):
 def parse_drops(metrics_text, gpu):
     """Pull this instance's drop counters out of a node's /metrics dump. buffer-send drops are
     per gnss{gpu} stage (telem: the GPS L5 chain's, gnss{gpu}_gps_l5_telem_send, or
-    gnss{gpu}_telem_send, the half's one telemetry stream with --telem-pack-host or on a config
-    generated before the stages carried the chain key); with --telem-pack-host each chain's
-    windows dropped on the half's full telemetry buffer are telem_row_drops, {chain: count};
+    gnss{gpu}_telem_send, the half's one telemetry stream with --telem-pack-host, counting every
+    chain's frames, or on a config generated before the stages carried the chain key); with
+    --telem-pack-host each chain's windows dropped on the half's full telemetry buffer are
+    telem_row_drops, {chain: count}, which leave out the send's own drops;
     dpdk misses/ring-full are node-level (shared by both GPUs, reported so a single congested
     NIC is visible on every instance rather than nowhere)."""
     out = {}
