@@ -369,8 +369,28 @@ endif()
 
 # test_bufferSend - tests for bufferSend stage
 add_executable(test_bufferSend test_bufferSend.cpp)
-target_link_libraries(test_bufferSend PRIVATE libexternal kotekan_stages kotekan_libs kotekan_utils
-                                              kotekan_core)
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    target_link_libraries(
+        test_bufferSend
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,-all_load
+                kotekan_metadata)
+else()
+    target_link_libraries(
+        test_bufferSend
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,--whole-archive
+                kotekan_metadata
+                -Wl,--no-whole-archive)
+endif()
 target_include_directories(test_bufferSend PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
 
 # test_prometheus_metrics needs fmt and prometheusMetrics
