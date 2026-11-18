@@ -19,6 +19,7 @@
 #include <stddef.h>           // for size_t
 #include <stdint.h>           // for uint32_t
 #include <string>             // for string, basic_string
+#include <thread>             // for thread
 
 /**
  * @struct bufferFrameHeaderNoConfigTracker
@@ -180,6 +181,10 @@ private:
 
     /// Closes the open connection and starts the process of trying to reconnect
     void close_connection();
+
+    /// On a stop, wakes and joins @p connect_thread, then closes its socket: until the thread
+    /// exits it may still write socket_fd.
+    void end_connect_thread(std::thread& connect_thread);
 
     /// Thread for connecting to the remote server
     void connect_to_server();
