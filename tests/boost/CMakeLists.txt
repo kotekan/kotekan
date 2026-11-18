@@ -200,18 +200,14 @@ if(FFTW_FOUND)
 
     # The host stages of three GNSS chains replayed from synthetic control blocks and tiles,
     # digested for determinism, liveness and mutation controls. GnssN2RecordAssemble and
-    # GnssGpuRecordAssemble build under FFTW_FOUND.
-    add_executable(test_gnss_chain_replay test_gnss_chain_replay.cpp)
-    target_link_libraries(
-        test_gnss_chain_replay PRIVATE libexternal kotekan_stages kotekan_libs kotekan_utils
-                                       kotekan_core kotekan_metadata)
-    target_include_directories(test_gnss_chain_replay PRIVATE ../../lib/stages
-                                                              ../../lib/stages/gnss)
-    target_compile_definitions(test_gnss_chain_replay
-                               PRIVATE REPLAY_BUILD_TYPE="${CMAKE_BUILD_TYPE}")
-    # Not named test_*, so run_boost_tests.sh (and with it CI) skips it: in a Test build it runs
-    # past CI's 30 s limit. Run it by hand as tests/boost/gnss_chain_replay.
-    set_target_properties(test_gnss_chain_replay PROPERTIES OUTPUT_NAME gnss_chain_replay)
+    # GnssGpuRecordAssemble build under FFTW_FOUND. Not named test_*, so run_boost_tests.sh (and
+    # with it CI) skips it: in a Test build it runs past CI's 30 s limit. Run it by hand as
+    # tests/boost/gnss_chain_replay.
+    add_executable(gnss_chain_replay test_gnss_chain_replay.cpp)
+    target_link_libraries(gnss_chain_replay PRIVATE libexternal kotekan_stages kotekan_libs
+                                                    kotekan_utils kotekan_core kotekan_metadata)
+    target_include_directories(gnss_chain_replay PRIVATE ../../lib/stages ../../lib/stages/gnss)
+    target_compile_definitions(gnss_chain_replay PRIVATE REPLAY_BUILD_TYPE="${CMAKE_BUILD_TYPE}")
 
     # The row contract of the GNSS host stages and their REST registration.
     add_executable(test_gnss_host_rows test_gnss_host_rows.cpp)
