@@ -7,6 +7,7 @@
 #include "gnssElemCal.hpp"
 #include "gnssElemSteer.hpp"
 #include "gnssGpuChain.hpp"      // for FrameHdr, PrnCtl
+#include "gnssHostRows.hpp"      // for RestVerb, RestQuery
 #include "gnssLaneDirection.hpp" // for LaneDirection, InstDelay (#190)
 #include "gnssProjSubspace.hpp"
 #include "gnssRecRows.hpp"   // for RecRow
@@ -75,14 +76,7 @@ public:
     /// null. Returns its first wstart.
     int64_t take_cube_window(uint8_t* f);
 
-    /// One REST endpoint: its verb (the path after the chain's name) and its handler, a GET
-    /// or a POST.
-    struct RestVerb {
-        std::string verb;
-        std::function<void(kotekan::connectionInstance&)> get;
-        std::function<void(kotekan::connectionInstance&, nlohmann::json&)> post;
-    };
-    /// The endpoints this chain's config serves, in registration order.
+    /// The endpoints this chain's config serves, each at `<name>/<verb>`, in registration order.
     std::vector<RestVerb> rest_verbs();
 
 private:
@@ -339,7 +333,9 @@ private:
     /// The ring slot for the window owning `wstart`, cleared when a new window takes it. Caller
     /// holds _spec_mtx.
     SpecWindow& spec_window_for(int64_t wstart);
-    void spectrum_callback(kotekan::connectionInstance& conn);
+    /// GET get_spectrum: window `?window=N` of the per-channel spectrum, or the newest complete
+    /// one.
+    nlohmann::json get_spectrum(const RestQuery& query);
     void set_elem_gain_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
     /// Geometry for the element steering: POST {"<prn>": [az_deg, el_deg, az_rate_dps,
     /// el_rate_dps, t_utc], ...} (a bare [az_deg, el_deg] is held), with optional
@@ -352,9 +348,9 @@ private:
     /// only while elem_sum_shared is on).
     void set_elem_sum_shared_ref_callback(kotekan::connectionInstance& conn,
                                           nlohmann::json& request);
-    void get_elem_cal_callback(kotekan::connectionInstance& conn);
+    nlohmann::json get_elem_cal();
     /// The per-element instrumental delay estimate behind lane_transfer_inst_slope.
-    void get_lane_inst_callback(kotekan::connectionInstance& conn);
+    nlohmann::json get_lane_inst();
     void set_reference_element_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
 
     /// Live slot membership (docs/CHORD_LIVE_PRN_RECONFIG.md). Reconcile @c _prns with the

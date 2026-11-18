@@ -520,41 +520,41 @@ void RecordChain::check_cube_buf(const std::string& cbuf, const Buffer* cube_buf
          _name, cbuf, need, need / ((double)_cube_win_samples / _sample_rate) / 1e6);
 }
 
-std::vector<RecordChain::RestVerb> RecordChain::rest_verbs() {
+std::vector<RestVerb> RecordChain::rest_verbs() {
     using namespace std::placeholders;
     std::vector<RestVerb> v;
-    v.push_back({"get_spectrum", std::bind(&RecordChain::spectrum_callback, this, _1), nullptr});
+    v.push_back({"get_spectrum", "", std::bind(&RecordChain::get_spectrum, this, _1), nullptr});
     if (_elem_sum)
-        v.push_back({"set_elem_gain", nullptr,
+        v.push_back({"set_elem_gain", "", nullptr,
                      std::bind(&RecordChain::set_elem_gain_callback, this, _1, _2)});
     // Registered whether or not steering is configured: the broker posts its sky to every
     // assembler, and a 404 every 30 s would look like a dead stage in its log. Unsteered, the
     // post is acknowledged and dropped, "_bore" included.
-    v.push_back({"set_sat_geometry", nullptr,
+    v.push_back({"set_sat_geometry", "", nullptr,
                  std::bind(&RecordChain::set_sat_geometry_callback, this, _1, _2)});
     if (_elem_sum) {
-        v.push_back({"set_elem_sum_adapt", nullptr,
+        v.push_back({"set_elem_sum_adapt", "", nullptr,
                      std::bind(&RecordChain::set_elem_sum_adapt_callback, this, _1, _2)});
-        v.push_back({"set_elem_sum_shared", nullptr,
+        v.push_back({"set_elem_sum_shared", "", nullptr,
                      std::bind(&RecordChain::set_elem_sum_shared_callback, this, _1, _2)});
-        v.push_back({"set_elem_sum_shared_ref", nullptr,
+        v.push_back({"set_elem_sum_shared_ref", "", nullptr,
                      std::bind(&RecordChain::set_elem_sum_shared_ref_callback, this, _1, _2)});
-        v.push_back(
-            {"get_elem_cal", std::bind(&RecordChain::get_elem_cal_callback, this, _1), nullptr});
+        v.push_back({"get_elem_cal", "", std::bind(&RecordChain::get_elem_cal, this), nullptr});
         if (_proj_ready)
-            v.push_back({"set_elem_proj", nullptr,
+            v.push_back({"set_elem_proj", "", nullptr,
                          std::bind(&RecordChain::set_elem_proj_callback, this, _1, _2)});
     }
     // Registered with elem_sum off too: the header slots carry the reference element.
-    v.push_back({"set_reference_element", nullptr,
+    v.push_back({"set_reference_element", "", nullptr,
                  std::bind(&RecordChain::set_reference_element_callback, this, _1, _2)});
     if (_inst_on)
-        v.push_back(
-            {"get_lane_inst", std::bind(&RecordChain::get_lane_inst_callback, this, _1), nullptr});
+        v.push_back({"get_lane_inst", "", std::bind(&RecordChain::get_lane_inst, this), nullptr});
+    for (RestVerb& r : v)
+        r.path = _name + "/" + r.verb;
     return v;
 }
 
-void RecordChain::get_lane_inst_callback(kotekan::connectionInstance& conn) {
+nlohmann::json RecordChain::get_lane_inst() {
     // Read off the record path without a lock: a torn double gives one element one wrong delay
     // in one poll, which the relay's pooling over instances and time absorbs.
     nlohmann::json out;
@@ -566,7 +566,7 @@ void RecordChain::get_lane_inst_callback(kotekan::connectionInstance& conn) {
     for (int i = 0; i < _n_elements; ++i)
         d.push_back(_inst.delay_s(i) * 1e9);
     out["delay_ns"] = d;
-    conn.send_json_reply(out);
+    return out;
 }
 
 void RecordChain::set_sat_geometry_callback(kotekan::connectionInstance& conn,
@@ -1680,34 +1680,29 @@ int64_t RecordChain::take_cube_window(uint8_t* f) {
 }
 
 
-void RecordChain::spectrum_callback(kotekan::connectionInstance& conn) {
+nlohmann::json RecordChain::get_spectrum(const RestQuery& query) {
     // Addressable, idempotent read: `?window=N` returns window N, no argument the newest
     // complete one. Nothing is reset, so a second poller is harmless. Every reply carries
     // available: [lo, hi] so the broker can resynchronise: `too_old` means the records are gone
     // and the caller must skip ahead; `not_yet` is normal (instances lag each other by a few
     // records) and the caller re-asks.
-    if (_spec_freq_ids.empty()) {
-        conn.send_error("per-channel spectrum export is off: this stage's config has no "
-                        "'channel_ids' (regenerate the node config with "
-                        "config/gen_chord_gnss_config.py)",
-                        kotekan::HTTP_RESPONSE::BAD_REQUEST);
-        return;
-    }
+    if (_spec_freq_ids.empty())
+        throw std::invalid_argument("per-channel spectrum export is off: this stage's config has "
+                                    "no 'channel_ids' (regenerate the node config with "
+                                    "config/gen_chord_gnss_config.py)");
     const size_t nc = _spec_freq_ids.size();
 
     // A window is complete once a later one has opened: there is no end-of-window event.
     bool want_specific = false;
     int64_t want = -1;
-    for (const auto& kv : conn.get_query()) {
+    for (const auto& kv : query) {
         if (kv.first != "window")
             continue;
         want_specific = true;
         try {
             want = std::stoll(kv.second);
         } catch (const std::exception&) {
-            conn.send_error("get_spectrum: 'window' must be an integer window index",
-                            kotekan::HTTP_RESPONSE::BAD_REQUEST);
-            return;
+            throw std::invalid_argument("get_spectrum: 'window' must be an integer window index");
         }
     }
 
@@ -1761,8 +1756,7 @@ void RecordChain::spectrum_callback(kotekan::connectionInstance& conn) {
     reply["wstart1"] = w1; // the cross-instance alignment key, same clock as fleet hops
     if (std::string(status) != "ok") {
         reply["prns"] = nlohmann::json::array();
-        conn.send_json_reply(reply);
-        return;
+        return reply;
     }
     nlohmann::json prns = nlohmann::json::array();
     for (size_t p = 0; p < _prns.size(); ++p) {
@@ -1785,7 +1779,7 @@ void RecordChain::spectrum_callback(kotekan::connectionInstance& conn) {
                         {"chan", chans}});
     }
     reply["prns"] = prns;
-    conn.send_json_reply(reply);
+    return reply;
 }
 
 
@@ -2295,7 +2289,7 @@ void RecordChain::shared_pol_update(size_t p, const std::complex<double>* g_prom
     _pol_warmth[p] += alpha * (1.0 - _pol_warmth[p]);
 }
 
-void RecordChain::get_elem_cal_callback(kotekan::connectionInstance& conn) {
+nlohmann::json RecordChain::get_elem_cal() {
     // Per PRN slot: is the live cal warm, is the anchor off the reference, and -- when held --
     // how well the shadow (still learning) agrees with the held weights (-1 = not measured).
     // The doubles are written by the record path and read here without a lock: a torn read of one
@@ -2389,7 +2383,7 @@ void RecordChain::get_elem_cal_callback(kotekan::connectionInstance& conn) {
         pj["channels"] = chans;
         out["proj"] = pj;
     }
-    conn.send_json_reply(out);
+    return out;
 }
 
 void RecordChain::set_reference_element_callback(kotekan::connectionInstance& conn,

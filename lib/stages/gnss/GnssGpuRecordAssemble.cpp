@@ -119,12 +119,7 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
             row.cube_out_buf->register_producer(hr.name);
             row.chain.check_cube_buf(cbuf, row.cube_out_buf);
         }
-        for (const auto& v : row.chain.rest_verbs()) {
-            if (v.get)
-                gnss::rest_register_unique(hr.name + "/" + v.verb, v.get, _rest_paths);
-            else
-                gnss::rest_register_unique(hr.name + "/" + v.verb, v.post, _rest_paths);
-        }
+        gnss::rest_register_verbs(row.chain.rest_verbs(), _rest_paths);
     }
     if (_rec_buf) {
         _rec_dir = std::make_unique<gnss::RecDir>(unique_name, rec_rows, _rec_buf);

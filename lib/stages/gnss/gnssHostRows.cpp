@@ -8,10 +8,12 @@
 #include <pthread.h> // for pthread_setaffinity_np, pthread_setname_np
 #include <sched.h>   // for CPU_SETSIZE
 #include <set>       // for set
+#include <stdexcept> // for invalid_argument
 #include <thread>    // for thread
 
 using kotekan::Config;
 using kotekan::connectionInstance;
+using kotekan::HTTP_RESPONSE;
 using kotekan::restServer;
 using nlohmann::json;
 
@@ -134,6 +136,30 @@ void rest_register_unique(const std::string& path,
         FATAL_ERROR_NON_OO("REST endpoint {:s} is already registered", path);
     rest.register_post_callback(path, callback);
     paths.push_back(path);
+}
+
+void rest_reply(connectionInstance& conn, const RestGet& get, const RestQuery& query) {
+    json reply;
+    try {
+        reply = get(query);
+    } catch (const std::invalid_argument& e) {
+        conn.send_error(e.what(), HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    conn.send_json_reply(reply);
+}
+
+void rest_register_verbs(const std::vector<RestVerb>& verbs, std::vector<std::string>& paths) {
+    for (const RestVerb& v : verbs) {
+        if (!v.get) {
+            rest_register_unique(v.path, v.post, paths);
+            continue;
+        }
+        const RestGet get = v.get;
+        rest_register_unique(
+            v.path, [get](connectionInstance& conn) { rest_reply(conn, get, conn.get_query()); },
+            paths);
+    }
 }
 
 void rest_register_chains(const std::string& unique_name, const std::vector<HostRow>& rows,

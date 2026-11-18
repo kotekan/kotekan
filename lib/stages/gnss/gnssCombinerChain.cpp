@@ -44,7 +44,7 @@ kotekan::prometheus::Gauge& add_gauge(const std::string& metric, const std::stri
 } // namespace
 
 CombinerChain::CombinerChain(Config& config, const std::string& cfg_path, const std::string& name,
-                             const std::string& chain) {
+                             const std::string& chain) : _name(name) {
     set_log_level(config.get<std::string>(cfg_path, "log_level"));
     set_log_prefix(name);
     _n_elements = config.get<int>(cfg_path, "n_elements");
@@ -236,13 +236,14 @@ void CombinerChain::check_bufs(const Buffer* in_buf, const Buffer* out_buf) {
     }
 }
 
-std::vector<CombinerChain::RestVerb> CombinerChain::rest_verbs() {
-    using namespace std::placeholders;
+std::vector<RestVerb> CombinerChain::rest_verbs() {
     std::vector<RestVerb> v;
-    v.push_back({"get_status", std::bind(&CombinerChain::get_status_callback, this, _1)});
+    v.push_back({"get_status", "", std::bind(&CombinerChain::get_status, this), nullptr});
     if (_rec_export > 0)
-        v.push_back({"get_records", std::bind(&CombinerChain::get_records_callback, this, _1)});
-    v.push_back({"get_elements", std::bind(&CombinerChain::get_elements_callback, this, _1)});
+        v.push_back({"get_records", "", std::bind(&CombinerChain::get_records, this), nullptr});
+    v.push_back({"get_elements", "", std::bind(&CombinerChain::get_elements, this), nullptr});
+    for (RestVerb& r : v)
+        r.path = _name + "/" + r.verb;
     return v;
 }
 
@@ -1118,7 +1119,7 @@ void CombinerChain::push_recex(int p, long long hop, double re, double im, doubl
         r.erase(r.begin(), r.begin() + ((int)r.size() - _rec_export));
 }
 
-void CombinerChain::get_records_callback(kotekan::connectionInstance& conn) {
+nlohmann::json CombinerChain::get_records() {
     nlohmann::json reply = nlohmann::json::array();
     std::lock_guard<std::mutex> lk(_st_mtx);
     for (int p = 0; p < _n_prn; ++p) {
@@ -1131,10 +1132,10 @@ void CombinerChain::get_records_callback(kotekan::connectionInstance& conn) {
                          // in the constructor).
                          {"records", _st_recex[p]}});
     }
-    conn.send_json_reply(reply);
+    return reply;
 }
 
-void CombinerChain::get_elements_callback(kotekan::connectionInstance& conn) {
+nlohmann::json CombinerChain::get_elements() {
     // Per-element complex gain, per PRN and element: [u_re, u_im, p2, q] with
     // u = <A_e * conj(LOO ref)> (the gain), p2 = <|A_e|^2> (incoherent beam-map power, not
     // debiased) and q = <|LOO ref|^2> (the normalizer: amp_e ~ |u|/q). keff is the effective
@@ -1160,10 +1161,10 @@ void CombinerChain::get_elements_callback(kotekan::connectionInstance& conn) {
                              {"elems", els}});
         }
     }
-    conn.send_json_reply(reply);
+    return reply;
 }
 
-void CombinerChain::get_status_callback(kotekan::connectionInstance& conn) {
+nlohmann::json CombinerChain::get_status() {
     nlohmann::json reply = nlohmann::json::array();
     std::lock_guard<std::mutex> lk(_st_mtx);
     for (int p = 0; p < _n_prn; ++p)
@@ -1248,7 +1249,7 @@ void CombinerChain::get_status_callback(kotekan::connectionInstance& conn) {
                 {"utc_ref", o.utc_ref}, {"rec_dt", o.rec_dt}, {"phase", o.phase}, {"br", o.br},
                 {"rot_re", o.rot_re},   {"rot_im", o.rot_im}, {"bits", bits}};
         }
-    conn.send_json_reply(reply);
+    return reply;
 }
 
 double CombinerChain::navwipe_amplitude(const std::vector<std::complex<double>>& a,

@@ -3,7 +3,6 @@
 #include "Telescope.hpp" // for Telescope (the record epoch)
 #include "dspPfbPrototype.hpp"
 #include "gnssGpuChain.hpp"
-#include "gnssHostRows.hpp" // for rest_register_unique
 #include "gnssSignal.hpp"
 #include "kotekanLogging.hpp"
 
@@ -16,12 +15,8 @@
 #include <string>
 
 using kotekan::Config;
-using kotekan::connectionInstance;
 
 namespace gnss {
-
-using GetCallback = std::function<void(connectionInstance&)>;
-using PostCallback = std::function<void(connectionInstance&, nlohmann::json&)>;
 
 // The Doppler margin of an FDMA slot's own lobe: GLONASS's L2 Doppler stays under ~3.7 kHz here.
 static constexpr double FDMA_DOPPLER_MARGIN_HZ = 5e3;
@@ -29,10 +24,7 @@ static constexpr double FDMA_DOPPLER_MARGIN_HZ = 5e3;
 // ---------------------------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------------------------
-TrackChain::TrackChain(Config& config, const std::string& cfg_path,
-                       std::vector<std::string>& rest_paths) {
-    using namespace std::placeholders;
-
+TrackChain::TrackChain(Config& config, const std::string& cfg_path) {
     prns = config.get<std::vector<int>>(cfg_path, "prns");
     n_prn = (int)prns.size();
     n_chan = config.get<int>(cfg_path, "n_channels");
@@ -203,27 +195,30 @@ TrackChain::TrackChain(Config& config, const std::string& cfg_path,
     // first frame.
     fold.init(n_prn);
 
-    const std::string ep = config.get<std::string>(cfg_path, "seed_endpoint");
-    rest_register_unique(ep, PostCallback(std::bind(&TrackChain::set_seeds_callback, this, _1, _2)),
-                         rest_paths);
+    _seed_ep = config.get<std::string>(cfg_path, "seed_endpoint");
     // trim_endpoint has no effect. The live configs still carry it, so it is read only so a
     // usage report does not list it unused.
     config.get_default<std::string>(cfg_path, "trim_endpoint", "");
-    // GnssFleetTrim's actuator.
-    const std::string sep = config.get<std::string>(cfg_path, "set_trim_endpoint");
-    rest_register_unique(sep, PostCallback(std::bind(&TrackChain::set_trim_callback, this, _1, _2)),
-                         rest_paths);
-    // Slot membership. Always registered, with no enable flag on the node: whether to apply
-    // swaps is the broker's decision (it also has a report-only mode).
-    const std::string gpe = config.get<std::string>(cfg_path, "get_prns_endpoint");
-    rest_register_unique(gpe, GetCallback(std::bind(&TrackChain::get_prns_callback, this, _1)),
-                         rest_paths);
-    const std::string spe = config.get<std::string>(cfg_path, "set_prns_endpoint");
-    rest_register_unique(spe, PostCallback(std::bind(&TrackChain::set_prns_callback, this, _1, _2)),
-                         rest_paths);
+    _set_trim_ep = config.get<std::string>(cfg_path, "set_trim_endpoint");
+    _get_prns_ep = config.get<std::string>(cfg_path, "get_prns_endpoint");
+    _set_prns_ep = config.get<std::string>(cfg_path, "set_prns_endpoint");
     INFO_NON_OO("cudaGnssChordTrack: {:d} PRN x {:d} chan x {:d} elem, {:d} hops/record "
                 "({:d} rec/frame), seeds on {:s}",
-                n_prn, n_chan, n_elem, hops_per_record, n_rec, ep);
+                n_prn, n_chan, n_elem, hops_per_record, n_rec, _seed_ep);
+}
+
+std::vector<RestVerb> TrackChain::rest_verbs() {
+    using namespace std::placeholders;
+    // set_trim is GnssFleetTrim's actuator. Slot membership is always served, with no enable
+    // flag on the node: whether to apply swaps is the broker's decision (it also has a
+    // report-only mode).
+    return {
+        {"set_seeds", _seed_ep, nullptr, std::bind(&TrackChain::set_seeds_callback, this, _1, _2)},
+        {"set_trim", _set_trim_ep, nullptr,
+         std::bind(&TrackChain::set_trim_callback, this, _1, _2)},
+        {"get_prns", _get_prns_ep, std::bind(&TrackChain::get_prns, this), nullptr},
+        {"set_prns", _set_prns_ep, nullptr,
+         std::bind(&TrackChain::set_prns_callback, this, _1, _2)}};
 }
 
 void TrackChain::note_frame_hop(long long hop) {
@@ -233,7 +228,7 @@ void TrackChain::note_frame_hop(long long hop) {
     last_hop = (int64_t)hop;
 }
 
-void TrackChain::get_prns_callback(kotekan::connectionInstance& conn) {
+nlohmann::json TrackChain::get_prns() {
     nlohmann::json out = nlohmann::json::array();
     bool pend = false;
     int64_t last_h = -1;
@@ -249,7 +244,7 @@ void TrackChain::get_prns_callback(kotekan::connectionInstance& conn) {
                             // last_hop < 0 on a running node means nothing calls
                             // note_frame_hop, so every scheduled swap applies immediately.
                             {"last_hop", last_h}};
-    conn.send_json_reply(reply);
+    return reply;
 }
 
 void TrackChain::set_prns_callback(kotekan::connectionInstance& conn, nlohmann::json& request) {

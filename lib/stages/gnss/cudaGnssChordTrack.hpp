@@ -34,7 +34,7 @@
  * trim_endpoint) and the command none of them. Two rows that share a channel must not share a
  * lane.
  *
- * Every chain registers its REST endpoints at the paths its config names. A path registered
+ * Each chain's REST endpoints are registered at the paths its config names. A path registered
  * twice is FATAL.
  */
 class cudaGnssChordTrackState : public cudaCommandState {

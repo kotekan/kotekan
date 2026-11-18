@@ -11,10 +11,29 @@
 #include "json.hpp" // for json
 
 #include <functional> // for function
+#include <map>        // for map
 #include <string>     // for string
 #include <vector>     // for vector
 
 namespace gnss {
+
+/// The query of a REST request (connectionInstance::get_query).
+using RestQuery = std::map<std::string, std::string>;
+/// A GET's reply, from the request's query. It throws std::invalid_argument to refuse the
+/// request, which is then answered 400 with the exception's message.
+using RestGet = std::function<nlohmann::json(const RestQuery&)>;
+using RestPost = std::function<void(kotekan::connectionInstance&, nlohmann::json&)>;
+
+/// One REST endpoint of a row's chain: its verb, its own path, and its GET or POST.
+struct RestVerb {
+    std::string verb;
+    std::string path;
+    RestGet get;
+    RestPost post;
+};
+
+/// Answer @p conn with @p get's reply to @p query, or with its refusal.
+void rest_reply(kotekan::connectionInstance& conn, const RestGet& get, const RestQuery& query);
 
 /// One chain hosted by a GNSS host stage.
 struct HostRow {
@@ -77,6 +96,10 @@ void rest_register_unique(
 /// to @p paths.
 void rest_register_chains(const std::string& unique_name, const std::vector<HostRow>& rows,
                           std::vector<std::string>& paths);
+
+/// Register @p verbs at their own paths and add the paths to @p paths, FATAL if one already has a
+/// callback.
+void rest_register_verbs(const std::vector<RestVerb>& verbs, std::vector<std::string>& paths);
 
 /// Release what a host claimed, for its destructor: remove its REST @p paths, waiting for any
 /// request in flight on them, then the metrics and row names of its @p rows, so that a new host

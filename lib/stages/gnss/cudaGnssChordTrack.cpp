@@ -74,7 +74,9 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
         }
     }
     for (Row& r : rows)
-        r.chain = std::make_unique<gnss::TrackChain>(config, r.host.cfg_path, _rest_paths);
+        r.chain = std::make_unique<gnss::TrackChain>(config, r.host.cfg_path);
+    for (Row& r : rows)
+        gnss::rest_register_verbs(r.chain->rest_verbs(), _rest_paths);
 }
 
 cudaGnssChordTrackState::~cudaGnssChordTrackState() {

@@ -3,6 +3,7 @@
 
 #include "Config.hpp"            // for Config
 #include "buffer.hpp"            // for Buffer
+#include "gnssHostRows.hpp"      // for RestVerb
 #include "gnssRecord.hpp"        // for RECORD_FLOATS + slot names (the record schema)
 #include "kotekanLogging.hpp"    // for kotekanLogging
 #include "prometheusMetrics.hpp" // for Counter, Gauge (real-time cost instrumentation)
@@ -58,23 +59,20 @@ public:
     /// Write the emit into @p out (n_prn x record stride floats) and update the REST snapshot.
     void emit(float* out);
 
-    /// One REST endpoint: its verb (the path after the chain's name) and its GET handler.
-    struct RestVerb {
-        std::string verb;
-        std::function<void(kotekan::connectionInstance&)> get;
-    };
-    /// The endpoints this chain's config serves, in registration order.
+    /// The endpoints this chain's config serves, each at `<name>/<verb>`, in registration order.
     std::vector<RestVerb> rest_verbs();
 
 private:
+    const std::string _name;
+
     /// REST get_status: the last emit's per-PRN snapshot (amplitudes, deep detection, DLL
     /// powers, carrier and ADR observables).
-    void get_status_callback(kotekan::connectionInstance& conn);
+    nlohmann::json get_status();
     /// REST get_records: per-record complex prompts for the fleet's coherent combine (see
     /// _rec_export); registered when record_export > 0.
-    void get_records_callback(kotekan::connectionInstance& conn);
+    nlohmann::json get_records();
     /// REST get_elements: per-element complex-gain snapshot.
-    void get_elements_callback(kotekan::connectionInstance& conn);
+    nlohmann::json get_elements();
 
     /// Per-bit observations from one navwipe evaluation, for the broker's navigation-message
     /// decoders. The bit at index @c bi covers record indices [bi*br - phase, (bi+1)*br - phase)

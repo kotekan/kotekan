@@ -11,6 +11,7 @@
 #include "Config.hpp"                 // for Config
 #include "GnssCudaDespread.hpp"       // for GnssCudaDespread
 #include "gnssChannelizedReplica.hpp" // for ChannelizedReplicaBank
+#include "gnssHostRows.hpp"           // for RestVerb
 #include "guowang1202Nav.hpp"         // for Gw1202NavPages
 #include "kotekanLogging.hpp"         // for kotekanLogging
 #include "restServer.hpp"             // for connectionInstance
@@ -75,11 +76,12 @@ namespace gnss {
  */
 class TrackChain : public kotekan::kotekanLogging {
 public:
-    /// Reads its config at @p cfg_path and registers its REST endpoints, adding their paths to
-    /// @p rest_paths for the owner to remove before it destroys the chain. A path that already
-    /// has a callback is FATAL.
-    TrackChain(kotekan::Config& config, const std::string& cfg_path,
-               std::vector<std::string>& rest_paths);
+    /// Reads its config at @p cfg_path.
+    TrackChain(kotekan::Config& config, const std::string& cfg_path);
+
+    /// The endpoints its config names, for its owner to register: set_seeds, set_trim, get_prns
+    /// and set_prns.
+    std::vector<RestVerb> rest_verbs();
 
     /// POST endpoint: a JSON array of {prn, doppler_hz, code_phase_chips, code_phase_rate,
     /// doppler_rate_hz_s, carrier_trim_hz, ref_hop, code_phase_at_ref_chips}. The first three
@@ -111,7 +113,7 @@ public:
 
     /// GET endpoint: {prns, pending, last_hop}, the live map, whether a new one is staged and
     /// the newest frame hop seen.
-    void get_prns_callback(kotekan::connectionInstance& conn);
+    nlohmann::json get_prns();
 
     /// Apply the staged map if it is due. GPU thread only: it re-uploads device code tables on
     /// @c stream. Resets each swapped slot's seed, trim and trim diagnostics and, through
@@ -246,6 +248,10 @@ public:
     /// mask. A slot owns only its own k's main lobe, not the whole comb.
     std::vector<std::vector<int>> slot_covering;
     std::vector<uint64_t> slot_chan_mask;
+
+private:
+    /// The paths of its endpoints, from its config.
+    std::string _seed_ep, _set_trim_ep, _get_prns_ep, _set_prns_ep;
 };
 
 } // namespace gnss
