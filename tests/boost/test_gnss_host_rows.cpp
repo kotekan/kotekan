@@ -6,13 +6,16 @@
 // process-wide.
 
 #include "Config.hpp"                // for Config
+#include "GnssChanMetadata.hpp"      // for GnssChanMetadata, get_gnss_chan_metadata
 #include "GnssCoherentCombiner.hpp"  // for GnssCoherentCombiner
 #include "GnssGpuRecordAssemble.hpp" // for GnssGpuRecordAssemble
 #include "GnssTelemPack.hpp"         // for GnssTelemPack
 #include "GnssTelemSend.hpp"         // for GnssTelemSend
 #include "bufferContainer.hpp"       // for bufferContainer
+#include "bufferSend.hpp"            // for bufferFrameHeaderNoConfigTracker
 #include "gnssGpuRows.hpp"           // for gpu_rows
 #include "gnssHostRows.hpp"          // for host_rows, rest_register_unique
+#include "gnssRecord.hpp"            // for frame_floats, REC_P_ENERGY
 #include "gnssTelem.hpp"             // for telem_frame_bytes
 #include "kotekanLogging.hpp"        // for FatalError
 #include "kotekanMode.hpp"           // for kotekanMode
@@ -24,6 +27,7 @@
 #include "fmt.hpp"  // for format
 #include "json.hpp" // for json
 
+#include <arpa/inet.h>
 #include <boost/test/included/unit_test.hpp>
 #include <chrono>
 #include <csignal>
@@ -33,10 +37,12 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <netinet/in.h>
 #include <sched.h>
 #include <set>
 #include <sstream>
 #include <string>
+#include <sys/socket.h>
 #include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
@@ -958,6 +964,235 @@ BOOST_AUTO_TEST_CASE(telem_host_restarts_in_one_process) {
                                {"reconnect_time", 30},
                                {"use_config_tracker", false}};
     BOOST_CHECK_EQUAL(fatal_of([&] { start_stop_start(cfg, {"/gnss0_telem/chains"}); }), "");
+}
+
+namespace {
+
+/// Records each row of the telemetry stall case is fed, one every TELEM_STALL_DT_S from record
+/// TELEM_STALL_BASE, the frames its peer reads before it stops for TELEM_STALL_HOLD_S.
+constexpr int TELEM_STALL_RECORDS = 1500, TELEM_STALL_BASE = 1000, TELEM_STALL_AT = 50;
+constexpr double TELEM_STALL_DT_S = 0.002, TELEM_STALL_HOLD_S = 2.0;
+
+double now_s() {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
+
+/// Reads exactly @p n bytes from @p fd into @p p; false on EOF or error.
+bool recv_all(int fd, void* p, size_t n) {
+    uint8_t* b = (uint8_t*)p;
+    while (n > 0) {
+        const ssize_t r = recv(fd, b, n, 0);
+        if (r <= 0)
+            return false;
+        b += r;
+        n -= (size_t)r;
+    }
+    return true;
+}
+
+/// The counter of @p metric labelled first with stage_name @p stage in this process's metrics, 0
+/// for one not serialized.
+double metric_value(const std::string& metric, const std::string& stage) {
+    std::istringstream metrics(kotekan::prometheus::Metrics::instance().serialize());
+    const std::string head = metric + "{stage_name=\"" + stage + "\"";
+    for (std::string line; std::getline(metrics, line);)
+        if (line.rfind(head, 0) == 0)
+            return std::stod(line.substr(line.rfind(' ') + 1));
+    return 0.0;
+}
+
+/// Three telemetry rows of a host, of 32 PRNs and 6 channels, 2 and 1, and 14 and 2, on a worker
+/// each, write one 8-deep out_buf that a GnssTelemSend with @p drop_frames sends to a loopback
+/// peer, which stops reading for TELEM_STALL_HOLD_S. Throws a FatalError naming each check that
+/// fails.
+void telem_stall(bool drop_frames) {
+    const std::vector<std::string> keys = {"gnss0_a", "gnss0_b", "gnss0_c"};
+    const std::vector<int> max_prn = {32, 2, 14}, n_chan = {6, 1, 2};
+    cpu_set_t allowed;
+    CPU_ZERO(&allowed);
+    if (sched_getaffinity(0, sizeof(allowed), &allowed) != 0)
+        throw FatalError("sched_getaffinity");
+    std::vector<int> cpus;
+    for (int c = 0; c < CPU_SETSIZE; ++c)
+        if (CPU_ISSET(c, &allowed))
+            cpus.push_back(c);
+
+    // A small receive buffer, so the peer's kernel holds little once it stops reading.
+    const int listener = socket(AF_INET, SOCK_STREAM, 0);
+    const int rcvbuf = 4096;
+    sockaddr_in addr = {};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    socklen_t len = sizeof(addr);
+    if (listener < 0 || setsockopt(listener, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf)) != 0
+        || bind(listener, (sockaddr*)&addr, sizeof(addr)) != 0 || listen(listener, 1) != 0
+        || getsockname(listener, (sockaddr*)&addr, &len) != 0)
+        throw FatalError("cannot listen on loopback");
+
+    json workers = json::array();
+    for (const auto& k : keys)
+        workers.push_back({{"rows", {k}}, {"cpu_affinity", cpus}});
+    json cfg = telem_config(keys, workers);
+    cfg["cpu_affinity"] = cpus;
+    size_t out_bytes = 0;
+    for (size_t i = 0; i < keys.size(); ++i) {
+        json& row = cfg["gnss0_telem"]["chains"][keys[i]];
+        row["n_prn"] = max_prn[i];
+        row["max_prn"] = max_prn[i];
+        row["n_chan"] = n_chan[i];
+        row["channel_ids"] = std::vector<int>(n_chan[i], 100);
+        out_bytes = std::max(out_bytes, gnss::telem_frame_bytes(4, max_prn[i], n_chan[i]));
+    }
+    cfg["gnss0_telem_send"] = {{"buf", "gnss0_telem_buf"},
+                               {"server_ip", "127.0.0.1"},
+                               {"server_port", ntohs(addr.sin_port)},
+                               {"use_config_tracker", false},
+                               {"send_timeout", 30},
+                               {"drop_frames", drop_frames}};
+    kotekan::Config config;
+    config.update_config(cfg);
+    auto pool = metadataPool::create(64, sizeof(GnssChanMetadata), "pool", "GnssChanMetadata");
+    kotekan::bufferContainer bc;
+    std::vector<std::unique_ptr<Buffer>> in;
+    for (size_t i = 0; i < keys.size(); ++i) {
+        in.push_back(std::make_unique<Buffer>(
+            4, gnss::frame_floats(max_prn[i], 0, n_chan[i]) * sizeof(float), pool, "rec_" + keys[i],
+            "standard", 0, false, false, std::vector<int>{}, true));
+        in.back()->register_producer("feeder");
+        bc.add_buffer("rec_" + keys[i], in.back().get());
+    }
+    // Filled with 0x5A, which no frame may carry past its own length.
+    Buffer out(8, out_bytes, pool, "gnss0_telem_buf", "standard", 0, false, false,
+               std::vector<int>{}, true, 0x5A);
+    bc.add_buffer("gnss0_telem_buf", &out);
+    GnssTelemPack host(config, "/gnss0_telem", bc);
+    GnssTelemSend send(config, "/gnss0_telem_send", bc);
+
+    // [time, row, seq, win, present, bytes] of each frame the peer reads.
+    std::vector<std::vector<double>> taken;
+    double hold0 = 0.0, hold1 = 0.0;
+    std::thread peer([&] {
+        const int fd = accept(listener, nullptr, nullptr);
+        if (fd < 0)
+            return;
+        for (int k = 0;; ++k) {
+            if (k == TELEM_STALL_AT) {
+                hold0 = now_s();
+                std::this_thread::sleep_for(std::chrono::duration<double>(TELEM_STALL_HOLD_S));
+                hold1 = now_s();
+            }
+            bufferFrameHeaderNoConfigTracker bh;
+            if (!recv_all(fd, &bh, sizeof(bh)))
+                break;
+            std::vector<uint8_t> meta(bh.metadata_size), frame(bh.frame_size);
+            if (!recv_all(fd, meta.data(), meta.size()) || !recv_all(fd, frame.data(), frame.size())
+                || frame.size() < sizeof(gnss::TelemHeader))
+                break;
+            gnss::TelemHeader th;
+            std::memcpy(&th, frame.data(), sizeof(th));
+            const std::string chain(th.chain, strnlen(th.chain, gnss::TELEM_NAME));
+            double row = -1;
+            for (size_t i = 0; i < keys.size(); ++i)
+                if (keys[i].substr(6) == chain)
+                    row = i;
+            taken.push_back({now_s(), row, (double)th.seq, (double)th.win, (double)th.present,
+                             (double)frame.size()});
+        }
+        close(fd);
+    });
+    host.start();
+    send.start();
+
+    const double t0 = now_s() + 0.2;
+    std::vector<double> late(keys.size(), 0.0);
+    std::vector<std::thread> feeders;
+    for (size_t i = 0; i < keys.size(); ++i)
+        feeders.emplace_back([&, i] {
+            Buffer* b = in[i].get();
+            const int64_t rec_samples = 2048 * 16384;
+            for (int j = 0; j < TELEM_STALL_RECORDS; ++j) {
+                const int id = j % b->num_frames;
+                float* f = (float*)b->wait_for_empty_frame("feeder", id);
+                if (f == nullptr)
+                    return;
+                while (now_s() < t0 + j * TELEM_STALL_DT_S)
+                    std::this_thread::sleep_for(std::chrono::microseconds(100));
+                late[i] = std::max(late[i], now_s() - (t0 + j * TELEM_STALL_DT_S));
+                f[gnss::REC_P_ENERGY] = 1.0f;
+                b->allocate_new_metadata_object(id);
+                get_gnss_chan_metadata(b, id)->sample_seq = (TELEM_STALL_BASE + j) * rec_samples;
+                b->mark_frame_full("feeder", id);
+            }
+        });
+    for (std::thread& t : feeders)
+        t.join();
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    host.stop();
+    send.stop();
+    for (auto& b : in)
+        b->send_shutdown_signal();
+    out.send_shutdown_signal();
+    host.join();
+    send.join();
+    peer.join();
+    close(listener);
+
+    std::string bad;
+    if (hold1 - hold0 < TELEM_STALL_HOLD_S)
+        bad += " no hold;";
+    const int windows = TELEM_STALL_RECORDS / 4, win0 = TELEM_STALL_BASE / 4;
+    const double send_dropped =
+        metric_value("kotekan_buffer_send_dropped_frame_count", "/gnss0_telem_send");
+    double send_share = 0.0;
+    for (size_t i = 0; i < keys.size(); ++i) {
+        const size_t bytes = gnss::telem_frame_bytes(4, max_prn[i], n_chan[i]);
+        int got = 0, after = 0, misfit = 0, disorder = 0;
+        int64_t last_seq = -1, last_win = -1, gaps = 0;
+        for (const auto& t : taken) {
+            if (t[1] != (double)i)
+                continue;
+            const int64_t seq = (int64_t)t[2], win = (int64_t)t[3];
+            ++got;
+            after += t[0] > hold1;
+            misfit += t[4] != 0xF || t[5] != bytes;
+            disorder += seq <= last_seq || win <= last_win;
+            gaps += seq - last_seq - 1;
+            last_seq = seq;
+            last_win = win;
+        }
+        const double dropped =
+            metric_value("kotekan_gnss_telem_dropped_frames_total", "/" + keys[i] + "_telem_pack");
+        send_share += gaps - dropped;
+        const std::string row = fmt::format(
+            " {:s}: {:d} of {:d} windows sent, {:d} after the hold, {:.0f} dropped, {:d} seq "
+            "gaps, last seq {:d} win {:d}, {:d} misfit, {:d} out of order, feeder {:.3f} s late;",
+            keys[i], got, windows, after, dropped, gaps, last_seq, last_win, misfit, disorder,
+            late[i]);
+        BOOST_TEST_MESSAGE(row);
+        if (late[i] >= 0.1 || dropped <= 0 || after <= 0 || misfit || disorder
+            || last_seq != windows - 1 || last_win != win0 + windows - 1 || gaps < dropped
+            || (!drop_frames && gaps != dropped))
+            bad += row;
+    }
+    // The send's own drops are the rest of the rows' seq gaps.
+    if (send_share != send_dropped || (!drop_frames && send_dropped != 0))
+        bad += fmt::format(" the send dropped {:.0f} frames, the seq gaps leave {:.0f};",
+                           send_dropped, send_share);
+    if (!bad.empty())
+        throw FatalError("drop_frames " + std::to_string(drop_frames) + ":" + bad);
+}
+
+} // namespace
+
+// A telemetry host's rows sharing one out_buf never wait for its GnssTelemSend: while the send's
+// peer stops reading, the feeders standing in for the record assemblers are never held, each row
+// drops the windows that find the out_buf full, counts them and skips their seq, and the send
+// sends each frame at its row's own length, the rows' frames complete and in order before and
+// after the hold.
+BOOST_AUTO_TEST_CASE(telem_host_never_waits_for_its_send) {
+    for (bool drop_frames : {false, true})
+        BOOST_CHECK_EQUAL(fatal_of([&] { telem_stall(drop_frames); }), "");
 }
 
 // A telemetry host's workers run as threads of the stage, each named for its row if it has one,
