@@ -29,4 +29,4 @@ Base: `develop` at `b9a2b1c3d` (#1823).
 | `a82b96f02` | `config/chord/pathfinder.j2` | Record calibration gains in the X-engine N2 frames (#1849) |
 | `ef35f45de` | `config/chord/common.j2` | Name the F-engine controller by its full name |
 | `e401a4b50` | `config/chord/{telescope,pathfinder,recv}.j2` | Science band 150-1600 MHz: 58 bins per stream, 464 frequencies per GPU |
-| `0d3694ffb`, `058674b73`, `e3f2cd7d0`, `fd512854a` | `config/chord/{incoherent,pathfinder,recv}.j2` | Incoherent-beam pulse search: power from each half to the recv node, search there (#1903) |
+| `0d3694ffb`, `058674b73`, `e3f2cd7d0`, `fd512854a`, `45fc64ebe` | `config/chord/{incoherent,pathfinder,recv}.j2` | Incoherent-beam pulse search: power from each half to the recv node, search there (#1903) |
