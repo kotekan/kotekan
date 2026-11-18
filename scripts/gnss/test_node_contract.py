@@ -26,7 +26,12 @@ combiners; GNSS_CONTRACT_COMBINE_ALONE=DIR9 (--combine-host alone) likewise agai
 GNSS_CONTRACT_TELEM=DIR10 (DIR8's flags and --telem-pack-host) its contract must be DIR8's but for
 each half's telemetry host and one GnssTelemSend in place of its chains' bufferSends, to the same
 address, with the host's rows, read by gnss_fleet.telem_rows, DIR8's packs;
-GNSS_CONTRACT_TELEM_ALONE=DIR11 (--telem-pack-host alone) likewise against DIR.
+GNSS_CONTRACT_TELEM_ALONE=DIR11 (--telem-pack-host alone) likewise against DIR. With
+GNSS_CONTRACT_HALF_REC=DIR12 (DIR10's flags and --half-rec-buf) its contract must be DIR10's but
+for the record buffers' placement, the chains' out and one per half in on the half's NUMA node,
+and each assembler's stall budget, every one 8.75 or more; each row of a half's record, combine
+and telemetry hosts sets one rec_row, the same in the three, tiling gnss<g>_rec_buf in
+gnss_rows order.
 """
 import collections
 import copy
@@ -44,6 +49,7 @@ sys.path.insert(0, HERE)
 import gen_fleet  # noqa: E402
 import node_contract as nc  # noqa: E402
 from gen_chord_gnss_config import TELEM_HOST_DEPTH  # noqa: E402
+from gnss_record_layout import rec_offsets  # noqa: E402
 
 NODE = "cx52"
 NAME = "chord_gnss_%s_multi.yaml" % NODE
@@ -819,6 +825,61 @@ def test_telem(a_dir, t_dir):
     )
 
 
+def test_half_rec(t_dir, h_dir):
+    """A config generated with --half-rec-buf against the same flags without it."""
+    tpath, hpath = os.path.join(t_dir, NAME), os.path.join(h_dir, NAME)
+    hcfg = nc.load(hpath)
+    t_s, h_s = nc.snapshot(tpath, NODE, NODE), nc.snapshot(hpath, NODE, NODE)
+    lines = nc.diff(t_s, h_s)
+    rec_bufs = [
+        b for b in t_s["placement"]["numa"] if re.match(r"gnss\d_\w+_n2rec_buf$", b)
+    ]
+    asm = [u for u in t_s["stall"] if u.endswith("_n2assemble")]
+    want = sorted(
+        [
+            "- placement: numa %s = %r" % (b, t_s["placement"]["numa"][b])
+            for b in rec_bufs
+        ]
+        + ["+ placement: numa gnss%d_rec_buf = %r" % (g, g) for g in (0, 1)]
+        + [
+            "~ stall: %s: %r -> %r" % (u, t_s["stall"][u], h_s["stall"].get(u))
+            for u in asm
+        ]
+    )
+    budget = 8 + 1 + (16 - 1) / 4
+    check(
+        len(rec_bufs) == 30
+        and len(asm) == 30
+        and sorted(lines) == want
+        and set(h_s["stall"][u] for u in asm) == {budget}
+        and not h_s["placement"]["misplaced"],
+        "half rec: the contract is that without the flag but for one record buffer per half on "
+        "its node, and every assembler's stall budget %r, 8.75 or more (%s)"
+        % (budget, sorted(set(lines) ^ set(want))[:5]),
+    )
+    bad = []
+    for g in (0, 1):
+        rows = {}
+        for kind in ("records", "combine", "telem"):
+            host = hcfg["gnss%d_%s" % (g, kind)]
+            for k, row in host["chains"].items():
+                rows.setdefault(k, []).append(row.get("rec_row"))
+        order = sorted(
+            hcfg["gnss%d_records" % g]["chains"].items(),
+            key=lambda kv: kv[1]["gnss_row"]["row"],
+        )
+        offs, frame = rec_offsets([kv[1]["rec_row"]["bytes"] for kv in order])
+        if any(
+            len(r) != 3 or r[0] is None or r.count(r[0]) != 3 for r in rows.values()
+        ):
+            bad.append("gnss%d: a row's rec_rows differ between its hosts" % g)
+        if [kv[1]["rec_row"]["offset"] for kv in order] != offs or hcfg[
+            "gnss%d_rec_buf" % g
+        ]["frame_size"] != frame:
+            bad.append("gnss%d: the rows do not tile gnss%d_rec_buf" % (g, g))
+    check(not bad, "half rec: one rec_row per row, tiling the half's buffer (%s)" % bad)
+
+
 def test_replay(dump):
     """rest_surface of the replay's config against what its stages registered."""
     cpath = os.path.join(dump, "config.json")
@@ -883,6 +944,7 @@ def main():
         combine_alone = os.environ.get("GNSS_CONTRACT_COMBINE_ALONE")
         telem = os.environ.get("GNSS_CONTRACT_TELEM")
         telem_alone = os.environ.get("GNSS_CONTRACT_TELEM_ALONE")
+        half_rec = os.environ.get("GNSS_CONTRACT_HALF_REC")
         tests = (
             [
                 lambda: test_counts(base, cfg),
@@ -906,6 +968,7 @@ def main():
             + ([lambda: test_combine(d, combine_alone)] if combine_alone else [])
             + ([lambda: test_telem(combine, telem)] if combine and telem else [])
             + ([lambda: test_telem(d, telem_alone)] if telem_alone else [])
+            + ([lambda: test_half_rec(telem, half_rec)] if telem and half_rec else [])
         )
         for t in tests:
             try:

@@ -56,6 +56,7 @@ from chord_band_plan import (
 from gnss_record_layout import (
     cube_frame_bytes,  # noqa: E402
     record_stride,
+    rec_offsets,
     telem_frame_bytes,
     telem_max_chan,
     chan_floats,
@@ -115,6 +116,10 @@ BUFFER_DEPTH = 4
 # frame it works on before cudaOutputData blocks the GPU. Without --fold-epl that slack is 7
 # (4 tiles + 4 epl, less the epl frame the assembler works on): 7 keeps it, 8 adds a frame.
 FOLD_EPL_DEPTH = 8
+# Frames of a GPU half's record buffer with --half-rec-buf, each a record of every chain on the
+# half: one stays full for /buffer_frame, so the half's slowest reader may lag its record workers
+# by 15 records (3.75 correlator frames) before they stop taking the tiles and control blocks.
+HALF_REC_DEPTH = 16
 # PRN slots an extra search (--aggregator-extra-search) scans when the spec names none, by
 # the signal name's constellation prefix: the broadcast PRN ranges, not a lane budget.
 EXTRA_SEARCH_PRNS = {
@@ -1935,6 +1940,7 @@ RECORD_ROW_KEYS = (
     "gnss_row",
     "in_buf",
     "lane_transfer_freq_ids",
+    "rec_row",
     "record_cp_mod_chips",
     "tiles_buf",
 )
@@ -1943,12 +1949,20 @@ RECORD_ROW_KEYS = (
 # The keys a chain's combiner keeps in its row of gnss<g>_combine (--combine-host):
 # GnssCoherentCombiner's ROW_KEYS and ROW_ONLY_KEYS, as RECORD_ROW_KEYS. chain, the broker chain
 # that labels the row's metrics, is set by combine_host_form.
-COMBINE_ROW_KEYS = ("in_bufs", "n_prn", "chain", "out_buf")
+COMBINE_ROW_KEYS = ("in_bufs", "n_prn", "chain", "out_buf", "rec_row")
 
 
 # The keys a chain's telemetry pack keeps in its row of gnss<g>_telem (--telem-pack-host):
-# GnssTelemPack's ROW_KEYS, as RECORD_ROW_KEYS. The rows' out_buf is the host's.
-TELEM_ROW_KEYS = ("in_buf", "chain", "n_prn", "max_prn", "n_chan", "channel_ids")
+# GnssTelemPack's ROW_KEYS and ROW_ONLY_KEYS, as RECORD_ROW_KEYS. The rows' out_buf is the host's.
+TELEM_ROW_KEYS = (
+    "in_buf",
+    "chain",
+    "n_prn",
+    "max_prn",
+    "n_chan",
+    "channel_ids",
+    "rec_row",
+)
 
 
 def host_form(blocks, pres, stage, row_keys, name):
@@ -2020,6 +2034,50 @@ def telem_host_form(blocks, pres, gpu):
         buf=f"gnss{gpu}_telem_buf",
         max_pacing_rate_mbps=round(sum(a["max_pacing_rate_mbps"] for a in sends), 3),
     )
+
+
+def half_rec_buf_form(blocks, pres, gpu):
+    """--half-rec-buf: one record buffer per GPU half, gnss<g>_rec_buf, HALF_REC_DEPTH frames,
+    in place of the chains' own: each frame holds one record of every chain, after a directory of
+    the rows (gnss::RecDir), each chain's at its rec_row, {chain_id, n_prn, n_chan, offset,
+    bytes}, in gnss_rows order. The record host's rows write it and the combine and telemetry
+    hosts' rows read it; each host names it once on its block, and each row sets its rec_row.
+    The frames carry no metadata: the directory carries each record's wstart."""
+    name = f"gnss{gpu}_rec_buf"
+    hosts = (
+        (blocks[f"gnss{gpu}_records"], "out_buf", name),
+        (blocks[f"gnss{gpu}_combine"], "in_bufs", [name]),
+        (blocks[f"gnss{gpu}_telem"], "in_buf", name),
+    )
+    rec = hosts[0][0]
+    rows, row_bytes = [], []
+    for p in pres:
+        blocks.pop(p["pre"] + "n2rec_buf")
+        a = dict(rec, **rec["chains"][p["pre"][:-1]])
+        n_prn = len(a["prns"])
+        n_chan = len(a["channel_ids"]) if a.get("chan_export") else 0
+        rows.append(
+            {"chain_id": a["gnss_row"]["chain_id"], "n_prn": n_prn, "n_chan": n_chan}
+        )
+        row_bytes.append(
+            4 * n_prn * (record_stride(a["n_elements"]) + n_chan * chan_floats())
+        )
+    offsets, frame = rec_offsets(row_bytes)
+    for row, off, b in zip(rows, offsets, row_bytes):
+        row.update(offset=off, bytes=b)
+    for host, key, value in hosts:
+        for p, row in zip(pres, rows):
+            r = host["chains"][p["pre"][:-1]]
+            del r[key]
+            r["rec_row"] = dict(row)
+        host[key] = value
+    blocks[name] = {
+        "kotekan_buffer": "standard",
+        "num_frames": HALF_REC_DEPTH,
+        "frame_size": frame,
+        # The newest frame, every chain's record, stays readable over /buffer_frame.
+        "peek_hold": True,
+    }
 
 
 def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
@@ -2421,6 +2479,8 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
         combine_host_form(blocks, pres, gpu)
     if args.telem_pack_host:
         telem_host_form(blocks, pres, gpu)
+    if args.half_rec_buf:
+        half_rec_buf_form(blocks, pres, gpu)
     merged["in_buffers"] = primary["in_buffers"]
     merged["out_buffers"] = out_buffers
     merged["commands"] = (
@@ -3959,6 +4019,14 @@ def main():
         "per chain. The frames are the chains' own; the half sends one TCP stream.",
     )
     ap.add_argument(
+        "--half-rec-buf",
+        action="store_true",
+        help="with --record-host, --combine-host and --telem-pack-host: one record buffer per "
+        "GPU half (gnss<g>_rec_buf), each frame one record of every chain after a directory of "
+        "the chains' rows, which the record host's workers write and the combine and telemetry "
+        "hosts' workers read, each row at its rec_row, instead of one record buffer per chain.",
+    )
+    ap.add_argument(
         "--psi-synth",
         action="store_true",
         help="cudaGnssChordTrack psi_synth on every chain: replica synthesis from per-PRN "
@@ -4388,6 +4456,13 @@ def main():
         raise SystemExit(
             "--record-host requires --gpu-rows: its rows read the half's tiles and control "
             "blocks"
+        )
+    if args.half_rec_buf and not (
+        args.record_host and args.combine_host and args.telem_pack_host
+    ):
+        raise SystemExit(
+            "--half-rec-buf requires --record-host, --combine-host and --telem-pack-host: the "
+            "record buffer's writers and readers are the rows of those hosts"
         )
     if args.gpu_rows and args.vis_capture:
         raise SystemExit(

@@ -653,11 +653,15 @@ def test_combine_host_form():
 
 
 def test_telem_row_keys_are_the_stages():
-    """TELEM_ROW_KEYS is GnssTelemPack's ROW_KEYS."""
+    """TELEM_ROW_KEYS is GnssTelemPack's ROW_KEYS and ROW_ONLY_KEYS."""
     with open(os.path.join(ROOT, "lib", "stages", "gnss", "GnssTelemPack.cpp")) as f:
         src = f.read()
-    m = re.search(r"GnssTelemPack::ROW_KEYS = \{(.*?)\};", src, re.S)
-    keys = set(re.findall(r'"(\w+)"', m.group(1))) if m else {"<ROW_KEYS missing>"}
+    keys = set()
+    for name in ("ROW_KEYS", "ROW_ONLY_KEYS"):
+        m = re.search(r"GnssTelemPack::%s = \{(.*?)\};" % name, src, re.S)
+        keys |= (
+            set(re.findall(r'"(\w+)"', m.group(1))) if m else {"<%s missing>" % name}
+        )
     check(
         keys == set(g.TELEM_ROW_KEYS),
         "TELEM_ROW_KEYS is the stage's row keys (only in one: %s)"
@@ -765,6 +769,189 @@ def test_telem_host_form():
         == "gnss0: --telem-pack-host needs send_timeout the same on every chain's telem_send",
         "telem_host_form refuses a send key the chains differ on (%s)" % msg,
     )
+
+
+def test_half_rec_buf_form():
+    """half_rec_buf_form: the chains' record buffers become gnss<g>_rec_buf, HALF_REC_DEPTH
+    frames of one record of every chain after the directory, in gnss_rows order; each host
+    names it once on its block, and each row sets its rec_row in place of its own buffer."""
+    pres = [{"pre": "gnss1_b_"}, {"pre": "gnss1_a_"}]
+    blocks = {
+        "gnss1_records": {
+            "n_elements": 2,
+            "chan_export": True,
+            "chains": {
+                "gnss1_a": {
+                    "out_buf": "gnss1_a_n2rec_buf",
+                    "prns": [1, 2, 3],
+                    "channel_ids": [7],
+                    "gnss_row": {"chain_id": 4},
+                },
+                "gnss1_b": {
+                    "out_buf": "gnss1_b_n2rec_buf",
+                    "prns": [5],
+                    "channel_ids": [7, 8],
+                    "gnss_row": {"chain_id": 9},
+                },
+            },
+        },
+        "gnss1_combine": {
+            "chains": {
+                k: {"in_bufs": [k + "_n2rec_buf"], "n_prn": 1}
+                for k in ("gnss1_a", "gnss1_b")
+            }
+        },
+        "gnss1_telem": {
+            "chains": {
+                k: {"in_buf": k + "_n2rec_buf", "n_prn": 1}
+                for k in ("gnss1_a", "gnss1_b")
+            }
+        },
+        "gnss1_a_n2rec_buf": {"kotekan_buffer": "standard"},
+        "gnss1_b_n2rec_buf": {"kotekan_buffer": "standard"},
+    }
+    g.half_rec_buf_form(blocks, pres, 1)
+    stride = g.record_stride(2)
+    b_bytes = 4 * 1 * (stride + 2 * g.chan_floats())
+    a_bytes = 4 * 3 * (stride + 1 * g.chan_floats())
+    b_off = 128  # 16 + 48 * 2 = 112, up to 64
+    a_off = -(-(b_off + b_bytes) // 64) * 64
+    rows = {
+        "gnss1_b": {
+            "chain_id": 9,
+            "n_prn": 1,
+            "n_chan": 2,
+            "offset": b_off,
+            "bytes": b_bytes,
+        },
+        "gnss1_a": {
+            "chain_id": 4,
+            "n_prn": 3,
+            "n_chan": 1,
+            "offset": a_off,
+            "bytes": a_bytes,
+        },
+    }
+    bad = []
+    if blocks.get("gnss1_rec_buf") != {
+        "kotekan_buffer": "standard",
+        "num_frames": g.HALF_REC_DEPTH,
+        "frame_size": a_off + a_bytes,
+        "peek_hold": True,
+    }:
+        bad.append("gnss1_rec_buf %s" % blocks.get("gnss1_rec_buf"))
+    if any(k.endswith("_n2rec_buf") for k in blocks):
+        bad.append("a chain's record buffer is left")
+    for host, key, value in (
+        ("gnss1_records", "out_buf", "gnss1_rec_buf"),
+        ("gnss1_combine", "in_bufs", ["gnss1_rec_buf"]),
+        ("gnss1_telem", "in_buf", "gnss1_rec_buf"),
+    ):
+        h = blocks[host]
+        if h.get(key) != value:
+            bad.append("%s %s %s" % (host, key, h.get(key)))
+        for k, row in h["chains"].items():
+            if key in row or row.get("rec_row") != rows[k]:
+                bad.append("%s %s %s" % (host, k, row))
+    check(not bad, "half_rec_buf_form: one record buffer, rows tiling it (%s)" % bad)
+
+
+def test_half_rec_buf():
+    """--half-rec-buf, on top of --record-host --combine-host --telem-pack-host, puts each half's
+    records in gnss<g>_rec_buf and changes nothing else: each chain's rec_row holds what its
+    record buffer held without the flag, and the hosts are those without it but for the buffer
+    keys. Without the three host flags it is refused."""
+    if kotekan_src.SRC is None:
+        print("  [SKIP] node config: no kotekan tree to render the base from")
+        return
+    hosts = [
+        "--fold-epl",
+        "--gpu-rows",
+        "--inject-host",
+        "--record-host",
+        "--combine-host",
+        "--telem-pack-host",
+    ]
+    exc, plain = _lane_transfer_node(flags=hosts)
+    exc_h, half = _lane_transfer_node(flags=hosts + ["--half-rec-buf"])
+    check(
+        exc is None and exc_h is None,
+        "the node configs generate (%s, %s)" % (exc, exc_h),
+    )
+    if None in (plain, half):
+        return
+    bad = []
+    for gpu in (0, 1):
+        name = "gnss%d_rec_buf" % gpu
+        rec, cmb, tel = (
+            plain["gnss%d_%s" % (gpu, h)] for h in ("records", "combine", "telem")
+        )
+        rec_h, cmb_h, tel_h = (
+            half["gnss%d_%s" % (gpu, h)] for h in ("records", "combine", "telem")
+        )
+        for k, row in rec["chains"].items():
+            old = plain[row["out_buf"]]
+            size = eval(old["frame_size"].replace("sizeof_float32", "4"))
+            rr = rec_h["chains"][k]["rec_row"]
+            if (
+                rr["bytes"] != size
+                or rr["n_prn"] != len(row["prns"])
+                or rr["n_chan"] != len(row["channel_ids"])
+                or rr["chain_id"] != row["gnss_row"]["chain_id"]
+                or cmb_h["chains"][k]["rec_row"] != rr
+                or tel_h["chains"][k]["rec_row"] != rr
+                or old.get("numa_node") != half[name].get("numa_node")
+            ):
+                bad.append("%s %s %s" % (name, k, rr))
+        for host, h_, key in (
+            (rec, rec_h, "out_buf"),
+            (cmb, cmb_h, "in_bufs"),
+            (tel, tel_h, "in_buf"),
+        ):
+            want = copy.deepcopy(host)
+            for row in want["chains"].values():
+                del row[key]
+            got = copy.deepcopy(h_)
+            del got[key]
+            for row in got["chains"].values():
+                del row["rec_row"]
+            if got != want:
+                bad.append("gnss%d host %s" % (gpu, key))
+        # In gnss_rows order, tiling the frame.
+        by_row = sorted(rec_h["chains"].values(), key=lambda r: r["gnss_row"]["row"])
+        offs, frame = g.rec_offsets([r["rec_row"]["bytes"] for r in by_row])
+        if (
+            [r["rec_row"]["offset"] for r in by_row] != offs
+            or half[name]["frame_size"] != frame
+            or half[name]["num_frames"] != g.HALF_REC_DEPTH
+            or not half[name].get("peek_hold")
+            or "metadata_pool" in half[name]
+        ):
+            bad.append("%s %s" % (name, half[name]))
+    others = {
+        k: v
+        for k, v in plain.items()
+        if not re.fullmatch(r"gnss\d(_\w+_n2rec_buf|_records|_combine|_telem)", k)
+    }
+    if {
+        k: v
+        for k, v in half.items()
+        if not re.fullmatch(r"gnss\d(_rec_buf|_records|_combine|_telem)", k)
+    } != others:
+        bad.append("blocks outside the records' buffers and hosts")
+    check(
+        not bad,
+        "one record buffer per half, each row's rec_row its old buffer, nothing else (%s)"
+        % bad[:4],
+    )
+    for missing in ("--record-host", "--combine-host", "--telem-pack-host"):
+        exc, _ = _lane_transfer_node(
+            flags=[f for f in hosts if f != missing] + ["--half-rec-buf"]
+        )
+        check(
+            exc is not None and "--half-rec-buf requires" in exc,
+            "--half-rec-buf without %s is refused (%r)" % (missing, exc),
+        )
 
 
 def test_paths_in_the_kotekan_tree():
