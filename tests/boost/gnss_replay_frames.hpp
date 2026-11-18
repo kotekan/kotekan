@@ -62,7 +62,15 @@ enum class Mutation {
     ctl_offset_swap_AB,
     fg_offset_swap_AB,
     row_swap_AB,
-    row_tag_B3
+    row_tag_B3,
+    /// With Scenario::rec_shared: the combiners' host reads chain B's records with chain_id 99;
+    /// the telemetry host reads chains A and B only, laid out as a frame of theirs; the
+    /// assemblers' host writes B's records with one PRN more; the telemetry host reads B's
+    /// records 64 bytes on.
+    rec_chain_id_cmb_B,
+    rec_rows_tel_AB,
+    rec_n_prn_as_B,
+    rec_offset_tel_B
 };
 
 /// The events, by frame. Chain A is chains[0], B chains[1] and C chains[2].
@@ -112,6 +120,12 @@ struct Scenario {
     int telem_workers = 0;
     /// The chain (ChainSpec::idx) whose swap_slot swaps PRN at swap_frame; -1 for every chain.
     int swap_chain = -1;
+    /// true, with rows: the assemblers write one record buffer of the GPU half, every frame a
+    /// record of each chain at its rec_row, which the combiners and telemetry packs read, as
+    /// gen_chord_gnss_config.py --half-rec-buf builds a node. The assemblers then run one chain
+    /// after another as without it, and the frame's records reach the readers once every chain
+    /// has written its own.
+    bool rec_shared = false;
 };
 
 /// Record index of frame 0's first record: a multiple of every window length the chains use
