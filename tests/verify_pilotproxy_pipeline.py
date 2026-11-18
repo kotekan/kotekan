@@ -293,7 +293,7 @@ def expected_products(
         fine = fine_power_fx(projections, num_streams=NUM_POL * num_dishes)
         powers[index] = fine.sum(axis=1, dtype=np.uint64)
         calibration = profile["fine_calibration"]
-        if calibration["status"] != "calibrated":
+        if calibration["status"] not in ("calibrated", "control"):
             raise ValueError(
                 f"physical channel {profile['physical_channel']} is not calibrated"
             )
@@ -305,6 +305,9 @@ def expected_products(
             cfar_rank=calibration["cfar_rank"],
             multiplier_q16=calibration["cfar_multiplier_q16"],
         )
+        if calibration["status"] == "control":
+            # decided and recorded, with no mask and no support
+            continue
         masks[index] = decision.mask
         support[index] = (int(decision.valid), decision.n_bulk)
     return masks, powers, support

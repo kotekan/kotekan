@@ -36,6 +36,12 @@ Files are written to ``base_dir`` (created if missing) as::
   ``create_single_file: true`` the counter is omitted and all frames go to
   one file.
 
+The counter starts at 0 in each run, so a restart overwrites the previous
+files. With ``acq_dir: true`` the files go to
+``<base_dir>/acq_YYYYMMDD_HHMMSS_NNNNNNNNN`` instead, named for the time Kotekan
+started (UTC), as ``hdf5N2Write`` does. Writers with the same ``base_dir`` in one
+instance share the directory.
+
 Files are created in HDF5 v1.10 format with **SWMR** (single-writer
 multiple-reader) write mode: they remain readable while being written, and
 stay readable even if the writer did not close them cleanly (you may need
@@ -227,7 +233,7 @@ as dotted scalar attributes (``time_center_eop.t_inst_ns``,
 ``bin_end_ERAL_deg``; ``fpga_start_tick``, ``frame_start_time_ns``,
 ``frame_length_fpga_ticks``, ``n_valid_fpga_ticks``, ``n_rfi_fpga_ticks``,
 ``n_rfi_only_fpga_ticks``, ``n_pl_fpga_ticks``,
-``n_rfi_first_stage_enabled_fpga_ticks``;
+``n_rfi_first_stage_enabled_fpga_ticks``, ``n_dtv_mask_enabled_fpga_ticks``;
 ``rfi_frame_excision_enabled``, ``rfi_frame_excision_num``,
 ``rfi_frame_excision_threshold``, ``rfi_frame_excision_fraction``,
 ``fringestop_enabled``; and the
@@ -249,6 +255,9 @@ Configuration
    * - ``base_dir``
      - required
      - Output directory (created if missing).
+   * - ``acq_dir``
+     - false
+     - Write into a per-run ``acq_<start time>`` directory under ``base_dir``.
    * - ``file_name``
      - required
      - Base file name; also the dataset name in CHORD mode.

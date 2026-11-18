@@ -28,6 +28,7 @@ WORKDIR /code/build
 RUN apt-get update && \
     apt-get install -y \
         bison \
+        black \
         build-essential \
         ccache \
         clang \
@@ -57,7 +58,6 @@ RUN apt-get update && \
         libfftw3-dev \
         libgdal-dev \
         libhdf5-dev \
-        libhdf5-serial-dev \
         liblapack-dev \
         liblapacke-dev \
         liblz4-dev \
@@ -73,13 +73,15 @@ RUN apt-get update && \
         make \
         pkg-config \
         python3 \
+        python3-breathe \
         python3-dev \
         python3-pip \
+        python3-sphinx \
+        python3-sphinx-rtd-theme \
         python3-venv \
         software-properties-common \
         valgrind \
         wget \
-        xtensor-dev \
         && \
     apt-get clean && apt-get autoclean && rm -rf /var/lib/apt/lists/*
 
@@ -92,8 +94,7 @@ ENV PIP_NO_CACHE_DIR=1
 RUN python3 -m pip install --upgrade \
         astropy \
         bitshuffle \
-        breathe==4.35.* \
-        'click>=8.1.3' \
+        click \
         cmake_format \
         flask \
         flask-cors \
@@ -113,14 +114,7 @@ RUN python3 -m pip install --upgrade \
         pytest-xdist \
         requests \
         ruamel.yaml \
-        sphinx==6.2.* \
-        sphinx_rtd_theme==2.0.* \
         tabulate
-
-# The current formatter needs an older Click than the runtime packages.
-RUN python3 -m venv /opt/black_env && \
-    /opt/black_env/bin/python -m pip install black==19.10b0 click==8.0.2 && \
-    ln -s /opt/black_env/bin/black /usr/local/bin/black
 
 # Uncomment this to check what version got installed
 # RUN python3 -m pip show <package>
