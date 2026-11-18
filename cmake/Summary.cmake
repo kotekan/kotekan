@@ -157,7 +157,7 @@ endif()
 
 set(_gdal_present OFF)
 if("${USE_GDAL}" STREQUAL "OFF")
-    find_package(GDAL QUIET)
+    find_package(GDAL CONFIG QUIET)
     set(_gdal_present ${GDAL_FOUND})
 endif()
 

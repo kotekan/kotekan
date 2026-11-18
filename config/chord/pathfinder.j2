@@ -4,9 +4,8 @@
 -#}
 
 
-# num_local_freq: number of frequency IDs processed on this GPU;
-#    must be divisible by 4 because pl_mask shapes use num_local_freq/4.
-{% set num_local_freq = 464 %}
+# num_local_freq: number of frequency IDs processed on this GPU, set in telescope.j2.
+{% from "telescope.j2" import num_local_freq %}
 
 
 # num_dishes: dishes/antennas to simulate.
@@ -970,6 +969,9 @@ run_recv_rfi_RFImask:
     <prefix>/etc/kotekan/chord/dtv_bundles. #}
 {% set dtv_runtime_bundle_dir = dtv_runtime_bundle_dir|default("/usr/local/etc/kotekan/chord/dtv_bundles/pathfinder-commissioning-e2e90219") %}
 {% include "dtv.j2" %}
+
+{#- Incoherent-beam power for the pulse search on the recv node (incoherent.j2). #}
+{% include "incoherent.j2" %}
 
 # Only the "normal" (downsampled) PL mask is sent to the GPU. This expands that mask for
 # the 1 bit correlator kernel. Other stages use the downsampled mask directly.
