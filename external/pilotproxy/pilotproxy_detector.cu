@@ -2,11 +2,12 @@
  * @file pilotproxy_detector.cu
  * @brief GPU-accelerated power-ratio detection of narrowband signals.
  *
- * Implements a power-ratio detector built from per-row matched filters
- * (coherent within each K-sample row; row spectra are combined incoherently
- * across input streams), optimized for detecting DTV pilot tones in wideband
- * spectral data. Every stage from the packed samples to the power sums is
- * fixed-point integer arithmetic.
+ * A DTV pilot is a narrowband line at a known frequency. The pilot power is
+ * measured with a matched filter and compared with the power of two nearby
+ * references. Each K-sample row is summed coherently, and the sums of
+ * successive rows are transformed into a fine spectrum. The powers of
+ * different input streams are added incoherently. Every stage from the
+ * packed samples to the power sums uses fixed-point integers.
  *
  * @section algorithm Algorithm Overview
  *
@@ -23,18 +24,21 @@
  *
  *   F = 2 * P[target] / (P[ref1] + P[ref2])
  *
- * The frame powers are DEFINED as the all-bin sums of the fine spectrum
- * (kernel core 3.0.0); the transform length cancels in F. The deployed
- * decision (the fine designated-set CFAR epilogue) reads S_r[f] only.
+ * The frame powers are defined as the sums over all bins of the fine
+ * spectrum (kernel core 3.0.0), and the transform length cancels in F. The
+ * deployed decision, the fine designated-set CFAR epilogue, reads only
+ * S_r[f].
  *
  * @section optimization Optimization Strategy
  *
  * - Integer arithmetic in the detector-window loop (avoids float conversion overhead)
- * - Warp shuffle reductions in the staged row-sum kernels (no shared memory bank conflicts)
- * - Grid-stride loop over detector rows (staged kernels); block-per-stream fused kernel
+ * - Warp shuffle reductions in the staged row-sum kernels (no shared-memory bank conflicts)
+ * - Grid-stride loop over detector rows in the staged kernels, one block per
+ *   stream in the fused kernel
  * - Weight ROM stores natural matched-filter weights
- * - Packed weights uploaded once per call; optional DP4A path pre-packs lanes
- * - Exact uint64 fine-power accumulation; frame powers reduced from the fine sums
+ * - Packed weights uploaded once per call, with the lanes packed in advance on
+ *   the optional DP4A path
+ * - Exact uint64 fine-power accumulation, with the frame powers reduced from the fine sums
  *
  * @author Dylan
  * @date 2025
@@ -289,7 +293,7 @@ void unpack_two_complex_bytes_to_dp4a_lanes(
 /**
  * @brief Load a prepacked DP4A weight lane.
  *
- * The DP4A path can load the tiny 768-byte lane table from CUDA constant
+ * The DP4A path can load the 768-byte lane table from CUDA constant
  * memory or from a per-handle global buffer preloaded into shared memory. The
  * default production configuration uses shared-memory preload because
  * different threads in a warp read different pair indices.
@@ -363,27 +367,30 @@ void debug_check_dot_int16_bounds(
  * ===========================================================================*/
 
 /**
- * @brief Emit exact complex per-row dot products (v2 time-coherent front end).
+ * @brief Write the exact complex dot product of each detector row with each
+ *        weight term.
  *
- * Grid-stride loop over detector rows, thread-stride loop over taps, warp
- * reduction -> shared memory -> block reduction; thread 0 of the reducing
- * warp writes the exact int32 complex row sum for every weight term:
+ * Detector rows are visited by a grid-stride loop and taps by a
+ * thread-stride loop. The partial sums are reduced in each warp, stored in
+ * shared memory, and reduced again across the block. Thread 0 of the
+ * reducing warp then writes the exact int32 complex row sum for every
+ * weight term:
  *
  *   RowSums[(n * detector_rows_per_block + m) * 2 + 0] = Re z[n, m]
  *   RowSums[(n * detector_rows_per_block + m) * 2 + 1] = Im z[n, m]
  *
- * Layout contract (stage-2 consumers depend on this):
- *   - term-major: each weight term's rows are contiguous;
- *   - rows keep the packer's stream-major order (each input stream's
- *     windows are contiguous), so a term slice reshapes to
- *     [num_streams, windows_per_stream] with no gather;
- *   - interleaved re/im int32 pairs.
+ * Layout contract (the fine stage depends on it):
+ *   - term-major, so the rows of each weight term are contiguous
+ *   - rows keep the stream-major order of the packer (the windows of each
+ *     input stream are contiguous), so a term slice reshapes to
+ *     [num_streams, windows_per_stream] with no gather
+ *   - interleaved re/im int32 pairs
  *
  * Values are exact integers (|component| <= detector_window_samples *
- * 2 * 7 * 8 = 14336 for the locked 4-bit path), so output is
- * bit-reproducible regardless of accumulation order. This buffer is the
- * input of the fine stage (PilotProxy_Compute_FinePowers_U64); the frame powers
- * P_r are the all-bin sums of that stage's output (kernel core 3.0.0).
+ * 2 * 7 * 8 = 14336 for the locked 4-bit path), so the output is
+ * bit-reproducible for any accumulation order. This buffer is the input of
+ * the fine stage (PilotProxy_Compute_FinePowers_U64), and the frame powers
+ * P_r are the sums over all bins of that stage's output.
  */
 __global__ void
 kernel_accumulate_row_sums(
@@ -512,11 +519,11 @@ kernel_accumulate_row_sums(
 }
 
 /**
- * @brief Batched exact complex row-sum emission.
+ * @brief Write the exact complex row sums of a batch of input blocks.
  *
  * Batch entry b (blockIdx.y) reads input block b and writes
- * RowSums + b * num_weight_terms * detector_rows_per_block * 2, preserving
- * the per-block term-major/stream-major/interleaved layout contract of
+ * RowSums + b * num_weight_terms * detector_rows_per_block * 2. Each batch
+ * entry keeps the term-major, stream-major, interleaved layout of
  * kernel_accumulate_row_sums.
  */
 __global__ void
@@ -658,34 +665,35 @@ kernel_accumulate_row_sums_batched(
 }
 
 /* ===========================================================================
- * FXFFT256 V1 FINE-REDUCTION STAGE (kernel core 2.1.0)
+ * FXFFT256 V1 FINE-REDUCTION STAGE
  * ===========================================================================
- * Frozen deterministic fixed-point FFT over the v2 row-sum buffer, plus
- * exact uint64 feed-power sums. The specification, Q15 twiddle table, and
- * rounding rule are frozen as fxfft256 v1: reference
- * src/pilot_proxy/fxfft.py, port template cuda/fxfft256_ref.c, golden
- * vectors tests/data/fxfft256_golden_v1.npz. This device implementation
- * must reproduce those outputs bit-for-bit
- * (tests/kernel/test_fine_powers_gpu.py); any arithmetic change here is a
- * spec change and must be versioned, not absorbed.
+ * This stage applies the frozen deterministic fixed-point FFT to the
+ * row-sum buffer and forms exact uint64 feed-power sums. The specification,
+ * the Q15 twiddle table, and the rounding rule are frozen as fxfft256 v1,
+ * with the reference in src/pilot_proxy/fxfft.py, the port template in
+ * cuda/fxfft256_ref.c, and the golden vectors in
+ * tests/data/fxfft256_golden_v1.npz. This device implementation must
+ * reproduce those outputs bit for bit (tests/kernel/test_fine_powers_gpu.py).
+ * Any change to the arithmetic here is a change to the specification and
+ * must be given a new version.
  */
 
 #define PILOTPROXY_FXFFT_SHIFT 15
 #define PILOTPROXY_FXFFT_ROUND (1LL << 14)
 
-/* Q15 twiddles, shared with the Python reference and the C reference via the
- * generated master table (tools/emit_fxfft_tables.py). Literal constants,
- * never runtime trigonometry. A length-n radix-2 DIT reads
- * master[t << (FX_MASTER_LOG2 - stage)]; the decimation stride folds into the
- * shift, so at PILOTPROXY_FINE_NUM_BINS = 256 the entries selected are exactly the
- * ones the frozen 128-entry fxfft256 v1 table held -- identical integers, not
- * a re-derivation. Constant-bank cost is FX_MASTER_HALF * 8 = 8 KiB. */
+/* Q15 twiddles from the generated master table (tools/emit_fxfft_tables.py),
+ * which the Python reference and the C reference also use. They are literal
+ * constants, never runtime trigonometry. A length-n radix-2 DIT reads
+ * master[t << (FX_MASTER_LOG2 - stage)], with the decimation stride folded
+ * into the shift. At PILOTPROXY_FINE_NUM_BINS = 256 this selects exactly the
+ * integers the frozen 128-entry fxfft256 v1 table held. The table takes
+ * FX_MASTER_HALF * 8 = 8 KiB of the constant bank. */
 __device__ __constant__ int pilotproxy_fxfft_twiddle_q15[FX_MASTER_HALF][2] =
     FX_TW_MASTER_INIT;
 
 __device__ __forceinline__ int pilotproxy_fxfft_round15(long long v)
 {
-    /* floor((v + 2^14) / 2^15) via arithmetic shift (nvcc semantics). */
+    /* floor((v + 2^14) / 2^15) by arithmetic shift (nvcc semantics) */
     return static_cast<int>((v + PILOTPROXY_FXFFT_ROUND) >> PILOTPROXY_FXFFT_SHIFT);
 }
 
@@ -699,12 +707,12 @@ __device__ __forceinline__ unsigned pilotproxy_fxfft_bitrev(unsigned i)
 }
 
 /**
- * @brief One stream's frozen transform: 128 interleaved (re,im) int32
- *        window sums -> natural-order x[256][2] spectrum.
+ * @brief Apply the frozen transform to one stream, from 128 interleaved
+ *        (re,im) int32 window sums to the natural-order spectrum x[256][2].
  *
- * Bit-identical to fxfft256 in src/pilot_proxy/fxfft.py. No-overflow
- * contract: |input components| <= 2^20 keeps every working value below
- * 2^31 (kernel row sums are bounded at 14336).
+ * The result is bit-identical to fxfft256 in src/pilot_proxy/fxfft.py.
+ * Input components with |value| <= 2^20 keep every working value below
+ * 2^31, and kernel row sums are bounded at 14336.
  */
 __device__ void pilotproxy_fxfft256_device(
     const int* __restrict__ src,
@@ -744,12 +752,13 @@ __device__ void pilotproxy_fxfft256_device(
 }
 
 /**
- * @brief Fine-power accumulation over the row-sum buffer.
+ * @brief Accumulate the fine powers over the row-sum buffer.
  *
- * Grid: (stream chunks, num_weight_terms, batch); block: PILOTPROXY_BLOCK_THREADS.
- * Each thread transforms one stream and accumulates |X[b]|^2 into a shared
- * per-block uint64 spectrum; blocks flush with global 64-bit atomics.
- * Every addition is an exact integer, so the accumulated result is
+ * The grid is (stream chunks, num_weight_terms, batch), and each block has
+ * PILOTPROXY_BLOCK_THREADS threads. Each thread transforms one stream and
+ * adds |X[b]|^2 into a uint64 spectrum in the shared memory of its block.
+ * Each block then adds its spectrum to the output with global 64-bit
+ * atomics. Every addition is an exact integer, so the result is
  * bit-reproducible for any launch schedule or block decomposition.
  */
 __global__ void kernel_fine_powers(
@@ -797,14 +806,14 @@ __global__ void kernel_fine_powers(
 
 
 /* ===========================================================================
- * EXACT WIDE-INTEGER COMPARE HELPERS (kernel core 2.3.0 epilogue)
+ * EXACT WIDE-INTEGER COMPARE HELPERS
  * ===========================================================================
- * The decision epilogue compares exact rationals built from uint64 fine
- * power sums. Cross products reach 128 bits and the threshold compare is
- * a triple product (192 bits), so the comparisons are formed in explicit
- * hi/lo fixed-width arithmetic --- never floating point, never truncated.
- * The Python reference (src/pilot_proxy/fine_decision.py) performs the
- * same comparisons with arbitrary-precision integers; the results are
+ * The decision epilogue compares exact rationals built from the uint64 fine
+ * power sums. Cross products reach 128 bits and the threshold test is a
+ * triple product of 192 bits, so both are formed in explicit hi/lo
+ * fixed-width integer arithmetic, with no floating point and no truncation.
+ * The Python reference (src/pilot_proxy/fine_decision.py) compares the same
+ * quantities with arbitrary-precision integers, and the results are
  * identical because both are exact.
  */
 
@@ -815,7 +824,7 @@ unsigned long long pilotproxy_umul64hi_(unsigned long long a, unsigned long long
 }
 
 /**
- * @brief Exact rational comparison: is na/da < nb/db (da, db > 0)?
+ * @brief Return 1 when na/da < nb/db, compared exactly (da, db > 0).
  */
 __device__ __forceinline__
 int pilotproxy_frac_less(unsigned long long na, unsigned long long da,
@@ -829,7 +838,8 @@ int pilotproxy_frac_less(unsigned long long na, unsigned long long da,
 }
 
 /**
- * @brief 128-bit value (hi:lo) times 64-bit -> exact 192-bit (r2:r1:r0).
+ * @brief Multiply a 128-bit value (hi:lo) by a 64-bit value, giving the
+ *        exact 192-bit product (r2:r1:r0).
  */
 __device__ __forceinline__
 void pilotproxy_mul_128_by_64(unsigned long long hi, unsigned long long lo,
@@ -848,9 +858,9 @@ void pilotproxy_mul_128_by_64(unsigned long long hi, unsigned long long lo,
 }
 
 /**
- * @brief Exact triple-product comparison: is a*b*c > d*e*f?
+ * @brief Return 1 when a*b*c > d*e*f, compared exactly.
  *
- * All operands are 64-bit; each side is formed exactly in 192 bits.
+ * All operands are 64-bit, and each side is formed exactly in 192 bits.
  */
 __device__ __forceinline__
 int pilotproxy_triple_greater(unsigned long long a, unsigned long long b,
@@ -867,38 +877,40 @@ int pilotproxy_triple_greater(unsigned long long a, unsigned long long b,
 }
 
 /* ===========================================================================
- * FUSED FINE KERNEL (kernel cores 2.2.0 / 2.3.0 / 3.0.0)
+ * FUSED FINE KERNEL
  * ===========================================================================
- * One launch from packed samples to exact fine power sums: the fused form
- * recorded in docs/DESIGN_DECISIONS.md ("one solid kernel"). Block-per-stream:
- * each block computes its stream's 3 x 128 row sums into shared memory
- * (never materialized to global unless the debug tap is bound) and runs the
- * frozen fxfft256 v1 transform in place, with cooperative butterflies
- * (identical arithmetic to pilotproxy_fxfft256_device; stage order preserved,
- * butterflies within a stage write disjoint pairs, so the produced bits are
- * identical for any thread schedule).
+ * This kernel goes from packed samples to exact fine power sums in one
+ * launch, the fused form recorded in docs/DESIGN_DECISIONS.md ("one solid
+ * kernel"). One block is launched per stream. Each block computes the
+ * 3 x 128 row sums of its stream in shared memory, and the row sums are
+ * written to global memory only when the debug tap is bound. The block then
+ * applies the frozen fxfft256 v1 transform in place with cooperative
+ * butterflies. The arithmetic is identical to pilotproxy_fxfft256_device and
+ * the stage order is kept. The butterflies of one stage write disjoint
+ * pairs, so the produced bits are identical for any thread schedule.
  *
- * Acceptance is bit-equality with the composed path
- * (RowSums_I32 -> FinePowers_U64) --- enforced by
+ * The output must be bit-identical to that of the composed path
+ * (RowSums_I32, then FinePowers_U64), and this is tested by
  * tests/kernel/test_fused_fine_gpu.py. The frame powers P_r = sum_f S_r[f]
- * are not formed in this kernel: the API entries launch
- * kernel_sum_fine_powers over the finalized FinePowers right after it
- * (kernel core 3.0.0), so every fused entry reports the same P_r.
+ * are formed by kernel_sum_fine_powers, which each API entry launches over
+ * the finalized FinePowers right after this kernel. Every fused entry
+ * therefore reports the same P_r.
  *
- * Kernel core 2.3.0 adds the decision epilogue (MaskOut != NULL): each
- * block's thread 0 increments a per-batch-entry completion counter (the
- * MaskOut element itself, zeroed by the API entry) after a
- * __threadfence; the last-arriving block for a batch entry re-reads the
- * finalized FinePowers sums and forms the frozen fine decision v1
- * (src/pilot_proxy/fine_decision.py): rank-based null-bulk CFAR over
- * the bundle's 256-bit bulk mask, designated-set compare with a Q16
- * multiplier, exact 128/192-bit integer comparisons, then overwrites
- * the counter with the mask bit (1 = reject; degenerate frames forced
- * 0). The epilogue is deterministic because it reads order-independent
- * exact integer sums and rank selection is by value. With
- * MaskOut == NULL the added path is not executed and the kernel is
- * bit-identical to core 2.2.0. The epilogue reads FinePowers only; it
- * never reads the frame powers.
+ * With MaskOut != NULL the kernel also runs the decision epilogue. After a
+ * __threadfence, thread 0 of each block increments a completion counter for
+ * its batch entry. The counter is the MaskOut element itself, zeroed by the
+ * API entry. The last block to arrive for a batch entry reads the finalized
+ * FinePowers sums again and forms the frozen fine decision v1
+ * (src/pilot_proxy/fine_decision.py). This decision is a rank-based
+ * null-bulk CFAR over the 256-bit bulk mask of the bundle, followed by a
+ * designated-set test with a Q16 multiplier, and every product is formed in
+ * exact 128-bit or 192-bit integer arithmetic. The counter is then
+ * overwritten with the mask bit (1 = reject, with degenerate frames forced
+ * to 0). The epilogue is deterministic because it reads exact integer sums
+ * that do not depend on the order of addition, and rank selection is by
+ * value. With MaskOut == NULL the epilogue does not run, and the kernel
+ * output is bit-identical to that of kernel core 2.2.0. The epilogue reads
+ * only FinePowers and never the frame powers.
  */
 
 __global__ void
@@ -955,17 +967,13 @@ kernel_fused_fine(
     const int* weight_lanes = W_Lanes;
     #endif
 
-    /* Phase 1: row sums for this stream's windows (each thread owns whole
-     * windows; no cross-thread reduction).
+    /* Row sums of this stream's windows. Each thread owns whole windows, so
+     * no reduction across threads is needed.
      *
-     * The window axis is walked with a thread-stride loop, matching the tap
-     * loop of the staged kernels and the RowSumsTap loop below. The previous
-     * form derived a per-thread window count by integer division, which
-     * silently truncated when the window count was not a multiple of the
-     * block size and computed nothing at all when it was smaller. Striding
-     * removes both requirements and leaves the emitted bits unchanged: s_z is
-     * indexed by window, so which thread produces a window does not affect
-     * shared-memory contents. */
+     * The loop strides over windows, so every window is processed even when
+     * their count is smaller than the block or not a multiple of its size.
+     * Each window owns its own s_z entry, so the thread a window is assigned
+     * to does not change the shared-memory result. */
     const size_t batch_stride =
         static_cast<size_t>(detector_rows_per_block) * PILOTPROXY_DETECTOR_WINDOW_SAMPLES;
     const InputType* Xb = X + batch_stride * static_cast<size_t>(b);
@@ -1016,8 +1024,8 @@ kernel_fused_fine(
     }
     __syncthreads();
 
-    /* Phase 2: optional row-sum debug tap (RowSumsTap == NULL, uniform
-     * across the block, skips it). */
+    /* Optional row-sum debug tap. RowSumsTap is uniform across the block,
+     * and NULL skips the tap. */
     if (RowSumsTap != NULL) {
         int* Out = RowSumsTap
             + static_cast<size_t>(b) * PILOTPROXY_NUM_WEIGHT_TERMS
@@ -1033,7 +1041,8 @@ kernel_fused_fine(
         }
     }
 
-    /* Phase 3: frozen fxfft256 v1 per term, cooperative butterflies. */
+    /* Frozen fxfft256 v1 transform of each term, with cooperative
+     * butterflies. */
     for (int n = 0; n < PILOTPROXY_NUM_WEIGHT_TERMS; ++n) {
         __syncthreads();
         for (int i = tid; i < PILOTPROXY_FINE_NUM_BINS; i += blockDim.x) {
@@ -1081,17 +1090,17 @@ kernel_fused_fine(
         }
     }
 
-    /* Phase 4 (kernel core 2.3.0): decision epilogue, last block only. */
+    /* Decision epilogue, run by the last block only. */
     if (MaskOut == NULL) {
         return;
     }
 
-    /* Completion counter: MaskOut[b] itself counts arrivals (the API
-     * entry zeroes it); the last-arriving block overwrites it with the
-     * decision, so no separate scratch allocation exists. The
-     * threadfence-then-atomic pattern makes every earlier FinePowers
-     * atomicAdd visible to the block that observes the final count
-     * (CUDA threadFenceReduction pattern). */
+    /* MaskOut[b] counts the blocks that have finished, starting from the
+     * zero written by the API entry. The last block to arrive overwrites it
+     * with the decision, so the counter needs no scratch allocation. The
+     * fence before the atomic makes every earlier FinePowers atomicAdd
+     * visible to the block that sees the final count (the CUDA
+     * threadFenceReduction pattern). */
     __shared__ int s_last;
     __shared__ int s_int[PILOTPROXY_BLOCK_THREADS];
     __shared__ int s_rank_bin;
@@ -1111,11 +1120,11 @@ kernel_fused_fine(
     }
     __threadfence();
 
-    /* Exact rational per bin: num = 2 S_target, den = S_lo + S_up.
-     * Volatile loads bypass L1 so the finalized device-wide atomic sums
-     * are read, not a stale local copy. Deployed magnitudes satisfy
-     * S < 2^56 (Parseval over the 14336 row-sum bound), so 2 S and the
-     * downstream 192-bit products are exact. */
+    /* Each bin holds the exact rational num / den, with num = 2 S_target and
+     * den = S_lo + S_up. Volatile loads bypass L1, so the finalized
+     * device-wide atomic sums are read instead of a stale local copy.
+     * Deployed magnitudes satisfy S < 2^56 (Parseval over the 14336 row-sum
+     * bound), so 2 S and the 192-bit products formed later are exact. */
     {
         const unsigned long long* base = FinePowers
             + static_cast<size_t>(b) * PILOTPROXY_NUM_WEIGHT_TERMS
@@ -1140,7 +1149,7 @@ kernel_fused_fine(
     #define PILOTPROXY_BULK_BIT(i) \
         ((bulk_words[(i) >> 6] >> ((i) & 63)) & 1ULL)
 
-    /* Usable bulk census: mask bit set and den > 0. */
+    /* Count the usable bulk bins, those with the mask bit set and den > 0. */
     {
         int cnt = 0;
         for (int i = tid; i < PILOTPROXY_FINE_NUM_BINS; i += blockDim.x) {
@@ -1162,16 +1171,18 @@ kernel_fused_fine(
     }
     __syncthreads();
     if (s_nbulk <= cfar_rank) {
-        /* Degenerate bulk for the requested rank: invalid frame. */
+        /* The bulk is degenerate for the requested rank, so the frame is
+         * invalid. */
         if (tid == 0) {
             MaskOut[b] = 0;
         }
         return;
     }
 
-    /* Rank selection by counting (value-unique under ties; the lowest
-     * qualifying bin is the deterministic representative, and any
-     * representative of a tied value yields the same decision). */
+    /* The rank is selected by counting. The selected value is unique under
+     * ties, and the lowest qualifying bin is taken as the deterministic
+     * representative. Any representative of a tied value gives the same
+     * decision. */
     {
         int best = PILOTPROXY_FINE_NUM_BINS;
         for (int i = tid; i < PILOTPROXY_FINE_NUM_BINS; i += blockDim.x) {
@@ -1210,10 +1221,11 @@ kernel_fused_fine(
     }
     __syncthreads();
 
-    /* Designated-set compare: F2[bin] > (multiplier_q16 / 2^16) * F2_r
-     * as num[bin] * 2^16 * den_r > multiplier_q16 * num_r * den[bin].
-     * Degenerate denominators can never fire (zero-reference forced 0,
-     * per bin). */
+    /* Designated-set test. The condition
+     * F2[bin] > (multiplier_q16 / 2^16) * F2_r is evaluated as
+     * num[bin] * 2^16 * den_r > multiplier_q16 * num_r * den[bin].
+     * A bin with a zero denominator can never fire (zero reference forced
+     * to 0, per bin). */
     {
         const unsigned long long num_r = s_num[s_rank_bin];
         const unsigned long long den_r = s_den[s_rank_bin];
@@ -1244,22 +1256,22 @@ kernel_fused_fine(
 }
 
 /**
- * @brief Frame powers from the finalized fine spectra (kernel core 3.0.0).
+ * @brief Reduce the finalized fine spectra to the frame powers.
  *
- * One block per (batch entry, term), indexed as idx = b * num_weight_terms
- * + r: reduces the 256 finalized fine-power bins
- * FinePowers[idx * 256 .. idx * 256 + 255] to
+ * One block is launched for each (batch entry, term), indexed as
+ * idx = b * num_weight_terms + r. The block reduces the 256 finalized
+ * fine-power bins FinePowers[idx * 256 .. idx * 256 + 255] to
  *
  *   PowerTerms[idx] = P_r = sum_f S_r[f].
  *
  * Every addend is an exact uint64 and the sum fits uint64 up to the
  * 65536-stream capacity (config.h frame-power closure), so the result is
- * bit-reproducible for any reduction order. Launched on the handle's
- * stream after kernel_fused_fine: stream order makes the fine sums
+ * bit-reproducible for any reduction order. The kernel is launched on the
+ * handle's stream after kernel_fused_fine. Stream order makes the fine sums
  * complete and visible, so no fence or completion counter is needed, and
- * the output is a plain store (no memset of PowerTerms is required).
- * One thread per bin; the block width is PILOTPROXY_FINE_NUM_BINS, a power of
- * two (asserted in config.h), so the tree below is exact.
+ * the output is a plain store with no memset of PowerTerms. One thread is
+ * used per bin, and the block width PILOTPROXY_FINE_NUM_BINS is a power of
+ * two (asserted in config.h), so the reduction tree below is exact.
  */
 __global__ void
 kernel_sum_fine_powers(
@@ -1368,9 +1380,10 @@ static bool pilotproxy_upload_weights(PilotProxyHandle* h, const InputType* w_in
     }
 
     #if PILOTPROXY_USE_DP4A && PILOTPROXY_USE_CONSTANT_WEIGHT_LANES
-    // Constant memory is module-global, not per-handle. Always refresh it
-    // before launches to avoid cross-handle stale weight-lane state. Handles
-    // on different streams must not run concurrently in this configuration.
+    // Constant memory is module-global and shared by all handles, so it is
+    // refreshed before every launch to avoid stale weight lanes from another
+    // handle. In this configuration, handles on different streams must not
+    // run concurrently.
     const bool weights_changed = true;
     #else
     const bool weights_changed =
@@ -1416,8 +1429,8 @@ static bool pilotproxy_upload_weights(PilotProxyHandle* h, const InputType* w_in
 }
 
 /* Frame powers P_r = sum_f S_r[f] from the finalized fine sums, launched on
- * the handle's stream right after the fused kernel (kernel core 3.0.0). Serves
- * every fused entry so d_power_out means the same thing in each. */
+ * the handle's stream right after the fused kernel. Every fused entry calls
+ * this function, so d_power_out has the same meaning in each. */
 static bool pilotproxy_reduce_frame_powers(
     PilotProxyHandle* h,
     const unsigned long long* d_fine_power_out,
@@ -1630,8 +1643,9 @@ void PilotProxy_SetStream(void* handle, cudaStream_t stream)
         return;
     }
     h->stream = stream;
-    // Any cached weight upload was ordered on the previous stream; re-upload on the
-    // new one before the next launch rather than assume the two are ordered.
+    // A cached weight upload was ordered on the previous stream. The weights
+    // are uploaded again on the new stream before the next launch, since the
+    // two streams may not be ordered.
     h->weights_cached = false;
 }
 
@@ -1737,8 +1751,8 @@ void PilotProxy_Compute_FinePowers_U64(
     const size_t out_bytes = static_cast<size_t>(batch)
         * PILOTPROXY_NUM_WEIGHT_TERMS * PILOTPROXY_FINE_NUM_BINS
         * sizeof(unsigned long long);
-    /* Handle-less entry: no stream to select, so this stays on the legacy
-     * default stream. */
+    /* This entry takes no handle and so has no stream to select. It runs on
+     * the legacy default stream. */
     CUDA_CHECK(cudaMemset(d_fine_power_out, 0, out_bytes));
 
     const int chunks =
@@ -1825,7 +1839,7 @@ void PilotProxy_Compute_FusedFine_U64(
         h->d_weight_lanes,
         d_fine_power_out,
         d_row_sums_out,
-        NULL,            /* no decision epilogue: core 2.2.0 behavior */
+        NULL,            /* no decision epilogue */
         NULL, NULL,      /* no rank-support diagnostics */
         0, 0, 0ULL, 0ULL, 0ULL, 0ULL, 0, 0ULL,
         num_streams,

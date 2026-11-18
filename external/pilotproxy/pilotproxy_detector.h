@@ -2,8 +2,9 @@
  * @file pilotproxy_detector.h
  * @brief Public C API for the PilotProxy power-ratio detector.
  *
- * Provides GPU-accelerated matched-filter powers and rank-based decisions for detecting
- * narrowband signals (e.g., DTV pilot tones) in wideband spectral data.
+ * This library computes matched-filter powers and rank-based decisions on the
+ * GPU to detect narrowband signals, such as DTV pilot tones, in wideband
+ * spectral data.
  *
  * @section usage Usage Example
  * @code
@@ -31,7 +32,7 @@
  *
  *     void* handle = PilotProxy_Create(d_input, detector_rows_per_block);
  *     PilotProxy_Compute_FusedFine_U64(handle, host_weights, d_fine, d_powers, NULL);
- *     // The host forms F = 2 * P[0] / (P[1] + P[2]) from d_powers; the
+ *     // The host forms F = 2 * P[0] / (P[1] + P[2]) from d_powers. The
  *     // deployed mask bit comes from PilotProxy_Compute_FusedFineMask_U64.
  *     PilotProxy_Destroy(handle);
  * @endcode
@@ -43,35 +44,35 @@
  *
  * For 4-bit mode (int8_t): bits [7:4] = real, bits [3:0] = imag.
  * Each nibble is interpreted as two's-complement signed int4 with range
- * [-8, 7]. If an upstream quantizer reserves or forbids the -8 code, that is
- * a data-generation constraint; the kernel decode itself implements the full
+ * [-8, 7]. An upstream quantizer may reserve or forbid the -8 code as a
+ * constraint on data generation, but the kernel decodes the full
  * two's-complement int4 range.
  *
  * Weight ROM entries use the same packed complex format and are generated as
  * natural matched-filter weights. The CUDA kernel computes the conventional
  * complex dot product by multiplying each input sample by conj(weight).
- * Deployed 4-bit weight generation uses the symmetric component range [-7, 7]
- * even though the kernel decoder accepts [-8, 7], avoiding the negative-min
- * edge case in generated detector ROMs.
+ * Deployed 4-bit weights are generated in the symmetric component range
+ * [-7, 7], even though the kernel decoder accepts [-8, 7], to avoid the edge
+ * case of the most negative code in generated detector ROMs.
  *
- * Validated and frozen path: int8_t packed 4+4-bit complex samples.
+ * The validated and frozen path uses int8_t packed 4+4-bit complex samples.
  *
  * @section layout Detector Matrix Layout
- * All CUDA entry points consume a row-major detector matrix view.  For an
+ * All CUDA entry points consume a row-major detector matrix view. For an
  * unbatched handle:
  *
  *   d_in[m, k] = d_in[m * detector_window_samples + k]
  *
- * where m is the detector row and k is the dot-product tap.  The K-tap
- * detector window must be contiguous for each row.  For a batched handle:
+ * where m is the detector row and k is the dot-product tap. The K-tap
+ * detector window must be contiguous for each row. For a batched handle:
  *
  *   d_in[b, m, k] =
  *       d_in[(b * detector_rows_per_block + m) * detector_window_samples + k]
  *
- * If an upstream ring buffer is naturally tap-major
- * [detector_window_samples x detector_rows_per_block], materialize or
- * transpose it into this row-major detector-matrix view before calling the
- * kernel.
+ * An upstream ring buffer that is tap-major
+ * [detector_window_samples x detector_rows_per_block] must be materialized
+ * or transposed into this row-major detector-matrix view before the kernel
+ * is called.
  *
  * Host code that materializes a detector-matrix view from a contiguous
  * ring-buffer segment must ensure:
@@ -79,18 +80,18 @@
  *   contiguous_sample_count % detector_window_samples == 0
  *   detector_rows_per_block = contiguous_sample_count / detector_window_samples
  *
- * If the ring buffer wraps, split the call at the physical wrap boundary or
- * stage into a contiguous buffer. A K-sample detector row must not cross a
- * physical wrap boundary unless a future kernel explicitly adds modulo
- * addressing.
+ * If the ring buffer wraps, the call must be split at the physical wrap
+ * boundary, or the data staged into a contiguous buffer. A K-sample detector
+ * row must not cross a physical wrap boundary, since the kernel has no
+ * modulo addressing.
  *
  * @section refbins Reference Bin Contract
- * The locked detector uses two total reference bins: one lower reference bin
- * and one upper reference bin. With three weight terms, the raw power ratio is
+ * The locked detector uses two reference bins, one lower and one upper. With
+ * three weight terms, the raw power ratio is
  * F = 2 * P_target / (P_ref1 + P_ref2), where each P_r is the frame power of
- * that term: the exact uint64 sum over the 256 fine bins of the frozen
- * fxfft256 power spectrum S_r[f] (kernel core 3.0.0). The transform length
- * cancels in the ratio.
+ * that term. The frame power is the exact uint64 sum over the 256 fine bins
+ * of the frozen fxfft256 power spectrum S_r[f] (kernel core 3.0.0). The
+ * transform length cancels in the ratio.
  *
  * @section execution Execution Policy
  * Handles are device-affine. All device work for a handle (uploads, memsets,
@@ -98,8 +99,8 @@
  * the legacy default stream (0) and may be changed with PilotProxy_SetStream. The
  * caller must set the intended CUDA device before PilotProxy_Create/
  * PilotProxy_Create_Batch and keep the same current device for compute and destroy
- * calls on that handle. One host thread must not use the same handle
- * concurrently.
+ * calls on that handle. A handle must not be used by more than one host
+ * thread at a time.
  *
  * @author Dylan
  * @date 2025
@@ -128,8 +129,8 @@ extern "C" {
 /**
  * @brief Query compile-time kernel parameters.
  *
- * Returns the values baked into the compiled library. Use this to ensure
- * host code matches kernel expectations.
+ * Returns the values compiled into the library, so host code can check that
+ * it matches the kernel.
  *
  * @param[out] detector_window_samples   Detector-window samples.
  * @param[out] num_weight_terms          Number of weight terms.
@@ -148,8 +149,8 @@ void PilotProxy_GetSpecs(
 /**
  * @brief Query compiled kernel feature switches.
  *
- * Returns the implementation features baked into the compiled library. These
- * are separate from the scientific detector geometry returned by PilotProxy_GetSpecs.
+ * Returns the implementation features compiled into the library. The
+ * detector geometry is returned by PilotProxy_GetSpecs.
  *
  * @param[out] use_dp4a                       Nonzero when the DP4A dot-product path is compiled in.
  * @param[out] use_uint64_power_accumulation  Nonzero when integer power accumulation is compiled in.
@@ -165,8 +166,8 @@ void PilotProxy_GetFeatures(
 /**
  * @brief Query compiled launch/placement optimization switches.
  *
- * This is additive metadata for benchmarking and reporting. It does not change
- * the scientific detector geometry returned by PilotProxy_GetSpecs.
+ * These values are metadata for benchmarking and reporting. They do not change
+ * the detector geometry returned by PilotProxy_GetSpecs.
  *
  * @param[out] use_constant_weight_lanes Nonzero when DP4A weight lanes are stored in CUDA constant memory.
  * @param[out] use_shared_weight_lanes   Nonzero when DP4A weight lanes are preloaded into shared memory per block.
@@ -219,8 +220,7 @@ const char* PilotProxy_LastError(void);
  * @return Opaque handle pointer, or NULL on failure.
  *
  * @note d_in must remain valid for the lifetime of the handle. Every output
- *       buffer is passed to the compute entry that writes it (kernel core
- *       3.0.0 removed the float output pointer of earlier cores).
+ *       buffer is passed to the compute entry that writes it.
  * @note The handle owns the device weight storage, freed by PilotProxy_Destroy.
  * @note The handle is bound to the CUDA device current at creation time.
  */
@@ -244,8 +244,7 @@ void* PilotProxy_Create(
  * @return Opaque handle pointer, or NULL on failure.
  *
  * @note d_in must remain valid for the lifetime of the handle. Every output
- *       buffer is passed to the compute entry that writes it (kernel core
- *       3.0.0 removed the float output pointer of earlier cores).
+ *       buffer is passed to the compute entry that writes it.
  * @note The handle owns the device weight storage, freed by PilotProxy_Destroy.
  * @note The handle is bound to the CUDA device current at creation time.
  */
@@ -263,15 +262,15 @@ void* PilotProxy_Create_Batch(
 void PilotProxy_Destroy(void* handle);
 
 /**
- * @brief Set the CUDA stream on which the handle's device work is issued.
+ * @brief Set the CUDA stream for the device work of a handle.
  *
  * Every subsequent PilotProxy_Compute_* call on this handle enqueues its uploads,
  * memsets and kernel launches on @p stream instead of the legacy default
  * stream (0), the value a fresh handle starts with. The stream must belong to
- * the handle's device. Outputs are ready when @p stream has completed; the
- * caller orders any host or cross-stream consumer with the usual stream/
- * event primitives. The handle-less PilotProxy_Compute_FinePowers_U64 entry has no
- * stream and stays on the default stream.
+ * the handle's device. Outputs are ready when @p stream has completed, and
+ * the caller orders any host or cross-stream consumer with the usual stream
+ * and event primitives. The handle-less PilotProxy_Compute_FinePowers_U64
+ * entry has no stream and runs on the default stream.
  *
  * @param handle Handle created by PilotProxy_Create or PilotProxy_Create_Batch
  * @param stream CUDA stream, or 0 for the legacy default stream
@@ -283,7 +282,8 @@ void PilotProxy_SetStream(void* handle, cudaStream_t stream);
  * ===========================================================================*/
 
 /**
- * @brief Emit exact complex per-row dot products (v2 time-coherent front end).
+ * @brief Write the exact complex dot product of each detector row with each
+ *        weight term.
  *
  * Uploads the weights (cached per handle), then writes the exact int32
  * complex dot product of every detector row against every weight term into
@@ -293,18 +293,19 @@ void PilotProxy_SetStream(void* handle, cudaStream_t stream);
  *   d_row_sums_out[((b * num_weight_terms + n) * detector_rows_per_block + m) * 2 + 1] = Im z
  *
  * Layout contract:
- *   - per batch entry, term-major: each weight term's rows are contiguous;
- *   - rows keep the packer's stream-major order (each input stream's
- *     windows contiguous), so a term slice reshapes to
- *     [num_streams, windows_per_stream] with no gather;
- *   - interleaved re/im int32 pairs;
- *   - required size: batch * num_weight_terms * detector_rows_per_block * 2
- *     int32 elements.
+ *   - term-major for each batch entry, so the rows of each weight term are
+ *     contiguous
+ *   - rows keep the stream-major order of the packer (the windows of each
+ *     input stream are contiguous), so a term slice reshapes to
+ *     [num_streams, windows_per_stream] with no gather
+ *   - interleaved re/im int32 pairs
+ *   - required size of batch * num_weight_terms * detector_rows_per_block * 2
+ *     int32 elements
  *
- * Values are exact integers (bit-reproducible; |component| <= 14336 for the
- * locked 4-bit path). This buffer is the input of
- * PilotProxy_Compute_FinePowers_U64; the frame powers are the all-bin sums of
- * that stage's output (kernel core 3.0.0).
+ * Values are exact integers, so they are bit-reproducible, and
+ * |component| <= 14336 for the locked 4-bit path. This buffer is the input
+ * of PilotProxy_Compute_FinePowers_U64, and the frame powers are the sums
+ * over all bins of that stage's output.
  *
  * @param handle          Handle from PilotProxy_Create / PilotProxy_Create_Batch
  * @param w_in            Host weight pointer [num_weight_terms x
@@ -318,12 +319,13 @@ void PilotProxy_Compute_RowSums_I32(
     int* d_row_sums_out);
 
 /**
- * @brief Runtime capability probe: returns 1 when row-sum emission exists.
+ * @brief Return 1 when the row-sum entry point is available.
  */
 int PilotProxy_Supports_RowSums(void);
 
 /**
- * @brief On-device fine-reduction power stage (fxfft256 v1, kernel core 2.1.0).
+ * @brief Compute the fine power spectra on the device with the frozen
+ *        fxfft256 v1 transform.
  *
  * Consumes a row-sum buffer with the exact PilotProxy_Compute_RowSums_I32 layout
  * (term-major, stream-major rows, interleaved re/im int32) and writes exact
@@ -333,32 +335,32 @@ int PilotProxy_Supports_RowSums(void);
  *       sum over streams s of |X_s[bin]|^2
  *
  * where X_s is the frozen fxfft256 v1 fixed-point transform (zero-padded
- * 128 -> 256, Q15 twiddles, floor((v+2^14)/2^15) rounding) of stream s's
- * 128 window sums. The two calls compose directly: pass the same device
- * buffer PilotProxy_Compute_RowSums_I32 filled, with num_streams =
+ * 128 to 256, Q15 twiddles, floor((v+2^14)/2^15) rounding) of stream s's
+ * 128 window sums. The two calls compose directly. The device buffer filled
+ * by PilotProxy_Compute_RowSums_I32 is passed in, with num_streams =
  * detector_rows_per_block / windows_per_stream.
  *
  * Determinism and exactness contract:
  *   - the transform is the frozen fxfft256 v1 specification
- *     (src/pilot_proxy/fxfft.py; golden vectors
- *     tests/data/fxfft256_golden_v1.npz); this implementation must match
- *     the reference bit-for-bit;
+ *     (src/pilot_proxy/fxfft.py, golden vectors
+ *     tests/data/fxfft256_golden_v1.npz), and this implementation must match
+ *     the reference bit for bit
  *   - every accumulation is an exact integer addition, so the output is
- *     bit-reproducible for any launch schedule or block decomposition;
- *   - for kernel row sums (|component| <= 14336) every feed sum fits
- *     uint64 for any stream count up to the launch capacity.
+ *     bit-reproducible for any launch schedule or block decomposition
+ *   - for kernel row sums (|component| <= 14336), every feed sum fits
+ *     uint64 for any stream count up to the launch capacity
  *
- * Scope: this entry is deliberately policy-free. The fine statistic
+ * This entry applies no decision policy. The fine statistic
  * F2[bin] = 2*S_target/(S_ref1+S_ref2), the CFAR estimate, and the
  * designated-set decision are formed downstream from these exact sums
  * (docs/DESIGN_DECISIONS.md, "The deployed decision is the fine
  * designated-set CFAR in the kernel").
  *
- * windows_per_stream must equal 128 (the frozen transform length);
+ * windows_per_stream must equal 128, the frozen transform length, and
  * num_weight_terms must equal the compiled weight-term count. The output
- * buffer must address batch * num_weight_terms * 256 unsigned long long
- * on the device; it is zeroed by this call before accumulation. This
- * entry takes no handle: it reads only the caller's row-sum buffer.
+ * buffer must address batch * num_weight_terms * 256 unsigned long long on
+ * the device, and it is zeroed by this call before accumulation. This entry
+ * takes no handle and reads only the caller's row-sum buffer.
  */
 void PilotProxy_Compute_FinePowers_U64(
     const int* d_row_sums,
@@ -369,45 +371,47 @@ void PilotProxy_Compute_FinePowers_U64(
     unsigned long long* d_fine_power_out);
 
 /**
- * @brief Runtime capability probe: returns 1 when the fine-power stage exists.
+ * @brief Return 1 when the fine-power entry point is available.
  */
 int PilotProxy_Supports_FinePowers(void);
 
 /**
- * @brief Fused fine kernel (kernel core 2.2.0): one launch from packed
- *        samples to exact fine power sums, plus their frame powers.
+ * @brief Compute the exact fine power sums from packed samples in one fused
+ *        launch, and their frame powers.
  *
- * The fused form of the deployed datapath (docs/DESIGN_DECISIONS.md,
- * "one solid kernel"): each block computes one stream's 3 x 128 exact
- * int32 row sums in shared memory and applies the frozen fxfft256 v1
- * transform in place with cooperative butterflies (identical arithmetic
- * and stage order to the reference; butterflies within a stage write
- * disjoint pairs, so the result is bit-identical for any thread schedule).
- * A second, stream-ordered launch then reduces the finalized fine sums to
- * the frame powers (kernel core 3.0.0).
+ * This entry is the fused form of the deployed datapath
+ * (docs/DESIGN_DECISIONS.md, "one solid kernel"). Each block computes the
+ * 3 x 128 exact int32 row sums of one stream in shared memory and applies
+ * the frozen fxfft256 v1 transform in place with cooperative butterflies.
+ * The arithmetic and stage order are identical to the reference, and the
+ * butterflies of one stage write disjoint pairs, so the result is
+ * bit-identical for any thread schedule. A second launch, ordered on the
+ * same stream, then reduces the finalized fine sums to the frame powers.
  *
  * Outputs:
- *   d_fine_power_out : [batch x num_weight_terms x 256] uint64 (required;
- *                      zeroed by this call) --- S_r[f], identical layout
- *                      and bits to PilotProxy_Compute_FinePowers_U64 over the
- *                      row sums;
- *   d_power_out      : [batch x num_weight_terms] uint64 (required) ---
- *                      the frame powers P_r = sum over the 256 fine bins
- *                      of d_fine_power_out[b][r][:], written after the
- *                      fused launch; F = 2 P_0 / (P_1 + P_2). This is the
- *                      definition of P_r, not a sum of |z|^2 over rows:
- *                      the two agree only up to the fixed-point rounding
- *                      of the frozen transform;
- *   d_row_sums_out   : optional debug tap (NULL in production); when
- *                      bound, identical layout and bits to
+ *   d_fine_power_out : [batch x num_weight_terms x 256] uint64, required and
+ *                      zeroed by this call. These are S_r[f], with the same
+ *                      layout and bits as PilotProxy_Compute_FinePowers_U64
+ *                      over the row sums.
+ *   d_power_out      : [batch x num_weight_terms] uint64, required. These
+ *                      are the frame powers P_r, the sum over the 256 fine
+ *                      bins of d_fine_power_out[b][r][:], written after the
+ *                      fused launch. The host forms F = 2 P_0 / (P_1 + P_2)
+ *                      from them. This sum is the definition of P_r. The
+ *                      Parseval value, 256 times the sum of |z|^2 over rows,
+ *                      agrees with it only up to the fixed-point rounding of
+ *                      the frozen transform.
+ *   d_row_sums_out   : optional debug tap, NULL in production. When bound,
+ *                      it receives the same layout and bits as
  *                      PilotProxy_Compute_RowSums_I32. With the tap unbound,
- *                      row sums never touch global memory.
+ *                      the row sums never touch global memory.
  *
- * Requires detector_rows_per_block to be a multiple of the frozen window
- * count (128). Acceptance: bit-equality with the composed path and
- * d_power_out == the host sum over bins of d_fine_power_out
- * (tests/kernel/test_fused_fine_gpu.py). Policy-free: the fine
- * statistic, CFAR, and designated-set decision form downstream.
+ * detector_rows_per_block must be a multiple of the frozen window count
+ * (128). The acceptance tests are bit-equality with the composed path and
+ * d_power_out equal to the host sum over bins of d_fine_power_out
+ * (tests/kernel/test_fused_fine_gpu.py). It applies no decision policy, and
+ * the fine statistic, the CFAR estimate, and the designated-set decision are
+ * formed downstream.
  */
 void PilotProxy_Compute_FusedFine_U64(
     void* handle,
@@ -417,20 +421,21 @@ void PilotProxy_Compute_FusedFine_U64(
     int* d_row_sums_out);
 
 /**
- * @brief Runtime capability probe: returns 1 when the fused kernel exists.
+ * @brief Return 1 when the fused fine entry point is available.
  */
 int PilotProxy_Supports_FusedFine(void);
 
 /**
- * @brief Fused fine kernel with decision epilogue (kernel core 2.3.0):
- *        packed samples and per-channel bundle constants in, one mask
- *        bit per aligned frame out.
+ * @brief Compute one mask bit per aligned frame from packed samples and the
+ *        per-channel bundle constants, with the fused fine kernel and its
+ *        decision epilogue.
  *
- * The deployed form of the fine designated-set CFAR
- * (docs/DESIGN_DECISIONS.md): the fused datapath of
- * PilotProxy_Compute_FusedFine_U64, plus a last-block epilogue (per-batch
- * completion counter; threadfence-then-atomic visibility) that forms
- * the frozen fine decision v1 over the finalized exact fine power sums:
+ * This entry is the deployed form of the fine designated-set CFAR
+ * (docs/DESIGN_DECISIONS.md). It runs the fused datapath of
+ * PilotProxy_Compute_FusedFine_U64 and then a last-block epilogue, with a
+ * completion counter for each batch entry and a fence before the atomic for
+ * visibility. The epilogue forms the frozen fine decision v1 over the
+ * finalized exact fine power sums:
  *
  *   F2[bin] = 2 S_target[bin] / (S_ref_lo[bin] + S_ref_up[bin]),
  *   bulk    = { bin : bulk_mask bit set and denominator > 0 },
@@ -440,28 +445,28 @@ int PilotProxy_Supports_FusedFine(void);
  *             designated_half_width, modulo 256) satisfies
  *             F2[bin] > (multiplier_q16 / 2^16) * F2_r.
  *
- * All comparisons are exact 128/192-bit integer arithmetic; the
- * decision is bit-identical to src/pilot_proxy/fine_decision.py by
- * construction. Degenerate denominators never fire (zero-reference
- * forced 0, per bin); a frame whose usable bulk is not deeper than
- * cfar_rank writes mask = 0 (invalid). The calibration inputs
- * (anchor, width, 256-bit bulk mask as 4 uint64 words in
- * bulk_mask_words[0..3] with bin b at word b/64 bit b%64, rank,
- * positive Q16 multiplier in [1, 2^64 - 1]) are runtime-bundle data,
- * not compiled constants.
+ * All ratios are compared in exact 128-bit or 192-bit integer arithmetic,
+ * so the decision is bit-identical to src/pilot_proxy/fine_decision.py by
+ * construction. A bin with a zero denominator never fires (zero reference
+ * forced to 0, per bin). A frame whose usable bulk has cfar_rank or fewer
+ * bins writes mask = 0 (invalid). The calibration inputs are passed in at
+ * run time from the bundle. They are the anchor, the width, the 256-bit
+ * bulk mask as 4 uint64 words in bulk_mask_words[0..3] with bin b at word
+ * b/64 bit b%64, the rank, and the positive Q16 multiplier in
+ * [1, 2^64 - 1].
  *
- * Outputs: d_mask_out ([batch] int32, 1 = reject; zeroed by this call
- * --- it doubles as the completion counter) and d_fine_power_out
- * (required working accumulator, identical to
- * PilotProxy_Compute_FusedFine_U64's; zeroed by this call). d_power_out and
- * d_row_sums_out are optional taps (NULL in production): when bound,
- * d_power_out receives the frame powers P_r = sum over the 256 fine bins
- * of d_fine_power_out[b][r][:], reduced after the fused launch --- the
- * same values PilotProxy_Compute_FusedFine_U64 writes (kernel core 3.0.0) ---
- * and d_row_sums_out the exact row sums as in the 2.2.0 entry. The
- * decision never reads the frame powers. Acceptance: mask bit-equality
- * against the Python reference over the same exact powers
- * (tests/kernel/test_fused_mask_gpu.py).
+ * The outputs are d_mask_out ([batch] int32, 1 = reject) and
+ * d_fine_power_out, and both are zeroed by this call. d_mask_out doubles as
+ * the completion counter, and d_fine_power_out is the required working
+ * accumulator, identical to that of PilotProxy_Compute_FusedFine_U64.
+ * d_power_out and d_row_sums_out are optional taps, NULL in production.
+ * When bound, d_power_out receives the frame powers P_r, the sum over the
+ * 256 fine bins of d_fine_power_out[b][r][:], reduced after the fused
+ * launch. These are the same values PilotProxy_Compute_FusedFine_U64
+ * writes. When bound, d_row_sums_out receives the exact row sums, as in
+ * PilotProxy_Compute_FusedFine_U64. The decision never reads the frame
+ * powers. The acceptance test is bit-equality of the mask with the Python
+ * reference over the same exact powers (tests/kernel/test_fused_mask_gpu.py).
  */
 void PilotProxy_Compute_FusedFineMask_U64(
     void* handle,
@@ -477,22 +482,25 @@ void PilotProxy_Compute_FusedFineMask_U64(
     int* d_row_sums_out);
 
 /**
- * @brief Runtime capability probe: returns 1 when the mask epilogue exists.
+ * @brief Return 1 when the mask epilogue entry point is available.
  */
 int PilotProxy_Supports_FusedFineMask(void);
 
 /**
- * @brief Fine decision v1 with explicit rank-support outputs for every batch entry.
+ * @brief Form fine decision v1 with explicit rank-support outputs for every
+ *        batch entry.
  *
- * Same mask and power arithmetic as PilotProxy_Compute_FusedFineMask_U64. The required
- * device int32[batch] outputs d_rank_valid_out and d_n_bulk_out receive
- * (1, usable bulk count) when count > cfar_rank and (0, count) otherwise.
- * Invalid rank support still has the legacy mask zero; consumers must use the
- * separate validity output before treating a zero mask as a valid keep.
- * These outputs describe positive-denominator rank support only, not input
- * packet loss, feed health, or physical calibration. No designated-bin support
- * rule is added. Outputs are initialized to -1 before a successful launch.
- * All output regions must be distinct and remain live until stream completion.
+ * The mask and power arithmetic are the same as
+ * PilotProxy_Compute_FusedFineMask_U64. The required device int32[batch]
+ * outputs d_rank_valid_out and d_n_bulk_out receive (1, usable bulk count)
+ * when count > cfar_rank and (0, count) otherwise. A frame with invalid rank
+ * support still has a mask of zero, so consumers must check the validity
+ * output before treating a zero mask as a valid keep. These outputs describe
+ * only the rank support of positive denominators. They do not report input
+ * packet loss, feed health, or physical calibration, and no support rule is
+ * applied to the designated bins. The outputs are set to -1 before a
+ * successful launch. All output regions must be distinct and stay live until
+ * the stream completes.
  */
 void PilotProxy_Compute_FusedFineMaskWithSupport_U64(
     void* handle,
@@ -509,7 +517,7 @@ void PilotProxy_Compute_FusedFineMaskWithSupport_U64(
     unsigned long long* d_power_out,
     int* d_row_sums_out);
 
-/** @brief Return 1 when the additive rank-support entry point is available. */
+/** @brief Return 1 when the rank-support entry point is available. */
 int PilotProxy_Supports_FusedFineMaskWithSupport(void);
 
 /**
