@@ -741,7 +741,7 @@ def test_telem_host_form():
         "gnss0_telem_buf": {
             "kotekan_buffer": "standard",
             "metadata_pool": "gnss_pool",
-            "num_frames": 64,
+            "num_frames": 3 * 64,
             "frame_size": 2000,
         },
         "gnss0_telem_send": dict(
@@ -1734,7 +1734,7 @@ def test_telem_pack_host():
         bad = []
         for g_ in (0, 1):
             buf = hosted.get("gnss%d_telem_buf" % g_) or {}
-            if buf.get("num_frames") != sum(
+            if buf.get("num_frames") != g.TELEM_HOST_DEPTH * sum(
                 b["num_frames"] for b in bufs[g_]
             ) or buf.get("frame_size") != max(b["frame_size"] for b in bufs[g_]):
                 bad.append("gnss%d_telem_buf %s" % (g_, buf))
@@ -1758,7 +1758,8 @@ def test_telem_pack_host():
             bad.append("blocks outside the telemetry legs")
         check(
             not bad,
-            "%s: one buffer as deep as the rows' and as wide as the widest, one GnssTelemSend "
+            "%s: one buffer TELEM_HOST_DEPTH times as deep as the rows' and as wide as the "
+            "widest, one GnssTelemSend "
             "per half, and nothing else changes (%s)" % (extra, bad),
         )
 

@@ -170,6 +170,10 @@ DESPREAD_MAX_CHIPS = 80
 # changing it means regenerating the gather too and restarting both ends.
 TELEM_PORT = 11060
 TELEM_RECORDS_PER_FRAME = 4
+# --telem-pack-host: a half's one connection has far less kernel socket buffer than its rows'
+# own connections had, so its shared telem_buf is this many times the rows' buffers together.
+# 96 frames a row ride out a 2.5 s gather stall, as the rows' own sends did.
+TELEM_HOST_DEPTH = 3
 # The gather's local stream to the Python broker.
 GATHER_SERVE_HOST = "127.0.0.1"
 GATHER_SERVE_PORT = 11061
@@ -1989,10 +1993,9 @@ def telem_host_form(blocks, pres, gpu):
     """--telem-pack-host: the half's telemetry packs as rows of one GnssTelemPack, gnss<g>_telem
     (host_form), writing one telem_buf, gnss<g>_telem_buf, which one GnssTelemSend,
     gnss<g>_telem_send, ships to the gather, each frame at its own length. The buffer holds the
-    widest row's frames, as many as the rows' own buffers together; the half's one connection has
-    far less kernel socket buffer than the rows' own connections had, so it drops windows in a
-    shorter gather stall. The send is paced at the sum of the rows' rates. Each row keeps its
-    chain, inst, window state and seq, so the frames on the wire are the rows' own."""
+    widest row's frames, TELEM_HOST_DEPTH times as many as the rows' own buffers together. The
+    send is paced at the sum of the rows' rates. Each row keeps its chain, inst, window state and
+    seq, so the frames on the wire are the rows' own."""
     bufs = [blocks.pop(p["pre"] + "telem_buf") for p in pres]
     sends = [blocks.pop(p["pre"] + "telem_send") for p in pres]
     host_form(blocks, pres, "telem_pack", TELEM_ROW_KEYS, f"gnss{gpu}_telem")
@@ -2002,7 +2005,7 @@ def telem_host_form(blocks, pres, gpu):
     host["out_buf"] = f"gnss{gpu}_telem_buf"
     blocks[f"gnss{gpu}_telem_buf"] = dict(
         bufs[0],
-        num_frames=sum(b["num_frames"] for b in bufs),
+        num_frames=TELEM_HOST_DEPTH * sum(b["num_frames"] for b in bufs),
         frame_size=max(b["frame_size"] for b in bufs),
     )
     per_row = ("buf", "max_pacing_rate_mbps")
