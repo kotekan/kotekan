@@ -121,6 +121,15 @@ void bufferSend::main_thread() {
     int frame_id = 0;
 
     std::thread connect_thread = std::thread(&bufferSend::connect_to_server, std::ref(*this));
+    // On a stop, end the connect thread before closing its socket: until it exits it may still
+    // write socket_fd. Taking the lock first means a wait that has just seen stop_thread unset
+    // is asleep when notified.
+    auto end_connect_thread = [&] {
+        { std::lock_guard<std::mutex> connection_lock(connection_state_mutex); }
+        connection_state_cv.notify_all();
+        connect_thread.join();
+        close_connection();
+    };
 
     while (!stop_thread) {
 
@@ -149,8 +158,7 @@ void bufferSend::main_thread() {
             if (!meta) {
                 // FATAL_ERROR throws out of this function, so end the connect thread first.
                 stop();
-                close_connection();
-                connect_thread.join();
+                end_connect_thread();
                 FATAL_ERROR("Frame {:s}[{:d}] has no metadata object: its producer did not "
                             "allocate one",
                             buf->buffer_name, frame_id);
@@ -284,8 +292,7 @@ void bufferSend::main_thread() {
         frame_id = (frame_id + 1) % buf->num_frames;
     }
 
-    close_connection();
-    connect_thread.join();
+    end_connect_thread();
 }
 
 size_t bufferSend::frame_send_bytes(int) {
