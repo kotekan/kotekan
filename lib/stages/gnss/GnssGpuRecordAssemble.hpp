@@ -41,7 +41,8 @@
  * half's record buffer: each frame holds one record of every row, its block at the row's
  * @c rec_row, after a directory of the rows and their records' wstart (gnss::RecDir), in place
  * of the frame metadata. Each worker is a producer of the buffer, and marks a frame full once
- * its last row has written its record there, so a frame is full once every row has.
+ * its last row has written its record there, so a frame is full once every row has. Every row
+ * must write the same records per frame.
  *
  * A row reads its gnssGpuChain frames from @c in_buf (GnssN2RecordAssemble's output), or, with
  * @c tiles_buf and @c ctl_buf, assembles each one itself from the tiles and the control block
@@ -77,7 +78,7 @@
  *                must not feed one consumer that reads them in lockstep, and on a busy core
  *                they get one thread's share of it. Rows of one worker writing a GPU half's
  *                record buffer hold each frame from the first row's record to the last row's,
- *                so they must write the same records per frame, fewer than its frames.
+ *                so they must write fewer records per frame than it has frames.
  */
 class GnssGpuRecordAssemble : public kotekan::Stage {
 public:
@@ -129,11 +130,10 @@ private:
         /// buffer, where only its worker's last row marks the frames full.
         std::string producer;
         bool marks = true;
-        /// With a GPU half's record buffer: its block's offset and its row of the directory, and
-        /// with other rows on its worker, the first of them and its records this frame.
+        /// With a GPU half's record buffer: its block's offset, its row of the directory, and
+        /// whether its worker runs other rows.
         size_t rec_offset = 0, dir_row = 0;
-        const Row* lead = nullptr;
-        int n_rec = 0;
+        bool shares_worker = false;
         std::atomic<uint64_t> records_done{0};
         /// Push leg: each completed window is pushed to cube_buf with its address (chain, window
         /// index, wstart). It never blocks the tracker: if the next frame is not empty (safe to
@@ -153,6 +153,8 @@ private:
     /// With an out_buf on the host block: that buffer and its directory.
     Buffer* _rec_buf = nullptr;
     std::unique_ptr<gnss::RecDir> _rec_dir;
+    /// With _rec_buf: the records per frame of the first row to run a frame, 0 before then.
+    std::atomic<int> _rec_n_rec{0};
 
     /// The keys each row sets itself: ROW_KEYS, with rec_row for out_buf when the host block of
     /// @p unique_name sets it.

@@ -135,8 +135,7 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
                 row.producer = w.name;
                 row.marks = i == w.rows.back();
                 row.dir_row = _rec_dir->find((int64_t)row.rec_offset);
-                if (w.rows.size() > 1)
-                    row.lead = &_rows[w.rows[0]];
+                row.shares_worker = w.rows.size() > 1;
             }
         }
     }
@@ -224,13 +223,19 @@ bool GnssGpuRecordAssemble::run_records(size_t i, const uint8_t* in) {
     const std::string& name = _host_rows[i].name;
     Buffer* out_buf = row.out_buf;
     const int n_rec = row.chain.begin_frame(in);
-    row.n_rec = n_rec;
-    // Its worker holds each of these frames open until its last row's record is written there.
-    if (row.lead && (n_rec != row.lead->n_rec || n_rec >= out_buf->num_frames))
-        FATAL_ERROR("{:s}: {:d} records this frame, the first row of its worker {:d}; the rows "
-                    "of a worker must write the same records per frame, fewer than the {:d} "
-                    "frames of {:s}",
-                    name, n_rec, row.lead->n_rec, out_buf->num_frames, out_buf->buffer_name);
+    if (_rec_dir) {
+        // Each frame holds one record of every row, and a worker of several rows holds each of
+        // its frames open until its last row's record is written there.
+        int first = 0;
+        if (!_rec_n_rec.compare_exchange_strong(first, n_rec) && n_rec != first)
+            FATAL_ERROR("{:s}: {:d} records this frame, another row of {:s} {:d}; every row of a "
+                        "GPU half's record buffer must write the same records per frame",
+                        name, n_rec, out_buf->buffer_name, first);
+        if (row.shares_worker && n_rec >= out_buf->num_frames)
+            FATAL_ERROR("{:s}: {:d} records this frame; a worker of several rows must write fewer "
+                        "records per frame than the {:d} frames of {:s}",
+                        name, n_rec, out_buf->num_frames, out_buf->buffer_name);
+    }
     for (int r = 0; r < n_rec && !stop_thread; ++r) {
         uint8_t* frame = out_buf->wait_for_empty_frame(row.producer, row.out_id);
         if (frame == nullptr)

@@ -13,6 +13,7 @@
 #include "GnssTelemSend.hpp"         // for GnssTelemSend
 #include "bufferContainer.hpp"       // for bufferContainer
 #include "bufferSend.hpp"            // for bufferFrameHeaderNoConfigTracker
+#include "gnssGpuChain.hpp"          // for FrameHdr, PrnCtl, off_winstart, off_prnctl
 #include "gnssGpuRows.hpp"           // for gpu_rows
 #include "gnssHostRows.hpp"          // for host_rows, rest_register_unique
 #include "gnssRecRows.hpp"           // for RecDir, RecRow
@@ -1411,8 +1412,9 @@ json rec_hosts_config(const json& workers, const json& cmb_workers) {
     return cfg;
 }
 
-/// A record frame's first sample on the record grid of rec_config's hosts.
-constexpr int64_t REC_WSTART = 1000LL * 2048 * 16384;
+/// Samples per record of rec_config's hosts, and a record frame's first sample on their grid.
+constexpr int64_t REC_SAMPLES = 2048LL * 16384;
+constexpr int64_t REC_WSTART = 1000 * REC_SAMPLES;
 
 /// The buffers of @p cfg, every block with kotekan_buffer, in @p bc, those with a metadata_pool
 /// on one pool.
@@ -1474,6 +1476,61 @@ std::string feed_rec_frame(const json& cfg, const std::vector<gnss::RecRow>& dir
     for (auto& h : hosts)
         h->join();
     return msg;
+}
+
+/// Feeds frame @p id of the record host's in_buf @p buf, as producer "feeder", an epl frame
+/// (gnssGpuChain.hpp) of @p n_rec records of one PRN slot, PRN 1, run in none of them.
+void feed_epl(Buffer* buf, int id, int n_rec) {
+    uint8_t* f = buf->wait_for_empty_frame("feeder", id);
+    std::memset(f, 0, buf->frame_size);
+    gnss_gpu::FrameHdr h{};
+    h.n_rec = n_rec;
+    h.n_prn = 1;
+    h.n_chan = 1;
+    h.utc0 = 1.7e9;
+    h.n_rows_spec = gnss_gpu::ROWS_PLAIN;
+    std::memcpy(f, &h, sizeof(h));
+    for (int r = 0; r < n_rec; ++r) {
+        const int64_t wstart = REC_WSTART + r * REC_SAMPLES;
+        std::memcpy(f + gnss_gpu::off_winstart() + r * sizeof(wstart), &wstart, sizeof(wstart));
+        gnss_gpu::PrnCtl c{};
+        c.prn = 1;
+        std::memcpy(f + gnss_gpu::off_prnctl() + r * sizeof(c), &c, sizeof(c));
+    }
+    buf->mark_frame_full("feeder", id);
+}
+
+/// Starts the record host of rec_hosts_config, its rows ABC on @p workers, and feeds row k an epl
+/// frame of @p n_rec[k] records once row k - 1 has written its records. Returns the first FATAL a
+/// host's thread raised, or "" once every row has written its records.
+std::string feed_epl_rows(const json& workers, const std::vector<int>& n_rec) {
+    const json cfg = rec_hosts_config(workers, workers);
+    kotekan::Config config;
+    config.update_config(cfg);
+    kotekan::bufferContainer bc;
+    std::vector<std::unique_ptr<Buffer>> bufs = buffers_of(cfg, bc);
+    GnssGpuRecordAssemble host(config, "/gnss0_records", bc);
+    for (const auto& k : ABC)
+        bc.get_buffer("epl_" + k)->register_producer("feeder");
+    host.start();
+    std::string msg = "not set";
+    for (size_t k = 0; k < ABC.size() && msg == "not set"; ++k) {
+        feed_epl(bc.get_buffer("epl_" + ABC[k]), 0, n_rec[k]);
+        const auto t0 = std::chrono::steady_clock::now();
+        while ((msg = kotekan::kotekanLogging::get_error_message()) == "not set"
+               && host.records_done(k) != (uint64_t)n_rec[k]) {
+            if (std::chrono::steady_clock::now() - t0 > std::chrono::seconds(10)) {
+                msg = fmt::format("row {:s} wrote {:d} records", ABC[k], host.records_done(k));
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+    }
+    host.stop();
+    for (auto& b : bufs)
+        b->send_shutdown_signal();
+    host.join();
+    return msg == "not set" ? "" : msg;
 }
 
 } // namespace
@@ -1736,6 +1793,27 @@ BOOST_AUTO_TEST_CASE(rec_dir_mismatch_is_fatal) {
             [&] { throw FatalError(feed_rec_frame(rec_config(ABC_REC, false, true, true), two)); }),
         "/gnss0_telem/w0: frame 0 of gnss0_rec_buf lists 2 rows (chain_id 1, 2), "
         "this host reads 3 (chain_id 1, 2, 3)");
+}
+
+// Every row of a record host writing a GPU half's record buffer writes the same records per frame,
+// whatever its worker, and a worker of several rows fewer than the buffer's frames.
+BOOST_AUTO_TEST_CASE(rec_buf_rows_write_the_same_records_per_frame) {
+    json one_each = json::array();
+    for (const auto& k : ABC)
+        one_each.push_back({{"rows", {k}}, {"cpu_affinity", {0}}});
+    const json one = json::array({{{"rows", ABC}, {"cpu_affinity", {0}}}});
+    for (const json& w : {one_each, one}) {
+        BOOST_CHECK_EQUAL(fatal_of([&] { throw FatalError(feed_epl_rows(w, {2, 2, 2})); }), "");
+        BOOST_CHECK_EQUAL(fatal_of([&] { throw FatalError(feed_epl_rows(w, {2, 1, 2})); }),
+                          "/gnss0_b_n2assemble: 1 records this frame, another row of "
+                          "gnss0_rec_buf 2; every row of a GPU half's record buffer must write "
+                          "the same records per frame");
+    }
+    // rec_config's buffer has 4 frames.
+    BOOST_CHECK_EQUAL(fatal_of([&] { throw FatalError(feed_epl_rows(one_each, {4, 4, 4})); }), "");
+    BOOST_CHECK_EQUAL(fatal_of([&] { throw FatalError(feed_epl_rows(one, {4, 4, 4})); }),
+                      "/gnss0_a_n2assemble: 4 records this frame; a worker of several rows must "
+                      "write fewer records per frame than the 4 frames of gnss0_rec_buf");
 }
 
 // A frame of a GPU half's record buffer reaches its consumers only once every producer, each a
