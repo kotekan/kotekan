@@ -157,7 +157,6 @@ void GnssTelemPack::run_worker(size_t w) {
 bool GnssTelemPack::take_record(size_t i, const std::string& consumer) {
     Row& row = _rows[i];
     Buffer* in_buf = row.in_buf;
-    gnss::TelemChain& chain = row.chain;
 
     float* in = (float*)in_buf->wait_for_full_frame(consumer, row.in_id);
     if (in == nullptr)
@@ -170,21 +169,28 @@ bool GnssTelemPack::take_record(size_t i, const std::string& consumer) {
             wstart = m->sample_seq;
     }
 
-    if (!chain.on_grid(wstart)) {
-        in_buf->mark_frame_empty(consumer, row.in_id++);
+    if (!add_record(i, in, wstart))
+        return false;
+    in_buf->mark_frame_empty(consumer, row.in_id++);
+    return flush_full(i);
+}
+
+bool GnssTelemPack::add_record(size_t i, const float* in, int64_t wstart) {
+    gnss::TelemChain& chain = _rows[i].chain;
+    if (!chain.on_grid(wstart))
         return true;
-    }
     if (chain.window_changes(wstart))
         if (!flush(i))
             return false;
     chain.add_record(in, wstart);
+    return true;
+}
 
-    in_buf->mark_frame_empty(consumer, row.in_id++);
-
+bool GnssTelemPack::flush_full(size_t i) {
     // Emit a full window at once rather than when the next record crosses the boundary:
     // that record may be a whole correlator frame away, and a chain whose records stop
     // leaves no complete window unsent.
-    if (chain.window_full())
+    if (_rows[i].chain.window_full())
         if (!flush(i))
             return false;
     return true;

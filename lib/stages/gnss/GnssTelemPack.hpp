@@ -147,6 +147,12 @@ private:
     /// Pack row @p row's next record, reading it as consumer @p consumer, and write its window
     /// out once complete. Returns false when shutting down.
     bool take_record(size_t row, const std::string& consumer);
+    /// Place record @p in of row @p row, at @p wstart (-1 if unknown), in its open window,
+    /// first writing that window out if the record closes it. A record off the record grid is
+    /// counted dropped. Returns false when shutting down.
+    bool add_record(size_t row, const float* in, int64_t wstart);
+    /// Write row @p row's window out if it is complete. Returns false when shutting down.
+    bool flush_full(size_t row);
     /// Write row @p row's accumulated window out, or drop it on a full shared out_buf, and
     /// reset. No-op if nothing is open. Returns false if the output buffer shut down (the
     /// caller must exit).

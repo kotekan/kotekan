@@ -163,6 +163,12 @@ private:
     /// Fold row @p row's next record into its chain, reading it as consumer @p consumer, and
     /// emit when one is due. Returns false when shutting down.
     bool take_record(size_t row, const std::string& consumer);
+    /// Fold record @p in of row @p row, whose window starts at sample @p sample_seq (-1 if
+    /// unknown), into its chain. Returns true when an emit is due.
+    bool ingest_record(size_t row, const float* in, int64_t sample_seq);
+    /// Emit row @p row's records if @p emit, and count its record taken. Returns false when
+    /// shutting down.
+    bool finish_record(size_t row, bool emit);
 };
 
 #endif // GNSS_COHERENT_COMBINER_HPP
