@@ -61,7 +61,9 @@ struct IncoherentCandidate {
  *
  * Each channel keeps an exponential running mean and variance and is normalized by them. Channels
  * that are missing, in a fixed band, noisier than their neighbours or drifting (the means of
- * 64-sample blocks vary more than white noise allows) are masked. The channel average is
+ * 64-sample blocks vary more than white noise allows) are masked. So is, for one time sample, a
+ * sixteenth of the band whose channels add up to far more than their noise: interference in
+ * part of the band, which the limit on single samples does not stop. The channel average is
  * subtracted at each time (zero DM). The normalized samples are summed along
  * each trial DM's dispersion curve with delays rounded to the nearest sample, relative to the top
  * channel. Each sum is tried at several widths against a baseline from the samples on both sides,
@@ -108,6 +110,12 @@ public:
         return pass_sums;
     }
 
+    /// Highest S/N of each trial DM in the last search pass, over its times and widths; 0 where
+    /// none was computed (the hold-off, no data)
+    const std::vector<float>& last_max_snr() const {
+        return pass_max;
+    }
+
     /// Delay of the bottom channel against the top channel at trial DM d, in samples
     int64_t sweep_samples(int d) const {
         return max_delay[d];
@@ -146,6 +154,10 @@ private:
     void band_occupancy(IncoherentCandidate& cand, const Hit& hit) const;
     const int8_t* row(int channel, int64_t sample) const {
         return &w[(size_t)channel * buffer_len + (size_t)(sample - base)];
+    }
+    // First channel of block b of the IncoherentCandidate::num_blocks equal parts of the band
+    int block_start(int b) const {
+        return (int)((int64_t)b * F / IncoherentCandidate::num_blocks);
     }
 
     // A channel in the sample being added: no data or no statistics yet, normalized but masked,
@@ -199,6 +211,7 @@ private:
     std::vector<int64_t> sum_count;  // [D][W]: updates of sum_var
     std::vector<double> sigma_floor; // [W]: lower limit of the sigma that divides a statistic
     std::vector<float> pass_sums;    // [D][chunk] when p.keep_sums: see last_sums()
+    std::vector<float> pass_max;     // [D]: see last_max_snr()
 
     std::vector<Event> events; // open candidates, and reported ones that still absorb residue
     std::vector<IncoherentCandidate> candidates;
