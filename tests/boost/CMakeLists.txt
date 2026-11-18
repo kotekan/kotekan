@@ -19,6 +19,9 @@ target_link_libraries(test_truncate PRIVATE kotekan_libs kotekan_utils)
 add_executable(test_pfb_prototype test_pfb_prototype.cpp)
 target_link_libraries(test_pfb_prototype PRIVATE kotekan_libs kotekan_utils)
 
+add_executable(test_incoherent_search test_incoherent_search.cpp)
+target_link_libraries(test_incoherent_search PRIVATE kotekan_libs kotekan_utils)
+
 add_executable(test_synchronized_queue test_synchronized_queue.cpp)
 target_link_libraries(test_synchronized_queue PRIVATE pthread kotekan_libs kotekan_utils)
 
@@ -791,6 +794,16 @@ target_include_directories(test_upchannelizeReference PRIVATE ${KOTEKAN_SOURCE_D
 add_executable(test_DtvRfiMask test_DtvRfiMask.cpp ${KOTEKAN_SOURCE_DIR}/lib/stages/DtvRfiMask.cpp)
 target_link_libraries(test_DtvRfiMask PRIVATE kotekan_core kotekan_metadata kotekan_utils
                                               libexternal)
+
+add_executable(test_IncoherentBeamPower test_IncoherentBeamPower.cpp
+                                        ${KOTEKAN_SOURCE_DIR}/lib/stages/IncoherentBeamPower.cpp)
+target_link_libraries(test_IncoherentBeamPower PRIVATE kotekan_core kotekan_metadata kotekan_utils
+                                                       libexternal)
+
+add_executable(test_IncoherentBeamSearch test_IncoherentBeamSearch.cpp
+                                         ${KOTEKAN_SOURCE_DIR}/lib/stages/IncoherentBeamSearch.cpp)
+target_link_libraries(test_IncoherentBeamSearch PRIVATE kotekan_core kotekan_metadata kotekan_utils
+                                                        libexternal)
 
 add_executable(test_ProcessPacketMask test_ProcessPacketMask.cpp
                                       ${KOTEKAN_SOURCE_DIR}/lib/stages/ProcessPacketMask.cpp)

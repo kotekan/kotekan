@@ -9,6 +9,7 @@ manifest, a one-line template as the base and a preview directory.
 """
 import contextlib
 import io
+import json
 import os
 import shutil
 import subprocess
@@ -320,6 +321,51 @@ def test_check_leaves_the_stamp_out():
         "a stamped config that differs in its body notes no stamp (%r)" % out,
     )
 
+
+
+def test_keep_bad_inputs_writes_with_the_files_block():
+    """A write with --keep-bad-inputs hands the generator the bad-input block of the config on
+    disk (eop_cron.sh's regen: EOP only, and it works while bffs flags every input); a plain
+    write leaves the list to the generator."""
+    body = (
+        "a: 1\nearth_rotation_data:\n  earth_orientation_parameter_table:\n  - t_inst_ns: 2\n"
+        "updatable_config:\n  bad_inputs:\n    bad_inputs: [%s]\n    update_id: %s\n"
+    )
+    disk, regenerated = body % ("3, 9", "bffs-1"), body % ("3, 9", "bffs-1")
+    for extra, want in (
+        (["--keep-bad-inputs"], {"bad_inputs": [3, 9], "update_id": "bffs-1"}),
+        ([], None),
+    ):
+        with tempfile.TemporaryDirectory() as d:
+            base = os.path.join(d, "base.j2")
+            with open(base, "w") as fh:
+                fh.write(regenerated)
+            out = os.path.join(d, "chord_gnss_cx44.yaml")
+            with open(out, "w") as fh:
+                fh.write(disk)
+            argv = ["gen_fleet.py", manifest(d, base), "--preview-dir", d] + extra
+            seen = []
+
+            def fake_run(cmd, **kw):
+                i = cmd.index("--bad-inputs-from") if "--bad-inputs-from" in cmd else None
+                seen.append(json.load(open(cmd[i + 1])) if i is not None else None)
+                return subprocess.CompletedProcess(cmd, 0, stdout=regenerated, stderr="")
+
+            real_run, real_argv = subprocess.run, sys.argv
+            subprocess.run, sys.argv = fake_run, argv
+            exc = None
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    gen_fleet.main()
+            except SystemExit as e:
+                exc = e.code
+            finally:
+                subprocess.run, sys.argv = real_run, real_argv
+            check(
+                exc in (None, 0) and seen == [want],
+                "a write with %r passes the generator %r (got %r, exit %r)"
+                % (extra, want, seen, exc),
+            )
 
 def run_check(base):
     with tempfile.TemporaryDirectory() as d:

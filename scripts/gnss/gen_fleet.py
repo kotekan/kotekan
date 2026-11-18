@@ -556,6 +556,14 @@ def main():
         "2 if nothing could be compared",
     )
     ap.add_argument(
+        "--keep-bad-inputs",
+        action="store_true",
+        help="write each node with the bad-input block its config on disk carries, as --check "
+        "compares, instead of bffs's current list, so the write changes only the EOP table. "
+        "eop_cron.sh passes it: an unattended regen must not move the element lists, and "
+        "during an outage bffs flags every input and the generator refuses its list",
+    )
+    ap.add_argument(
         "--node",
         action="append",
         default=None,
@@ -688,8 +696,9 @@ def main():
         # from it at generation (stations, channel-noise inputs, shared-ref zeros), so with
         # bffs's current list instead every bffs change would read as drift: --check would
         # fail fleet-wide and eop_cron.sh would stop refreshing the on-disk EOP tables.
+        # --keep-bad-inputs writes the same way, for the same reason.
         tmp_bi = None
-        if a.check and os.path.exists(out):
+        if (a.check or a.keep_bad_inputs) and os.path.exists(out):
             blk = _bad_input_block_of(open(out).read())
             if blk is not None:
                 fd, tmp_bi = tempfile.mkstemp(

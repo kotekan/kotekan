@@ -22,12 +22,16 @@ What is pinned:
 
 import os
 import sys
+import types
 from datetime import datetime, timezone
 
 import yaml
 
 from gnss_broker import prnmap, signals, sky
 
+REPO = os.path.normpath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..")
+)
 
 _fails = []
 
@@ -376,26 +380,291 @@ def test_boresight_rank():
     sky.set_boresight(None, None, "test")
 
 
-# The highest PRN each manifest descriptor's code takes (gnss::max_prn, gnssSignal.hpp): 63
-# for the GNSS tables; GuoWang numbers its satellites by G2' phase, 1..2047.
-MAX_PRN = {"GW_1202": 2047}
+def set_prns_range(desc):
+    """The PRNs the node's /set_prns takes for a manifest descriptor (gnss::min_prn and
+    gnss::max_prn, gnssSignal.hpp)."""
+    if desc == "GW_1202":
+        return 1, 2047
+    return (120, 158) if desc.startswith("SBAS_") else (1, 63)
+
+
+# The SBAS sky over the site from the BRDC of 2026-11-14 01:00Z (elevation, deg): the WAAS GEOs
+# up, the EGNOS GEOs 121/123/136 below, and deeper GEOs (GAGAN 127/128/132, MSAS 129/137)
+# that the probe order would prefer. 122 (SouthPAN) sits between -15 deg and the horizon.
+SBAS_SKY = {
+    131: 33.4,
+    133: 32.7,
+    135: 33.2,
+    121: -23.7,
+    123: -38.2,
+    136: -29.3,
+    122: -12.9,
+    127: -44.9,
+    128: -43.3,
+    129: -40.9,
+    132: -39.8,
+    137: -23.0,
+}
+SBAS_BOOT = [131, 133, 135, 121, 123, 136]  # the manifest list
+SBAS_PROBES = [121, 123, 136]  # the chains' probe-dark-prns
+
+
+def sbas_almanac(sky, dark_prns):
+    """ctx.pred and ctx.pred_dark as stage_almanac_predict builds them on an SBAS chain with
+    --probe-dark --probe-dark-prns, from a BRDC prediction of `sky` ({prn: el})."""
+    from gnss_broker import almanac
+
+    args = types.SimpleNamespace(
+        almanac=True,
+        doppler_sign=1,
+        lat=49.32,
+        lon=-119.62,
+        alt=528.4,
+        carrier_hz=1176.45e6,
+        mask_deg=0.0,
+        post_sat_geometry=0,
+        bias_det_fresh_s=30.0,
+        bias_min_snr=10.0,
+        bias_min_sats=2,
+        probe_dark=True,
+        probe_dark_prns=list(dark_prns),
+    )
+    ctx = types.SimpleNamespace(
+        args=args,
+        capable_t=None,
+        capable=None,
+        brdc_alm={},
+        almanac_sats=[],
+        alm_sys="S",
+        alm_min_prn=1,
+        alm_now=lambda: None,
+        dll_combiners=[],
+        geom_post_t=[0.0],
+        transit_pd=None,
+        publisher=None,
+        cb=types.SimpleNamespace(ema=None, value=0.0),
+        best={},
+        det_fresh={},
+        t0=1000.0,
+    )
+    raw = {p: (0.0, 0.0, el, 3.8e7, 0.0, 180.0) for p, el in sky.items()}
+    saved = (almanac.brdc_predict, almanac._log_rl, almanac.timebase)
+    almanac.brdc_predict = lambda *a: raw
+    almanac._log_rl = lambda key, msg, every_s=10.0: None
+    almanac.timebase = types.SimpleNamespace(observe=lambda c, log_rl: None)
+    try:
+        almanac.stage_almanac_predict(ctx)
+    finally:
+        almanac.brdc_predict, almanac._log_rl, almanac.timebase = saved
+    return ctx.pred, ctx.pred_dark
+
+
+def sbas_cycle(ctx, t, sky):
+    """One cycle of an SBAS chain on `sky`, its pred and pred_dark from the almanac stage."""
+    ctx.pred, ctx.pred_dark = sbas_almanac(sky, ctx.args.probe_dark_prns)
+    run_cycle(ctx, t)
+
+
+def sbas_ctx(sky, dark_prns=SBAS_PROBES, **kw):
+    """sbas_l5's map settings: common's apply, 3 noise probes, admit 0 / evict -2 deg, 120 s
+    between posts, and the EGNOS GEOs as --probe-dark-prns; --prn-reconfig-prns only when
+    given, so that the policy can be shown on GEOs off the chains' list."""
+    opts = dict(
+        noise_probes=3,
+        prn_reconfig_admit_deg=0.0,
+        prn_reconfig_evict_deg=-2.0,
+        prn_reconfig_interval_s=120.0,
+        signal="SBAS_L5_I_MC",
+        probe_dark=bool(dark_prns),
+        probe_dark_prns=list(dark_prns),
+    )
+    opts.update(kw)
+    ctx = Ctx(SBAS_BOOT, sky, **opts)
+    ctx.pred, ctx.pred_dark = sbas_almanac(sky, dark_prns)
+    return ctx
+
+
+def selector_probes(ctx):
+    """The noise probes the broker's selector picks (gps_distributed_broker.py): probe_order
+    over the prediction and the dark rows, held = the consensus, filtered to it under
+    --probe-require-slot."""
+    held = ctx.prnmap.consensus or []
+    dark = ctx.pred_dark if ctx.args.probe_dark else {}
+    cands = prnmap.probe_order({p: v[2] for p, v in ctx.pred.items()}, dark, held=held)
+    return [p for p in cands if p in held][: ctx.args.noise_probes]
+
+
+def tracker_maps():
+    """The maps posted to node1, in order."""
+    return [b["prns"] for u, b in POSTS if u.startswith("http://node1")]
+
+
+def test_sbas_apply():
+    """The SBAS chains under apply (the nodes take the SBAS PRNs, 120-158): the map
+    holds the GEOs up and the pinned EGNOS probes, never trades a probe for a deeper GEO or
+    loses one to a BRDC gap, follows a GEO that sets, and posts at most once per interval."""
+    print("\nSBAS under apply: the GEOs up plus the pinned probes")
+    POSTS[:] = []
+    ctx = sbas_ctx(SBAS_SKY)
+    sbas_cycle(ctx, 1000.0, SBAS_SKY)
+    sbas_cycle(ctx, 1000.0 + 100000.0, SBAS_SKY)
+    check(
+        not POSTS and ctx.prnmap.consensus == SBAS_BOOT,
+        "the 2026-11-14 sky: the map holds 131/133/135 up and 121/123/136 as probes, "
+        "and nothing is posted (got %s)" % tracker_maps(),
+    )
+    check(
+        selector_probes(ctx) == SBAS_PROBES,
+        "... and the selector's probes are the slotted EGNOS GEOs, not the deeper GAGAN and "
+        "MSAS GEOs (got %s)" % selector_probes(ctx),
+    )
+    POSTS[:] = []
+    plain = sbas_ctx(SBAS_SKY, dark_prns=())
+    sbas_cycle(plain, 1000.0, SBAS_SKY)
+    check(
+        tracker_maps()
+        and tracker_maps()[0][:3] == [131, 133, 135]
+        and set(tracker_maps()[0][3:]) == {127, 128, 129},
+        "without the pin the same sky trades every EGNOS probe for a deeper GEO (got %s)"
+        % tracker_maps(),
+    )
+
+    # A fourth GEO up finds no slot rather than take a probe's (PRN 139, +13 deg in the BRDC
+    # of 2026-11-13).
+    POSTS[:] = []
+    LOGS[:] = []
+    ctx = sbas_ctx(SBAS_SKY)
+    sbas_cycle(ctx, 1000.0, {**SBAS_SKY, 139: 13.1})
+    check(
+        not POSTS and any("want a slot" in m and "PRN 139" in m for m in LOGS),
+        "a fourth GEO up is reported unplaced and the probes keep their slots (got %s)"
+        % tracker_maps(),
+    )
+
+    # A probe's records leave the BRDC: it stays a probe, on the dark row at el -90.
+    POSTS[:] = []
+    gap = {p: e for p, e in SBAS_SKY.items() if p != 123}
+    ctx = sbas_ctx(gap)
+    sbas_cycle(ctx, 1000.0, gap)
+    check(
+        not POSTS and ctx.pred_dark.get(123, (0, 0, 0))[2] == -90.0,
+        "a pinned probe with no BRDC record keeps its slot, a probe at el -90 (got %s)"
+        % tracker_maps(),
+    )
+    check(
+        selector_probes(ctx) == SBAS_PROBES,
+        "... and the selector still has three slotted probes (got %s)"
+        % selector_probes(ctx),
+    )
+    _risen = {**SBAS_SKY, 121: 5.0}
+    check(
+        121 not in sbas_almanac(_risen, SBAS_PROBES)[1],
+        "a pinned PRN predicted above -15 deg is no probe (it may carry a signal)",
+    )
+
+    # A WAAS GEO missing from one cycle's prediction while the BRDC carries PRN 139, a
+    # placeholder record (nominal position, no motion) at +13 deg: off the list, 139 takes the
+    # dead slot and keeps it once 131 is back, since both are up and every slot is wanted. The
+    # chains' --prn-reconfig-prns leaves the slot dead until 131 returns.
+    sky139 = {**SBAS_SKY, 139: 13.1}
+    gap = {p: e for p, e in sky139.items() if p != 131}
+    for only in ([], SBAS_BOOT):
+        POSTS[:] = []
+        LOGS[:] = []
+        ctx = sbas_ctx(sky139, prn_reconfig_prns=only)
+        for t, s in (
+            (1000.0, sky139),
+            (1200.0, gap),
+            (1400.0, sky139),
+            (5000.0, sky139),
+        ):
+            sbas_cycle(ctx, t, s)
+        if only:
+            check(
+                not POSTS
+                and ctx.node_state == SBAS_BOOT
+                and not any("want a slot" in m for m in LOGS),
+                "on the chains' list 131 keeps its slot through a cycle with no prediction, "
+                "139 is no candidate, and nothing is posted (got %s)" % tracker_maps(),
+            )
+        else:
+            check(
+                131 not in ctx.node_state and 139 in ctx.node_state,
+                "off the list 139 takes 131's slot in the cycle 131 is missing, and keeps it "
+                "(got %s)" % ctx.node_state,
+            )
+    POSTS[:] = []
+    LOGS[:] = []
+    ctx = sbas_ctx(SBAS_SKY, prn_reconfig_prns=SBAS_BOOT + [138])
+    sbas_cycle(ctx, 1000.0, {**SBAS_SKY, 133: -3.0, 138: 25.0, 139: 20.0})
+    check(
+        tracker_maps() == [[131, 138, 135, 121, 123, 136]]
+        and not any("PRN 139" in m for m in LOGS),
+        "with 138 on the list, 133 below -2 deg gives its slot to the risen 138, and 139 up "
+        "off the list is no candidate (got %s)" % tracker_maps(),
+    )
+
+    # A GEO below the evict elevation leaves when another rises; one between evict and
+    # admit keeps its slot.
+    POSTS[:] = []
+    ctx = sbas_ctx(SBAS_SKY)
+    sbas_cycle(ctx, 1000.0, {**SBAS_SKY, 133: -3.0, 138: 25.0})
+    check(
+        tracker_maps() == [[131, 138, 135, 121, 123, 136]],
+        "133 below -2 deg gives its slot to the risen 138, and the probes stay (got %s)"
+        % tracker_maps(),
+    )
+    POSTS[:] = []
+    ctx = sbas_ctx(SBAS_SKY)
+    sbas_cycle(ctx, 1000.0, {**SBAS_SKY, 133: -1.0, 138: 25.0})
+    check(
+        not POSTS,
+        "133 at -1 deg is inside the hysteresis band and keeps its slot; 138 finds none "
+        "rather than take a probe's (got %s)" % tracker_maps(),
+    )
+
+    # The whole-map post rate limit: a second change inside the interval waits for it.
+    POSTS[:] = []
+    ctx = sbas_ctx(SBAS_SKY)
+    sky1 = {**SBAS_SKY, 133: -3.0, 138: 25.0}
+    sky2 = {**sky1, 135: -3.0, 139: 20.0}
+    sbas_cycle(ctx, 1000.0, sky1)
+    sbas_cycle(ctx, 1060.0, sky2)
+    check(
+        tracker_maps() == [[131, 138, 135, 121, 123, 136]],
+        "a second change 60 s after a post waits for the 120 s interval (got %s)"
+        % tracker_maps(),
+    )
+    sbas_cycle(ctx, 1121.0, sky2)
+    check(
+        tracker_maps()
+        == [[131, 138, 135, 121, 123, 136], [131, 138, 139, 121, 123, 136]],
+        "... and is posted once the interval has passed (got %s)" % tracker_maps(),
+    )
+
+    # read still never posts, whatever the SBAS sky wants.
+    POSTS[:] = []
+    ctx = sbas_ctx(SBAS_SKY, prn_reconfig="read")
+    sbas_cycle(ctx, 1000.0, sky2)
+    sbas_cycle(ctx, 1000.0 + 100000.0, sky2)
+    check(
+        not POSTS and ctx.prnmap.consensus == SBAS_BOOT,
+        "an SBAS chain under read posts nothing when a GEO sets and another rises",
+    )
 
 
 def test_chains_config():
     """The production chains (config/gnss_chains_chord.yaml, each chain over `common:`) against
     the chains table's PRN lists (config/gnss_fleet_chord.yaml chains:; an FDMA list, PRN@k,
     pins its slots and is left out): a chain under apply must have PRNs
-    the node's /set_prns can take (1..gnss::max_prn: gnssTrackChain.cpp), or every swap it
+    the node's /set_prns can take (gnss::min_prn..gnss::max_prn: gnssTrackChain.cpp), or every swap it
     proposes is refused (sbas_l5, 10-23); and a chain with probe-require-slot must read the map
     back, or the filter never has a map and the probes go unfiltered."""
     print("\nthe chains' prn-reconfig against the manifest's PRN lists")
-    repo = os.path.normpath(
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..")
-    )
     chains = yaml.safe_load(
-        open(os.path.join(repo, "config", "gnss_chains_chord.yaml"))
+        open(os.path.join(REPO, "config", "gnss_chains_chord.yaml"))
     )
-    fleet = yaml.safe_load(open(os.path.join(repo, "config", "gnss_fleet_chord.yaml")))
+    fleet = yaml.safe_load(open(os.path.join(REPO, "config", "gnss_fleet_chord.yaml")))
     lists = {
         row["descriptor"]: {int(p) for p in str(row["prns"]).split(",")}
         for row in fleet["chains"]
@@ -416,17 +685,80 @@ def test_chains_config():
         sig = signals.get(opt.get("signal"))
         desc = sig.long if sig.long in lists else sig.primary
         prns = lists.get(desc)
+        dark = [int(p) for p in str(opt.get("probe-dark-prns") or "").split(",") if p]
+        if dark:
+            check(
+                opt.get("probe-dark") is True and set(dark) <= set(prns or ()),
+                "%s: probe-dark-prns %s are probes (probe-dark) and hold manifest slots "
+                "(a probe without a slot never reports)" % (name, dark),
+            )
+        only = [int(p) for p in str(opt.get("prn-reconfig-prns") or "").split(",") if p]
+        if only:
+            check(
+                set(prns or ()) | set(dark) <= set(only),
+                "%s: prn-reconfig-prns holds every manifest PRN and probe-dark-prns (off it, "
+                "a boot slot reads as dead and a probe is dropped)" % name,
+            )
         if mode != "apply" or not prns:
             continue
         n += 1
-        top = MAX_PRN.get(desc, 63)
-        bad = sorted(p for p in prns if not 1 <= p <= top)
+        lo, hi = set_prns_range(desc)
+        bad = sorted(p for p in prns if not lo <= p <= hi)
         check(
             not bad,
             "%s: prn-reconfig apply, and the nodes' /set_prns takes every manifest PRN "
-            "(outside 1-%d: %s)" % (name, top, bad or "none"),
+            "(outside %d-%d: %s)" % (name, lo, hi, bad or "none"),
         )
     check(n > 0, "at least one chain runs apply with a manifest PRN list (%d)" % n)
+
+
+def test_sbas_chains_yaml():
+    """sbas_l5 and sbas_l1 with the flags broker_multi gives them from
+    config/gnss_chains_chord.yaml: the 2026-11-14 sky posts nothing and keeps the EGNOS probes, a
+    WAAS GEO missing from one cycle's prediction keeps its slot while PRN 139 is in the BRDC
+    (--prn-reconfig-prns), and a probe with no BRDC record stays a slotted probe
+    (--probe-dark-prns)."""
+    print("\nthe SBAS chains as the chains yaml runs them")
+    sys.path.insert(0, os.path.join(REPO, "scripts", "gnss"))
+    import broker_multi
+    from gnss_broker import cli
+
+    argvs = dict(
+        broker_multi.load(os.path.join(REPO, "config", "gnss_chains_chord.yaml"))
+    )
+    sky139 = {**SBAS_SKY, 139: 13.1}
+    for name in ("sbas_l5", "sbas_l1"):
+        opts = vars(cli.build_parser("test").parse_args(argvs[name]))
+        POSTS[:] = []
+        ctx = Ctx(SBAS_BOOT, SBAS_SKY, **opts)
+        sbas_cycle(ctx, 1000.0, SBAS_SKY)
+        sbas_cycle(ctx, 1000.0 + 100000.0, SBAS_SKY)
+        check(
+            not POSTS
+            and ctx.prnmap.consensus == SBAS_BOOT
+            and sorted(selector_probes(ctx)) == SBAS_PROBES,
+            "%s: the 2026-11-14 sky posts nothing and the probes are %s (got %s, probes %s)"
+            % (name, SBAS_PROBES, tracker_maps(), selector_probes(ctx)),
+        )
+        POSTS[:] = []
+        ctx = Ctx(SBAS_BOOT, sky139, **opts)
+        gap = {p: e for p, e in sky139.items() if p != 131}
+        for t, s in ((1000.0, sky139), (1200.0, gap), (1400.0, sky139)):
+            sbas_cycle(ctx, t, s)
+        check(
+            not POSTS and ctx.node_state == SBAS_BOOT,
+            "%s: 131 missing for one cycle keeps its slot while 139 is in the BRDC (got %s)"
+            % (name, tracker_maps()),
+        )
+        POSTS[:] = []
+        gap = {p: e for p, e in SBAS_SKY.items() if p != 123}
+        ctx = Ctx(SBAS_BOOT, gap, **opts)
+        sbas_cycle(ctx, 1000.0, gap)
+        check(
+            not POSTS and sorted(selector_probes(ctx)) == SBAS_PROBES,
+            "%s: probe 123 with no BRDC record stays one of three slotted probes (got %s, "
+            "probes %s)" % (name, tracker_maps(), selector_probes(ctx)),
+        )
 
 
 def main():
@@ -863,10 +1195,11 @@ def main():
     )
 
     # ---- read: a fixed PRN list, read back and never posted ----------------------------
-    # sbas_l5's slots are fixed: the WAAS GEOs plus three EGNOS GEOs that never rise here, the
-    # noise probes. apply would trade those probes for the deeper GEOs in the BRDC sky (and
-    # the nodes refuse PRNs over 63). read must still publish the consensus, or
-    # --probe-require-slot fails open and the probes go to PRNs with no slot.
+    # A chain under read (glo_l2of: the node refuses a live swap on an FDMA bank) never posts,
+    # however long the sky wants a swap, and must still publish the consensus, or
+    # --probe-require-slot fails open and the probes go to PRNs with no slot. The SBAS sky
+    # stands in: under apply without pinned probes it wants the EGNOS probes traded for the
+    # deeper GEOs (test_sbas_apply).
     print("read: the map is published, never posted")
     _sbas = [131, 133, 135, 121, 123, 136]
     _sky = {
@@ -891,8 +1224,8 @@ def main():
     run_cycle(Ctx(_sbas, _sky, prn_reconfig="apply", **_kw), 1000.0)
     check(
         bool(POSTS),
-        "the SBAS sky under apply proposes a swap (the probes for deeper GEOs) -- the "
-        "case read exists for",
+        "the SBAS sky under apply without pinned probes proposes a swap (the probes for "
+        "deeper GEOs)",
     )
     POSTS[:] = []
     _r = Ctx(_sbas, _sky, prn_reconfig="read", **_kw)
@@ -1431,7 +1764,9 @@ def main():
     )
 
     test_boresight_rank()
+    test_sbas_apply()
     test_chains_config()
+    test_sbas_chains_yaml()
 
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
     return 1 if _fails else 0

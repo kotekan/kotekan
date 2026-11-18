@@ -60,6 +60,11 @@ aggregator:
             - "GPS_L5_Q:131,133,135"
 
 common:
+    # The reference element: the record headers' first phase anchor, and the one feed the
+    # acquisition search taps (the search bootstraps the receiver clock for every chain).
+    # Element 40 = dish E05, slot 0; element 0 (A01, the default) has been dark since the
+    # 11-13 analog outage and left the whole fleet unable to lock on 11-18.
+    reference-element: 40
     # Fleet lanes (docs/CHORD_FLEET_LANES.md): GnssN2Project takes lanes the relay carries from the
     # other nodes; fleet-lane-transfer is the relay's table (site-only, not a generator flag).
     fleet-lanes: true

@@ -601,3 +601,48 @@ BOOST_AUTO_TEST_CASE(sbas_l1_sym_is_two_ca_periods) {
                                     (int)bank_l1.code_chip(0, (double)i));
     }
 }
+
+namespace {
+// Whether /set_prns takes @p prn for @p signal, in a one-slot map (cudaGnssChordTrack.cpp).
+bool set_prns_takes(const char* signal, int prn) {
+    const gnss::SignalDescriptor* s = gnss::signal_by_name(signal);
+    BOOST_REQUIRE_MESSAGE(s != nullptr, "unknown signal");
+    return gnss::prn_map_error(*s, {prn}).empty();
+}
+} // namespace
+
+// An SBAS chain takes the SBAS PRNs, 120..158, which its code bank builds, and nothing else: the
+// L5 and C/A tables also hold the GPS PRNs. The other signals keep 1..63 and GW_1202 1..2047.
+BOOST_AUTO_TEST_CASE(set_prns_takes_the_sbas_prns_on_sbas_signals_only) {
+    for (const char* name : {"SBAS_L5_I", "SBAS_L5_I_MC", "SBAS_L1", "SBAS_L1_SYM"}) {
+        auto bank = make_bank(name, {131});
+        for (int prn : {120, 138, 158}) {
+            BOOST_CHECK_MESSAGE(set_prns_takes(name, prn), name << " refuses PRN " << prn);
+            BOOST_CHECK_MESSAGE(bank.set_prn(0, prn), name << " has no code for PRN " << prn);
+        }
+        for (int prn : {0, 1, 32, 63, 119, 159, 2047})
+            BOOST_CHECK_MESSAGE(!set_prns_takes(name, prn), name << " takes PRN " << prn);
+    }
+    for (const char* name : {"GPS_L1CA", "GPS_L1CA_BIT", "GPS_L5_I", "GPS_L5_Q_NH"}) {
+        auto bank = make_bank(name, {1});
+        for (int prn : {1, 32}) {
+            BOOST_CHECK_MESSAGE(set_prns_takes(name, prn), name << " refuses PRN " << prn);
+            BOOST_CHECK_MESSAGE(bank.set_prn(0, prn), name << " has no code for PRN " << prn);
+        }
+        for (int prn : {0, 64, 120, 138, 158})
+            BOOST_CHECK_MESSAGE(!set_prns_takes(name, prn), name << " takes PRN " << prn);
+    }
+    for (const gnss::SignalDescriptor* s : gnss::ALL_SIGNALS) {
+        const std::string name(s->name);
+        if (name.rfind("SBAS_", 0) == 0)
+            continue;
+        BOOST_CHECK_MESSAGE(gnss::min_prn(*s) == 1, name);
+        BOOST_CHECK_MESSAGE(gnss::max_prn(*s) == (name == "GW_1202" ? 2047 : 63), name);
+    }
+    // A map is refused whole: one PRN out of range, or one PRN in two slots.
+    const gnss::SignalDescriptor& l5 = *gnss::signal_by_name("SBAS_L5_I_MC");
+    BOOST_CHECK(gnss::prn_map_error(l5, {131, 133, 135, 121, 123, 136}).empty());
+    BOOST_CHECK_EQUAL(gnss::prn_map_error(l5, {131, 133, 135, 121, 123, 32}),
+                      "PRN 32 at slot 5 is outside 120..158");
+    BOOST_CHECK_EQUAL(gnss::prn_map_error(l5, {131, 133, 131}), "PRN 131 appears in slots 0 and 2");
+}

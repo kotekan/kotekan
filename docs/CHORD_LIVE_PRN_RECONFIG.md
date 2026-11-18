@@ -1,8 +1,9 @@
 # Live PRN reconfiguration
 
 **Status: LIVE.** Every chain runs `--prn-reconfig apply` (`config/gnss_chains_chord.yaml`,
-`common`) except sbas_l5, whose PRN list is fixed and which runs `read`. The node half is in place on every producer, the record assembler follows the frame,
-and the search is driven in step.
+`common`) except glo_l2of, whose PRN list is fixed (an FDMA bank refuses a live swap) and which
+runs `read`. The node half is in place on every producer, the record assembler follows the
+frame, and the search is driven in step.
 
 ## Why
 
@@ -138,9 +139,24 @@ restart is a clean slate rather than a silently-inherited history.
 
 `--prn-reconfig off | read | apply`, default **off**: the stage does nothing (the replay
 fixtures' argv predates the flag). `read` polls `/get_prns` and publishes the unanimous map for
-`--probe-require-slot`, and never posts: sbas_l5 runs it, since its list (the WAAS GEOs plus
-three EGNOS GEOs as noise probes) is fixed and the nodes' `/set_prns` takes PRNs 1-63 only.
-Every other live chain runs `apply`.
+`--probe-require-slot`, and never posts: glo_l2of runs it, since the node refuses a live swap
+on an FDMA bank. Every other live chain runs `apply`.
+
+The nodes' `/set_prns` takes the PRNs `gnss::min_prn`..`gnss::max_prn` of the chain's signal
+(`gnssSignal.hpp`): 120-158 on the SBAS signals, 1-2047 on GW_1202, 1-63 elsewhere. A node
+binary older than that takes 1-63 on every signal but GW_1202 and refuses every SBAS map, so
+the SBAS chains need the node binary before the broker runs them under `apply`.
+
+`--prn-reconfig-prns` names the only PRNs a chain's map may hold; any other satellite is never
+a slot candidate. The SBAS chains list their boot list, the WAAS GEOs 131/133/135 and the EGNOS
+GEOs 121/123/136, which never rise here and are the noise probes. The BRDC also carries GEOs
+that cannot be tracked here. Some are placeholder records, a nominal position with no motion:
+139 sits at +13 deg for a few hours a day, and without the list it would take the slot of a
+WAAS GEO missing from one cycle's prediction and keep it while both are up. The deeper GAGAN,
+MSAS and BDSBAS GEOs would take the probes' slots. With the list, a GEO missing from the
+prediction leaves its slot dead until it returns, and nothing is posted. `--probe-dark
+--probe-dark-prns` keeps an EGNOS probe a probe when the BRDC has no record of it: its row is
+then el -90, while a PRN with a record keeps its predicted row below -15 deg.
 
 ## Verification
 
