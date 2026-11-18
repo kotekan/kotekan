@@ -235,13 +235,21 @@ def identity(cfg, host):
             "owner": u + "/lane/",
             "cube": _cube(u, s, host),
         }
+    bufs = _buffers(cfg)
+    packs = _stages(cfg, "GnssTelemPack")
+    writers = [_get(s, "out_buf") for u, s in packs]
     telem = {}
-    for u, s in _stages(cfg, "GnssTelemPack"):
+    for u, s in packs:
         t = {k: _get(s, k) for k in ("chain", "inst", "max_prn", "n_chan")}
-        # The frame on the wire, which is the row's out_buf frame unless the rows share one.
-        t["frame_size"] = telem_frame_bytes(
-            _get(s, "records_per_frame", 4), t["max_prn"], t["n_chan"]
-        )
+        # The frame on the wire: a row's own out_buf frame, or for rows that share one, sized
+        # for the widest, the row's frame within it.
+        out = _get(s, "out_buf")
+        if writers.count(out) == 1:
+            t["frame_size"] = _get(bufs[out], "frame_size")
+        else:
+            t["frame_size"] = telem_frame_bytes(
+                _get(s, "records_per_frame", 4), t["max_prn"], t["n_chan"]
+            )
         telem[u] = t
     beam = {}
     for u, s in _stages(cfg, "cudaProcess"):
