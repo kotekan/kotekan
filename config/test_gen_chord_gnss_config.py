@@ -676,7 +676,7 @@ def test_telem_host_form():
             "in_buf": pre + "n2rec_buf",
             "out_buf": pre + "telem_buf",
             "chain": pre[6:-1],
-            "inst": "cx52.0",
+            "inst": "node.0",
             "n_prn": 32,
             "max_prn": max_prn,
             "n_chan": 4,
@@ -729,7 +729,7 @@ def test_telem_host_form():
     want = {
         "gnss0_telem": {
             "kotekan_stage": "GnssTelemPack",
-            "inst": "cx52.0",
+            "inst": "node.0",
             "cpu_affinity": [35],
             "chains": rows,
             "workers": [

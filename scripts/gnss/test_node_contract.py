@@ -165,7 +165,11 @@ def test_counts(base, cfg):
     check(
         len(tel) == 30
         and all(
-            re.match(r"telem /gnss(\d)_(\w+)_telem_pack -> \2, sends \2/cx52\.\1$", e)
+            re.match(
+                r"telem /gnss(\d)_(\w+)_telem_pack -> \2, sends \2/%s\.\1$"
+                % re.escape(NODE),
+                e,
+            )
             for e in tel
         ),
         "stage_chain names all 30 telemetry packs, each sending its chain from its half (%s)"
