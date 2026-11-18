@@ -77,7 +77,11 @@ Runtime bundle
 which are not part of Kotekan. Each profile gives the ATSC channel, the
 receiver ``coarse_freq`` ID that it binds to (``chord_channel_id``), its
 weights, and its fine calibration. The status of the fine calibration is
-``pending_campaign`` (not calibrated) or ``calibrated``.
+``pending_campaign`` (exported, no values), ``calibrated`` (values filled in) or
+``control``. Only physical channel 37, the control, has status ``control``, and
+it must have it. ``calibrated`` does not mean the channel is qualified for
+masking. Each bundle file and its fields are described in the PilotProxy user
+guide, ``docs/PilotProxy_UG001_User_Guide.tex`` in the PilotProxy repository.
 
 At startup, the bundle's digests are checked as in the PilotProxy validator.
 ``sha256sums.txt`` must list the other four files with their SHA-256, and

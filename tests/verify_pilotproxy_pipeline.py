@@ -187,8 +187,9 @@ def synthetic_calibration(bundle):
 
     The anchors alternate between an even and an odd fine bin. The bulk is every
     second bin more than two fine bins from the anchor, so the designated set and
-    one independent bin on each side are excluded. The calibration is for tests
-    only.
+    one independent bin on each side are excluded. Physical channel 37 keeps
+    the status ``control``, as the detector requires. The calibration is for
+    tests only.
     """
     for index, row in enumerate(bundle["profiles"]):
         anchor, half_width = (254 if index % 2 == 0 else 1), 2
@@ -198,7 +199,7 @@ def synthetic_calibration(bundle):
             sum(1 << (b % 64) for b in bulk if b // 64 == word) for word in range(4)
         ]
         row["fine_calibration"] = {
-            "status": "calibrated",
+            "status": "control" if row.get("physical_channel") == 37 else "calibrated",
             "decision_version": "fine_decision_v1",
             "anchor_bin": anchor,
             "designated_half_width": half_width,
