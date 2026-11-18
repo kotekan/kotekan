@@ -1433,11 +1433,12 @@ std::vector<std::unique_ptr<Buffer>> buffers_of(const json& cfg, kotekan::buffer
     return bufs;
 }
 
-/// Starts @p cfg's hosts on gnss0_rec_buf and writes one frame of it as a producer whose
-/// directory has rows @p dir, every wstart REC_WSTART, then @p plant applied to the frame.
-/// Returns the first FATAL a host's thread raised, or "" once the hosts have released the frame.
+/// Starts @p cfg's hosts on gnss0_rec_buf and writes @p frames frames of it as a producer whose
+/// directory has rows @p dir, frame k's wstarts k records after REC_WSTART, then @p plant applied
+/// to the last frame. Returns the first FATAL a host's thread raised, or "" once the hosts have
+/// released every frame.
 std::string feed_rec_frame(const json& cfg, const std::vector<gnss::RecRow>& dir,
-                           const std::function<void(uint8_t*)>& plant = nullptr) {
+                           const std::function<void(uint8_t*)>& plant = nullptr, int frames = 1) {
     kotekan::Config config;
     config.update_config(cfg);
     kotekan::bufferContainer bc;
@@ -1452,13 +1453,15 @@ std::string feed_rec_frame(const json& cfg, const std::vector<gnss::RecRow>& dir
     const gnss::RecDir rec("feeder", dir, buf);
     for (auto& h : hosts)
         h->start();
-    uint8_t* f = buf->wait_for_empty_frame("feeder", 0);
-    std::memset(f, 0, buf->frame_size);
-    for (size_t i = 0; i < rec.size(); ++i)
-        rec.write(f, i, REC_WSTART);
-    if (plant)
-        plant(f);
-    buf->mark_frame_full("feeder", 0);
+    for (int k = 0; k < frames; ++k) {
+        uint8_t* f = buf->wait_for_empty_frame("feeder", k);
+        std::memset(f, 0, buf->frame_size);
+        for (size_t i = 0; i < rec.size(); ++i)
+            rec.write(f, i, REC_WSTART + k * REC_SAMPLES);
+        if (plant && k == frames - 1)
+            plant(f);
+        buf->mark_frame_full("feeder", k);
+    }
     std::string msg;
     const auto t0 = std::chrono::steady_clock::now();
     while (std::chrono::steady_clock::now() - t0 < std::chrono::seconds(10)) {
@@ -1476,6 +1479,104 @@ std::string feed_rec_frame(const json& cfg, const std::vector<gnss::RecRow>& dir
     for (auto& h : hosts)
         h->join();
     return msg;
+}
+
+/// The PRN that read_own_blocks writes in PRN slot @p p of row @p k.
+float planted_prn(size_t k, int p) {
+    return 10.0f * (float)(k + 1) + (float)p;
+}
+
+/// Feeds rec_config's combine and telemetry hosts, each running ABC on one worker, one telemetry
+/// window of records, PRN slot p of row k carrying PRN planted_prn(k, p). Throws a FatalError
+/// naming each row whose emit or telemetry frame carries another PRN.
+void read_own_blocks() {
+    const json cfg = rec_config(ABC_REC, true, true, true);
+    kotekan::Config config;
+    config.update_config(cfg);
+    kotekan::bufferContainer bc;
+    std::vector<std::unique_ptr<Buffer>> bufs = buffers_of(cfg, bc);
+    Buffer* buf = bc.get_buffer("gnss0_rec_buf");
+    Buffer* tel = bc.get_buffer("gnss0_telem_buf");
+    GnssCoherentCombiner cmb(config, "/gnss0_combine", bc);
+    GnssTelemPack pack(config, "/gnss0_telem", bc);
+    buf->register_producer("feeder");
+    tel->register_consumer("reader");
+    const gnss::RecDir rec("feeder", ABC_REC, buf);
+    cmb.start();
+    pack.start();
+    // The telemetry rows' records_per_frame, 4, fills one window, and the buffer.
+    const int n_rec = 4;
+    const size_t stride = gnss::record_stride(1);
+    for (int r = 0; r < n_rec; ++r) {
+        uint8_t* f = buf->wait_for_empty_frame("feeder", r);
+        std::memset(f, 0, buf->frame_size);
+        const double utc = 1.7e9 + r * 0.01;
+        for (size_t k = 0; k < ABC.size(); ++k) {
+            rec.write(f, k, REC_WSTART + r * REC_SAMPLES);
+            for (int p = 0; p < ABC_PRN[k]; ++p) {
+                float* x = (float*)(f + ABC_REC[k].offset) + p * stride;
+                x[gnss::REC_PRN] = planted_prn(k, p);
+                x[gnss::REC_P_ENERGY] = 1.0f;
+                std::memcpy(x + gnss::RECORD_UTC_SLOT, &utc, sizeof(utc));
+            }
+        }
+        buf->mark_frame_full("feeder", r);
+    }
+    timespec until;
+    clock_gettime(CLOCK_REALTIME, &until);
+    until.tv_sec += 10;
+    std::string bad;
+    // One telemetry frame per row.
+    for (int id = 0; id < (int)ABC.size(); ++id) {
+        if (tel->wait_for_full_frame_timeout("reader", id, until) != 0) {
+            bad += fmt::format(" no telemetry frame {:d};", id);
+            break;
+        }
+        gnss::TelemHeader th;
+        std::memcpy(&th, tel->frames[id], sizeof(th));
+        const std::string chain(th.chain, strnlen(th.chain, gnss::TELEM_NAME));
+        const auto k = (size_t)(std::find(ABC.begin(), ABC.end(), "gnss0_" + chain) - ABC.begin());
+        if (k == ABC.size() || th.present != 0xF || th.n_prn != ABC_PRN[k]) {
+            bad += fmt::format(" telemetry frame {:d} of chain {:s}, present {:#x};", id, chain,
+                               th.present);
+            continue;
+        }
+        const float* rows = (const float*)(tel->frames[id] + sizeof(th));
+        for (int p = 0; p < ABC_PRN[k]; ++p) {
+            const float prn = rows[gnss::telem_row_offset(0, p, th.n_prn, th.n_row_total)];
+            if (prn != planted_prn(k, p))
+                bad += fmt::format(" telemetry {:s} row {:d} PRN {:g};", ABC[k], p, prn);
+        }
+    }
+    const auto t0 = std::chrono::steady_clock::now();
+    bool done = false;
+    while (!done && std::chrono::steady_clock::now() - t0 < std::chrono::seconds(10)) {
+        done = true;
+        for (size_t k = 0; k < ABC.size(); ++k)
+            done = done && cmb.records_done(k) == (uint64_t)n_rec;
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    if (!done)
+        bad += " the combiner did not take every record;";
+    for (size_t k = 0; k < ABC.size() && done; ++k) {
+        const std::vector<float>& emit = cmb.scratch(k);
+        const size_t emit_stride = emit.size() / ABC_PRN[k];
+        for (int p = 0; p < ABC_PRN[k]; ++p)
+            if (emit[p * emit_stride + gnss::REC_PRN] != planted_prn(k, p))
+                bad += fmt::format(" combine {:s} PRN slot {:d} emits PRN {:g};", ABC[k], p,
+                                   emit[p * emit_stride + gnss::REC_PRN]);
+    }
+    cmb.stop();
+    pack.stop();
+    for (auto& b : bufs)
+        b->send_shutdown_signal();
+    cmb.join();
+    pack.join();
+    const std::string msg = kotekan::kotekanLogging::get_error_message();
+    if (msg != "not set")
+        bad += " " + msg;
+    if (!bad.empty())
+        throw FatalError("rows on one worker:" + bad);
 }
 
 /// Feeds frame @p id of the record host's in_buf @p buf, as producer "feeder", an epl frame
@@ -1793,6 +1894,29 @@ BOOST_AUTO_TEST_CASE(rec_dir_mismatch_is_fatal) {
             [&] { throw FatalError(feed_rec_frame(rec_config(ABC_REC, false, true, true), two)); }),
         "/gnss0_telem/w0: frame 0 of gnss0_rec_buf lists 2 rows (chain_id 1, 2), "
         "this host reads 3 (chain_id 1, 2, 3)");
+    // Both check every frame, not only the first.
+    for (const std::string h : {"/gnss0_combine", "/gnss0_telem"}) {
+        const bool cmb = h == "/gnss0_combine";
+        BOOST_CHECK_EQUAL(fatal_of([&] {
+                              throw FatalError(feed_rec_frame(
+                                  rec_config(ABC_REC, cmb, !cmb, true), ABC_REC,
+                                  [](uint8_t* f) {
+                                      const int64_t chain_id = 9;
+                                      std::memcpy(f + 16 + sizeof(gnss::RecRow), &chain_id,
+                                                  sizeof(chain_id));
+                                  },
+                                  2));
+                          }),
+                          h
+                              + "/w0: frame 1 of gnss0_rec_buf: directory row 1 has chain_id 9, "
+                                "this host's row 1 (chain_id 2) has 2");
+    }
+}
+
+// A combine or telemetry worker of several rows reads each row's records from the row's own block
+// of each frame.
+BOOST_AUTO_TEST_CASE(rec_rows_read_their_own_blocks) {
+    BOOST_CHECK_EQUAL(fatal_of(read_own_blocks), "");
 }
 
 // Every row of a record host writing a GPU half's record buffer writes the same records per frame,
