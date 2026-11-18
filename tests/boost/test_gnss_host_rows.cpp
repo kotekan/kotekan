@@ -1387,6 +1387,30 @@ json rec_config(const std::vector<gnss::RecRow>& rows, bool cmb, bool tel, bool 
     return cfg;
 }
 
+/// rec_config's combine and telemetry hosts, the combiner's rows on @p cmb_workers, beside a record
+/// host writing gnss0_rec_buf, its rows ABC of one PRN and two elements reading in_buf epl_<key> on
+/// @p workers.
+json rec_hosts_config(const json& workers, const json& cmb_workers) {
+    json rec = record_config(ABC, workers);
+    json& h = rec["gnss0_records"];
+    size_t at = gnss::RecDir::bytes(3);
+    for (size_t k = 0; k < ABC.size(); ++k) {
+        at = (at + gnss::REC_ROW_ALIGN - 1) / gnss::REC_ROW_ALIGN * gnss::REC_ROW_ALIGN;
+        const int64_t b = gnss::frame_floats(1, 2, 0) * sizeof(float);
+        h["chains"][ABC[k]].erase("out_buf");
+        h["chains"][ABC[k]]["rec_row"] = rec_row_json({(int64_t)k + 1, 1, 0, (int64_t)at, b});
+        at += b;
+    }
+    h["out_buf"] = "gnss0_rec_buf";
+    json cfg = rec_config(ABC_REC, true, true, false);
+    cfg["gnss0_rec_buf"]["frame_size"] = std::max(at, (size_t)cfg["gnss0_rec_buf"]["frame_size"]);
+    for (const auto& [k, v] : rec.items())
+        if (!cfg.contains(k))
+            cfg[k] = v;
+    cfg["gnss0_combine"]["workers"] = cmb_workers;
+    return cfg;
+}
+
 /// A record frame's first sample on the record grid of rec_config's hosts.
 constexpr int64_t REC_WSTART = 1000LL * 2048 * 16384;
 
@@ -1591,29 +1615,11 @@ BOOST_AUTO_TEST_CASE(rec_rows_of_the_hosts) {
 BOOST_AUTO_TEST_CASE(rec_buf_producers_and_consumers) {
     BOOST_CHECK_EQUAL(
         fatal_of([] {
-            json rec =
-                record_config(ABC, {{{"rows", {"gnss0_a", "gnss0_c"}}, {"cpu_affinity", {0}}},
-                                    {{"rows", {"gnss0_b"}}, {"cpu_affinity", {0}}}});
-            json& h = rec["gnss0_records"];
-            size_t at = gnss::RecDir::bytes(3);
-            for (size_t k = 0; k < ABC.size(); ++k) {
-                at = (at + gnss::REC_ROW_ALIGN - 1) / gnss::REC_ROW_ALIGN * gnss::REC_ROW_ALIGN;
-                const int64_t b = gnss::frame_floats(1, 2, 0) * sizeof(float);
-                h["chains"][ABC[k]].erase("out_buf");
-                h["chains"][ABC[k]]["rec_row"] =
-                    rec_row_json({(int64_t)k + 1, 1, 0, (int64_t)at, b});
-                at += b;
-            }
-            h["out_buf"] = "gnss0_rec_buf";
-            json cfg = rec_config(ABC_REC, true, true, false);
-            cfg["gnss0_rec_buf"]["frame_size"] =
-                std::max(at, (size_t)cfg["gnss0_rec_buf"]["frame_size"]);
-            for (const auto& [k, v] : rec.items())
-                if (!cfg.contains(k))
-                    cfg[k] = v;
-            cfg["gnss0_combine"]["workers"] = {
-                {{"rows", {"gnss0_a", "gnss0_b"}}, {"cpu_affinity", {0}}},
-                {{"rows", {"gnss0_c"}}, {"cpu_affinity", {0}}}};
+            const json cfg =
+                rec_hosts_config({{{"rows", {"gnss0_a", "gnss0_c"}}, {"cpu_affinity", {0}}},
+                                  {{"rows", {"gnss0_b"}}, {"cpu_affinity", {0}}}},
+                                 {{{"rows", {"gnss0_a", "gnss0_b"}}, {"cpu_affinity", {0}}},
+                                  {{"rows", {"gnss0_c"}}, {"cpu_affinity", {0}}}});
             kotekan::Config config;
             config.update_config(cfg);
             kotekan::bufferContainer bc;
@@ -1638,6 +1644,22 @@ BOOST_AUTO_TEST_CASE(rec_buf_producers_and_consumers) {
                 throw FatalError("gnss0_rec_buf" + s);
         }),
         "");
+}
+
+// The record, combine and telemetry hosts on a GPU half's record buffer stop, are deleted and
+// start again in one process, their rows, REST paths and metrics released.
+BOOST_AUTO_TEST_CASE(rec_buf_hosts_restart_in_one_process) {
+    const json workers = {{{"rows", {"gnss0_a", "gnss0_c"}}, {"cpu_affinity", {0}}},
+                          {{"rows", {"gnss0_b"}}, {"cpu_affinity", {0}}}};
+    BOOST_CHECK_EQUAL(fatal_of([&] {
+                          start_stop_start(rec_hosts_config(workers, workers),
+                                           {"/gnss0_a_n2assemble/get_spectrum",
+                                            "/gnss0_c_n2assemble/set_sat_geometry",
+                                            "/gnss0_b_n2combine/get_status",
+                                            "/gnss0_records/chains", "/gnss0_combine/chains",
+                                            "/gnss0_telem/chains"});
+                      }),
+                      "");
 }
 
 // A combine or telemetry worker checks each frame's directory against its host's rec_rows before
