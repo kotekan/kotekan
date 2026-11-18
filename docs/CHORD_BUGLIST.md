@@ -92,6 +92,29 @@ the aggregator and gather. #184–#187 below are what the removal left for later
 
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
 
+### #228 — GuoWang track-beam loop: block start times rounded in a float64, 238 ns steps (2026-11-18, KV: "add these to the buglist")
+**What:** the track-beam loop (cf05, `blocks.jsonl`) forms each block's start time in a float64 of unix
+seconds, which steps by 238.4 ns at these epochs, and places its code replica on the rounded time. The code
+epoch then alternates by about 118 ns between blocks. Known exactly and removable offline (`gw_arc_model.py` in
+~/gnss/guowang_paper models it). **Fix:** form block times in integer hops (or integer ns), not a float64.
+**Check:** `[archive]` paper note `review/REPLY_GUOWANG_20261118c.md` part 2. Open: whether the dump's reducer
+rounds a time tag the same way (not looked at). Ships when the array is back (the loop is idle).
+
+### #229 — GuoWang track-beam loop: a per-pass offset of 1.1 us rms (2026-11-18, KV: "add these to the buglist")
+**What:** each pass of the track beam carries an offset of its own against the dump's code epoch, 1.1 us rms
+over 71 passes (the mean, -78 ns, agrees with the dump). It makes absolute levels from the track beam
+untestable. **Reading, unverified:** the free phase origin of the beam's weights, which the loop re-forms per
+pass. **Proposed fix (for KV's approval):** reference each channel's phase to one input with the saved weights,
+and keep the weights. **Check first:** re-reference the surviving raw frames of DIGUI-98, 2026-11-11
+19:51:08Z to 19:52:00Z, to one input and see whether the level moves. Not run. Note 18c parts 1, 7, 8.
+
+### #230 — GuoWang track beam: the code epoch wanders 20-100 ns over a minute or two at high elevation (2026-11-18, KV: "add to the buglist")
+**What:** on DIGUI-55, DIGUI-134 and DIGUI-96 the code epoch wanders 20 to 100 ns over one to two minutes,
+growing toward the top of the pass; per-run slopes scatter four times more at 75-90 deg than at 15-30 deg.
+No term found (orbit, troposphere, ionosphere and the clock words are modelled). Once #229 is gone this is
+what limits a pass. Open: whether DIGUI-134's late fall (20-65 ns two minutes after its clock-word step) is
+this wander. **Check:** `[archive]` note 18c parts 3 and 5, `scripts/gw_arc_el_slope.py`.
+
 ### #222 — a broker cold start after a long outage predicts from an expired BRDC set and hints nothing for up to 15 min: the collapse guard cannot see a sky that was empty from the first parse (2026-10-30, live)
 **What:** the stack had been down 19 h. The broker started at 16:44:45Z and every chain parsed the cached
 BRDC files at 16:44:47, whose records were all more than 4 h from toe, so `brdc_predict` kept none: `ctx.pred`
