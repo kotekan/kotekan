@@ -22,19 +22,26 @@ static IncoherentSearchParams test_params() {
     return p;
 }
 
-// Runs noise of unit mean through the search. A pulse of the given amplitude (in sigma per
-// channel; 0 for none) arrives at the top channel at sample 6000 with DM 100, in the channels
-// below last_channel.
-static std::vector<IncoherentCandidate> run(const IncoherentSearchParams& p, double amplitude,
-                                            int last_channel) {
+// A pulse of one sample that arrives at the top channel at `sample`, in the channels below
+// last_channel. The amplitude is in sigma per channel.
+struct Pulse {
+    double amplitude;
+    double dm;
+    int sample;
+    int last_channel;
+};
+
+// Runs noise of unit mean with the pulses through the search.
+static std::vector<IncoherentCandidate> run(const IncoherentSearchParams& p,
+                                            const std::vector<Pulse>& pulses) {
     const double mean = 1000;
-    const int num_samples = 12000, pulse_sample = 6000;
+    const int num_samples = 12000;
     const double nu_top = (p.freq0_mhz + p.dfreq_mhz * (p.num_freq - 1)) / 1e3;
-    std::vector<int> delay(p.num_freq);
+    // Delay in samples per unit DM
+    std::vector<double> delay(p.num_freq);
     for (int c = 0; c < p.num_freq; ++c) {
         const double nu = (p.freq0_mhz + p.dfreq_mhz * c) / 1e3;
-        delay[c] = (int)std::lround(4.148808 * 100 * (1 / (nu * nu) - 1 / (nu_top * nu_top))
-                                    / (p.sample_s * 1e3));
+        delay[c] = 4.148808 * (1 / (nu * nu) - 1 / (nu_top * nu_top)) / (p.sample_s * 1e3);
     }
     IncoherentSearch search(p);
     std::mt19937 rng(1);
@@ -43,8 +50,11 @@ static std::vector<IncoherentCandidate> run(const IncoherentSearchParams& p, dou
     std::vector<IncoherentCandidate> out;
     for (int t = 0; t < num_samples; ++t) {
         for (int c = 0; c < p.num_freq; ++c) {
-            const bool on = amplitude > 0 && c < last_channel && t == pulse_sample + delay[c];
-            power[c] = (float)(mean * (1 + p.thermal * (gauss(rng) + (on ? amplitude : 0))));
+            double amplitude = 0;
+            for (const Pulse& pulse : pulses)
+                if (c < pulse.last_channel && t == pulse.sample + std::lround(pulse.dm * delay[c]))
+                    amplitude += pulse.amplitude;
+            power[c] = (float)(mean * (1 + p.thermal * (gauss(rng) + amplitude)));
         }
         search.add_sample(power.data());
         for (const IncoherentCandidate& c : search.take_candidates())
@@ -54,12 +64,12 @@ static std::vector<IncoherentCandidate> run(const IncoherentSearchParams& p, dou
 }
 
 BOOST_AUTO_TEST_CASE(noise_gives_no_candidates) {
-    BOOST_CHECK(run(test_params(), 0, 0).empty());
+    BOOST_CHECK(run(test_params(), {}).empty());
 }
 
 BOOST_AUTO_TEST_CASE(pulse_is_found_at_its_dm_and_time) {
     const IncoherentSearchParams p = test_params();
-    const std::vector<IncoherentCandidate> cands = run(p, 1.5, p.num_freq);
+    const std::vector<IncoherentCandidate> cands = run(p, {{1.5, 100, 6000, p.num_freq}});
     BOOST_REQUIRE_EQUAL(cands.size(), 1);
     const IncoherentCandidate& c = cands[0];
     // 1.5 sigma in each of 256 channels is 24 sigma in the sum.
@@ -78,7 +88,7 @@ BOOST_AUTO_TEST_CASE(band_occupancy_shows_a_narrow_signal) {
     // The same sweep in the lowest 96 channels only (6 of the 16 blocks). Each sample is limited
     // to 3 sigma, so this is about 17 sigma in the sum.
     const IncoherentSearchParams p = test_params();
-    const std::vector<IncoherentCandidate> cands = run(p, 4, 96);
+    const std::vector<IncoherentCandidate> cands = run(p, {{4, 100, 6000, 96}});
     BOOST_REQUIRE(!cands.empty());
     const IncoherentCandidate* best = &cands[0];
     for (const IncoherentCandidate& c : cands)
@@ -121,5 +131,19 @@ BOOST_AUTO_TEST_CASE(masked_band_is_not_searched) {
     // Channels 0-96 are at 400-550 MHz.
     IncoherentSearchParams p = test_params();
     p.mask_bands_mhz = {{400, 550}};
-    BOOST_CHECK(run(p, 4, 96).empty());
+    BOOST_CHECK(run(p, {{4, 100, 6000, 96}}).empty());
+}
+
+BOOST_AUTO_TEST_CASE(faint_pulse_is_found_beside_a_bright_one_at_another_dm) {
+    // 2.5 sigma per channel is about 35 sigma in the sum, and 0.5 is 8. The faint pulse lies
+    // within the sweep between the two DMs, where the bright pulse has no residue this strong.
+    IncoherentSearchParams p = test_params();
+    p.threshold = 6;
+    const std::vector<IncoherentCandidate> cands =
+        run(p, {{2.5, 100, 6000, p.num_freq}, {0.5, 140, 6200, p.num_freq}});
+    BOOST_REQUIRE_EQUAL(cands.size(), 2);
+    const IncoherentCandidate& faint = cands[0].snr < cands[1].snr ? cands[0] : cands[1];
+    BOOST_CHECK_EQUAL(faint.dm, 140);
+    BOOST_CHECK_EQUAL(faint.sample, 6200);
+    BOOST_CHECK_LT(faint.snr, 11);
 }

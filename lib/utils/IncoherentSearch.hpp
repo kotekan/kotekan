@@ -71,7 +71,8 @@ struct IncoherentCandidate {
  *
  * Samples above threshold are merged into candidates: with the strongest sample of an open
  * candidate when they lie within the dispersion sweep between the two DMs and are either close in
- * DM or much weaker (the residue of a bright pulse at another DM).
+ * DM or much weaker (the residue of a bright pulse at another DM, which falls as one over the
+ * difference of DM).
  *
  * Widths of 1 to 16 samples are tried, in passes of `chunk` samples; the widths and the mask
  * thresholds are constants in the source.
