@@ -234,6 +234,7 @@ void crsWindowAlign::main_thread() {
     float stalled_s = 0;
     bool warned = false;
     uint64_t last_seq = 0;
+    bool seen_good = false;
 
     while (!stop_thread) {
         const auto deadline = double_to_ts(current_time() + 1.0);
@@ -266,11 +267,13 @@ void crsWindowAlign::main_thread() {
                 continue;
             }
             last_seq = crs->seq_number;
+            seen_good = true;
             if (!process_packet(last_seq, abs_frame, j))
                 return;
         }
         packets_counter.inc(geometry.packets_per_frame);
-        current_seq_gauge.set(last_seq);
+        if (seen_good)
+            current_seq_gauge.set(last_seq);
 
         header_buf->mark_frame_empty(unique_name, frame_id);
         frame_id++;
