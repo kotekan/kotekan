@@ -63,7 +63,7 @@ IncoherentSearch::IncoherentSearch(const IncoherentSearchParams& params) :
     mean.assign(F, 0.0);
     var.assign(F, 0.0);
     count.assign(F, 0);
-    ref.assign(F, 1e9f);
+    ref.assign(F, 0.0f);
     block_sum.assign(F, 0.0);
     drift.assign(F, 0.0);
     scratch.assign(F, 0.0f);
@@ -118,13 +118,20 @@ void IncoherentSearch::update_reference() {
     std::vector<float> ratio(F), window(2 * mask_neighbours + 1);
     for (int c = 0; c < F; ++c) {
         const bool known = count[c] >= min_count && mean[c] > 0 && var[c] > 0;
-        ratio[c] = known ? (float)(std::sqrt(var[c]) / mean[c] / p.thermal) : 1e9f;
+        ratio[c] = known ? (float)(std::sqrt(var[c]) / mean[c] / p.thermal) : 0.0f;
     }
     for (int c = 0; c < F; ++c) {
         const int lo = std::max(0, c - mask_neighbours);
         const int hi = std::min(F - 1, c + mask_neighbours);
-        const int n = hi - lo + 1;
-        std::copy(ratio.begin() + lo, ratio.begin() + hi + 1, window.begin());
+        int n = 0;
+        for (int k = lo; k <= hi; ++k)
+            if (ratio[k] > 0)
+                window[n++] = ratio[k];
+        // Until a neighbour is known the channel is not used.
+        if (n == 0) {
+            ref[c] = 0;
+            continue;
+        }
         std::nth_element(window.begin(), window.begin() + n / 4, window.begin() + n);
         // A bright source raises the noise of every channel, so the reference is what the
         // neighbours do, but never below thermal.
@@ -151,10 +158,15 @@ bool IncoherentSearch::add_sample(const float* power) {
         const double x = power[c];
         state[c] = ChannelState::missing;
         scratch[c] = 0;
-        if (!(x > 0))
+        // A channel that comes back from no data starts its statistics again: its level may
+        // have changed (another set of feeds, a restarted node).
+        if (!(x > 0)) {
+            count[c] = 0;
             continue;
+        }
         if (count[c] == 0) {
             mean[c] = x;
+            var[c] = 0;
             count[c] = 1;
             continue;
         }

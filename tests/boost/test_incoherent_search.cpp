@@ -127,6 +127,32 @@ BOOST_AUTO_TEST_CASE(burst_in_part_of_the_band_is_cut) {
     BOOST_CHECK_EQUAL(num_candidates, 0);
 }
 
+BOOST_AUTO_TEST_CASE(channels_back_from_no_data_start_again) {
+    // After a frame of no data every channel has another level, by up to 1 sigma and smooth
+    // over the band, as when the set of feeds in the sum changes. Against the statistics from
+    // before, the low DMs would give candidates of 20 sigma.
+    IncoherentSearchParams p = test_params();
+    p.dms.clear();
+    for (double dm = 3; dm <= 30; dm += 1)
+        p.dms.push_back(dm);
+    IncoherentSearch search(p);
+    std::mt19937 rng(1);
+    std::normal_distribution<float> gauss(0, 1);
+    std::vector<float> power(p.num_freq);
+    size_t num_candidates = 0;
+    for (int t = 0; t < 12000; ++t) {
+        for (int c = 0; c < p.num_freq; ++c) {
+            const double level =
+                t < 6000 ? 1000 : 1000 * (1 + p.thermal * std::sin(2 * M_PI * c / p.num_freq));
+            power[c] = t >= 6000 && t < 6032 ? 0 : (float)(level * (1 + p.thermal * gauss(rng)));
+        }
+        search.add_sample(power.data());
+        num_candidates += search.take_candidates().size();
+    }
+    BOOST_CHECK_EQUAL(num_candidates, 0);
+    BOOST_CHECK_EQUAL(search.channels_used(), p.num_freq);
+}
+
 BOOST_AUTO_TEST_CASE(masked_band_is_not_searched) {
     // Channels 0-96 are at 400-550 MHz.
     IncoherentSearchParams p = test_params();

@@ -54,6 +54,47 @@ struct PowerPipeline {
     }
 };
 
+// Sends frame n with a power of 7 everywhere, S0 = s0 in every value but last_s0 in the last time
+// sample, and returns the output frame's values, which must all be equal.
+static uint16_t send_frame(PowerPipeline& p, int n, uint64_t s0, uint64_t last_s0) {
+    const int id = n % 2;
+    BOOST_REQUIRE(p.input.wait_for_empty_frame("test", id));
+    p.input.allocate_new_metadata_object(id);
+    auto meta = get_chord_metadata(&p.input, id);
+    meta->set_from_frame_desc(p.input.get_frame_desc<kotekan::GenericNDArray>());
+    uint64_t* const s012 = (uint64_t*)p.input.frames[id];
+    for (int i = 0; i < PowerPipeline::T * PowerPipeline::F; ++i) {
+        s012[3 * i] = i < (PowerPipeline::T - 1) * PowerPipeline::F ? s0 : last_s0;
+        s012[3 * i + 1] = 7 * s012[3 * i];
+        s012[3 * i + 2] = 0;
+    }
+    p.input.mark_frame_full("test", id);
+
+    const uint16_t* const power = (const uint16_t*)p.output.wait_for_full_frame("test", id);
+    BOOST_REQUIRE(power);
+    const uint16_t value = power[0];
+    for (int i = 0; i < PowerPipeline::T * PowerPipeline::F; ++i)
+        BOOST_CHECK_EQUAL(power[i], value);
+    p.output.mark_frame_empty("test", id);
+    return value;
+}
+
+BOOST_AUTO_TEST_CASE(frame_is_no_data_where_the_number_of_feeds_changes) {
+    PowerPipeline p;
+    p.stage->start();
+    const uint64_t feed = 256;
+    BOOST_CHECK_EQUAL(send_frame(p, 0, 100 * feed, 100 * feed), 1792);
+    BOOST_CHECK_EQUAL(send_frame(p, 1, 100 * feed, 100 * feed), 1792);
+    // One feed fewer from the start of a frame, then one more within a frame
+    BOOST_CHECK_EQUAL(send_frame(p, 2, 99 * feed, 99 * feed), 0);
+    BOOST_CHECK_EQUAL(send_frame(p, 3, 99 * feed, 99 * feed), 1792);
+    BOOST_CHECK_EQUAL(send_frame(p, 4, 99 * feed, 100 * feed), 0);
+    BOOST_CHECK_EQUAL(send_frame(p, 5, 100 * feed, 100 * feed), 1792);
+    // One fewer within a frame: its last time sample is below the frame's largest
+    BOOST_CHECK_EQUAL(send_frame(p, 6, 100 * feed, 99 * feed), 0);
+    BOOST_CHECK_EQUAL(send_frame(p, 7, 99 * feed, 99 * feed), 1792);
+}
+
 BOOST_AUTO_TEST_CASE(power_and_metadata) {
     PowerPipeline p;
     p.stage->start();
