@@ -96,17 +96,25 @@ the aggregator and gather. #184–#187 below are what the removal left for later
 **What:** the track-beam loop (cf05, `blocks.jsonl`) forms each block's start time in a float64 of unix
 seconds, which steps by 238.4 ns at these epochs, and places its code replica on the rounded time. The code
 epoch then alternates by about 118 ns between blocks. Known exactly and removable offline (`gw_arc_model.py` in
-~/gnss/guowang_paper models it). **Fix:** form block times in integer hops (or integer ns), not a float64.
-**Check:** `[archive]` paper note `review/REPLY_GUOWANG_20261118c.md` part 2. Open: whether the dump's reducer
-rounds a time tag the same way (not looked at). Ships when the array is back (the loop is idle).
+~/gnss/guowang_paper models it). **Fixed in the loop 2026-11-18 (KV go), not live:** builds/gw1202/track_beam_loop.py keeps frame0 as
+(integer, fraction) and forms each sample's time as (frame0_int - day0) + (frac + seq * HOP + t_rel - rho/c),
+never the absolute unix time in a float64 (backup `.bak_20261118_pre_reref`). Open: whether the dump's reducer
+rounds a time tag the same way (not looked at); confirm on sky when the loop runs again.
 
 ### #229 — GuoWang track-beam loop: a per-pass offset of 1.1 us rms (2026-11-18, KV: "add these to the buglist")
 **What:** each pass of the track beam carries an offset of its own against the dump's code epoch, 1.1 us rms
 over 71 passes (the mean, -78 ns, agrees with the dump). It makes absolute levels from the track beam
-untestable. **Reading, unverified:** the free phase origin of the beam's weights, which the loop re-forms per
-pass. **Proposed fix (for KV's approval):** reference each channel's phase to one input with the saved weights,
-and keep the weights. **Check first:** re-reference the surviving raw frames of DIGUI-98, 2026-11-11
-19:51:08Z to 19:52:00Z, to one input and see whether the level moves. Not run. Note 18c parts 1, 7, 8.
+untestable. **Confirmed 2026-11-18 `[archive]`:** it is the free phase origin of the target weights. The node builds
+them per frame and channel from the lane (calibration x steering) with no fixed phase per channel; at a live
+input the phase holds to ~1 deg frame to frame and then jumps (1-2 times a minute per channel); the header's
+beam_ref_input 100 is dead (its weight phase is random). On DIGUI-98's surviving raw frames (11-11 19:50:55Z
+to 19:52:00Z, blocks 16332-16337) the loop's code epoch steps -4.05 -> -2.15 us between two blocks; with each
+channel-frame's beam multiplied by conj(w_r)/|w_r| for one live input (50, 17 or 25 alike) it holds at -2.95
+to -2.90 us, and the level against the dump becomes +41 and +50 ns on the two well-covered blocks (was -1048
+and +1203). **Fixed in the loop (KV go), not live:** load_block re-references every channel-frame to the first
+of `--ref-inputs` (default 50,17,25,32) with a non-zero weight (builds/gw1202/rawref_1118: rawref_check.py,
+loop_test.py and their logs). Past blocks cannot be redone: their raw frames are gone. Open: confirm on sky
+that runs no longer step; which inputs are live when the array returns.
 
 ### #230 — GuoWang track beam: the code epoch wanders 20-100 ns over a minute or two at high elevation (2026-11-18, KV: "add to the buglist")
 **What:** on DIGUI-55, DIGUI-134 and DIGUI-96 the code epoch wanders 20 to 100 ns over one to two minutes,
