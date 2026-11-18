@@ -6,6 +6,7 @@
 #include "gnssChanPower.hpp"    // for ChanPower
 #include "gnssProjSubspace.hpp" // for ProjBoard
 
+#include <algorithm>     // for replace
 #include <set>           // for set
 #include <sys/syscall.h> // for SYS_gettid
 #include <unistd.h>      // for syscall
@@ -17,16 +18,21 @@ using kotekan::Stage;
 REGISTER_KOTEKAN_STAGE(GnssGpuRecordAssemble);
 
 const std::vector<std::string> GnssGpuRecordAssemble::ROW_KEYS = {"out_buf", "prns", "channel_ids"};
-const std::vector<std::string> GnssGpuRecordAssemble::ROW_ONLY_KEYS = {"beam_cube_chain",
-                                                                       "cube_buf",
-                                                                       "ctl_buf",
-                                                                       "elem_sum_shared_ref",
-                                                                       "fg_total",
-                                                                       "gnss_row",
-                                                                       "in_buf",
-                                                                       "lane_transfer_freq_ids",
-                                                                       "record_cp_mod_chips",
-                                                                       "tiles_buf"};
+const std::vector<std::string> GnssGpuRecordAssemble::ROW_ONLY_KEYS = {
+    "beam_cube_chain", "cube_buf",
+    "ctl_buf",         "elem_sum_shared_ref",
+    "fg_total",        "gnss_row",
+    "in_buf",          "lane_transfer_freq_ids",
+    "rec_row",         "record_cp_mod_chips",
+    "tiles_buf"};
+
+std::vector<std::string> GnssGpuRecordAssemble::row_keys(Config& config,
+                                                         const std::string& unique_name) {
+    std::vector<std::string> keys = ROW_KEYS;
+    if (config.exists(unique_name, "out_buf"))
+        std::replace(keys.begin(), keys.end(), std::string("out_buf"), std::string("rec_row"));
+    return keys;
+}
 
 GnssGpuRecordAssemble::Row::Row(Config& config, const gnss::HostRow& row, double (*clock_s)()) :
     chain(config, row.cfg_path, row.name, gnss::ProjBoard::instance(), gnss::ChanPower::instance(),
@@ -37,8 +43,13 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
                                              double (*clock_s)()) :
     Stage(config, unique_name, buffer_container,
           std::bind(&GnssGpuRecordAssemble::main_thread, this)),
-    _host_rows(gnss::host_rows(config, unique_name, "_n2assemble", ROW_KEYS, ROW_ONLY_KEYS)) {
+    _host_rows(gnss::host_rows(config, unique_name, "_n2assemble", row_keys(config, unique_name),
+                               ROW_ONLY_KEYS)) {
     _workers = gnss::host_workers(config, unique_name, _host_rows);
+    // A host block's out_buf is every row's: the GPU half's record buffer.
+    if (!_host_rows[0].key.empty() && config.exists(unique_name, "out_buf"))
+        _rec_buf = get_buffer("out_buf");
+    std::vector<gnss::RecRow> rec_rows;
     for (const gnss::HostRow& hr : _host_rows) {
         // Exact paths: a row must not take its input from the host block or the root.
         const bool in = config.exists(hr.cfg_path, "in_buf");
@@ -75,9 +86,33 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
                                                   gnss_gpu::ROWS_PLAIN, row.epl_shape.n_live);
             row.epl.reset(new uint8_t[row.epl_bytes]);
         }
-        row.out_buf = buffer_container.get_buffer(config.get<std::string>(hr.cfg_path, "out_buf"));
-        row.out_buf->register_producer(hr.name);
-        row.chain.check_out_buf(row.out_buf);
+        if (_rec_buf) {
+            if (config.exists(hr.cfg_path, "out_buf"))
+                FATAL_ERROR("{:s}: row {:s} sets out_buf, which the host block sets for every row",
+                            unique_name, hr.key);
+            const gnss::RecRow rec =
+                gnss::rec_row(config.get<nlohmann::json>(hr.cfg_path, "rec_row"));
+            row.chain.check_rec_row(rec);
+            if (config.exists(hr.cfg_path, "gnss_row")
+                && rec.chain_id
+                       != gnss_gpu::gpu_row(config.get<nlohmann::json>(hr.cfg_path, "gnss_row"))
+                              .chain_id)
+                FATAL_ERROR("{:s}: rec_row has chain_id {:d}, its gnss_row another", hr.name,
+                            rec.chain_id);
+            row.out_buf = _rec_buf;
+            row.rec_offset = rec.offset;
+            rec_rows.push_back(rec);
+        } else {
+            if (config.exists(hr.cfg_path, "rec_row"))
+                FATAL_ERROR("{:s}: rec_row is set, but the host block sets no out_buf for its "
+                            "rows",
+                            hr.name);
+            row.out_buf =
+                buffer_container.get_buffer(config.get<std::string>(hr.cfg_path, "out_buf"));
+            row.producer = hr.name;
+            row.out_buf->register_producer(row.producer);
+            row.chain.check_out_buf(row.out_buf);
+        }
         if (row.chain.cube_on()) {
             const std::string cbuf = config.get<std::string>(hr.cfg_path, "cube_buf");
             row.cube_out_buf = buffer_container.get_buffer(cbuf);
@@ -89,6 +124,20 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
                 gnss::rest_register_unique(hr.name + "/" + v.verb, v.get, _rest_paths);
             else
                 gnss::rest_register_unique(hr.name + "/" + v.verb, v.post, _rest_paths);
+        }
+    }
+    if (_rec_buf) {
+        _rec_dir = std::make_unique<gnss::RecDir>(unique_name, rec_rows, _rec_buf);
+        for (const gnss::HostWorker& w : _workers) {
+            _rec_buf->register_producer(w.name);
+            for (size_t i : w.rows) {
+                Row& row = _rows[i];
+                row.producer = w.name;
+                row.marks = i == w.rows.back();
+                row.dir_row = _rec_dir->find((int64_t)row.rec_offset);
+                if (w.rows.size() > 1)
+                    row.lead = &_rows[w.rows[0]];
+            }
         }
     }
     for (const gnss::HostWorker& w : _workers)
@@ -175,18 +224,29 @@ bool GnssGpuRecordAssemble::run_records(size_t i, const uint8_t* in) {
     const std::string& name = _host_rows[i].name;
     Buffer* out_buf = row.out_buf;
     const int n_rec = row.chain.begin_frame(in);
+    row.n_rec = n_rec;
+    // Its worker holds each of these frames open until its last row's record is written there.
+    if (row.lead && (n_rec != row.lead->n_rec || n_rec >= out_buf->num_frames))
+        FATAL_ERROR("{:s}: {:d} records this frame, the first row of its worker {:d}; the rows "
+                    "of a worker must write the same records per frame, fewer than the {:d} "
+                    "frames of {:s}",
+                    name, n_rec, row.lead->n_rec, out_buf->num_frames, out_buf->buffer_name);
     for (int r = 0; r < n_rec && !stop_thread; ++r) {
-        float* out = (float*)out_buf->wait_for_empty_frame(name, row.out_id);
-        if (out == nullptr)
+        uint8_t* frame = out_buf->wait_for_empty_frame(row.producer, row.out_id);
+        if (frame == nullptr)
             return false;
-        const int64_t wstart = row.chain.assemble_record(r, out);
+        const int64_t wstart = row.chain.assemble_record(r, (float*)(frame + row.rec_offset));
         emit_cube_window(i);
-        if (out_buf->metadata_pool) {
+        if (_rec_dir) {
+            _rec_dir->write(frame, row.dir_row, wstart);
+        } else if (out_buf->metadata_pool) {
             out_buf->allocate_new_metadata_object(row.out_id);
             get_gnss_chan_metadata(out_buf, row.out_id)->sample_seq = wstart;
         }
-        out_buf->mark_frame_full(name, row.out_id);
+        if (row.marks)
+            out_buf->mark_frame_full(row.producer, row.out_id);
         row.out_id = (row.out_id + 1) % out_buf->num_frames;
+        row.records_done.store(row.records_done.load() + 1);
     }
     return true;
 }

@@ -39,6 +39,10 @@ public:
     int n_prn() const {
         return _n_prn;
     }
+    /// Element blocks per PRN record.
+    int n_elements() const {
+        return _n_elements;
+    }
     /// Floats per PRN record.
     int rec_stride() const {
         return _rec_stride;

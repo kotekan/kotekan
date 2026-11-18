@@ -3,6 +3,7 @@
 
 #include "Config.hpp"
 #include "buffer.hpp"
+#include "gnssRecRows.hpp" // for RecRow
 #include "kotekanLogging.hpp"
 
 #include <cstdint>
@@ -28,6 +29,8 @@ public:
     /// FATAL unless @p out_buf's frames hold one wire frame, exactly when @p exact, and
     /// @p in_buf's a record frame.
     void check_bufs(const Buffer* in_buf, const Buffer* out_buf, bool exact = true);
+    /// FATAL unless rec_row @p r holds one record frame (see check_bufs).
+    void check_rec_row(const gnss::RecRow& r) const;
     /// The chain and instance tags every frame carries.
     const std::string& chain() const {
         return _chain;

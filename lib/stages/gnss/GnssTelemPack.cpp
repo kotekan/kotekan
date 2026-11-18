@@ -3,6 +3,7 @@
 #include "GnssChanMetadata.hpp"
 #include "StageFactory.hpp"
 
+#include <algorithm>
 #include <functional>
 #include <set>
 #include <sys/syscall.h> // for SYS_gettid
@@ -17,6 +18,7 @@ REGISTER_KOTEKAN_STAGE(GnssTelemPack);
 
 const std::vector<std::string> GnssTelemPack::ROW_KEYS = {"in_buf",  "chain",  "n_prn",
                                                           "max_prn", "n_chan", "channel_ids"};
+const std::vector<std::string> GnssTelemPack::ROW_ONLY_KEYS = {"rec_row"};
 
 GnssTelemPack::Out::Out(Buffer* buf, const std::string& producer) :
     buf(buf), producer(producer), id(buf) {}
@@ -26,6 +28,8 @@ GnssTelemPack::Row::Row(Config& config, const gnss::HostRow& row, Buffer* in, Ou
 
 std::vector<std::string> GnssTelemPack::row_keys(Config& config, const std::string& unique_name) {
     std::vector<std::string> keys = ROW_KEYS;
+    if (config.exists(unique_name, "in_buf"))
+        std::replace(keys.begin(), keys.end(), std::string("in_buf"), std::string("rec_row"));
     if (!config.exists(unique_name, "out_buf"))
         keys.push_back("out_buf");
     return keys;
@@ -34,11 +38,14 @@ std::vector<std::string> GnssTelemPack::row_keys(Config& config, const std::stri
 GnssTelemPack::GnssTelemPack(Config& config, const std::string& unique_name,
                              bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&GnssTelemPack::main_thread, this)),
-    _host_rows(
-        gnss::host_rows(config, unique_name, "_telem_pack", row_keys(config, unique_name), {})),
+    _host_rows(gnss::host_rows(config, unique_name, "_telem_pack", row_keys(config, unique_name),
+                               ROW_ONLY_KEYS)),
     _workers(gnss::host_workers(config, unique_name, _host_rows)) {
     // A host block's out_buf is every row's: one stream for the host.
     const bool shared = !_host_rows[0].key.empty() && config.exists(unique_name, "out_buf");
+    // A host block's in_buf is every row's: the GPU half's record buffer.
+    const bool rec_shared = !_host_rows[0].key.empty() && config.exists(unique_name, "in_buf");
+    std::vector<gnss::RecRow> rec_rows;
     if (shared)
         _outs.emplace_back(get_buffer("out_buf"), unique_name);
     std::set<std::pair<std::string, std::string>> senders;
@@ -54,6 +61,19 @@ GnssTelemPack::GnssTelemPack(Config& config, const std::string& unique_name,
             config, hr, buffer_container.get_buffer(config.get<std::string>(hr.cfg_path, "in_buf")),
             &_outs.back());
         row.chain.check_bufs(row.in_buf, row.out->buf, !shared);
+        if (rec_shared) {
+            if (config.exists(hr.cfg_path, "in_buf"))
+                FATAL_ERROR("{:s}: row {:s} sets in_buf, which the host block sets for every row",
+                            unique_name, hr.key);
+            const gnss::RecRow rec =
+                gnss::rec_row(config.get<nlohmann::json>(hr.cfg_path, "rec_row"));
+            row.chain.check_rec_row(rec);
+            row.rec_offset = rec.offset;
+            rec_rows.push_back(rec);
+        } else if (config.exists(hr.cfg_path, "rec_row")) {
+            FATAL_ERROR("{:s}: rec_row is set, but the host block sets no in_buf for its rows",
+                        hr.name);
+        }
         if (!senders.insert({row.chain.chain(), row.chain.inst()}).second)
             FATAL_ERROR("{:s}: two rows send chain {:s} inst {:s}; the gather would merge their "
                         "streams",
@@ -66,8 +86,17 @@ GnssTelemPack::GnssTelemPack(Config& config, const std::string& unique_name,
     }
     for (Out& o : _outs)
         o.buf->register_producer(o.producer);
-    for (const gnss::HostWorker& w : _workers)
-        register_inputs(w);
+    if (rec_shared) {
+        _rec_buf = _rows[0].in_buf;
+        _rec_dir = std::make_unique<gnss::RecDir>(unique_name, rec_rows, _rec_buf);
+        for (Row& row : _rows)
+            row.dir_row = _rec_dir->find((int64_t)row.rec_offset);
+        for (const gnss::HostWorker& w : _workers)
+            _rec_buf->register_consumer(consumer_name(w));
+    } else {
+        for (const gnss::HostWorker& w : _workers)
+            register_inputs(w);
+    }
     gnss::rest_register_chains(unique_name, _host_rows, _rest_paths);
 }
 
@@ -144,6 +173,10 @@ void GnssTelemPack::run_pinned(size_t w) {
 void GnssTelemPack::run_worker(size_t w) {
     const gnss::HostWorker& wk = _workers[w];
     bool running = true;
+    if (_rec_dir) {
+        run_frames(wk);
+        running = false;
+    }
     while (running && !stop_thread)
         for (size_t r : wk.rows)
             if (!take_record(r, consumer_name(wk))) {
@@ -152,6 +185,26 @@ void GnssTelemPack::run_worker(size_t w) {
             }
     for (size_t r : wk.rows)
         flush(r);
+}
+
+void GnssTelemPack::run_frames(const gnss::HostWorker& w) {
+    const std::string& consumer = consumer_name(w);
+    for (int id = 0; !stop_thread; id = (id + 1) % _rec_buf->num_frames) {
+        const uint8_t* f = _rec_buf->wait_for_full_frame(consumer, id);
+        if (f == nullptr)
+            return;
+        _rec_dir->check(consumer, id, f);
+        for (size_t i : w.rows) {
+            const Row& row = _rows[i];
+            if (!add_record(i, (const float*)(f + row.rec_offset),
+                            _rec_dir->wstart(f, row.dir_row)))
+                return;
+        }
+        _rec_buf->mark_frame_empty(consumer, id);
+        for (size_t i : w.rows)
+            if (!flush_full(i))
+                return;
+    }
 }
 
 bool GnssTelemPack::take_record(size_t i, const std::string& consumer) {

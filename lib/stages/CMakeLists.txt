@@ -71,6 +71,7 @@ add_library(
     gnss/GnssTelemSend.cpp
     gnss/gnssTelemChain.cpp
     gnss/gnssHostRows.cpp
+    gnss/gnssRecRows.cpp
     gnss/GnssTelemGather.cpp
     # The fleet code loop runs in the gather instance beside GnssTelemGather (the only place
     # with the whole fleet at frame rate), so it is in the same no-FFTW block.

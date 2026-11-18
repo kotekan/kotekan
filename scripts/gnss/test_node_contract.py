@@ -43,6 +43,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import gen_fleet  # noqa: E402
 import node_contract as nc  # noqa: E402
+from gen_chord_gnss_config import TELEM_HOST_DEPTH  # noqa: E402
 
 NODE = "cx52"
 NAME = "chord_gnss_%s_multi.yaml" % NODE
@@ -792,9 +793,9 @@ def test_telem(a_dir, t_dir):
             "gnss%d_telem_buf" % g
         }:
             bad.append("gnss%d: rows write another buffer" % g)
-        if tb.get("num_frames") != sum(b["num_frames"] for b in bufs[g]) or tb.get(
-            "frame_size"
-        ) != max(b["frame_size"] for b in bufs[g]):
+        if tb.get("num_frames") != TELEM_HOST_DEPTH * sum(
+            b["num_frames"] for b in bufs[g]
+        ) or tb.get("frame_size") != max(b["frame_size"] for b in bufs[g]):
             bad.append("gnss%d_telem_buf size" % g)
         send = tcfg.get("gnss%d_telem_send" % g) or {}
         if send.get("kotekan_stage") != "GnssTelemSend" or not send.get("drop_frames"):
@@ -812,9 +813,9 @@ def test_telem(a_dir, t_dir):
         bad.append("blocks outside the telemetry legs")
     check(
         not bad,
-        "telem: each half's rows are its packs, writing one buffer as deep as theirs and as "
-        "wide as the widest, sent by one GnssTelemSend, and nothing else changes (%s)"
-        % bad,
+        "telem: each half's rows are its packs, writing one buffer TELEM_HOST_DEPTH times as "
+        "deep as theirs and as wide as the widest, sent by one GnssTelemSend, and nothing "
+        "else changes (%s)" % bad,
     )
 
 

@@ -116,6 +116,10 @@ void TelemChain::check_bufs(const Buffer* in_buf, const Buffer* out_buf, bool ex
          _win_samples / _fft_len, _win_samples);
 }
 
+void TelemChain::check_rec_row(const gnss::RecRow& r) const {
+    gnss::check_rec_row(_name, r, _n_prn, _n_elem, _n_chan);
+}
+
 bool TelemChain::on_grid(int64_t wstart) {
     if (wstart < 0 || (wstart % _rec_samples) != 0) {
         // No absolute address, or one off the record grid: the record has no slot. Logged

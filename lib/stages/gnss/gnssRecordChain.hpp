@@ -9,6 +9,7 @@
 #include "gnssGpuChain.hpp"      // for FrameHdr, PrnCtl
 #include "gnssLaneDirection.hpp" // for LaneDirection, InstDelay (#190)
 #include "gnssProjSubspace.hpp"
+#include "gnssRecRows.hpp"   // for RecRow
 #include "gnssSharedPin.hpp" // for ReseedState
 #include "kotekanLogging.hpp"
 #include "prometheusMetrics.hpp" // for Gauge
@@ -49,6 +50,8 @@ public:
     /// FATAL unless @p out_buf's frames hold one record per slot, and the comb block with
     /// chan_export.
     void check_out_buf(const Buffer* out_buf);
+    /// FATAL unless rec_row @p r holds one record: its slots, and the comb with chan_export.
+    void check_rec_row(const gnss::RecRow& r) const;
     /// Whether the beam cube is on; the host then gives it a cube_buf.
     bool cube_on() const {
         return _cube_on;

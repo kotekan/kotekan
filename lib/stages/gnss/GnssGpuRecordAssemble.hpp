@@ -8,8 +8,10 @@
 #include "gnssEplAssemble.hpp"
 #include "gnssGpuRows.hpp"
 #include "gnssHostRows.hpp"
+#include "gnssRecRows.hpp"
 #include "gnssRecordChain.hpp"
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -35,6 +37,12 @@
  * as one consumer, `<unique_name>/w<k>`: a frame of tiles_buf and ctl_buf that several rows
  * read is released once every worker has assembled its rows' frames from it.
  *
+ * With an out_buf on the host block every row writes its records into that one buffer, a GPU
+ * half's record buffer: each frame holds one record of every row, its block at the row's
+ * @c rec_row, after a directory of the rows and their records' wstart (gnss::RecDir), in place
+ * of the frame metadata. Each worker is a producer of the buffer, and marks a frame full once
+ * its last row has written its record there, so a frame is full once every row has.
+ *
  * A row reads its gnssGpuChain frames from @c in_buf (GnssN2RecordAssemble's output), or, with
  * @c tiles_buf and @c ctl_buf, assembles each one itself from the tiles and the control block
  * into its own frame, as GnssN2RecordAssemble does, and releases both before its first record.
@@ -48,7 +56,10 @@
  *                count. The row reads its channels at fg_offset and its control block at
  *                ctl_offset, and FATALs unless that block carries its row tag.
  * @conf out_buf  tracker records: n_prn * record_stride floats, plus the per-channel block
- *                with chan_export
+ *                with chan_export. On the host block: every row's, a GPU half's record buffer.
+ * @conf rec_row  with an out_buf on the host block, each row's: its block in each frame,
+ *                {chain_id, n_prn, n_chan, offset, bytes} (gnss::RecRow), n_chan its comb
+ *                columns. chain_id is its gnss_row's when it has one.
  * @conf prns     initial slot -> PRN map; its length must equal the frame's n_prn
  * @conf sample_rate  rate of the wstart sample counter, Hz
  * @conf record_cp_mod_chips  Float (default 0 = off). Reduce record slot 2 (the code-phase
@@ -64,7 +75,9 @@
  *                worker share tiles_buf and ctl_buf both or neither, and never in_buf. They also
  *                share the thread: a row waiting on a full out_buf holds the next one, so they
  *                must not feed one consumer that reads them in lockstep, and on a busy core
- *                they get one thread's share of it.
+ *                they get one thread's share of it. Rows of one worker writing a GPU half's
+ *                record buffer hold each frame from the first row's record to the last row's,
+ *                so they must write the same records per frame, fewer than its frames.
  */
 class GnssGpuRecordAssemble : public kotekan::Stage {
 public:
@@ -79,6 +92,10 @@ public:
     /// only while the row's worker waits for input.
     uint8_t* epl_frame(size_t row) {
         return _rows[row].epl.get();
+    }
+    /// Records row @p row has written into out_buf; a test reads it to wait for the row's frame.
+    uint64_t records_done(size_t row) const {
+        return _rows[row].records_done.load();
     }
 
     /// Keys each row of a @c chains block must set itself.
@@ -108,6 +125,16 @@ private:
         size_t epl_bytes = 0;
         Buffer* out_buf = nullptr;
         int out_id = 0;
+        /// Its name as a producer of out_buf: its own, or its worker's for a GPU half's record
+        /// buffer, where only its worker's last row marks the frames full.
+        std::string producer;
+        bool marks = true;
+        /// With a GPU half's record buffer: its block's offset and its row of the directory, and
+        /// with other rows on its worker, the first of them and its records this frame.
+        size_t rec_offset = 0, dir_row = 0;
+        const Row* lead = nullptr;
+        int n_rec = 0;
+        std::atomic<uint64_t> records_done{0};
         /// Push leg: each completed window is pushed to cube_buf with its address (chain, window
         /// index, wstart). It never blocks the tracker: if the next frame is not empty (safe to
         /// test, as this row is the only producer) the window is dropped and counted in
@@ -123,7 +150,14 @@ private:
     std::vector<gnss::HostWorker> _workers;
     /// The REST paths this host registered.
     std::vector<std::string> _rest_paths;
+    /// With an out_buf on the host block: that buffer and its directory.
+    Buffer* _rec_buf = nullptr;
+    std::unique_ptr<gnss::RecDir> _rec_dir;
 
+    /// The keys each row sets itself: ROW_KEYS, with rec_row for out_buf when the host block of
+    /// @p unique_name sets it.
+    static std::vector<std::string> row_keys(kotekan::Config& config,
+                                             const std::string& unique_name);
     /// Register worker @p w as the consumer of its rows' input buffers, once each.
     void register_inputs(const gnss::HostWorker& w);
     void run_worker(size_t w);

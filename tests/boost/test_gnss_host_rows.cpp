@@ -15,6 +15,7 @@
 #include "bufferSend.hpp"            // for bufferFrameHeaderNoConfigTracker
 #include "gnssGpuRows.hpp"           // for gpu_rows
 #include "gnssHostRows.hpp"          // for host_rows, rest_register_unique
+#include "gnssRecRows.hpp"           // for RecDir, RecRow
 #include "gnssRecord.hpp"            // for frame_floats, REC_P_ENERGY
 #include "gnssTelem.hpp"             // for telem_frame_bytes
 #include "kotekanLogging.hpp"        // for FatalError
@@ -27,6 +28,7 @@
 #include "fmt.hpp"  // for format
 #include "json.hpp" // for json
 
+#include <algorithm>
 #include <arpa/inet.h>
 #include <boost/test/included/unit_test.hpp>
 #include <chrono>
@@ -45,6 +47,7 @@
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <thread>
+#include <tuple>
 #include <unistd.h>
 #include <vector>
 
@@ -108,15 +111,16 @@ void construct(const json& cfg) {
     Host h(config, "/host", bc);
 }
 
-/// For each of @p row_keys and @p row_extra, a host whose block sets @p row_keys, but whose second
+/// For each of @p row_keys and @p row_extra, a host whose block sets @p host_keys, but whose second
 /// row lacks that one of the keys every row sets, FATALs naming it.
 template<typename Host>
 void check_row_keys(const std::vector<std::string>& row_keys,
-                    const std::vector<std::string>& row_extra = {}) {
+                    const std::vector<std::string>& row_extra,
+                    const std::vector<std::string>& host_keys) {
     std::vector<std::string> keys = row_keys;
     keys.insert(keys.end(), row_extra.begin(), row_extra.end());
     for (const auto& k : keys) {
-        json host = keys_block(row_keys);
+        json host = keys_block(host_keys);
         json lacking = keys_block(keys);
         lacking.erase(k);
         host["chains"] = {{"gnss0_a", keys_block(keys)}, {"gnss0_b", lacking}};
@@ -276,11 +280,23 @@ BOOST_AUTO_TEST_CASE(rows_and_paths) {
     BOOST_CHECK_EQUAL(one[0].name, "/gnss0_p_n2assemble");
 }
 
+// Every row sets its row keys itself, whatever the host block sets, but for the buffer that a host
+// block's setting makes every row's: a GPU half's record buffer, each row then setting its rec_row.
 BOOST_AUTO_TEST_CASE(row_missing_key_is_fatal) {
-    check_row_keys<GnssGpuRecordAssemble>(GnssGpuRecordAssemble::ROW_KEYS);
-    check_row_keys<GnssCoherentCombiner>(GnssCoherentCombiner::ROW_KEYS);
+    check_row_keys<GnssGpuRecordAssemble>(GnssGpuRecordAssemble::ROW_KEYS, {},
+                                          {"prns", "channel_ids"});
+    check_row_keys<GnssGpuRecordAssemble>({"prns", "channel_ids", "rec_row"}, {},
+                                          GnssGpuRecordAssemble::ROW_KEYS);
+    check_row_keys<GnssCoherentCombiner>(GnssCoherentCombiner::ROW_KEYS, {}, {"n_prn", "chain"});
+    check_row_keys<GnssCoherentCombiner>({"n_prn", "chain", "rec_row"}, {},
+                                         GnssCoherentCombiner::ROW_KEYS);
     // A telemetry row sets out_buf unless the host block does.
-    check_row_keys<GnssTelemPack>(GnssTelemPack::ROW_KEYS, {"out_buf"});
+    std::vector<std::string> tel = GnssTelemPack::ROW_KEYS;
+    tel.erase(std::find(tel.begin(), tel.end(), "in_buf"));
+    check_row_keys<GnssTelemPack>(GnssTelemPack::ROW_KEYS, {"out_buf"}, tel);
+    std::vector<std::string> tel_rec = tel;
+    tel_rec.push_back("rec_row");
+    check_row_keys<GnssTelemPack>(tel_rec, {"out_buf"}, GnssTelemPack::ROW_KEYS);
 }
 
 // A GPU half's gnss_rows: two rows of one shape (32 PRN x 6 channels), as gnss0_gps_l5 and
@@ -346,7 +362,7 @@ BOOST_AUTO_TEST_CASE(record_row_input) {
     for (const json& in : {none, both, tiles, ctl}) {
         json row = keys_block(GnssGpuRecordAssemble::ROW_KEYS);
         row.update(in);
-        json host = keys_block(GnssGpuRecordAssemble::ROW_KEYS);
+        json host = keys_block({"prns", "channel_ids"});
         host["chains"] = {{"gnss0_a", row}};
         BOOST_CHECK_EQUAL(fatal_of([&] { construct<GnssGpuRecordAssemble>(config_with(host)); }),
                           "/gnss0_a_n2assemble: set in_buf, or tiles_buf and ctl_buf");
@@ -356,7 +372,7 @@ BOOST_AUTO_TEST_CASE(record_row_input) {
                            json{{"in_buf", "x"}, {"gnss_row", 1}, {"fg_total", 1}}}) {
         json row = keys_block(GnssGpuRecordAssemble::ROW_KEYS);
         row.update(in);
-        json host = keys_block(GnssGpuRecordAssemble::ROW_KEYS);
+        json host = keys_block({"prns", "channel_ids"});
         host["chains"] = {{"gnss0_a", row}};
         BOOST_CHECK_EQUAL(fatal_of([&] { construct<GnssGpuRecordAssemble>(config_with(host)); }),
                           "/gnss0_a_n2assemble: gnss_row and fg_total go together, with tiles_buf");
@@ -1281,4 +1297,462 @@ BOOST_AUTO_TEST_CASE(telem_workers_are_pinned_threads_of_the_stage) {
             }
         }),
         "");
+}
+
+namespace {
+
+/// The rec_rows of rows of @p n_prn PRNs each, chain ids 1, 2, ..., of one element and @p n_chan
+/// comb columns, tiling a record buffer frame in that order.
+std::vector<gnss::RecRow> rec_layout(const std::vector<int>& n_prn, int n_chan = 1) {
+    std::vector<gnss::RecRow> rows;
+    size_t at = gnss::RecDir::bytes(n_prn.size());
+    for (size_t i = 0; i < n_prn.size(); ++i) {
+        at = (at + gnss::REC_ROW_ALIGN - 1) / gnss::REC_ROW_ALIGN * gnss::REC_ROW_ALIGN;
+        const int64_t b = gnss::frame_floats(n_prn[i], 1, n_chan) * sizeof(float);
+        rows.push_back({(int64_t)i + 1, n_prn[i], n_chan, (int64_t)at, b});
+        at += b;
+    }
+    return rows;
+}
+
+json rec_row_json(const gnss::RecRow& r) {
+    return {{"chain_id", r.chain_id},
+            {"n_prn", r.n_prn},
+            {"n_chan", r.n_chan},
+            {"offset", r.offset},
+            {"bytes", r.bytes}};
+}
+
+/// Rows gnss0_a, gnss0_b and gnss0_c of a GPU half, their PRNs, and their rec_rows.
+const std::vector<std::string> ABC = {"gnss0_a", "gnss0_b", "gnss0_c"};
+const std::vector<int> ABC_PRN = {3, 1, 2};
+const std::vector<gnss::RecRow> ABC_REC = rec_layout(ABC_PRN);
+
+/// A GPU half's record buffer gnss0_rec_buf, @p frames deep, sized for @p rows (in ABC's order),
+/// and with @p cmb a combine host gnss0_combine and with @p tel a telemetry host gnss0_telem on it,
+/// each running ABC, row k with rec_row @p rows[k], on one worker per row or with @p one_worker
+/// one worker for all.
+json rec_config(const std::vector<gnss::RecRow>& rows, bool cmb, bool tel, bool one_worker,
+                int frames = 4) {
+    json cfg = {{"log_level", "warn"},
+                {"cpu_affinity", {0}},
+                {"telescope", {{"num_polarizations", 2}, {"num_dishes", 2}}},
+                {"gnss_pool",
+                 {{"kotekan_metadata_pool", "GnssChanMetadata"}, {"num_metadata_objects", 64}}}};
+    size_t bytes = 0;
+    for (const gnss::RecRow& r : rows)
+        bytes = std::max(bytes, (size_t)(r.offset + r.bytes));
+    cfg["gnss0_rec_buf"] = {
+        {"kotekan_buffer", "standard"}, {"num_frames", frames}, {"frame_size", bytes}};
+    json workers = json::array();
+    if (one_worker)
+        workers.push_back({{"rows", ABC}, {"cpu_affinity", {0}}});
+    else
+        for (const auto& k : ABC)
+            workers.push_back({{"rows", {k}}, {"cpu_affinity", {0}}});
+    if (cmb) {
+        json& h = cfg["gnss0_combine"];
+        h = {{"kotekan_stage", "GnssCoherentCombiner"},
+             {"n_elements", 1},
+             {"fft_len", 16384},
+             {"integration_length", 10},
+             {"in_bufs", {"gnss0_rec_buf"}},
+             {"workers", workers}};
+        for (size_t k = 0; k < ABC.size(); ++k)
+            h["chains"][ABC[k]] = {{"n_prn", ABC_PRN[k]},
+                                   {"chain", ABC[k].substr(6)},
+                                   {"rec_row", rec_row_json(rows[k])}};
+    }
+    if (tel) {
+        cfg["gnss0_telem_buf"] = {{"kotekan_buffer", "standard"},
+                                  {"metadata_pool", "gnss_pool"},
+                                  {"num_frames", 8},
+                                  {"frame_size", gnss::telem_frame_bytes(4, 3, 1)}};
+        json& h = cfg["gnss0_telem"];
+        h = {{"kotekan_stage", "GnssTelemPack"},
+             {"inst", "node.0"},
+             {"n_elements", 1},
+             {"n_chan", 1},
+             {"channel_ids", {100}},
+             {"hops_per_record", 2048},
+             {"fft_len", 16384},
+             {"in_buf", "gnss0_rec_buf"},
+             {"out_buf", "gnss0_telem_buf"},
+             {"workers", workers}};
+        for (size_t k = 0; k < ABC.size(); ++k)
+            h["chains"][ABC[k]] = {{"chain", ABC[k].substr(6)}, {"n_prn", ABC_PRN[k]},
+                                   {"max_prn", ABC_PRN[k]},     {"n_chan", 1},
+                                   {"channel_ids", {100}},      {"rec_row", rec_row_json(rows[k])}};
+    }
+    return cfg;
+}
+
+/// A record frame's first sample on the record grid of rec_config's hosts.
+constexpr int64_t REC_WSTART = 1000LL * 2048 * 16384;
+
+/// The buffers of @p cfg, every block with kotekan_buffer, in @p bc, those with a metadata_pool
+/// on one pool.
+std::vector<std::unique_ptr<Buffer>> buffers_of(const json& cfg, kotekan::bufferContainer& bc) {
+    auto pool = metadataPool::create(64, 64, "gnss_pool", "GnssChanMetadata");
+    std::vector<std::unique_ptr<Buffer>> bufs;
+    for (const auto& [name, b] : cfg.items()) {
+        if (!b.is_object() || !b.contains("kotekan_buffer"))
+            continue;
+        bufs.push_back(std::make_unique<Buffer>(
+            b.at("num_frames").get<int>(), b.at("frame_size").get<size_t>(),
+            b.contains("metadata_pool") ? pool : nullptr, name, "standard", 0, false, false,
+            std::vector<int>{}, false));
+        bc.add_buffer(name, bufs.back().get());
+    }
+    return bufs;
+}
+
+/// Starts @p cfg's hosts on gnss0_rec_buf and writes one frame of it as a producer whose
+/// directory has rows @p dir, every wstart REC_WSTART, then @p plant applied to the frame.
+/// Returns the first FATAL a host's thread raised, or "" once the hosts have released the frame.
+std::string feed_rec_frame(const json& cfg, const std::vector<gnss::RecRow>& dir,
+                           const std::function<void(uint8_t*)>& plant = nullptr) {
+    kotekan::Config config;
+    config.update_config(cfg);
+    kotekan::bufferContainer bc;
+    std::vector<std::unique_ptr<Buffer>> bufs = buffers_of(cfg, bc);
+    Buffer* buf = bc.get_buffer("gnss0_rec_buf");
+    std::vector<std::unique_ptr<kotekan::Stage>> hosts;
+    if (cfg.contains("gnss0_combine"))
+        hosts.emplace_back(new GnssCoherentCombiner(config, "/gnss0_combine", bc));
+    if (cfg.contains("gnss0_telem"))
+        hosts.emplace_back(new GnssTelemPack(config, "/gnss0_telem", bc));
+    buf->register_producer("feeder");
+    const gnss::RecDir rec("feeder", dir, buf);
+    for (auto& h : hosts)
+        h->start();
+    uint8_t* f = buf->wait_for_empty_frame("feeder", 0);
+    std::memset(f, 0, buf->frame_size);
+    for (size_t i = 0; i < rec.size(); ++i)
+        rec.write(f, i, REC_WSTART);
+    if (plant)
+        plant(f);
+    buf->mark_frame_full("feeder", 0);
+    std::string msg;
+    const auto t0 = std::chrono::steady_clock::now();
+    while (std::chrono::steady_clock::now() - t0 < std::chrono::seconds(10)) {
+        msg = kotekan::kotekanLogging::get_error_message();
+        if (msg != "not set" || buf->get_num_full_frames() == 0)
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    if (msg == "not set")
+        msg.clear();
+    for (auto& h : hosts)
+        h->stop();
+    for (auto& b : bufs)
+        b->send_shutdown_signal();
+    for (auto& h : hosts)
+        h->join();
+    return msg;
+}
+
+} // namespace
+
+// A GPU half's record buffer frame: the rows tile it after the directory, in offset order, each
+// on its own cache lines, inside the frame, with unique chain ids.
+BOOST_AUTO_TEST_CASE(rec_rows_tile_the_frame) {
+    auto dir_of = [](std::vector<gnss::RecRow> rows, size_t frame) {
+        Buffer buf(2, frame, nullptr, "gnss0_rec_buf", "standard", 0, false, false,
+                   std::vector<int>{}, false);
+        gnss::RecDir rec("/gnss0_records", rows, &buf);
+    };
+    const size_t frame = ABC_REC.back().offset + ABC_REC.back().bytes;
+    BOOST_CHECK_EQUAL(fatal_of([&] { dir_of(ABC_REC, frame); }), "");
+    // In any order: the directory lists them by offset.
+    BOOST_CHECK_EQUAL(fatal_of([&] { dir_of({ABC_REC[2], ABC_REC[0], ABC_REC[1]}, frame); }), "");
+    BOOST_CHECK_EQUAL(fatal_of([&] { dir_of(ABC_REC, frame - 1); }),
+                      fmt::format("/gnss0_records: the rec_rows end at byte {:d}, past the {:d} B "
+                                  "frame of gnss0_rec_buf",
+                                  frame, frame - 1));
+    auto rows = ABC_REC;
+    rows[0].offset = 0;
+    BOOST_CHECK_EQUAL(fatal_of([&] { dir_of(rows, frame); }),
+                      fmt::format("/gnss0_records: the rec_row of chain_id 1 holds bytes [0, {:d}) "
+                                  "of gnss0_rec_buf; the directory and the rows before it put it "
+                                  "at byte {:d}",
+                                  rows[0].bytes, ABC_REC[0].offset));
+    for (int64_t shift : {-64, -4, 4, 64}) {
+        rows = ABC_REC;
+        rows[1].offset += shift;
+        BOOST_CHECK_MESSAGE(fatal_of([&] { dir_of(rows, frame); }).find("chain_id 2 holds bytes")
+                                != std::string::npos,
+                            "row 1 moved by " << shift);
+    }
+    rows = ABC_REC;
+    rows[2].chain_id = 1;
+    BOOST_CHECK_EQUAL(fatal_of([&] { dir_of(rows, frame); }),
+                      "/gnss0_records: chain_id 1 is in two rec_rows of gnss0_rec_buf");
+}
+
+// The rows of a combine or telemetry host reading a GPU half's record buffer, an in_buf or
+// in_bufs on the host block, each set their rec_row, and only theirs, and it must hold their
+// records; a record host's rows writing one, an out_buf on the host block, likewise.
+BOOST_AUTO_TEST_CASE(rec_rows_of_the_hosts) {
+    BOOST_CHECK_EQUAL(start_fatal(rec_config(ABC_REC, true, true, false)), "");
+    for (const std::string h : {"gnss0_combine", "gnss0_telem"}) {
+        const std::string in = h == "gnss0_combine" ? "in_bufs" : "in_buf";
+        json cfg = rec_config(ABC_REC, true, true, false);
+        cfg[h]["chains"]["gnss0_b"].erase("rec_row");
+        BOOST_CHECK_EQUAL(start_fatal(cfg), "/" + h + ": row gnss0_b does not set rec_row");
+        cfg = rec_config(ABC_REC, true, true, false);
+        cfg[h]["rec_row"] = rec_row_json(ABC_REC[0]);
+        BOOST_CHECK_EQUAL(start_fatal(cfg),
+                          "/" + h + ": rec_row is set per row in chains, not on the host");
+        cfg = rec_config(ABC_REC, true, true, false);
+        cfg[h]["chains"]["gnss0_b"][in] = cfg[h][in];
+        BOOST_CHECK_EQUAL(start_fatal(cfg), "/" + h + ": row gnss0_b sets " + in
+                                                + ", which the host block sets for every row");
+        // Without the host's buffer, a row's rec_row is refused.
+        cfg = rec_config(ABC_REC, true, true, false);
+        for (const auto& k : ABC)
+            cfg[h]["chains"][k][in] = cfg[h][in];
+        cfg[h].erase(in);
+        const std::string pack = h == "gnss0_combine" ? "_n2combine" : "_telem_pack";
+        BOOST_CHECK_EQUAL(start_fatal(cfg), "/gnss0_a" + pack
+                                                + ": rec_row is set, but the host "
+                                                  "block sets no "
+                                                + in + " for its rows");
+    }
+    // A rec_row that does not hold its row's record.
+    auto rows = ABC_REC;
+    rows[1].n_prn = 2;
+    json cfg = rec_config(rows, true, false, false);
+    const size_t b1 = gnss::frame_floats(1, 1, 1) * sizeof(float);
+    BOOST_CHECK_EQUAL(start_fatal(cfg),
+                      fmt::format("/gnss0_b_n2combine: rec_row holds 2 PRN x 1 comb columns in "
+                                  "{:d} B, this row's record is 1 PRN of 1 elements x 1 comb "
+                                  "columns in {:d} B",
+                                  b1, b1));
+    rows = ABC_REC;
+    rows[1].bytes += 4;
+    BOOST_CHECK(start_fatal(rec_config(rows, true, false, false)).find("rec_row holds")
+                != std::string::npos);
+    rows = ABC_REC;
+    rows[1].n_chan = 2;
+    BOOST_CHECK(
+        start_fatal(rec_config(rows, false, true, false)).find("/gnss0_b_telem_pack: rec_row")
+        != std::string::npos);
+    // The combiner takes a row's comb columns from its rec_row, and its bytes must agree.
+    rows = rec_layout(ABC_PRN, 2);
+    BOOST_CHECK_EQUAL(start_fatal(rec_config(rows, true, false, false)), "");
+    BOOST_CHECK(start_fatal(rec_config(rows, false, true, false)).find("rec_row holds")
+                != std::string::npos);
+    // The rows must tile the frame.
+    rows = ABC_REC;
+    std::swap(rows[0].offset, rows[2].offset);
+    BOOST_CHECK(start_fatal(rec_config(rows, true, false, false)).find("the directory and the rows")
+                != std::string::npos);
+
+    // A record host's rows writing the host block's out_buf.
+    json rec = record_config(ABC, json::array({{{"rows", ABC}, {"cpu_affinity", {0}}}}));
+    json& h = rec["gnss0_records"];
+    const auto rr = rec_layout({1, 1, 1}, 0);
+    for (size_t k = 0; k < ABC.size(); ++k) {
+        h["chains"][ABC[k]].erase("out_buf");
+        h["chains"][ABC[k]]["rec_row"] = rec_row_json(rr[k]);
+    }
+    h["out_buf"] = "rec_gnss0_a";
+    // record_config's rows have 2 elements.
+    BOOST_CHECK_EQUAL(start_fatal(rec),
+                      fmt::format("/gnss0_a_n2assemble: rec_row holds 1 PRN x 0 comb columns in "
+                                  "{:d} B, this row's record is 1 PRN of 2 elements x 0 comb "
+                                  "columns in {:d} B",
+                                  rr[0].bytes, gnss::frame_floats(1, 2, 0) * sizeof(float)));
+    size_t at = gnss::RecDir::bytes(3);
+    for (size_t k = 0; k < ABC.size(); ++k) {
+        at = (at + gnss::REC_ROW_ALIGN - 1) / gnss::REC_ROW_ALIGN * gnss::REC_ROW_ALIGN;
+        const int64_t b = gnss::frame_floats(1, 2, 0) * sizeof(float);
+        h["chains"][ABC[k]]["rec_row"] = rec_row_json({(int64_t)k + 7, 1, 0, (int64_t)at, b});
+        at += b;
+    }
+    BOOST_CHECK_EQUAL(start_fatal(rec), "");
+    json bad = rec;
+    bad["gnss0_records"]["chains"]["gnss0_b"]["out_buf"] = "rec_gnss0_b";
+    BOOST_CHECK_EQUAL(start_fatal(bad), "/gnss0_records: row gnss0_b sets out_buf, which the host "
+                                        "block sets for every row");
+    bad = rec;
+    bad["gnss0_records"]["chains"]["gnss0_b"].erase("rec_row");
+    BOOST_CHECK_EQUAL(start_fatal(bad), "/gnss0_records: row gnss0_b does not set rec_row");
+    bad = record_config(ABC, json::array({{{"rows", ABC}, {"cpu_affinity", {0}}}}));
+    bad["gnss0_records"]["chains"]["gnss0_c"]["rec_row"] =
+        rec["gnss0_records"]["chains"]["gnss0_c"]["rec_row"];
+    BOOST_CHECK_EQUAL(start_fatal(bad), "/gnss0_c_n2assemble: rec_row is set, but the host block "
+                                        "sets no out_buf for its rows");
+}
+
+// Each worker of a record host is a producer of the GPU half's record buffer, and each worker of
+// a combine and of a telemetry host a consumer of it, named as the hosts' other buffers' are.
+BOOST_AUTO_TEST_CASE(rec_buf_producers_and_consumers) {
+    BOOST_CHECK_EQUAL(
+        fatal_of([] {
+            json rec =
+                record_config(ABC, {{{"rows", {"gnss0_a", "gnss0_c"}}, {"cpu_affinity", {0}}},
+                                    {{"rows", {"gnss0_b"}}, {"cpu_affinity", {0}}}});
+            json& h = rec["gnss0_records"];
+            size_t at = gnss::RecDir::bytes(3);
+            for (size_t k = 0; k < ABC.size(); ++k) {
+                at = (at + gnss::REC_ROW_ALIGN - 1) / gnss::REC_ROW_ALIGN * gnss::REC_ROW_ALIGN;
+                const int64_t b = gnss::frame_floats(1, 2, 0) * sizeof(float);
+                h["chains"][ABC[k]].erase("out_buf");
+                h["chains"][ABC[k]]["rec_row"] =
+                    rec_row_json({(int64_t)k + 1, 1, 0, (int64_t)at, b});
+                at += b;
+            }
+            h["out_buf"] = "gnss0_rec_buf";
+            json cfg = rec_config(ABC_REC, true, true, false);
+            cfg["gnss0_rec_buf"]["frame_size"] =
+                std::max(at, (size_t)cfg["gnss0_rec_buf"]["frame_size"]);
+            for (const auto& [k, v] : rec.items())
+                if (!cfg.contains(k))
+                    cfg[k] = v;
+            cfg["gnss0_combine"]["workers"] = {
+                {{"rows", {"gnss0_a", "gnss0_b"}}, {"cpu_affinity", {0}}},
+                {{"rows", {"gnss0_c"}}, {"cpu_affinity", {0}}}};
+            kotekan::Config config;
+            config.update_config(cfg);
+            kotekan::bufferContainer bc;
+            std::vector<std::unique_ptr<Buffer>> bufs = buffers_of(cfg, bc);
+            Buffer* buf = bc.get_buffer("gnss0_rec_buf");
+            GnssGpuRecordAssemble rec_host(config, "/gnss0_records", bc);
+            GnssCoherentCombiner cmb_host(config, "/gnss0_combine", bc);
+            GnssTelemPack tel_host(config, "/gnss0_telem", bc);
+            const std::vector<std::string> producers = {"/gnss0_records/w0", "/gnss0_records/w1"};
+            const std::vector<std::string> consumers = {"/gnss0_a_telem_pack",
+                                                        "/gnss0_b_telem_pack", "/gnss0_c_n2combine",
+                                                        "/gnss0_c_telem_pack", "/gnss0_combine/w0"};
+            std::vector<std::string> p = buf->get_producer_names(), c = buf->get_consumer_names();
+            std::sort(p.begin(), p.end());
+            std::sort(c.begin(), c.end());
+            std::string s;
+            for (const auto& n : p)
+                s += " p:" + n;
+            for (const auto& n : c)
+                s += " c:" + n;
+            if (p != producers || c != consumers)
+                throw FatalError("gnss0_rec_buf" + s);
+        }),
+        "");
+}
+
+// A combine or telemetry worker checks each frame's directory against its host's rec_rows before
+// it reads a row, and FATALs on any field that differs, a row missing or a row more.
+BOOST_AUTO_TEST_CASE(rec_dir_mismatch_is_fatal) {
+    const std::string who = "/gnss0_combine/w0: frame 0 of gnss0_rec_buf";
+    BOOST_CHECK_EQUAL(fatal_of([] {
+                          const std::string m =
+                              feed_rec_frame(rec_config(ABC_REC, true, true, true), ABC_REC);
+                          if (!m.empty())
+                              throw FatalError(m);
+                      }),
+                      "");
+    // Each field of row b in the producer's directory: the field, the value planted, and the
+    // host's own.
+    const gnss::RecRow& b = ABC_REC[1];
+    const std::vector<std::tuple<std::string, int64_t gnss::RecRow::*, int64_t, int64_t>> fields = {
+        {"chain_id", &gnss::RecRow::chain_id, 9, b.chain_id},
+        {"n_prn", &gnss::RecRow::n_prn, 2, b.n_prn},
+        {"n_chan", &gnss::RecRow::n_chan, 0, b.n_chan},
+        {"offset", &gnss::RecRow::offset, b.offset + 64, b.offset},
+        {"bytes", &gnss::RecRow::bytes, b.bytes - 4, b.bytes}};
+    for (const auto& [field, member, planted, own] : fields) {
+        const std::string msg = fatal_of([&, member = member, planted = planted] {
+            throw FatalError(
+                feed_rec_frame(rec_config(ABC_REC, true, false, true), ABC_REC, [&](uint8_t* f) {
+                    gnss::RecRow r;
+                    uint8_t* at = f + 16 + sizeof(r);
+                    std::memcpy(&r, at, sizeof(r));
+                    r.*member = planted;
+                    std::memcpy(at, &r, sizeof(r));
+                }));
+        });
+        BOOST_CHECK_EQUAL(msg, fmt::format("{:s}: directory row 1 has {:s} {:d}, this host's row 1 "
+                                           "(chain_id 2) has {:d}",
+                                           who, field, planted, own));
+    }
+    // A row missing, a row more, and no directory at all.
+    const std::vector<gnss::RecRow> two = rec_layout({3, 1});
+    const std::vector<gnss::RecRow> four = rec_layout({3, 1, 2, 5});
+    BOOST_CHECK_EQUAL(
+        fatal_of(
+            [&] { throw FatalError(feed_rec_frame(rec_config(ABC_REC, true, false, true), two)); }),
+        who + " lists 2 rows (chain_id 1, 2), this host reads 3 (chain_id 1, 2, 3)");
+    BOOST_CHECK_EQUAL(fatal_of([&] {
+                          json cfg = rec_config(ABC_REC, true, false, true);
+                          cfg["gnss0_rec_buf"]["frame_size"] =
+                              four.back().offset + four.back().bytes;
+                          throw FatalError(feed_rec_frame(cfg, four));
+                      }),
+                      who
+                          + " lists 4 rows (chain_id 1, 2, 3, 4), this host reads 3 (chain_id 1, "
+                            "2, 3)");
+    BOOST_CHECK_EQUAL(fatal_of([&] {
+                          throw FatalError(
+                              feed_rec_frame(rec_config(ABC_REC, true, false, true), ABC_REC,
+                                             [](uint8_t* f) { std::memset(f, 0, 8); }));
+                      }),
+                      who + " starts with 0x0, not a row directory");
+    // The telemetry host checks it too.
+    BOOST_CHECK_EQUAL(
+        fatal_of(
+            [&] { throw FatalError(feed_rec_frame(rec_config(ABC_REC, false, true, true), two)); }),
+        "/gnss0_telem/w0: frame 0 of gnss0_rec_buf lists 2 rows (chain_id 1, 2), "
+        "this host reads 3 (chain_id 1, 2, 3)");
+}
+
+// A frame of a GPU half's record buffer reaches its consumers only once every producer, each a
+// record host's worker, has marked it full, with peek_hold as the generator sets it. A worker may
+// run ahead of another, but never into a frame of its own it has marked and that is not yet
+// full and taken.
+BOOST_AUTO_TEST_CASE(rec_buf_frame_is_full_once_every_worker_has_marked_it) {
+    Buffer buf(4, 64, nullptr, "gnss0_rec_buf", "standard", 0, false, false, std::vector<int>{},
+               false);
+    buf.enable_peek_hold();
+    buf.register_producer("w0");
+    buf.register_producer("w1");
+    buf.register_consumer("c");
+    auto soon = [] {
+        timespec t;
+        clock_gettime(CLOCK_REALTIME, &t);
+        t.tv_nsec += 50000000;
+        if (t.tv_nsec >= 1000000000) {
+            t.tv_nsec -= 1000000000;
+            t.tv_sec += 1;
+        }
+        return t;
+    };
+    // w0 marks frames 0-3, a whole lap ahead of w1; none is full.
+    for (int id = 0; id < 4; ++id) {
+        BOOST_REQUIRE(buf.wait_for_empty_frame("w0", id) != nullptr);
+        buf.mark_frame_full("w0", id);
+        BOOST_CHECK_EQUAL(buf.wait_for_full_frame_timeout("c", id, soon()), 1);
+    }
+    BOOST_CHECK_EQUAL(buf.get_num_full_frames(), 0);
+    // w0 cannot take frame 0 again until w1 has marked it and the consumer released it.
+    std::atomic<bool> lapped{false};
+    std::thread w0([&] {
+        if (buf.wait_for_empty_frame("w0", 0) != nullptr)
+            lapped = true;
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    BOOST_CHECK(!lapped);
+    BOOST_REQUIRE(buf.wait_for_empty_frame("w1", 0) != nullptr);
+    buf.mark_frame_full("w1", 0);
+    BOOST_CHECK_EQUAL(buf.wait_for_full_frame_timeout("c", 0, soon()), 0);
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    BOOST_CHECK(!lapped);
+    buf.mark_frame_empty("c", 0);
+    // peek_hold keeps frame 0, the newest full one, until frame 1 is full.
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    BOOST_CHECK(!lapped);
+    BOOST_REQUIRE(buf.wait_for_empty_frame("w1", 1) != nullptr);
+    buf.mark_frame_full("w1", 1);
+    w0.join();
+    BOOST_CHECK(lapped);
+    BOOST_CHECK_EQUAL(buf.wait_for_full_frame_timeout("c", 1, soon()), 0);
 }

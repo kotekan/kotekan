@@ -493,6 +493,11 @@ void RecordChain::check_out_buf(const Buffer* out_buf) {
     }
 }
 
+void RecordChain::check_rec_row(const gnss::RecRow& r) const {
+    gnss::check_rec_row(_name, r, (int)_prns.size(), _n_elements,
+                        _chan_export ? (int)_spec_freq_ids.size() : 0);
+}
+
 void RecordChain::check_cube_buf(const std::string& cbuf, const Buffer* cube_buf) {
     const size_t need = gnss::cube_frame_bytes(_cube_max_prn, _cube_max_bins, _n_elements);
     if ((size_t)cube_buf->frame_size < need) {

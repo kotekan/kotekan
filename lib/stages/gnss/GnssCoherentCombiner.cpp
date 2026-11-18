@@ -4,6 +4,7 @@
 #include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
 #include "gnssHostRows.hpp"     // for host_rows, host_workers, rest_register_unique, run_rows
 
+#include <algorithm>     // for replace
 #include <functional>    // for bind
 #include <set>           // for set
 #include <string>        // for string
@@ -17,7 +18,15 @@ using kotekan::Stage;
 REGISTER_KOTEKAN_STAGE(GnssCoherentCombiner);
 
 const std::vector<std::string> GnssCoherentCombiner::ROW_KEYS = {"in_bufs", "n_prn", "chain"};
-const std::vector<std::string> GnssCoherentCombiner::ROW_ONLY_KEYS = {"out_buf"};
+const std::vector<std::string> GnssCoherentCombiner::ROW_ONLY_KEYS = {"out_buf", "rec_row"};
+
+std::vector<std::string> GnssCoherentCombiner::row_keys(Config& config,
+                                                        const std::string& unique_name) {
+    std::vector<std::string> keys = ROW_KEYS;
+    if (config.exists(unique_name, "in_bufs"))
+        std::replace(keys.begin(), keys.end(), std::string("in_bufs"), std::string("rec_row"));
+    return keys;
+}
 
 GnssCoherentCombiner::Row::Row(Config& config, const gnss::HostRow& row) :
     chain(config, row.cfg_path, row.name,
@@ -27,8 +36,12 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
                                            bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container,
           std::bind(&GnssCoherentCombiner::main_thread, this)),
-    _host_rows(gnss::host_rows(config, unique_name, "_n2combine", ROW_KEYS, ROW_ONLY_KEYS)),
+    _host_rows(gnss::host_rows(config, unique_name, "_n2combine", row_keys(config, unique_name),
+                               ROW_ONLY_KEYS)),
     _workers(gnss::host_workers(config, unique_name, _host_rows)) {
+    // A host block's in_bufs are every row's: the GPU half's record buffer.
+    const bool shared = !_host_rows[0].key.empty() && config.exists(unique_name, "in_bufs");
+    std::vector<gnss::RecRow> rec_rows;
     for (const gnss::HostRow& hr : _host_rows) {
         Row& row = _rows.emplace_back(config, hr);
         // One record stream: the node's assembler sums every covering channel, and the broker
@@ -40,6 +53,20 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
             return;
         }
         row.in_buf = buffer_container.get_buffer(in_bufs[0]);
+        if (shared) {
+            if (config.exists(hr.cfg_path, "in_bufs"))
+                FATAL_ERROR("{:s}: row {:s} sets in_bufs, which the host block sets for every row",
+                            unique_name, hr.key);
+            const gnss::RecRow rec =
+                gnss::rec_row(config.get<nlohmann::json>(hr.cfg_path, "rec_row"));
+            gnss::check_rec_row(hr.name, rec, row.chain.n_prn(), row.chain.n_elements(),
+                                (int)rec.n_chan);
+            row.rec_offset = rec.offset;
+            rec_rows.push_back(rec);
+        } else if (config.exists(hr.cfg_path, "rec_row")) {
+            FATAL_ERROR("{:s}: rec_row is set, but the host block sets no in_bufs for its rows",
+                        hr.name);
+        }
         if (config.exists(hr.cfg_path, "out_buf"))
             row.out_buf =
                 buffer_container.get_buffer(config.get<std::string>(hr.cfg_path, "out_buf"));
@@ -49,8 +76,17 @@ GnssCoherentCombiner::GnssCoherentCombiner(Config& config, const std::string& un
         if (!row.out_buf)
             row.scratch.assign((size_t)row.chain.n_prn() * row.chain.rec_stride(), 0.0f);
     }
-    for (const gnss::HostWorker& w : _workers)
-        register_inputs(w);
+    if (shared) {
+        _rec_buf = _rows[0].in_buf;
+        _rec_dir = std::make_unique<gnss::RecDir>(unique_name, rec_rows, _rec_buf);
+        for (Row& row : _rows)
+            row.dir_row = _rec_dir->find((int64_t)row.rec_offset);
+        for (const gnss::HostWorker& w : _workers)
+            _rec_buf->register_consumer(consumer_name(w));
+    } else {
+        for (const gnss::HostWorker& w : _workers)
+            register_inputs(w);
+    }
 }
 
 void GnssCoherentCombiner::register_inputs(const gnss::HostWorker& w) {
@@ -101,10 +137,34 @@ void GnssCoherentCombiner::run_pinned(size_t w) {
 
 void GnssCoherentCombiner::run_worker(size_t w) {
     const gnss::HostWorker& wk = _workers[w];
+    if (_rec_dir) {
+        run_frames(wk);
+        return;
+    }
     while (!stop_thread)
         for (size_t r : wk.rows)
             if (!take_record(r, consumer_name(wk)))
                 return;
+}
+
+void GnssCoherentCombiner::run_frames(const gnss::HostWorker& w) {
+    const std::string& consumer = consumer_name(w);
+    std::vector<bool> emit(w.rows.size());
+    for (int id = 0; !stop_thread; id = (id + 1) % _rec_buf->num_frames) {
+        const uint8_t* f = _rec_buf->wait_for_full_frame(consumer, id);
+        if (f == nullptr)
+            return;
+        _rec_dir->check(consumer, id, f);
+        for (size_t k = 0; k < w.rows.size(); ++k) {
+            const Row& row = _rows[w.rows[k]];
+            emit[k] = ingest_record(w.rows[k], (const float*)(f + row.rec_offset),
+                                    _rec_dir->wstart(f, row.dir_row));
+        }
+        _rec_buf->mark_frame_empty(consumer, id);
+        for (size_t k = 0; k < w.rows.size(); ++k)
+            if (!finish_record(w.rows[k], emit[k]))
+                return;
+    }
 }
 
 bool GnssCoherentCombiner::take_record(size_t r, const std::string& consumer) {

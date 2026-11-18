@@ -6,12 +6,14 @@
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "gnssHostRows.hpp"
+#include "gnssRecRows.hpp"
 #include "gnssTelemChain.hpp"
 #include "prometheusMetrics.hpp" // for Counter
 #include "visUtil.hpp"           // for frameID
 
 #include <cstddef>
 #include <deque>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -49,6 +51,11 @@
  * taking one record of each of its rows in turn and reading their in_bufs as one consumer, named
  * for its row when it runs one, else `<unique_name>/w<k>`.
  *
+ * With an in_buf on the host block every row reads that one buffer, a GPU half's record buffer
+ * (GnssGpuRecordAssemble): each frame holds one record of every row, each at its @c rec_row,
+ * after a directory that each worker checks against its rows' before it reads a frame. A
+ * worker then takes each frame whole, packing each of its rows' records in turn.
+ *
  * Each row writes its own out_buf, or with an out_buf on the host block every row writes that
  * one, a frame at a time, and GnssTelemSend ships each frame at its own length. Rows that share
  * an out_buf never wait for it: a window that finds the next frame still full is dropped and
@@ -83,11 +90,15 @@
  * @conf chains            Map (optional). One row per entry; each sets ROW_KEYS itself, and
  *                           out_buf unless this block sets it, and reads every other key from
  *                           this block. No two rows may carry one chain and inst.
+ * @conf rec_row           With an in_buf on the host block, each row's, and only a row's: its
+ *                           block in each frame, {chain_id, n_prn, n_chan, offset, bytes}
+ *                           (gnss::RecRow), which the frame's directory must list.
  * @conf workers           List (optional, with chains). Worker k, `{rows: [row keys],
  *                           cpu_affinity: [cores]}`, runs its rows in that order on one thread
  *                           bound to its cores. Every row is in exactly one worker, and the rows
  *                           of a worker read distinct in_bufs. A row whose record has not come
- *                           holds the others of its worker.
+ *                           holds the others of its worker; the rows reading a GPU half's record
+ *                           buffer get their records together.
  *
  * @par Metrics
  * @metric kotekan_gnss_telem_dropped_frames_total
@@ -105,6 +116,8 @@ public:
 
     /// Keys each row of a @c chains block must set itself.
     static const std::vector<std::string> ROW_KEYS;
+    /// Keys only a row of a @c chains block may set.
+    static const std::vector<std::string> ROW_ONLY_KEYS;
 
 private:
     /// An out_buf and its writer; the rows that share it take turns.
@@ -122,6 +135,8 @@ private:
         Out* out;
         /// Windows dropped on a full shared out_buf; nullptr for a row's own out_buf.
         kotekan::prometheus::Counter* dropped = nullptr;
+        /// With a GPU half's record buffer: its block's offset and its row of the directory.
+        size_t rec_offset = 0, dir_row = 0;
         gnss::TelemChain chain;
     };
     const std::vector<gnss::HostRow> _host_rows;
@@ -132,9 +147,12 @@ private:
     const std::vector<gnss::HostWorker> _workers;
     /// The REST paths this host registered.
     std::vector<std::string> _rest_paths;
+    /// With an in_buf on the host block: that buffer and its directory.
+    Buffer* _rec_buf = nullptr;
+    std::unique_ptr<gnss::RecDir> _rec_dir;
 
-    /// The keys each row sets itself: ROW_KEYS, and out_buf unless the host block of
-    /// @p unique_name sets it.
+    /// The keys each row sets itself: ROW_KEYS, with rec_row for in_buf when the host block of
+    /// @p unique_name sets it, and out_buf unless it sets that.
     static std::vector<std::string> row_keys(kotekan::Config& config,
                                              const std::string& unique_name);
     /// Register worker @p w as the consumer of its rows' in_bufs.
@@ -142,6 +160,9 @@ private:
     /// Worker @p w's consumer and thread name: its row's name when it runs one, else its own.
     const std::string& consumer_name(const gnss::HostWorker& w) const;
     void run_worker(size_t w);
+    /// As worker @p w, take each frame of the GPU half's record buffer and pack its rows'
+    /// records. Returns when shutting down.
+    void run_frames(const gnss::HostWorker& w);
     /// run_worker on a thread of its own, counted among the stage's threads.
     void run_pinned(size_t w);
     /// Pack row @p row's next record, reading it as consumer @p consumer, and write its window
