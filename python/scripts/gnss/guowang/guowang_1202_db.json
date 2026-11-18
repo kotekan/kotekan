@@ -4555,7 +4555,7 @@
   },
   {
    "start": "2026-11-13T23:45:58Z",
-   "end": null,
+   "end": "2026-11-18T17:47:40Z",
    "note": "sky input lost again on every instance at once between 23:45:57 and 23:45:58Z (rf_chan median pw 1.48 -> 0.15); the analog chains' power supply failed; still dark 11-16 (gnss guowang)"
   }
  ],
