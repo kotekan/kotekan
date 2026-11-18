@@ -47,12 +47,12 @@ static std::vector<double> trial_dms() {
 // frames of 32 time samples. 64 channels from 400 MHz: DM 100 sweeps 116 samples.
 struct SearchPipeline {
     static constexpr int halves = 4, T = 32, F = 16, min_freq_id = 2048, period = 256;
-    static constexpr int frames = 8, sum_samples = 256;
+    static constexpr int frames = 8, sum_samples = 256, snr_passes = 32;
     const std::string path, dm_path;
     const std::vector<double> dms = trial_dms();
     kotekan::Config config;
     std::shared_ptr<metadataPool> pool;
-    Buffer input, sums;
+    Buffer input, sums, snr;
     kotekan::bufferContainer buffers;
     std::unique_ptr<kotekan::Stage> stage;
     std::mt19937 rng{1};
@@ -73,7 +73,9 @@ struct SearchPipeline {
         input(frames, T * F * sizeof(uint16_t), pool, "input", "standard", 0, false, false,
               std::vector<int>{}, true),
         sums(4, sum_samples * dms.size() * sizeof(float), pool, "sums", "standard", 0, false, false,
-             std::vector<int>{}, true) {
+             std::vector<int>{}, true),
+        snr(4, snr_passes * dms.size() * sizeof(float), pool, "snr", "standard", 0, false, false,
+            std::vector<int>{}, true) {
         // Force metadata registration from the static library.
         chordMetadata metadata;
         std::remove(path.c_str());
@@ -82,6 +84,7 @@ struct SearchPipeline {
                               {"search",
                                {{"in_buf", "input"},
                                 {"out_buf", "sums"},
+                                {"snr_buf", "snr"},
                                 {"freq_id_base", min_freq_id},
                                 {"num_local_freq", halves * F},
                                 {"num_feeds", 128},
@@ -106,8 +109,11 @@ struct SearchPipeline {
             kotekan::uint16, "incoherent_beam_power", {T, F}, {"Trfi", "F"}, {period, 1}));
         buffers.add_buffer("input", &input);
         buffers.add_buffer("sums", &sums);
+        buffers.add_buffer("snr", &snr);
         input.register_producer("test");
         sums.register_consumer("test");
+        // As on the telescope, nothing consumes the image of recent passes: it is peeked.
+        snr.enable_peek_hold();
         auto makers = kotekan::StageFactoryRegistry::get_registered_stages();
         stage.reset(makers.at("IncoherentBeamSearch")->create(config, "/search", buffers));
         sums_thread = std::thread(&SearchPipeline::read_sums, this);
@@ -236,6 +242,29 @@ BOOST_AUTO_TEST_CASE(finds_a_pulse_and_restarts_after_a_jump) {
         BOOST_CHECK_EQUAL(p.largest_dm, 50);
         BOOST_CHECK_EQUAL(p.largest_seq, seq0 + (8000 + sweep) * SearchPipeline::period);
     }
+
+    // The image of recent passes, one row per pass and the newest last, has the pulse at
+    // DM 100. Its first row starts snr_passes passes before the end of the newest pass.
+    std::vector<uint8_t> image_bytes;
+    std::shared_ptr<metadataObject> image_meta;
+    BOOST_REQUIRE_GE(p.snr.peek_newest_full_frame(image_bytes, SIZE_MAX, image_meta), 0);
+    const size_t num_dm = p.dms.size();
+    BOOST_REQUIRE_EQUAL(image_bytes.size(), SearchPipeline::snr_passes * num_dm * sizeof(float));
+    const float* const image = (const float*)image_bytes.data();
+    size_t brightest = 0;
+    for (size_t i = 0; i < SearchPipeline::snr_passes * num_dm; ++i)
+        if (image[i] > image[brightest])
+            brightest = i;
+    BOOST_CHECK_GT(image[brightest], 11);
+    BOOST_CHECK_EQUAL(brightest % num_dm, 50);
+    const int64_t pass = SearchPipeline::sum_samples * SearchPipeline::period;
+    const int64_t image_seq =
+        std::static_pointer_cast<chordMetadata>(image_meta)->get_fpga_seq_num();
+    const int64_t row_end = image_seq + (int64_t)(brightest / num_dm + 1) * pass;
+    const int64_t found = seq0 + int64_t(8000) * SearchPipeline::period;
+    // The row whose pass searched the pulse ends within two passes after its arrival.
+    BOOST_CHECK_GT(row_end, found);
+    BOOST_CHECK_LE(row_end, found + 3 * pass);
 
     // One round of frames 200 s ahead (a sender with a wrong time) is dropped, and the stream
     // goes on.
