@@ -307,6 +307,11 @@ incoherent_beam_search:
     num_feeds: num_elements
     dm_min: 3
     dm_knee: 100
+    # Candidates are listed from 7 sigma at every DM, to learn the real false-alarm rate and
+    # to see the pulsars in the beam. Thermal noise alone should give one or two a day. This
+    # is not a level for triggering a baseband dump: that wants DM >= 100 and a rate set from
+    # these candidates.
+    threshold: 7
     # CHORD's static RFI mask, chord_util.rfi.BAD_FREQUENCIES["chord"] (bdfd697), with two
     # changes for a search for pulses: all of 1010-1130 MHz, where aircraft transmit in
     # pulses, in place of its two Mode S lines, and GNSS L1, which is above its data.
