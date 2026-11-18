@@ -64,7 +64,7 @@
  *                          payload frames must cover one window plus the receive stage's
  *                          posted frames plus slack.
  * @conf noise_slots        Int, default 1024. Slots in the noise buffer.
- * @conf noise_mean         Float, default 2048. Mean of the noise samples, in ADC counts.
+ * @conf noise_mean         Float, default 0. Mean of the noise samples, in ADC counts.
  * @conf noise_rms          Float, default 100. RMS of the noise samples, in ADC counts.
  * @conf seed               Int, default 42. Noise fill and slot-choice PRNG seed.
  * @conf max_gap_windows    Int, default 1. Whole windows of pure noise to synthesize inside

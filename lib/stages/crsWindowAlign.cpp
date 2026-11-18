@@ -52,7 +52,7 @@ crsWindowAlign::crsWindowAlign(Config& config, const std::string& unique_name,
     samples_per_packet = config.get_default<uint32_t>(unique_name, "samples_per_packet", 4096);
     adc_id = config.get_default<uint32_t>(unique_name, "adc_id", 0);
     noise_slots = config.get_default<uint32_t>(unique_name, "noise_slots", 1024);
-    noise_mean = config.get_default<float>(unique_name, "noise_mean", 2048.0f);
+    noise_mean = config.get_default<float>(unique_name, "noise_mean", 0.0f);
     noise_rms = config.get_default<float>(unique_name, "noise_rms", 100.0f);
     seed = config.get_default<uint32_t>(unique_name, "seed", 42);
     max_gap_windows = config.get_default<uint32_t>(unique_name, "max_gap_windows", 1);
@@ -110,7 +110,7 @@ bool crsWindowAlign::fill_noise() {
     for (size_t s = 0; s < noise_slots; s++) {
         uint8_t* slot = frame + s * geometry.payload_slot;
         for (uint32_t k = 0; k < samples_per_packet; k++)
-            pack12(slot, k, (uint16_t)std::clamp(lround(dist(rng)), 0l, 4095l));
+            pack12(slot, k, (int16_t)std::clamp(lround(dist(rng)), -2048l, 2047l));
     }
     noise_base = frame;
     noise_buf->mark_frame_full(unique_name, 0);

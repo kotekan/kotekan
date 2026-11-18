@@ -55,7 +55,7 @@ crsPacketGen::crsPacketGen(Config& config, const std::string& unique_name,
     crate_id = config.get_default<uint32_t>(unique_name, "crate_id", 0);
     slot_id = config.get_default<uint32_t>(unique_name, "slot_id", 0);
     link_id = config.get_default<uint32_t>(unique_name, "link_id", 0);
-    sample_mean = config.get_default<int>(unique_name, "sample_mean", 2048);
+    sample_mean = config.get_default<int>(unique_name, "sample_mean", 0);
     tone_bin = config.get_default<std::vector<int>>(unique_name, "tone_bin", {});
     tone_amplitude = config.get_default<std::vector<float>>(unique_name, "tone_amplitude", {});
     noise_rms = config.get_default<float>(unique_name, "noise_rms", 0.0f);
@@ -132,7 +132,7 @@ void crsPacketGen::main_thread() {
                 uint8_t* data = payload + j * geometry.payload_slot;
                 for (uint32_t k = 0; k < samples_per_packet; k++) {
                     const long v = lround(tone[adc][k] + (noise_rms > 0 ? noise(rng) : 0.0f));
-                    pack12(data, k, (uint16_t)std::clamp(v, 0l, 4095l));
+                    pack12(data, k, (int16_t)std::clamp(v, -2048l, 2047l));
                 }
             }
             initialized[frame_id] = true;

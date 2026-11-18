@@ -6,7 +6,7 @@
 #include <boost/test/included/unit_test.hpp>
 #include <random>   // for mt19937, uniform_int_distribution
 #include <stddef.h> // for offsetof, size_t
-#include <stdint.h> // for uint8_t, uint16_t
+#include <stdint.h> // for uint8_t, int16_t
 #include <string.h> // for memset
 #include <vector>   // for vector
 
@@ -48,15 +48,23 @@ BOOST_AUTO_TEST_CASE(pack12_known_bytes) {
     BOOST_CHECK_EQUAL(bytes[2], 0x45);
     BOOST_CHECK_EQUAL(unpack12(bytes, 0), 0x123);
     BOOST_CHECK_EQUAL(unpack12(bytes, 1), 0x456);
+    // Two's complement: (-1, -2048) pack to bytes ff 0f 80.
+    pack12(bytes, 0, -1);
+    pack12(bytes, 1, -2048);
+    BOOST_CHECK_EQUAL(bytes[0], 0xff);
+    BOOST_CHECK_EQUAL(bytes[1], 0x0f);
+    BOOST_CHECK_EQUAL(bytes[2], 0x80);
+    BOOST_CHECK_EQUAL(unpack12(bytes, 0), -1);
+    BOOST_CHECK_EQUAL(unpack12(bytes, 1), -2048);
 }
 
 BOOST_AUTO_TEST_CASE(pack12_round_trip_all_values) {
     uint8_t bytes[3];
-    for (uint16_t v = 0; v < 4096; v++) {
+    for (int16_t v = -2048; v < 2048; v++) {
         memset(bytes, 0xa5, sizeof(bytes));
         pack12(bytes, 0, v);
         BOOST_REQUIRE_EQUAL(unpack12(bytes, 0), v);
-        BOOST_REQUIRE_EQUAL(unpack12(bytes, 1), 0xa5a); // neighbor unchanged
+        BOOST_REQUIRE_EQUAL(unpack12(bytes, 1), 0xa5a - 0x1000); // neighbor unchanged
         memset(bytes, 0xa5, sizeof(bytes));
         pack12(bytes, 1, v);
         BOOST_REQUIRE_EQUAL(unpack12(bytes, 1), v);
@@ -68,9 +76,9 @@ BOOST_AUTO_TEST_CASE(pack12_payload_round_trip) {
     // A full 4096-sample / 6144-byte payload survives pack/unpack in random write order.
     const size_t n = 4096;
     std::vector<uint8_t> payload(n * 3 / 2, 0);
-    std::vector<uint16_t> samples(n);
+    std::vector<int16_t> samples(n);
     std::mt19937 rng(7);
-    std::uniform_int_distribution<uint16_t> dist(0, 4095);
+    std::uniform_int_distribution<int16_t> dist(-2048, 2047);
     for (size_t i = 0; i < n; i++)
         samples[i] = dist(rng);
     for (size_t i = 0; i < n; i += 2) // even then odd of each pair

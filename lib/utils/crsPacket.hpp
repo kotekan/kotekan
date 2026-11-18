@@ -9,7 +9,7 @@
 #include "udpPacket.hpp" // for udp_packet_headers
 
 #include <stddef.h> // for size_t
-#include <stdint.h> // for uint8_t, uint16_t, uint64_t
+#include <stdint.h> // for uint8_t, int16_t, uint16_t, uint64_t
 
 #define CRS_PACKET_COOKIE 0xCF
 
@@ -56,19 +56,18 @@ inline const crs_packet_header* crs_header_of(const uint8_t* slot) {
 }
 
 /**
- * 12-bit unsigned samples packed two per three bytes, LSB first: sample 2i is
- * byte 3i plus the low nibble of byte 3i+1, sample 2i+1 is the high nibble of
- * byte 3i+1 plus byte 3i+2.
+ * 12-bit two's complement samples (-2048..2047) packed two per three bytes, LSB
+ * first: sample 2i is byte 3i plus the low nibble of byte 3i+1, sample 2i+1 is
+ * the high nibble of byte 3i+1 plus byte 3i+2.
  */
-inline uint16_t unpack12(const uint8_t* src, size_t i) {
+inline int16_t unpack12(const uint8_t* src, size_t i) {
     const uint8_t* p = src + 3 * (i / 2);
-    if (i % 2 == 0)
-        return p[0] | (uint16_t)(p[1] & 0x0f) << 8;
-    return p[1] >> 4 | (uint16_t)p[2] << 4;
+    const int v = i % 2 == 0 ? p[0] | (p[1] & 0x0f) << 8 : p[1] >> 4 | p[2] << 4;
+    return (int16_t)((v ^ 0x800) - 0x800);
 }
 
 /// Store the low 12 bits of @p v as sample @p i of @p dst. See unpack12 for the layout.
-inline void pack12(uint8_t* dst, size_t i, uint16_t v) {
+inline void pack12(uint8_t* dst, size_t i, int16_t v) {
     uint8_t* p = dst + 3 * (i / 2);
     if (i % 2 == 0) {
         p[0] = v & 0xff;

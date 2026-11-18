@@ -18,7 +18,7 @@
  *
  * Slot j of every frame carries ADC `j % num_adcs`: its packets get `stream_id` = ADC number,
  * UDP destination port `dst_port_base` + ADC number, and a seq_number counting that ADC's
- * samples (+samples_per_packet per packet). Payloads are 12-bit unsigned samples (pack12): a
+ * samples (+samples_per_packet per packet). Payloads are 12-bit signed samples (pack12): a
  * per-ADC tone of `tone_bin` cycles per packet plus optional Gaussian noise around
  * `sample_mean`. Headers and payloads are written the first time each ring frame is used;
  * later passes store only the seq_number, one 8-byte write per packet, so the stage cannot be
@@ -56,7 +56,7 @@
  * @conf crate_id           Int, default 0. source_id field.
  * @conf slot_id            Int, default 0. source_id field.
  * @conf link_id            Int, default 0. source_id field.
- * @conf sample_mean        Int, default 2048. Mid-scale of the 12-bit samples.
+ * @conf sample_mean        Int, default 0. Mean of the 12-bit samples, in ADC counts.
  * @conf tone_bin           List of int, default empty (no tone). Per-ADC tone, in cycles per
  *                          packet; num_adcs entries.
  * @conf tone_amplitude     List of float, default empty. Per-ADC tone amplitude in ADC counts;

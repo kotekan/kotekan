@@ -19,7 +19,7 @@
  * releases payload frames with the cursor protocol of fftWindowJob.hpp, gathers the window's
  * samples through the job's lookup table (which may point into the noise buffer), and emits one
  * output frame of the fft_length/2 quantized bins of the spectrum convention documented there:
- * x[n] = (raw - 2048) / 2048, X[k] = (2/fft_length) * DFT (DC kept, Nyquist dropped), bin k
+ * x[n] = raw / 2048, X[k] = (2/fft_length) * DFT (DC kept, Nyquist dropped), bin k
  * stored as int4x2_swapped_withoffset of gain * X[k] (round half to even, clamp [-7, 7], real
  * in the high nibble). Output frames pair one-to-one and in order with crsHeaderGen's header
  * frames; ibvUdpSend consumes the pair by frame id.

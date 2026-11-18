@@ -89,10 +89,9 @@ struct FEnginePipeline {
         BOOST_REQUIRE(slots);
         for (uint32_t i = 0; i < num_packets; i++)
             for (uint32_t k = 0; k < samples_per_packet; k++)
-                pack12(
-                    slots + i * payload_slot, k,
-                    (uint16_t)lround(
-                        2048.0 + amplitude * cos(2.0 * M_PI * tone_bin * k / samples_per_packet)));
+                pack12(slots + i * payload_slot, k,
+                       (int16_t)lround(amplitude
+                                       * cos(2.0 * M_PI * tone_bin * k / samples_per_packet)));
         payload.mark_frame_full("test", 0);
 
         auto* j = reinterpret_cast<fft_window_job*>(job.wait_for_empty_frame("test", 0));

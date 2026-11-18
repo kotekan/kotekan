@@ -24,13 +24,13 @@
  * nothing beyond the frames that exist: the payload buffer must hold at least the frames one
  * window spans plus what the receive stage posts ahead, plus slack.
  *
- * Output spectrum convention, common to every implementation: with x[n] = (raw[n] - 2048)
- * / 2048 the window's samples, the spectrum is X[k] = (2 / fft_length) * sum_n x[n] *
- * exp(-2 pi i k n / fft_length) for k = 0 .. fft_length/2 - 1 (DC kept as bin 0, Nyquist
- * dropped), so a tone of amplitude A ADC half-scales lands at |X[k]| = A for any
- * fft_length. Bin k is quantized as int4x2_swapped_withoffset of gain[k] * X[k]: real and
- * imaginary parts rounded half to even, clamped to [-7, 7], offset by +8, real in the high
- * nibble (0x88 is complex zero).
+ * Output spectrum convention, common to every implementation: with x[n] = raw[n] / 2048 the
+ * window's samples (raw the 12-bit two's complement sample), the spectrum is X[k] =
+ * (2 / fft_length) * sum_n x[n] * exp(-2 pi i k n / fft_length) for k = 0 .. fft_length/2 - 1
+ * (DC kept as bin 0, Nyquist dropped), so a tone of amplitude A ADC half-scales lands at
+ * |X[k]| = A for any fft_length. Bin k is quantized as int4x2_swapped_withoffset of
+ * gain[k] * X[k]: real and imaginary parts rounded half to even, clamped to [-7, 7], offset by
+ * +8, real in the high nibble (0x88 is complex zero).
  */
 #ifndef FFT_WINDOW_JOB_HPP
 #define FFT_WINDOW_JOB_HPP

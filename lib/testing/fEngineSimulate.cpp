@@ -117,7 +117,7 @@ void fEngineSimulate::main_thread() {
             const uint8_t* slot = reinterpret_cast<const uint8_t*>((uintptr_t)lut[i]);
             float* dst = samples + (size_t)i * samples_per_packet;
             for (uint32_t k = 0; k < samples_per_packet; k++)
-                dst[k] = ((float)unpack12(slot, k) - 2048.0f) / 2048.0f;
+                dst[k] = unpack12(slot, k) / 2048.0f;
         }
         fftwf_execute(plan);
 
