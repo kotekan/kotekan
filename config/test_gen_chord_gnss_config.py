@@ -782,6 +782,38 @@ def test_bad_inputs_reach_the_gnss_branch():
         g.choco_bad_inputs, g.live_bad_inputs, g.gnss_arraymap.manual_bad_inputs = real
 
 
+
+def test_search_tap_follows_the_reference_element():
+    """The acquisition search taps the reference element: one knob, so the search (which
+    bootstraps every chain's receiver clock) never sits on a different, possibly dark, feed
+    from the one the record headers start from (11-18: element 0 dark, the whole fleet blind)."""
+    cfg = node_cfg()
+    real = g.rf_monitor_channels
+    g.rf_monitor_channels = lambda *a, **k: []
+    try:
+        got = {}
+        for ref in (0, 40):
+            blocks = g.build_search_leg(
+                cfg,
+                "cx19",
+                0,
+                [325, 326],
+                argparse.Namespace(
+                    reference_element=ref,
+                    rf_stats_period_s=10.0,
+                    search_host="10.0.0.1",
+                    search_port_base=11040,
+                ),
+            )[0]
+            got[ref] = blocks["gnss0_srch_tap"]["element_offset"]
+    finally:
+        g.rf_monitor_channels = real
+    elem0 = g.live_element_ranges(cfg["array"])[0][0]
+    check(
+        got == {0: elem0, 40: elem0 + 40},
+        "the search tap's element is the reference element (got %s)" % got,
+    )
+
 _ARR128 = {"array": {"live_element_ranges": [[0, 63], [64, 127]]}}
 
 

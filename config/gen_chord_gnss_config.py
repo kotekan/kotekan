@@ -132,10 +132,6 @@ SPECTRUM_RING_DEPTH = 8
 # RF-monitor pass: sample every Nth hop (as the element_power sampler does). 256 of 8192 hops
 # is 32768 samples per channel across the 128 inputs, plenty for a clip fraction.
 RF_STATS_HOP_STRIDE = 32
-# Element, relative to the start of the live range, that the acquisition search runs on.
-# Single-antenna by design: a healthy, high-gain feed.
-SEARCH_ELEMENT = 0
-
 # ElemCal integration time constant (s). The per-element self-cal is warm after ~3 tau of
 # continuous lock, and only then combines the array instead of the reference element alone.
 # 2 s (warm in ~6 s; the stage default is 5) is short enough to rewarm between re-anchors, at
@@ -584,7 +580,10 @@ def build_search_leg(cfg, node, gpu, chan_idx, args, freq_ids=None):
         # A second tap on the same voltage buffer, taking one element: the acquisition search
         # is single-antenna by design, so this is ~57 kB/frame (1.4 MB/s) for 7 channels rather
         # than 1.8 MB/frame for all 32 live elements. Shipped as 4+4b bytes and unpacked on the
-        # far side, 8x less on the wire than complex floats.
+        # far side, 8x less on the wire than complex floats. The element is the reference
+        # element: the search bootstraps the receiver clock for the whole fleet, so a dark
+        # element here blinds every chain, and one knob keeps it on the same live feed the
+        # record headers start from (POST <tap>/set_element moves it live).
         f"{pre}srch_buf": {
             "kotekan_buffer": "standard",
             "metadata_pool": "gnss_pool",
@@ -597,7 +596,7 @@ def build_search_leg(cfg, node, gpu, chan_idx, args, freq_ids=None):
             "out_buf": f"{pre}srch_buf",
             "chan_ids": chan_idx,
             "n_elements": 1,
-            "element_offset": elem0 + SEARCH_ELEMENT,
+            "element_offset": elem0 + args.reference_element,
             "frame_chan_stride": "num_local_freq",
             "frame_elem_stride": "num_elements",
             "fft_length": cfg["fengine"]["fft_length"],
@@ -3642,8 +3641,10 @@ def main():
         help="the reference element, as an index into the live elements: its correlation "
         "fills the record header until a PRN's element-sum cal is warm, and after that it "
         "is the phase anchor of the calibrated element sum. The header is what the "
-        "broker's DLL and carrier loops track. Also a live switch "
-        "(POST <assemble>/set_reference_element)",
+        "broker's DLL and carrier loops track. The acquisition search's single-element tap "
+        "runs on it too. Also a live switch (POST <assemble>/set_reference_element, and "
+        "POST <srch_tap>/set_element for the search). It must be a live feed: a dark one "
+        "leaves the search blind and no chain can lock",
     )
     ap.add_argument(
         "--elem-sum-shared",
@@ -4404,6 +4405,16 @@ def main():
             ),
             file=sys.stderr,
         )
+        _ref = live_element_ranges(cfg["array"])[0][0] + args.reference_element
+        if _ref in bad_input_set(cfg, args):
+            print(
+                "  WARNING   the reference element %d is flagged bad: the record headers start "
+                "from it and the acquisition search taps it, so on a dark element no chain "
+                "locks. Pick a live one (--reference-element, the manifest's "
+                "reference-element) or move it live (POST <assemble>/set_reference_element "
+                "and <srch_tap>/set_element)." % _ref,
+                file=sys.stderr,
+            )
     else:
         print(
             "  WARNING   no source served the bad-input list -- keeping the base's (the stock "
