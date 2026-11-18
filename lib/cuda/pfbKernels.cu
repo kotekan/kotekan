@@ -168,14 +168,15 @@ __global__ static void __launch_bounds__(256)
                                    : q == 1 ? w2[i]
                                    : q == 2 ? w1[K - 1 - i]
                                             : w0[K - 1 - i];
+                // The samples are 12-bit two's complement: sign-extend.
                 acc[2 * i] += (q < 2 ? __low2float(ww) : __high2float(ww))
-                              * ((v[2 * i] - 2048) * (1.0f / 2048.0f));
+                              * (((v[2 * i] ^ 0x800) - 0x800) * (1.0f / 2048.0f));
                 acc[2 * i + 1] += (q < 2 ? __high2float(ww) : __low2float(ww))
-                                  * ((v[2 * i + 1] - 2048) * (1.0f / 2048.0f));
+                                  * (((v[2 * i + 1] ^ 0x800) - 0x800) * (1.0f / 2048.0f));
                 accm[2 * i] += (q < 2 ? __low2float(wm) : __high2float(wm))
-                               * ((vm[2 * i] - 2048) * (1.0f / 2048.0f));
+                               * (((vm[2 * i] ^ 0x800) - 0x800) * (1.0f / 2048.0f));
                 accm[2 * i + 1] += (q < 2 ? __high2float(wm) : __low2float(wm))
-                                   * ((vm[2 * i + 1] - 2048) * (1.0f / 2048.0f));
+                                   * (((vm[2 * i + 1] ^ 0x800) - 0x800) * (1.0f / 2048.0f));
             }
         }
 #pragma unroll

@@ -28,7 +28,7 @@
 #include <cuda_fp16.h> // for __half2, __low2float, __high2float
 #include <cufft.h>     // for cufftPlan1d, cufftExecC2C
 #include <random>      // for mt19937, normal_distribution
-#include <stdint.h>    // for uint8_t, uint16_t, uint64_t, uintptr_t
+#include <stdint.h>    // for uint8_t, int16_t, uint64_t, uintptr_t
 #include <string>      // for string
 #include <sys/mman.h>  // for mmap, munmap, MAP_HUGETLB
 #include <vector>      // for vector
@@ -46,19 +46,19 @@ std::vector<float> round_to_half(const std::vector<float>& proto) {
     return h;
 }
 
-// Raw 12-bit samples with continuous tone phase across windows: 2048 + 2048 * amp *
-// cos(2 pi tone_bins g / n) + gaussian noise, clamped to 0..4095.
-std::vector<uint16_t> make_signal(size_t windows, size_t n, double tone_bins, double amp,
-                                  double noise_rms, uint32_t seed) {
+// Raw 12-bit samples with continuous tone phase across windows: 2048 * amp *
+// cos(2 pi tone_bins g / n) + gaussian noise, clamped to -2048..2047.
+std::vector<int16_t> make_signal(size_t windows, size_t n, double tone_bins, double amp,
+                                 double noise_rms, uint32_t seed) {
     std::mt19937 rng(seed);
     std::normal_distribution<double> noise(0.0, noise_rms);
-    std::vector<uint16_t> raw(windows * n);
+    std::vector<int16_t> raw(windows * n);
     for (size_t g = 0; g < raw.size(); g++) {
-        double v = 2048.0 + 2048.0 * amp * std::cos(2.0 * M_PI * tone_bins * (double)g / (double)n);
+        double v = 2048.0 * amp * std::cos(2.0 * M_PI * tone_bins * (double)g / (double)n);
         if (noise_rms > 0)
             v += noise(rng);
         const long r = std::lround(v);
-        raw[g] = (uint16_t)(r < 0 ? 0 : (r > 4095 ? 4095 : r));
+        raw[g] = (int16_t)(r < -2048 ? -2048 : (r > 2047 ? 2047 : r));
     }
     return raw;
 }
@@ -79,15 +79,14 @@ std::vector<std::complex<double>> real_dft(const std::vector<double>& y, size_t 
     return x;
 }
 
-// The window ending the 4-tap fold at output window s, unpacked to (raw - 2048) / 2048.
-std::vector<double> cpu_fold(const std::vector<uint16_t>& raw, size_t s, size_t n,
+// The window ending the 4-tap fold at output window s, unpacked to raw / 2048.
+std::vector<double> cpu_fold(const std::vector<int16_t>& raw, size_t s, size_t n,
                              const std::vector<float>& proto) {
     std::vector<double> y(n);
     for (size_t p = 0; p < n; p++) {
         double acc = 0;
         for (int q = 0; q < TAPS; q++)
-            acc +=
-                (double)proto[q * n + p] * (((double)raw[(s - 3 + q) * n + p] - 2048.0) / 2048.0);
+            acc += (double)proto[q * n + p] * ((double)raw[(s - 3 + q) * n + p] / 2048.0);
         y[p] = acc;
     }
     return y;
@@ -219,14 +218,14 @@ public:
 
     // fp32 path: fold kernel + cuFFT + the existing untangle/quantize, against the CPU
     // reference. Returns the worst rel L2 through output argument for logging.
-    bool run_fp32(size_t n, const std::vector<uint16_t>& raw, size_t windows,
+    bool run_fp32(size_t n, const std::vector<int16_t>& raw, size_t windows,
                   const std::vector<float>& proto, double gain,
                   std::vector<std::vector<std::complex<double>>>& x_gpu) {
         const size_t m = n / 2;
 
         std::vector<float> xf(raw.size());
         for (size_t i = 0; i < raw.size(); i++)
-            xf[i] = (float)(((int)raw[i] - 2048) * (1.0 / 2048.0));
+            xf[i] = (float)(raw[i] * (1.0 / 2048.0));
 
         float *d_x, *d_fold;
         float2 *d_spec, *d_whi, *d_wlo;
@@ -299,7 +298,7 @@ public:
     // through lookup tables as in production: the fused fold + unpack kernel when fold is
     // set, the plain unpack otherwise, then the existing twiddle/transpose and quantize.
     // The fold runs in fp32 inside the kernel; the tensor cores are in the FFTs.
-    bool run_fp16(size_t n, size_t sp, const std::vector<uint16_t>& raw, size_t windows,
+    bool run_fp16(size_t n, size_t sp, const std::vector<int16_t>& raw, size_t windows,
                   const std::vector<float>& proto, double gain, bool fold, bool zero_history,
                   std::vector<std::vector<std::complex<double>>>& x_gpu) {
         const size_t m = n / 2;
@@ -377,12 +376,12 @@ public:
             if (fold) {
                 auto hist = raw;
                 if (zero_history)
-                    std::fill(hist.begin() + (s - 3) * n, hist.begin() + s * n, (uint16_t)2048);
+                    std::fill(hist.begin() + (s - 3) * n, hist.begin() + s * n, (int16_t)0);
                 x_ref = real_dft(cpu_fold(hist, s, n, proto), n);
             } else {
                 std::vector<double> newest(n);
                 for (size_t p = 0; p < n; p++)
-                    newest[p] = ((double)raw[s * n + p] - 2048.0) / 2048.0;
+                    newest[p] = (double)raw[s * n + p] / 2048.0;
                 x_ref = real_dft(newest, n);
             }
             const double err = rel_l2(x, x_ref);
@@ -449,8 +448,7 @@ public:
             for (size_t p = 0; p < n; p++) {
                 float acc = 0.0f;
                 for (int q = first; q < TAPS; q++)
-                    acc = std::fma(proto[q * n + p],
-                                   ((int)raw[q * n + p] - 2048) * (1.0f / 2048.0f), acc);
+                    acc = std::fma(proto[q * n + p], raw[q * n + p] * (1.0f / 2048.0f), acc);
                 const float want = __half2float(__float2half_rn(acc));
                 // Complex sample p / 2 = a * m2 + b is out[b * m1 + a].
                 const __half2 g = h_out[(p / 2 % m2) * m1 + p / 2 / m2];
@@ -484,7 +482,7 @@ public:
         // (the fp32 path is already verified above).
         std::vector<double> newest(n);
         for (size_t p = 0; p < n; p++)
-            newest[p] = ((double)raw[(TAPS - 1) * n + p] - 2048.0) / 2048.0;
+            newest[p] = (double)raw[(TAPS - 1) * n + p] / 2048.0;
         const auto x_fft = real_dft(newest, n);
 
         const double fft_db = leakage_db(x_fft, tone_bins);
