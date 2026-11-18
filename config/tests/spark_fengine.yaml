@@ -1,0 +1,201 @@
+---
+#
+# The Spark F-engine: two ADC chains of
+#     ibvUdpRecv -> crsWindowAlign -> cudaSparkFEngine + crsHeaderGen -> ibvUdpSend,
+# fed by crs_dengine_sim.yaml (cobalt) and checked by fengine_check.yaml.
+#
+# Needs CAP_NET_RAW on the kotekan binary after every build:
+#     sudo setcap cap_net_raw+ep <build>/kotekan/kotekan
+# and, per chain, (payload num_frames * 3 + out num_frames * fft_length / 2^21) free 2 MB huge
+# pages (~750 at 128M points) plus the CUDA buffers (~0.6 GB per chain at 128M). Build with
+# -DUSE_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=121. See docs/sphinx/compiling/ibverbs.rst.
+#
+# Watch it with: curl -s localhost:12048/metrics | grep -E 'crs_window_align|spark_fengine'
+#
+# The addresses below are the lab pair: cobalt (10.0.0.2) sends the D-engine streams to
+# spark (10.0.0.1); the F-engine output goes back to cobalt on dst_port.
+#
+type: config
+log_level: INFO
+
+cpu_affinity: [0, 1, 12, 13]
+
+telescope:
+    name: fake
+
+interface: enp1s0f0np0
+dst_ip: 10.0.0.1
+
+# Input: CRS packets of 4096 12-bit samples, 6208 bytes on the wire.
+header_size: 64
+header_slot: 128
+payload_size: 6144
+payload_slot: 6144
+packets_per_frame: 1024
+samples_per_packet: 4096
+queue_depth: 8192
+poll_mode: busy
+
+# The FFT window; power of two, 2^20 .. 2^27.
+fft_length: 134217728
+fft_precision: fp16
+gain: 8
+bins_per_packet: 8192
+
+# --- ADC 0 ---------------------------------------------------------------------------------
+
+header_buffer_adc0:
+    kotekan_buffer: standard
+    num_frames: 2 * fft_length / samples_per_packet / packets_per_frame + 16
+    frame_size: packets_per_frame * header_slot
+payload_buffer_adc0:
+    kotekan_buffer: standard
+    num_frames: 2 * fft_length / samples_per_packet / packets_per_frame + 16
+    frame_size: packets_per_frame * payload_slot
+    use_hugepages: true
+    numa_node: 0
+job_buffer_adc0:
+    kotekan_buffer: standard
+    num_frames: 4
+    frame_size: 48 + 8 * fft_length / samples_per_packet
+noise_buffer_adc0:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: 1024 * payload_slot
+out_header_buffer_adc0:
+    kotekan_buffer: standard
+    num_frames: 4
+    frame_size: fft_length / 2 / bins_per_packet * header_slot
+out_payload_buffer_adc0:
+    kotekan_buffer: standard
+    num_frames: 4
+    frame_size: fft_length / 2
+    use_hugepages: true
+    numa_node: 0
+
+recv_adc0:
+    kotekan_stage: ibvUdpRecv
+    cpu_affinity: [2]
+    dst_port: 10000
+    header_buf: header_buffer_adc0
+    payload_buf: payload_buffer_adc0
+
+align_adc0:
+    kotekan_stage: crsWindowAlign
+    cpu_affinity: [4]
+    adc_id: 0
+    header_buf: header_buffer_adc0
+    payload_buf: payload_buffer_adc0
+    job_buf: job_buffer_adc0
+    noise_buf: noise_buffer_adc0
+
+fengine_adc0:
+    kotekan_stage: cudaSparkFEngine
+    cpu_affinity: [6]
+    job_buf: job_buffer_adc0
+    payload_buf: payload_buffer_adc0
+    noise_buf: noise_buffer_adc0
+    out_payload_buf: out_payload_buffer_adc0
+
+headers_adc0:
+    kotekan_stage: crsHeaderGen
+    cpu_affinity: [8]
+    adc_id: 0
+    # Output addressing: both ADCs to one port on cobalt; source_id tells them apart.
+    src_mac: "30:c5:99:3f:09:1e"
+    dst_mac: "10:70:fd:53:05:06"
+    src_ip: 10.0.0.1
+    dst_ip: 10.0.0.2
+    src_port: 4100
+    dst_port: 11000
+    job_buf: job_buffer_adc0
+    out_header_buf: out_header_buffer_adc0
+
+send_adc0:
+    kotekan_stage: ibvUdpSend
+    cpu_affinity: [9]
+    header_buf: out_header_buffer_adc0
+    payload_buf: out_payload_buffer_adc0
+    header_size: 64
+    header_slot: 128
+    payload_size: bins_per_packet
+    payload_slot: bins_per_packet
+
+# --- ADC 1 ---------------------------------------------------------------------------------
+
+header_buffer_adc1:
+    kotekan_buffer: standard
+    num_frames: 2 * fft_length / samples_per_packet / packets_per_frame + 16
+    frame_size: packets_per_frame * header_slot
+payload_buffer_adc1:
+    kotekan_buffer: standard
+    num_frames: 2 * fft_length / samples_per_packet / packets_per_frame + 16
+    frame_size: packets_per_frame * payload_slot
+    use_hugepages: true
+    numa_node: 0
+job_buffer_adc1:
+    kotekan_buffer: standard
+    num_frames: 4
+    frame_size: 48 + 8 * fft_length / samples_per_packet
+noise_buffer_adc1:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: 1024 * payload_slot
+out_header_buffer_adc1:
+    kotekan_buffer: standard
+    num_frames: 4
+    frame_size: fft_length / 2 / bins_per_packet * header_slot
+out_payload_buffer_adc1:
+    kotekan_buffer: standard
+    num_frames: 4
+    frame_size: fft_length / 2
+    use_hugepages: true
+    numa_node: 0
+
+recv_adc1:
+    kotekan_stage: ibvUdpRecv
+    cpu_affinity: [3]
+    dst_port: 10001
+    header_buf: header_buffer_adc1
+    payload_buf: payload_buffer_adc1
+
+align_adc1:
+    kotekan_stage: crsWindowAlign
+    cpu_affinity: [5]
+    adc_id: 1
+    header_buf: header_buffer_adc1
+    payload_buf: payload_buffer_adc1
+    job_buf: job_buffer_adc1
+    noise_buf: noise_buffer_adc1
+
+fengine_adc1:
+    kotekan_stage: cudaSparkFEngine
+    cpu_affinity: [7]
+    job_buf: job_buffer_adc1
+    payload_buf: payload_buffer_adc1
+    noise_buf: noise_buffer_adc1
+    out_payload_buf: out_payload_buffer_adc1
+
+headers_adc1:
+    kotekan_stage: crsHeaderGen
+    cpu_affinity: [8]
+    adc_id: 1
+    # Output addressing: both ADCs to one port on cobalt; source_id tells them apart.
+    src_mac: "30:c5:99:3f:09:1e"
+    dst_mac: "10:70:fd:53:05:06"
+    src_ip: 10.0.0.1
+    dst_ip: 10.0.0.2
+    src_port: 4101
+    dst_port: 11000
+    job_buf: job_buffer_adc1
+    out_header_buf: out_header_buffer_adc1
+
+send_adc1:
+    kotekan_stage: ibvUdpSend
+    cpu_affinity: [10]
+    header_buf: out_header_buffer_adc1
+    payload_buf: out_payload_buffer_adc1
+    header_size: 64
+    header_slot: 128
+    payload_size: bins_per_packet
+    payload_slot: bins_per_packet
