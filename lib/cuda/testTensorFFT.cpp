@@ -24,7 +24,7 @@
 #include <cufft.h>     // for cufftCreate, cufftDestroy, cufftExecC2C
 #include <cufftXt.h>   // for cufftXtMakePlanMany, cufftXtExec
 #include <random>      // for mt19937, normal_distribution
-#include <stdint.h>    // for uint8_t, uint16_t, uint64_t, uintptr_t
+#include <stdint.h>    // for uint8_t, int16_t, uint64_t, uintptr_t
 #include <string>      // for string
 #include <vector>      // for vector
 
@@ -280,9 +280,9 @@ public:
         std::normal_distribution<double> noise(0.0, 300.0);
         std::vector<uint8_t> pk(num_packets * slot);
         for (size_t i = 0; i < n; i++) {
-            const double v = 2048.0 + noise(rng) + 1500.0 * std::cos(0.7757 * (double)i);
+            const double v = noise(rng) + 1500.0 * std::cos(0.7757 * (double)i);
             pack12(pk.data() + i / sp * slot, i % sp,
-                   (uint16_t)std::clamp(std::lround(v), 0l, 4095l));
+                   (int16_t)std::clamp(std::lround(v), -2048l, 2047l));
         }
         uint8_t* d_pk;
         CHECK_CUDA_ERROR(cudaMalloc(&d_pk, pk.size()));
