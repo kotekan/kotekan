@@ -596,8 +596,13 @@ double replay_clock() {
 std::string g_out_path;
 
 /// FATAL_ERROR -> exit_kotekan -> raise(SIGTERM), in the thread that set the FATAL's message,
-/// which the child leaves at its output path.
+/// which the child leaves at its output path. Of several threads that FATAL, the first to get
+/// here writes it; the others wait for its exit.
 void on_sigterm(int) {
+    static std::atomic_flag taken = ATOMIC_FLAG_INIT;
+    if (taken.test_and_set())
+        for (;;)
+            pause();
     std::ofstream(g_out_path) << kotekan::kotekanLogging::get_error_message();
     _exit(70);
 }
