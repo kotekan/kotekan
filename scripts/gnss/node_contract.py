@@ -18,6 +18,10 @@ The facets:
              hosted inject (gnssTrackChain.cpp), the assembler's, per row of a record host
              (GnssGpuRecordAssemble's constructor) and the combiner's, per row of a combine
              host (GnssCoherentCombiner::main_thread), conditions restated
+  indexed    the paths a host serves its rows' verbs at by chain (gnss::rest_register_rows),
+             each with the chains it serves: /<half>_inject/<verb> for a hosted inject, and
+             /<host>/<verb> for a record host whose rows all name their chain (gnss_row or
+             chain) and for a combine host
   identity   the names other stages and processes key on: each assembler's ProjBoard group,
              lane owner and cube sender, GnssN2Project board_group, cudaGnssBeamDump
              beam_lane_owner, each telemetry pack's header fields and wire frame size, per row
@@ -62,16 +66,24 @@ import lane_relay  # noqa: E402
 import viscap_read  # noqa: E402
 
 PORT = 12048
-FACETS = ("rest", "identity", "placement", "stall", "census")
+FACETS = ("rest", "indexed", "identity", "placement", "stall", "census")
 INJECT = (
     ("POST", "seed_endpoint"),
     ("POST", "set_trim_endpoint"),
     ("GET", "get_prns_endpoint"),
     ("POST", "set_prns_endpoint"),
 )
+# The verbs of INJECT's endpoints (gnss::TrackChain::rest_verbs).
+INJECT_VERBS = (
+    ("POST", "set_seeds"),
+    ("POST", "set_trim"),
+    ("GET", "get_prns"),
+    ("POST", "set_prns"),
+)
 # psi_sync_build: cudaGnssChordTrack waits for every Psi build on the GPU thread.
 TEST_ONLY = ("psi_sync_build",)
 PER_CHAIN = re.compile(r"_(inject|n2assemble|n2combine)/[^/]+$")
+INDEXED = re.compile(r"^/gnss\d+_(inject|records|combine)/(?!chains$)[^/]+$")
 IN_KEYS = ("in_buf", "in_bufs", "tiles_buf", "ctl_buf", "buf")
 OUT_KEYS = ("out_buf", "out_bufs", "cube_buf")
 
@@ -177,6 +189,36 @@ def _inst_on(scope):
     )
 
 
+def _assembler_verbs(scope):
+    """(HTTP verb, verb) of each endpoint of an assembler (RecordChain::rest_verbs)."""
+    eps = [
+        ("GET", "get_spectrum"),
+        ("POST", "set_sat_geometry"),
+        ("POST", "set_reference_element"),
+    ]
+    if _get(scope, "elem_sum", False):
+        eps += [
+            ("POST", "set_elem_gain"),
+            ("POST", "set_elem_sum_adapt"),
+            ("POST", "set_elem_sum_shared"),
+            ("POST", "set_elem_sum_shared_ref"),
+            ("GET", "get_elem_cal"),
+        ]
+        if _get(scope, "channel_ids", []):
+            eps.append(("POST", "set_elem_proj"))
+    if _inst_on(scope):
+        eps.append(("GET", "get_lane_inst"))
+    return eps
+
+
+def _combiner_verbs(scope):
+    """(HTTP verb, verb) of each endpoint of a combiner (CombinerChain::rest_verbs)."""
+    eps = [("GET", "get_status"), ("GET", "get_elements")]
+    if _get(scope, "record_export", 0) > 0:
+        eps.append(("GET", "get_records"))
+    return eps
+
+
 def rest_surface(cfg):
     """{'GET /path', 'POST /path'} of every per-chain endpoint kotekan registers."""
     out = set()
@@ -184,30 +226,46 @@ def rest_surface(cfg):
         for c in viscap_read.injectors(s[0].get("commands") or []):
             out.update("%s %s" % (verb, _slash(c[key])) for verb, key in INJECT)
     for u, s in _stages(cfg, "GnssGpuRecordAssemble"):
-        eps = [
-            ("GET", "get_spectrum"),
-            ("POST", "set_sat_geometry"),
-            ("POST", "set_reference_element"),
-        ]
-        if _get(s, "elem_sum", False):
-            eps += [
-                ("POST", "set_elem_gain"),
-                ("POST", "set_elem_sum_adapt"),
-                ("POST", "set_elem_sum_shared"),
-                ("POST", "set_elem_sum_shared_ref"),
-                ("GET", "get_elem_cal"),
-            ]
-            if _get(s, "channel_ids", []):
-                eps.append(("POST", "set_elem_proj"))
-        if _inst_on(s):
-            eps.append(("GET", "get_lane_inst"))
-        out.update("%s %s/%s" % (verb, u, e) for verb, e in eps)
+        out.update("%s %s/%s" % (verb, u, e) for verb, e in _assembler_verbs(s))
     for u, s in _stages(cfg, "GnssCoherentCombiner"):
-        eps = ["get_status", "get_elements"]
-        if _get(s, "record_export", 0) > 0:
-            eps.append("get_records")
-        out.update("GET %s/%s" % (u, e) for e in eps)
+        out.update("%s %s/%s" % (verb, u, e) for verb, e in _combiner_verbs(s))
     return out
+
+
+def indexed_surface(cfg):
+    """{'GET /host/verb' or 'POST /host/verb': [the chains it serves]} of every path a host serves
+    by chain."""
+    out = {}
+
+    def add(host, chain, eps):
+        for verb, e in eps:
+            out.setdefault("%s %s/%s" % (verb, host, e), []).append(chain)
+
+    for u, s in _stages(cfg, "cudaProcess"):
+        rows = {r["name"]: r for r in s[0].get("gnss_rows") or []}
+        for c in s[0].get("commands") or []:
+            if c.get("name") != "cudaGnssInject" or "chains" not in c:
+                continue
+            for row in c["chains"].values():
+                r = rows[row["gnss_row"]]
+                host = "/%s_inject" % r["name"][: -len(r["chain"]) - 1]
+                add(host, r["chain"], INJECT_VERBS)
+    for u, s in _blocks(cfg):
+        if not _host(u, s) or s[0]["kotekan_stage"] == "GnssTelemPack":
+            continue
+        rec = s[0]["kotekan_stage"] == "GnssGpuRecordAssemble"
+        chains = {}
+        for key, row in s[0]["chains"].items():
+            g = row.get("gnss_row")
+            chains[key] = (
+                g["chain"] if rec and isinstance(g, dict) else row.get("chain")
+            )
+        if None in chains.values():
+            continue
+        for key, row in s[0]["chains"].items():
+            scope = [row] + s
+            add(u, chains[key], (_assembler_verbs if rec else _combiner_verbs)(scope))
+    return {k: sorted(v) for k, v in out.items()}
 
 
 def endpoint_set(reply):
@@ -217,6 +275,16 @@ def endpoint_set(reply):
         for verb in ("GET", "POST")
         for p in reply.get(verb, [])
         if PER_CHAIN.search(p)
+    }
+
+
+def indexed_set(reply):
+    """The paths by chain of a GET /endpoints reply, in indexed_surface's form (its keys)."""
+    return {
+        "%s %s" % (verb, p)
+        for verb in ("GET", "POST")
+        for p in reply.get(verb, [])
+        if INDEXED.search(p)
     }
 
 
@@ -476,6 +544,7 @@ def snapshot(cfg_path, node, host):
         "node": node,
         "host": host,
         "rest": sorted(rest_surface(cfg)),
+        "indexed": indexed_surface(cfg),
         "identity": identity(cfg, host),
         "placement": placement(cfg),
         "stall": stall_budget(cfg),
@@ -499,8 +568,8 @@ def diff(a, b, allow=()):
     """One line per facet difference between snapshots a and b: '- key' (only in a), '+ key'
     (only in b) or '~ key: a -> b', key = 'facet: key ...'. Keys matching an allow pattern
     are left out."""
-    fa = dict(_flat({f: a[f] for f in FACETS}, ()))
-    fb = dict(_flat({f: b[f] for f in FACETS}, ()))
+    fa = dict(_flat({f: a.get(f) for f in FACETS}, ()))
+    fb = dict(_flat({f: b.get(f) for f in FACETS}, ()))
     out = []
     for k in sorted(set(fa) | set(fb)):
         va, vb = fa.get(k), fb.get(k)
@@ -563,14 +632,20 @@ def main():
         return 1 if lines else 0
     url = "http://%s:%d/endpoints" % (a.host, PORT)
     with urllib.request.urlopen(url, timeout=10) as r:
-        have = endpoint_set(json.loads(r.read()))
-    want = rest_surface(load(a.config))
-    for p in sorted(want - have):
-        print("- %s  (in the config, not registered)" % p)
-    for p in sorted(have - want):
-        print("+ %s  (registered, not in the config)" % p)
-    print("%d per-chain paths registered, %d expected" % (len(have), len(want)))
-    return 1 if want != have else 0
+        reply = json.loads(r.read())
+    cfg = load(a.config)
+    bad = False
+    for what, have, want in (
+        ("per-chain", endpoint_set(reply), rest_surface(cfg)),
+        ("by-chain", indexed_set(reply), set(indexed_surface(cfg))),
+    ):
+        for p in sorted(want - have):
+            print("- %s  (in the config, not registered)" % p)
+        for p in sorted(have - want):
+            print("+ %s  (registered, not in the config)" % p)
+        print("%d %s paths registered, %d expected" % (len(have), what, len(want)))
+        bad = bad or want != have
+    return 1 if bad else 0
 
 
 if __name__ == "__main__":

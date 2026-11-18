@@ -5,7 +5,9 @@ mutation per facet that must show in that facet's diff.
     GNSS_CONTRACT_BASELINE=DIR python3 scripts/gnss/test_node_contract.py
 
 DIR holds a generated chord_gnss_cx52_multi.yaml; the counts are those of the config the
-generator writes for cx52 today. Without GNSS_CONTRACT_BASELINE only test_only_keys is checked
+generator writes for cx52 today. On every form the paths by chain (the indexed facet) must be the
+per-chain paths of the stages it hosts, regrouped by host, and none without a host; a combine
+row's chain renamed must show there alone. Without GNSS_CONTRACT_BASELINE only test_only_keys is checked
 and the test exits 77. With GNSS_REPLAY_DUMP=DIR2
 (test_gnss_chain_replay's config.json and endpoints.json) rest_surface of the replay's config
 must equal the per-chain endpoints its stages registered. With GNSS_CONTRACT_FOLDED=DIR3 (the
@@ -84,6 +86,61 @@ def facet_lines(lines, facet):
     return [ln for ln in lines if ln[2:].startswith(facet + ":")]
 
 
+def not_indexed(lines):
+    return [ln for ln in lines if not ln[2:].startswith("indexed:")]
+
+
+HOST_OF = {"inject": "inject", "n2assemble": "records", "n2combine": "combine"}
+
+
+def regrouped(rest, kinds):
+    """The per-chain paths of rest of these kinds (inject, n2assemble, n2combine), regrouped by
+    the host that serves them by chain, with the chains each serves, as indexed_surface gives
+    them: the generator names a row gnss<g>_<chain>, and its hosts gnss<g>_inject,
+    gnss<g>_records and gnss<g>_combine."""
+    out = {}
+    for p in rest:
+        m = re.match(
+            r"(GET|POST) /gnss(\d)_(\w+?)_(inject|n2assemble|n2combine)/(\w+)$", p
+        )
+        if m and m.group(4) in kinds:
+            key = "%s /gnss%s_%s/%s" % (
+                m.group(1),
+                m.group(2),
+                HOST_OF[m.group(4)],
+                m.group(5),
+            )
+            out.setdefault(key, []).append(m.group(3))
+    return {k: sorted(v) for k, v in out.items()}
+
+
+def hosted_kinds(cfg):
+    """The kinds of per-chain stage cfg hosts: inject, n2assemble and n2combine."""
+    kinds = set()
+    for g in (0, 1):
+        cmds = (cfg.get("gnss%d_n2dual" % g) or {}).get("commands") or []
+        if any(c.get("name") == "cudaGnssInject" and "chains" in c for c in cmds):
+            kinds.add("inject")
+        if "gnss%d_records" % g in cfg:
+            kinds.add("n2assemble")
+        if "gnss%d_combine" % g in cfg:
+            kinds.add("n2combine")
+    return kinds
+
+
+def check_indexed(snap, cfg, what):
+    """The paths by chain are exactly the per-chain paths of what cfg hosts, by host."""
+    kinds = hosted_kinds(cfg)
+    want = regrouped(snap["rest"], kinds)
+    have = {(k, tuple(v)) for k, v in snap["indexed"].items()}
+    diff = sorted(have ^ {(k, tuple(v)) for k, v in want.items()})
+    check(
+        snap["indexed"] == want,
+        "%s: the paths by chain are the per-chain paths of its hosts (%s), by host: %d paths "
+        "(%s)" % (what, ",".join(sorted(kinds)), len(want), diff[:2]),
+    )
+
+
 def held_zeros(cfg):
     """{assembler: the elements its elem_sum_shared_ref holds at 0, as the census prints
     config_zeros}, read from the parsed config."""
@@ -125,6 +182,10 @@ def test_counts(base, cfg):
     per = collections.Counter(p.split("/")[1].rsplit("_", 1)[0] for p in rest)
     split = collections.Counter(per.values())
     check(split == {16: 15, 17: 15}, "16 paths on 15 chains, 17 on 15 (%s)" % split)
+    check(
+        base["indexed"] == {},
+        "no path by chain without a host (%d)" % len(base["indexed"]),
+    )
     pl = base["placement"]
     n = sum(1 for b in pl["numa"] if b[:4] == "gnss" and b[4:5].isdigit())
     check(
@@ -559,8 +620,15 @@ def test_rows(fold_dir, rows_dir):
 def test_hosted(rows_dir, hosted_dir):
     rpath, hpath = os.path.join(rows_dir, NAME), os.path.join(hosted_dir, NAME)
     rcfg, hcfg = nc.load(rpath), nc.load(hpath)
-    lines = nc.diff(nc.snapshot(rpath, NODE, NODE), nc.snapshot(hpath, NODE, NODE))
-    check(not lines, "hosted: the contract equals the rows form's (%s)" % lines[:5])
+    rs, hs = nc.snapshot(rpath, NODE, NODE), nc.snapshot(hpath, NODE, NODE)
+    lines = not_indexed(nc.diff(rs, hs))
+    check(
+        not lines,
+        "hosted: the contract equals the rows form's, but for the paths by chain (%s)"
+        % lines[:5],
+    )
+    check_indexed(rs, rcfg, "rows")
+    check_indexed(hs, hcfg, "hosted")
     bad = []
     for g in (0, 1):
         half = "gnss%d_n2dual" % g
@@ -599,7 +667,8 @@ def test_records(rows_dir, rec_dir):
     rpath, hpath = os.path.join(rows_dir, NAME), os.path.join(rec_dir, NAME)
     rcfg, hcfg = nc.load(rpath), nc.load(hpath)
     hs = nc.snapshot(hpath, NODE, NODE)
-    lines = nc.diff(nc.snapshot(rpath, NODE, NODE), hs)
+    lines = not_indexed(nc.diff(nc.snapshot(rpath, NODE, NODE), hs))
+    check_indexed(hs, hcfg, "records")
     want = [
         "+ placement: cpu /gnss%d_records = %r"
         % (g, hs["placement"]["cpu"]["/gnss%d_records" % g])
@@ -673,7 +742,20 @@ def test_combine(a_dir, c_dir):
     apath, cpath = os.path.join(a_dir, NAME), os.path.join(c_dir, NAME)
     acfg, ccfg = nc.load(apath), nc.load(cpath)
     cs = nc.snapshot(cpath, NODE, NODE)
-    lines = nc.diff(nc.snapshot(apath, NODE, NODE), cs)
+    lines = not_indexed(nc.diff(nc.snapshot(apath, NODE, NODE), cs))
+    check_indexed(cs, ccfg, "combine")
+    # Lever: a row's chain renamed moves its paths by chain off its per-chain ones.
+    lever = copy.deepcopy(ccfg)
+    next(iter(lever["gnss0_combine"]["chains"].values()))["chain"] += "x"
+    with open(cpath) as f:
+        head = gen_fleet._split_header(f.read())[0]
+    with tempfile.TemporaryDirectory(prefix="node_contract_") as d:
+        ls = snap_of(lever, head, d)
+    check(
+        ls["rest"] == cs["rest"]
+        and ls["indexed"] != regrouped(ls["rest"], hosted_kinds(lever)),
+        "combine: a row's chain renamed shows in the paths by chain alone",
+    )
     want = [
         "+ placement: cpu /gnss%d_combine = %r"
         % (g, cs["placement"]["cpu"]["/gnss%d_combine" % g])
@@ -745,7 +827,8 @@ def test_telem(a_dir, t_dir):
     apath, tpath = os.path.join(a_dir, NAME), os.path.join(t_dir, NAME)
     acfg, tcfg = nc.load(apath), nc.load(tpath)
     a_s, t_s = nc.snapshot(apath, NODE, NODE), nc.snapshot(tpath, NODE, NODE)
-    lines = nc.diff(a_s, t_s)
+    lines = not_indexed(nc.diff(a_s, t_s))
+    check_indexed(t_s, tcfg, "telem")
     sends = {
         u: v for u, v in a_s["identity"]["send"].items() if u.endswith("_telem_send")
     }
@@ -834,7 +917,8 @@ def test_half_rec(t_dir, h_dir):
     tpath, hpath = os.path.join(t_dir, NAME), os.path.join(h_dir, NAME)
     hcfg = nc.load(hpath)
     t_s, h_s = nc.snapshot(tpath, NODE, NODE), nc.snapshot(hpath, NODE, NODE)
-    lines = nc.diff(t_s, h_s)
+    lines = not_indexed(nc.diff(t_s, h_s))
+    check_indexed(h_s, hcfg, "half rec")
     rec_bufs = [
         b for b in t_s["placement"]["numa"] if re.match(r"gnss\d_\w+_n2rec_buf$", b)
     ]
