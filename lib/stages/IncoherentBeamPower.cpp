@@ -25,6 +25,10 @@
  * 0. A 4-bit voltage has a power of at most 128, so the largest value is 32768; anything larger
  * saturates at 65535.
  *
+ * The largest S0 of a time sample counts the good feeds, whatever packets some channels lost.
+ * Where it changes, the power of every channel steps, so that frame is sent as 0 (no data) and
+ * the search starts its statistics again. A change that keeps the number of feeds is not seen.
+ *
  * The output metadata is copied from the input frame, with the array description of out_buf.
  *
  * @par Buffers
@@ -50,6 +54,7 @@ public:
             || extents[2] != 3)
             FATAL_ERROR("IncoherentBeamPower: in_buf {:s} must be uint64 [Trfi, F, 3]",
                         in_buf->buffer_name);
+        num_freq = extents[1];
         num_values = extents[0] * extents[1];
         const std::vector<kotekan::Symbol> dimnames = in_desc->get_dimnames();
         const std::vector<std::ptrdiff_t> dimscalings = in_desc->get_dimscalings();
@@ -77,11 +82,19 @@ public:
                 break;
             const uint64_t* const s012 = (const uint64_t*)in_frame;
             uint16_t* const power = (uint16_t*)out_frame;
+            // The largest S0 of the frame and of its last time sample
+            uint64_t frame_s0 = 0, row_s0 = 0;
             for (std::ptrdiff_t i = 0; i < num_values; ++i) {
                 const uint64_t s0 = s012[3 * i];
                 const uint64_t s1 = s012[3 * i + 1];
                 power[i] = s0 ? (uint16_t)std::min<uint64_t>((256 * s1 + s0 / 2) / s0, 65535) : 0;
+                row_s0 = i % num_freq == 0 ? s0 : std::max(row_s0, s0);
+                frame_s0 = std::max(frame_s0, s0);
             }
+            if ((have_last_s0 && frame_s0 != last_s0) || row_s0 != frame_s0)
+                std::fill(power, power + num_values, 0);
+            last_s0 = row_s0;
+            have_last_s0 = true;
             out_buf->allocate_new_metadata_object(out_id);
             const auto out_meta = get_chord_metadata(out_buf, out_id);
             out_meta->deepCopy(meta);
@@ -97,7 +110,11 @@ private:
     Buffer* const out_buf;
     std::shared_ptr<const kotekan::GenericNDArray> in_desc;
     std::shared_ptr<const kotekan::GenericNDArray> out_desc;
+    std::ptrdiff_t num_freq = 0;
     std::ptrdiff_t num_values = 0;
+    // The largest S0 of the last time sample of the frame before
+    uint64_t last_s0 = 0;
+    bool have_last_s0 = false;
 };
 
 REGISTER_KOTEKAN_STAGE(IncoherentBeamPower);
