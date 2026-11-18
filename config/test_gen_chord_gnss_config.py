@@ -814,6 +814,35 @@ def test_search_tap_follows_the_reference_element():
         "the search tap's element is the reference element (got %s)" % got,
     )
 
+
+def test_reference_element_must_sit_on_element_0s_dish():
+    """Steering refers every element's delay to the reference element, so one on another dish than
+    element 0's moves every record off the geometry the fleet and the broker use (11-18: element 40, dish
+    E05, 42 m out, cost the 10.23 Mcps chains most of their prompt). Refused at generation."""
+    arr = node_cfg()["array"]
+    n = g.live_element_count(arr)
+    ok = g.elem_steer_keys(
+        argparse.Namespace(elem_positions_file=None, elem_steer_sign=1.0, reference_element=0),
+        arr,
+        n,
+    )
+    check(len(ok["elem_positions_enu"]) == 3 * n, "reference element 0 is accepted")
+    try:
+        g.elem_steer_keys(
+            argparse.Namespace(
+                elem_positions_file=None, elem_steer_sign=1.0, reference_element=40
+            ),
+            arr,
+            n,
+        )
+        check(False, "reference element 40 (E05, 42 m out) is refused")
+    except SystemExit as e:
+        check(
+            "from element 0's dish" in str(e) and "LIVE" in str(e),
+            "reference element 40 (E05, 42 m out) is refused, saying how to move it live (%s)"
+            % str(e)[:90],
+        )
+
 _ARR128 = {"array": {"live_element_ranges": [[0, 63], [64, 127]]}}
 
 
