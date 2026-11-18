@@ -91,6 +91,12 @@ public:
     /// POST endpoint: the fleet controller's code trim, a JSON array of {prn, trim_chips}. See
     /// @ref trim_ttl_s for why this is not a /set_seeds field.
     void set_trim_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
+    /// The slot and clamped trim of each entry of a /set_trim request whose PRN is in the map,
+    /// into @p upd, or why the request is refused. The caller holds prn_mtx.
+    std::string parse_trims(const nlohmann::json& request,
+                            std::vector<std::pair<int, double>>& upd);
+    /// Apply trims parsed by parse_trims, stamped now. The caller holds prn_mtx since the parse.
+    void apply_trims(const std::vector<std::pair<int, double>>& upd);
 
     // ---- Slot membership (docs/CHORD_LIVE_PRN_RECONFIG.md) ----
     // The broker reassigns slots to satellites as the sky changes. The slot count n_prn never

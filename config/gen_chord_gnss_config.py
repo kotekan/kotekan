@@ -1932,6 +1932,7 @@ RECORD_ROW_KEYS = (
     "prns",
     "channel_ids",
     "beam_cube_chain",
+    "chain",
     "cube_buf",
     "ctl_buf",
     "elem_sum_shared_ref",

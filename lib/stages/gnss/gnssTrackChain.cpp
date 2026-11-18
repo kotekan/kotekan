@@ -471,9 +471,21 @@ std::vector<TrackChain::Seed> TrackChain::snapshot_seeds(std::vector<int>& expir
 }
 
 void TrackChain::set_trim_callback(kotekan::connectionInstance& conn, nlohmann::json& request) {
-    // Parse before taking trim_mtx, which the GPU thread takes every frame.
     std::vector<std::pair<int, double>> upd;
     std::lock_guard<std::mutex> pk(prn_mtx); // first; see set_seeds_callback
+    const std::string err = parse_trims(request, upd);
+    if (!err.empty()) {
+        conn.send_error("bad trim payload: " + err, kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    apply_trims(upd);
+    // Nothing else is touched, not the seeds nor their t_recv (see trim_ttl_s in the header).
+    conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
+}
+
+std::string TrackChain::parse_trims(const nlohmann::json& request,
+                                    std::vector<std::pair<int, double>>& upd) {
+    // Parse before taking trim_mtx, which the GPU thread takes every frame.
     try {
         upd.reserve(request.size());
         for (const auto& s : request) {
@@ -491,15 +503,17 @@ void TrackChain::set_trim_callback(kotekan::connectionInstance& conn, nlohmann::
                 }
         }
     } catch (const std::exception& e) {
-        conn.send_error(std::string("bad trim payload: ") + e.what(),
-                        kotekan::HTTP_RESPONSE::BAD_REQUEST);
-        return;
+        return e.what();
     }
+    return "";
+}
+
+void TrackChain::apply_trims(const std::vector<std::pair<int, double>>& upd) {
     const double now =
         std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
     {
         std::lock_guard<std::mutex> lk(trim_mtx);
-        // Sweep here too: this callback still runs when execute() has stopped. See
+        // Sweep here too: posts still arrive when execute() has stopped. See
         // expire_trims_locked.
         std::vector<int> gone;
         expire_trims_locked(gone);
@@ -508,8 +522,6 @@ void TrackChain::set_trim_callback(kotekan::connectionInstance& conn, nlohmann::
             trim_t_recv[(size_t)u.first] = now;
         }
     }
-    // Nothing else is touched, not the seeds nor their t_recv (see trim_ttl_s in the header).
-    conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
 }
 
 } // namespace gnss

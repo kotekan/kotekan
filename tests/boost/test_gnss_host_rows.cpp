@@ -1991,3 +1991,538 @@ BOOST_AUTO_TEST_CASE(rec_buf_frame_is_full_once_every_worker_has_marked_it) {
     BOOST_CHECK(lapped);
     BOOST_CHECK_EQUAL(buf.wait_for_full_frame_timeout("c", 1, soon()), 0);
 }
+
+// ---- The hosts' verbs by chain (gnss::rest_register_rows) ----
+
+namespace {
+
+/// An HTTP reply: its status and its body.
+struct Reply {
+    int status = 0;
+    std::string body;
+    bool operator==(const Reply& o) const {
+        return status == o.status && body == o.body;
+    }
+};
+
+/// GET @p path from the REST server on 127.0.0.1:@p port, or with @p body POST that.
+Reply http(unsigned short port, const std::string& path, const json& body = json()) {
+    const int fd = socket(AF_INET, SOCK_STREAM, 0);
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    if (fd < 0 || connect(fd, (sockaddr*)&addr, sizeof(addr)) != 0)
+        throw FatalError("cannot connect to 127.0.0.1:" + std::to_string(port));
+    const std::string data = body.is_null() ? "" : body.dump();
+    std::string req = (body.is_null() ? "GET " : "POST ") + path + " HTTP/1.0\r\n";
+    if (!body.is_null())
+        req += "Content-Type: application/json\r\nContent-Length: " + std::to_string(data.size())
+               + "\r\n";
+    req += "\r\n" + data;
+    if (send(fd, req.data(), req.size(), 0) != (ssize_t)req.size())
+        throw FatalError("cannot send " + path);
+    std::string all;
+    char b[4096];
+    ssize_t n;
+    while ((n = recv(fd, b, sizeof(b), 0)) > 0)
+        all.append(b, (size_t)n);
+    close(fd);
+    const size_t head = all.find("\r\n\r\n");
+    if (all.compare(0, 5, "HTTP/") != 0 || head == std::string::npos)
+        throw FatalError("no HTTP reply to " + path + ": " + all);
+    return {std::stoi(all.substr(all.find(' ') + 1, 3)), all.substr(head + 4)};
+}
+
+/// kotekan_gnss_rest_legacy_hits_total of @p path, a path of row @p row, in this process's
+/// metrics; -1 for one not serialized.
+double hits(const std::string& row, const std::string& path) {
+    std::istringstream metrics(kotekan::prometheus::Metrics::instance().serialize());
+    const std::string head =
+        "kotekan_gnss_rest_legacy_hits_total{stage_name=\"" + row + "\",path=\"" + path + "\"} ";
+    for (std::string line; std::getline(metrics, line);)
+        if (line.rfind(head, 0) == 0)
+            return std::stod(line.substr(head.size()));
+    return -1.0;
+}
+
+/// The paths of a GET /endpoints reply, as "GET <path>" and "POST <path>".
+std::set<std::string> endpoints(unsigned short port) {
+    const json ep = json::parse(http(port, "/endpoints").body);
+    std::set<std::string> out;
+    for (const char* verb : {"GET", "POST"})
+        for (const auto& p : ep.at(verb))
+            out.insert(std::string(verb) + " " + p.get<std::string>());
+    return out;
+}
+
+double fixed_clock_s() {
+    return 1000.0;
+}
+
+/// record_config's host on one worker per row, each row with its chain (a, b, c); row a also with
+/// elem_sum and lane transfers on two channels, so that it alone has every verb.
+json rest_record_config() {
+    json workers = json::array();
+    for (const auto& k : ABC)
+        workers.push_back({{"rows", {k}}, {"cpu_affinity", {0}}});
+    json cfg = record_config(ABC, workers);
+    for (const auto& k : ABC)
+        cfg["gnss0_records"]["chains"][k]["chain"] = k.substr(6);
+    cfg["gnss0_records"]["chains"]["gnss0_a"].update({{"elem_sum", true},
+                                                      {"channel_ids", {100, 116}},
+                                                      {"lane_transfer_freq_ids", {84}},
+                                                      {"elem_dir_publish", "all"}});
+    return cfg;
+}
+
+/// Every GET verb of each row of rest_record_config's host, as {row key: [verbs]}.
+const std::map<std::string, std::vector<std::string>> RECORD_GETS = {
+    {"gnss0_a", {"get_spectrum", "get_elem_cal", "get_lane_inst"}},
+    {"gnss0_b", {"get_spectrum"}},
+    {"gnss0_c", {"get_spectrum"}}};
+
+/// The replies to every GET of every row of rest_record_config's host at its own path.
+std::vector<Reply> record_gets(unsigned short port) {
+    std::vector<Reply> out;
+    for (const auto& [k, verbs] : RECORD_GETS)
+        for (const auto& v : verbs)
+            out.push_back(http(port, "/" + k + "_n2assemble/" + v));
+    return out;
+}
+
+/// One POST of the record transcript: its row, verb and request.
+struct Post {
+    std::string key, verb;
+    json body;
+};
+
+const std::vector<Post> RECORD_POSTS = {
+    {"gnss0_a",
+     "set_sat_geometry",
+     {{"1", {10.0, 20.0, 0.0, 0.0, 999.0}}, {"_bore", {5.0, 999.0}}}},
+    {"gnss0_a", "set_reference_element", {{"element", 1}}},
+    {"gnss0_b", "set_reference_element", {{"element", 1}}},
+    {"gnss0_a", "set_elem_sum_adapt", {{"adapt", true}}},
+    {"gnss0_a", "set_elem_sum_shared", {{"shared", false}}},
+    {"gnss0_a", "set_elem_gain", {{"gain", {{1.0, 0.0}, {0.5, 0.5}}}}},
+    {"gnss0_a", "set_elem_sum_shared_ref", {{"ref", {{1.0, 0.0}, {0.0, 1.0}}}, {"mode", "live"}}},
+    {"gnss0_a", "set_elem_proj", {{"mode", "shadow"}}},
+    {"gnss0_c", "set_sat_geometry", {{"1", {30.0, 40.0}}}},
+    {"gnss0_a", "set_elem_sum_adapt", {{"adapt", "yes"}}},
+    {"gnss0_c", "set_reference_element", {{"element", 99}}}};
+
+/// Starts the REST server and rest_record_config's host (without its threads), then posts
+/// RECORD_POSTS, each at its row's own path or, with @p by_chain, at the host's, and after each
+/// reads record_gets(). Returns every reply, in order, and the hits of each POST's own path.
+std::pair<std::vector<Reply>, std::vector<double>> record_transcript(bool by_chain) {
+    kotekan::restServer::instance().start("127.0.0.1", 0);
+    const unsigned short port = kotekan::restServer::instance().port();
+    const json cfg = rest_record_config();
+    kotekan::Config config;
+    config.update_config(cfg);
+    kotekan::bufferContainer bc;
+    std::vector<std::unique_ptr<Buffer>> bufs = buffers_of(cfg, bc);
+    GnssGpuRecordAssemble host(config, "/gnss0_records", bc, &fixed_clock_s);
+    std::vector<Reply> out = record_gets(port);
+    for (const Post& p : RECORD_POSTS) {
+        if (by_chain)
+            out.push_back(http(port, "/gnss0_records/" + p.verb,
+                               {{"chain", p.key.substr(6)}, {"body", p.body}}));
+        else
+            out.push_back(http(port, "/" + p.key + "_n2assemble/" + p.verb, p.body));
+        for (const Reply& r : record_gets(port))
+            out.push_back(r);
+    }
+    std::vector<double> h;
+    for (const Post& p : RECORD_POSTS)
+        h.push_back(hits("/" + p.key + "_n2assemble", "/" + p.key + "_n2assemble/" + p.verb));
+    return {out, h};
+}
+
+/// Runs @p fn in a forked child and returns what it wrote to the file it is given, or a line
+/// starting "FATAL " with the FatalError it raised.
+std::string child_text(const std::function<std::string()>& fn) {
+    char path[] = "/tmp/gnss_host_rows_XXXXXX";
+    const int fd = mkstemp(path);
+    BOOST_REQUIRE(fd >= 0);
+    close(fd);
+    const std::string msg = fatal_of([&] {
+        const std::string text = fn();
+        std::ofstream(path) << text;
+    });
+    std::ifstream in(path);
+    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    unlink(path);
+    return msg.empty() ? text : "FATAL " + msg;
+}
+
+json replies_json(const std::vector<Reply>& rs) {
+    json out = json::array();
+    for (const Reply& r : rs)
+        out.push_back({r.status, r.body});
+    return out;
+}
+
+} // namespace
+
+// Each POST of a record row through the host, {"chain": <c>, "body": <request>}, answers and acts
+// as the same POST at the row's own path: the replies, refusals included, and every GET of every
+// row after each are byte for byte those of the run through the rows' own paths. Only the own
+// paths count hits: once per request there, and none for the host's.
+BOOST_AUTO_TEST_CASE(record_posts_by_chain_are_the_rows_own) {
+    const std::string own = child_text([] {
+        const auto [r, h] = record_transcript(false);
+        return json{{"replies", replies_json(r)}, {"hits", h}}.dump();
+    });
+    const std::string by_chain = child_text([] {
+        const auto [r, h] = record_transcript(true);
+        return json{{"replies", replies_json(r)}, {"hits", h}}.dump();
+    });
+    BOOST_REQUIRE_MESSAGE(own.rfind("FATAL", 0) != 0, own);
+    BOOST_REQUIRE_MESSAGE(by_chain.rfind("FATAL", 0) != 0, by_chain);
+    const json a = json::parse(own), b = json::parse(by_chain);
+    BOOST_REQUIRE_EQUAL(a["replies"].size(), b["replies"].size());
+    int refused = 0;
+    for (size_t i = 0; i < a["replies"].size(); ++i) {
+        BOOST_CHECK_MESSAGE(a["replies"][i] == b["replies"][i],
+                            "reply " << i << ": " << a["replies"][i] << " by chain "
+                                     << b["replies"][i]);
+        refused += a["replies"][i][0].get<int>() == 400;
+    }
+    // The two last posts are refused by the rows themselves.
+    BOOST_CHECK_EQUAL(refused, 2);
+    // Each own POST path: one hit per post there (a's set_elem_sum_adapt twice), none by chain.
+    const std::vector<double> want = {1, 1, 1, 2, 1, 1, 1, 1, 1, 2, 1};
+    BOOST_CHECK(a["hits"].get<std::vector<double>>() == want);
+    BOOST_CHECK(b["hits"].get<std::vector<double>>() == std::vector<double>(want.size(), 0.0));
+}
+
+// Every GET of every record row answers through the host, ?chain=<c>, byte for byte as at the
+// row's own path, its other arguments passed on; without chain with each row's reply under its
+// chain. A request with no chain or another chain is refused, naming the rows' chains, and
+// changes nothing. The host's paths are all the rows' own ones plus one per verb and /chains,
+// which lists the rows with their chains. The host's GETs count no hits, and the own paths count
+// every request, refused ones included; every own path reads 0 before its first request. Deleting
+// the host releases every path and counter.
+BOOST_AUTO_TEST_CASE(record_gets_by_chain_are_the_rows_own) {
+    const std::string msg = fatal_of([] {
+        kotekan::restServer::instance().start("127.0.0.1", 0);
+        const unsigned short port = kotekan::restServer::instance().port();
+        // The same rows without their chains: their own paths only.
+        std::set<std::string> plain;
+        {
+            json cfg = rest_record_config();
+            for (const auto& k : ABC)
+                cfg["gnss0_records"]["chains"][k].erase("chain");
+            kotekan::Config config;
+            config.update_config(cfg);
+            kotekan::bufferContainer bc;
+            std::vector<std::unique_ptr<Buffer>> bufs = buffers_of(cfg, bc);
+            GnssGpuRecordAssemble host(config, "/gnss0_records", bc, &fixed_clock_s);
+            plain = endpoints(port);
+            if (hits("/gnss0_a_n2assemble", "/gnss0_a_n2assemble/get_spectrum") != -1.0)
+                throw FatalError("rows without chains count hits");
+        }
+        const json cfg = rest_record_config();
+        kotekan::Config config;
+        config.update_config(cfg);
+        kotekan::bufferContainer bc;
+        std::vector<std::unique_ptr<Buffer>> bufs = buffers_of(cfg, bc);
+        auto* host = new GnssGpuRecordAssemble(config, "/gnss0_records", bc, &fixed_clock_s);
+        const std::set<std::string> all = endpoints(port);
+        std::set<std::string> added;
+        for (const auto& p : all)
+            if (!plain.count(p))
+                added.insert(p);
+        for (const auto& p : plain)
+            if (!all.count(p))
+                throw FatalError("lost " + p);
+        const std::set<std::string> want_added = {"GET /gnss0_records/get_elem_cal",
+                                                  "GET /gnss0_records/get_lane_inst",
+                                                  "GET /gnss0_records/get_spectrum",
+                                                  "POST /gnss0_records/set_elem_gain",
+                                                  "POST /gnss0_records/set_elem_proj",
+                                                  "POST /gnss0_records/set_elem_sum_adapt",
+                                                  "POST /gnss0_records/set_elem_sum_shared",
+                                                  "POST /gnss0_records/set_elem_sum_shared_ref",
+                                                  "POST /gnss0_records/set_reference_element",
+                                                  "POST /gnss0_records/set_sat_geometry"};
+        if (added != want_added)
+            throw FatalError("added " + json(added).dump());
+        const json chains = json::parse(http(port, "/gnss0_records/chains").body);
+        json want_chains = json::array();
+        for (const auto& k : ABC)
+            want_chains.push_back(
+                {{"name", k}, {"stage", "/" + k + "_n2assemble"}, {"chain", k.substr(6)}});
+        if (chains != want_chains)
+            throw FatalError("chains " + chains.dump());
+        // Every own path reads 0 before its first request.
+        int own = 0;
+        for (const auto& p : plain) {
+            const std::string path = p.substr(p.find(' ') + 1);
+            const std::string row = path.substr(0, path.rfind('/'));
+            if (row.size() < 11 || row.compare(row.size() - 11, 11, "_n2assemble") != 0)
+                continue;
+            ++own;
+            if (hits(row, path) != 0.0)
+                throw FatalError(path + " reads " + std::to_string(hits(row, path)));
+        }
+        if (own != 16)
+            throw FatalError(std::to_string(own) + " own paths");
+        std::string bad;
+        // Byte for byte, with and without a further argument, and a refused one.
+        for (const std::string arg : {"", "&window=3", "&window=x"})
+            for (const auto& [k, verbs] : RECORD_GETS)
+                for (const auto& v : verbs) {
+                    const std::string q = arg.empty() ? "" : "?" + arg.substr(1);
+                    const Reply r = http(port, "/" + k + "_n2assemble/" + v + q);
+                    const Reply c =
+                        http(port, "/gnss0_records/" + v + "?chain=" + k.substr(6) + arg);
+                    if (!(r == c))
+                        bad += " " + k + "/" + v + arg + ": " + std::to_string(r.status) + " "
+                               + r.body + " by chain " + std::to_string(c.status) + " " + c.body;
+                }
+        // Without chain: every row of the verb, under its chain.
+        for (const std::string v : {"get_spectrum", "get_elem_cal", "get_lane_inst"}) {
+            json want = json::object();
+            for (const auto& [k, verbs] : RECORD_GETS)
+                if (std::find(verbs.begin(), verbs.end(), v) != verbs.end())
+                    want[k.substr(6)] = json::parse(http(port, "/" + k + "_n2assemble/" + v).body);
+            const Reply r = http(port, "/gnss0_records/" + v);
+            if (r.status != 200 || json::parse(r.body) != want)
+                bad += " " + v + " without chain: " + r.body;
+        }
+        const Reply w = http(port, "/gnss0_records/get_spectrum?window=x");
+        if (w.status != 400
+            || json::parse(w.body).at("message")
+                   != "a: get_spectrum: 'window' must be an integer window index")
+            bad += " a refused row without chain: " + w.body;
+        // Refusals, each naming the chains that have the verb, and changing nothing.
+        const std::vector<Reply> before = record_gets(port);
+        const std::vector<std::tuple<std::string, json, std::string>> refusals = {
+            {"get_lane_inst?chain=b", json(),
+             "/gnss0_records/get_lane_inst has no chain b; its "
+             "chains are a"},
+            {"get_spectrum?chain=x", json(),
+             "/gnss0_records/get_spectrum has no chain x; its "
+             "chains are a, b, c"},
+            {"set_reference_element", json{{"element", 1}}, "its chains are a, b, c"},
+            {"set_reference_element", json{{"chain", "a"}}, "its chains are a, b, c"},
+            {"set_reference_element", json{{"chain", "a"}, {"body", {{"element", 1}}}, {"x", 1}},
+             "its chains are a, b, c"},
+            {"set_reference_element", json{{"chain", 1}, {"body", {{"element", 1}}}},
+             "its chains are a, b, c"},
+            {"set_reference_element", json{{"chain", "x"}, {"body", {{"element", 1}}}},
+             "/gnss0_records/set_reference_element has no chain x; its chains are a, b, c"},
+            {"set_elem_gain", json{{"chain", "b"}, {"body", {{"gain", json::array()}}}},
+             "/gnss0_records/set_elem_gain has no chain b; its chains are a"},
+            {"set_reference_element", json{{"chains", {{"a", {{"element", 1}}}}}},
+             "its chains are a, b, c"},
+            {"set_reference_element", json::array({1}), "its chains are a, b, c"}};
+        for (const auto& [path, body, want] : refusals) {
+            const Reply r = http(port, "/gnss0_records/" + path, body);
+            if (r.status != 400 || r.body.find(want) == std::string::npos)
+                bad +=
+                    " " + path + " " + body.dump() + ": " + std::to_string(r.status) + " " + r.body;
+        }
+        if (record_gets(port) != before)
+            bad += " a refusal changed a row";
+        // a's get_spectrum: 3 byte for byte, 1 without chain and 2 in record_gets.
+        if (hits("/gnss0_a_n2assemble", "/gnss0_a_n2assemble/get_spectrum") != 6.0)
+            bad +=
+                " a's get_spectrum hits "
+                + std::to_string(hits("/gnss0_a_n2assemble", "/gnss0_a_n2assemble/get_spectrum"));
+        if (hits("/gnss0_a_n2assemble", "/gnss0_a_n2assemble/set_reference_element") != 0.0)
+            bad += " a POST by chain counted";
+        delete host;
+        for (const auto& p : all)
+            if (p.find(" /gnss0_") != std::string::npos
+                && kotekan::restServer::instance().has_callback(p.substr(p.find(' ') + 1)))
+                bad += " " + p + " left";
+        if (hits("/gnss0_a_n2assemble", "/gnss0_a_n2assemble/get_spectrum") != -1.0)
+            bad += " the hits outlive the host";
+        if (!bad.empty())
+            throw FatalError(bad);
+    });
+    BOOST_CHECK_EQUAL(msg, "");
+}
+
+// Every GET of every combine row answers through the host, ?chain=<c>, byte for byte as at the
+// row's own path once the rows have folded records in, and without chain with each row's reply
+// under its chain; a request for another chain is refused, naming the rows' chains. Only the own
+// paths count hits. Deleting the host releases every path and counter.
+BOOST_AUTO_TEST_CASE(combine_gets_by_chain_are_the_rows_own) {
+    const std::string msg = fatal_of([] {
+        kotekan::restServer::instance().start("127.0.0.1", 0);
+        const unsigned short port = kotekan::restServer::instance().port();
+        json cfg = rec_config(ABC_REC, true, false, false);
+        cfg["gnss0_combine"]["record_export"] = 8;
+        kotekan::Config config;
+        config.update_config(cfg);
+        kotekan::bufferContainer bc;
+        std::vector<std::unique_ptr<Buffer>> bufs = buffers_of(cfg, bc);
+        Buffer* buf = bc.get_buffer("gnss0_rec_buf");
+        auto* cmb = new GnssCoherentCombiner(config, "/gnss0_combine", bc);
+        buf->register_producer("feeder");
+        const gnss::RecDir rec("feeder", ABC_REC, buf);
+        cmb->start();
+        const int n_rec = 3;
+        const size_t stride = gnss::record_stride(1);
+        for (int r = 0; r < n_rec; ++r) {
+            uint8_t* f = buf->wait_for_empty_frame("feeder", r);
+            std::memset(f, 0, buf->frame_size);
+            const double utc = 1.7e9 + r * 0.01;
+            for (size_t k = 0; k < ABC.size(); ++k) {
+                rec.write(f, k, REC_WSTART + r * REC_SAMPLES);
+                for (int p = 0; p < ABC_PRN[k]; ++p) {
+                    float* x = (float*)(f + ABC_REC[k].offset) + p * stride;
+                    x[gnss::REC_PRN] = planted_prn(k, p);
+                    x[gnss::REC_P_RE] = 0.5f + (float)(k + p + r);
+                    x[gnss::REC_P_ENERGY] = 1.0f;
+                    std::memcpy(x + gnss::RECORD_UTC_SLOT, &utc, sizeof(utc));
+                }
+            }
+            buf->mark_frame_full("feeder", r);
+        }
+        const auto t0 = std::chrono::steady_clock::now();
+        bool done = false;
+        while (!done && std::chrono::steady_clock::now() - t0 < std::chrono::seconds(10)) {
+            done = kotekan::restServer::instance().has_callback("/gnss0_combine/chains");
+            for (size_t k = 0; k < ABC.size(); ++k)
+                done = done && cmb->records_done(k) == (uint64_t)n_rec;
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        std::string bad = done ? "" : " the rows did not take their records";
+        const std::vector<std::string> verbs = {"get_status", "get_records", "get_elements"};
+        for (const auto& v : verbs) {
+            json want = json::object();
+            for (const auto& k : ABC) {
+                const Reply r = http(port, "/" + k + "_n2combine/" + v);
+                const Reply c = http(port, "/gnss0_combine/" + v + "?chain=" + k.substr(6));
+                if (!(r == c) || r.status != 200 || r.body.size() < 3)
+                    bad += " " + k + "/" + v + ": " + r.body + " by chain " + c.body;
+                want[k.substr(6)] = json::parse(r.body);
+            }
+            const Reply all = http(port, "/gnss0_combine/" + v);
+            if (all.status != 200 || json::parse(all.body) != want)
+                bad += " " + v + " without chain: " + all.body;
+        }
+        const Reply x = http(port, "/gnss0_combine/get_status?chain=gnss0_a");
+        if (x.status != 400
+            || json::parse(x.body).at("message")
+                   != "/gnss0_combine/get_status has no chain gnss0_a; its chains are a, b, c")
+            bad += " a row key as chain: " + x.body;
+        const json chains = json::parse(http(port, "/gnss0_combine/chains").body);
+        for (size_t k = 0; k < ABC.size(); ++k)
+            if (chains[k].value("chain", "") != ABC[k].substr(6))
+                bad += " chains " + chains.dump();
+        // One own GET of each verb of each row.
+        for (const auto& k : ABC)
+            for (const auto& v : verbs)
+                if (hits("/" + k + "_n2combine", "/" + k + "_n2combine/" + v) != 1.0)
+                    bad +=
+                        " " + k + "/" + v + " hits "
+                        + std::to_string(hits("/" + k + "_n2combine", "/" + k + "_n2combine/" + v));
+        cmb->stop();
+        for (auto& b : bufs)
+            b->send_shutdown_signal();
+        cmb->join();
+        delete cmb;
+        for (const std::string p : {"/gnss0_combine/get_status", "/gnss0_combine/get_records",
+                                    "/gnss0_combine/get_elements", "/gnss0_combine/chains",
+                                    "/gnss0_a_n2combine/get_status"})
+            if (kotekan::restServer::instance().has_callback(p))
+                bad += " " + p + " left";
+        if (hits("/gnss0_a_n2combine", "/gnss0_a_n2combine/get_status") != -1.0)
+            bad += " the hits outlive the host";
+        if (!bad.empty())
+            throw FatalError(bad);
+    });
+    BOOST_CHECK_EQUAL(msg, "");
+}
+
+// Two clients at once, one at a record row's own paths and one at the host's by chain, POST and
+// GET while the row's records run: every request is answered 200, and the own paths count
+// exactly the first client's requests.
+BOOST_AUTO_TEST_CASE(rest_by_chain_while_the_rows_run) {
+    const std::string msg = fatal_of([] {
+        kotekan::restServer::instance().start("127.0.0.1", 0);
+        const unsigned short port = kotekan::restServer::instance().port();
+        json workers = json::array();
+        for (const auto& k : ABC)
+            workers.push_back({{"rows", {k}}, {"cpu_affinity", {0}}});
+        json cfg = record_config(ABC, workers);
+        for (const auto& k : ABC)
+            cfg["gnss0_records"]["chains"][k]["chain"] = k.substr(6);
+        kotekan::Config config;
+        config.update_config(cfg);
+        kotekan::bufferContainer bc;
+        std::vector<std::unique_ptr<Buffer>> bufs = buffers_of(cfg, bc);
+        GnssGpuRecordAssemble host(config, "/gnss0_records", bc);
+        for (const auto& k : ABC) {
+            bc.get_buffer("epl_" + k)->register_producer("feeder");
+            bc.get_buffer("rec_" + k)->register_consumer("drain");
+        }
+        host.start();
+        std::vector<std::thread> drains;
+        for (const auto& k : ABC)
+            drains.emplace_back([b = bc.get_buffer("rec_" + k)] {
+                for (int id = 0; b->wait_for_full_frame("drain", id) != nullptr;
+                     id = (id + 1) % b->num_frames)
+                    b->mark_frame_empty("drain", id);
+            });
+        const int frames = 100, n_rec = 4, requests = 100;
+        std::thread feeder([&] {
+            for (int i = 0; i < frames; ++i)
+                for (const auto& k : ABC)
+                    feed_epl(bc.get_buffer("epl_" + k), i % 2, n_rec);
+        });
+        const json geom = {{"1", {10.0, 20.0, 0.0, 0.0, 1.7e9}}, {"_bore", {5.0, 1.7e9}}};
+        std::atomic<int> refused{0};
+        auto client = [&](bool own) {
+            const std::string at = own ? "/gnss0_a_n2assemble/" : "/gnss0_records/";
+            auto body = [&](const json& b) { return own ? b : json{{"chain", "a"}, {"body", b}}; };
+            for (int i = 0; i < requests; ++i) {
+                refused += http(port, at + "set_sat_geometry", body(geom)).status != 200;
+                refused +=
+                    http(port, at + "set_reference_element", body({{"element", i % 2}})).status
+                    != 200;
+                refused += http(port, at + "get_spectrum").status != 200;
+                if (!own)
+                    refused += http(port, at + "get_spectrum?chain=a").status != 200;
+            }
+        };
+        std::thread own(client, true), by_chain(client, false);
+        own.join();
+        by_chain.join();
+        feeder.join();
+        const auto t0 = std::chrono::steady_clock::now();
+        bool done = false;
+        while (!done && std::chrono::steady_clock::now() - t0 < std::chrono::seconds(10)) {
+            done = true;
+            for (size_t k = 0; k < ABC.size(); ++k)
+                done = done && host.records_done(k) == (uint64_t)(frames * n_rec);
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        host.stop();
+        for (auto& b : bufs)
+            b->send_shutdown_signal();
+        host.join();
+        for (auto& t : drains)
+            t.join();
+        std::string bad = done ? "" : " the rows did not take every record";
+        if (refused.load() != 0)
+            bad += " " + std::to_string(refused.load()) + " requests refused";
+        for (const std::string v : {"set_sat_geometry", "set_reference_element", "get_spectrum"})
+            if (hits("/gnss0_a_n2assemble", "/gnss0_a_n2assemble/" + v) != requests)
+                bad += " " + v + " hits "
+                       + std::to_string(hits("/gnss0_a_n2assemble", "/gnss0_a_n2assemble/" + v));
+        const std::string err = kotekan::kotekanLogging::get_error_message();
+        if (err != "not set")
+            bad += " " + err;
+        if (!bad.empty())
+            throw FatalError(bad);
+    });
+    BOOST_CHECK_EQUAL(msg, "");
+}

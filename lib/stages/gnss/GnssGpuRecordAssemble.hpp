@@ -32,7 +32,9 @@
  * gnss::RecordChain; this stage moves its frames. With a @c chains block it hosts one chain per
  * row (see gnss::host_rows), each with its own buffers and thread, under the REST paths, buffer
  * client names, metric labels and board owners of the one-row stage `<key>_n2assemble` it
- * replaces, and serves the rows at `<unique_name>/chains`. With @c workers its rows run on
+ * replaces, and serves the rows at `<unique_name>/chains` and, when it knows every row's broker
+ * chain, their verbs by chain at `<unique_name>/<verb>` (gnss::rest_register_rows). With
+ * @c workers its rows run on
  * pinned threads instead, each running its rows in order every frame and reading their inputs
  * as one consumer, `<unique_name>/w<k>`: a frame of tiles_buf and ctl_buf that several rows
  * read is released once every worker has assembled its rows' frames from it.
@@ -61,6 +63,8 @@
  * @conf rec_row  with an out_buf on the host block, each row's: its block in each frame,
  *                {chain_id, n_prn, n_chan, offset, bytes} (gnss::RecRow), n_chan its comb
  *                columns. chain_id is its gnss_row's when it has one.
+ * @conf chain    String (optional, a row's). Its broker chain, for a row without gnss_row,
+ *                whose chain it must otherwise be.
  * @conf prns     initial slot -> PRN map; its length must equal the frame's n_prn
  * @conf sample_rate  rate of the wstart sample counter, Hz
  * @conf record_cp_mod_chips  Float (default 0 = off). Reduce record slot 2 (the code-phase

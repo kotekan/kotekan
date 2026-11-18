@@ -2,7 +2,7 @@
 
 #include "GnssChanMetadata.hpp" // for get_gnss_chan_metadata (the record's absolute hop)
 #include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "gnssHostRows.hpp"     // for host_rows, host_workers, rest_register_verbs, run_rows
+#include "gnssHostRows.hpp"     // for host_rows, host_workers, rest_register_rows, run_rows
 
 #include <algorithm>     // for replace
 #include <functional>    // for bind
@@ -109,9 +109,13 @@ GnssCoherentCombiner::~GnssCoherentCombiner() {
 }
 
 void GnssCoherentCombiner::main_thread() {
-    for (Row& row : _rows)
-        gnss::rest_register_verbs(row.chain.rest_verbs(), _rest_paths);
-    gnss::rest_register_chains(unique_name, _host_rows, _rest_paths);
+    std::vector<std::string> chains;
+    std::vector<std::vector<gnss::RestVerb>> verbs;
+    for (Row& row : _rows) {
+        chains.push_back(row.chain.chain());
+        verbs.push_back(row.chain.rest_verbs());
+    }
+    gnss::rest_register_rows(unique_name, _host_rows, chains, verbs, _rest_paths);
     if (_workers[0].cpus.empty()) {
         gnss::run_rows(_workers.size(), get_cpu_affinity(),
                        std::bind(&GnssCoherentCombiner::run_worker, this, std::placeholders::_1));

@@ -37,7 +37,8 @@
  * @c chains block it hosts one chain per row (see gnss::host_rows), each with its own buffers and
  * thread, under the REST paths, buffer client names and metric stage_name of the one-row stage
  * `<key>_n2combine` it replaces, its metrics also labelled with the row's @c chain, and serves
- * the rows at `<unique_name>/chains`. A chain may be hosted on both GPU halves, so a series is
+ * the rows at `<unique_name>/chains` and their verbs by chain at `<unique_name>/<verb>`
+ * (gnss::rest_register_rows). A chain may be hosted on both GPU halves, so a series is
  * told apart by its stage_name, never by the label alone. With @c workers its rows run on pinned
  * threads instead, each taking one record of each of its rows in turn and reading their in_bufs as
  * one consumer, named for its row when it runs one, else `<unique_name>/w<k>`.

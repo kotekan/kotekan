@@ -497,6 +497,7 @@ json build_config(const std::vector<ChainSpec>& cs, const Scenario& sc,
             cfg[s.pre + "_n2assemble_tiles"] = ad;
         if (sc.rows) {
             rows_as[s.pre] = as;
+            rows_as[s.pre]["chain"] = tp.at("chain");
             rows_cb[s.pre] = cb;
             rows_cb[s.pre]["chain"] = tp.at("chain");
             rows_tp[s.pre] = tp;
@@ -1058,6 +1059,32 @@ void post(unsigned short port, const std::string& path, const json& body) {
         child_fail(72, "POST " + path + ": " + r["_error"].dump());
 }
 
+/// The chain's broker chain, which its rows name in the hosts.
+std::string chain_of(const ChainSpec& s) {
+    return s.telem.at("chain").get<std::string>();
+}
+
+/// POST @p body to @p verb of chain @p R's assembler @p u, at the record host by chain with
+/// Scenario::by_chain.
+void post_assembler(const ChainRun& R, unsigned short port, const std::string& u,
+                    const std::string& verb, const json& body) {
+    if (R.sc->by_chain)
+        post(port, records_host(R.s->gpu) + "/" + verb,
+             {{"chain", chain_of(*R.s)}, {"body", body}});
+    else
+        post(port, u + "/" + verb, body);
+}
+
+/// The path of GET @p verb of chain @p R's assembler @p u, or with @p combiner of its combiner:
+/// at the host by chain with Scenario::by_chain.
+std::string get_path(const ChainRun& R, const std::string& u, const std::string& verb,
+                     bool combiner) {
+    if (R.sc->by_chain)
+        return (combiner ? combine_host(R.s->gpu) : records_host(R.s->gpu)) + "/" + verb
+               + "?chain=" + chain_of(*R.s);
+    return (combiner ? "/" + R.s->pre + "_n2combine" : u) + "/" + verb;
+}
+
 /// The scenario's POSTs to chain @p R after frame @p k.
 void fire_posts(ChainRun& R, const Sky& sky, unsigned short port, const std::string& u, int k) {
     const ChainSpec& s = *R.s;
@@ -1071,7 +1098,7 @@ void fire_posts(ChainRun& R, const Sky& sky, unsigned short port, const std::str
             azel(prn, &az, &el);
             g[std::to_string(prn)] = {az, el, 0.0, 0.0, utc};
         }
-        post(port, u + "/set_sat_geometry", g);
+        post_assembler(R, port, u, "set_sat_geometry", g);
     }
     if (k == sc.gain_frame && s.assemble.value("elem_sum", false)) {
         json gain = json::array();
@@ -1080,7 +1107,7 @@ void fire_posts(ChainRun& R, const Sky& sky, unsigned short port, const std::str
                 sky.gain_e[(size_t)e % sky.gain_e.size()] * std::polar(1.0 + 0.02 * e, -0.2);
             gain.push_back({g.real(), g.imag()});
         }
-        post(port, u + "/set_elem_gain", {{"gain", gain}});
+        post_assembler(R, port, u, "set_elem_gain", {{"gain", gain}});
     }
     if (k == sc.shared_ref_frame) {
         json ref = json::array();
@@ -1088,13 +1115,13 @@ void fire_posts(ChainRun& R, const Sky& sky, unsigned short port, const std::str
             const std::complex<double> g = sky.gain_e[(size_t)e] * std::polar(1.0, 0.3);
             ref.push_back({g.real(), g.imag()});
         }
-        post(port, u + "/set_elem_sum_shared_ref",
-             {{"ref", ref}, {"mode", "live"}, {"slew_deg_s", 5.0}});
+        post_assembler(R, port, u, "set_elem_sum_shared_ref",
+                       {{"ref", ref}, {"mode", "live"}, {"slew_deg_s", 5.0}});
     }
     if (R.idx == 0 && k == sc.proj_live_frame)
-        post(port, u + "/set_elem_proj", {{"mode", "live"}});
+        post_assembler(R, port, u, "set_elem_proj", {{"mode", "live"}});
     if (R.idx == 1 && k == sc.ref_elem_frame)
-        post(port, u + "/set_reference_element", {{"element", 1}});
+        post_assembler(R, port, u, "set_reference_element", {{"element", 1}});
 }
 
 uint64_t digest(const json& j) {
@@ -1130,17 +1157,16 @@ void slot_digests(const std::string& verb, const json& rows, int k, json& out) {
     }
 }
 
-/// GET @p path of chain @p R after frame @p k, digested, and the parts the checks read kept in
-/// @p live.
-void take_get(ChainRun& R, unsigned short port, const std::string& path, int k, Digests& d) {
-    const std::string c = "/" + R.s->pre + "_n2combine";
+/// GET @p verb of chain @p R's assembler @p u, or with @p combiner of its combiner, after frame
+/// @p k, digested, and the parts the checks read kept in @p live.
+void take_get(ChainRun& R, unsigned short port, const std::string& u, const std::string& verb,
+              bool combiner, int k, Digests& d) {
     const std::string cp = "@" + std::to_string(k);
-    const json j = rest(port, path, json{});
-    const std::string verb = path.substr(path.rfind('/') + 1);
+    const json j = rest(port, get_path(R, u, verb, combiner), json{});
     const std::string body = j.dump();
     d.streams[R.s->pre + ".rest." + verb + cp] = {fnv1a64(body.data(), body.size())};
     // The combiner's replies also give the per-slot digests at the checkpoint.
-    if (R.sc->mut == Mutation::none && path.compare(0, c.size() + 1, c + "/") == 0)
+    if (R.sc->mut == Mutation::none && combiner)
         slot_digests(verb, j, k, d.slots[R.s->pre]["own"]);
     json& L = d.live[R.s->pre];
     if (verb == "get_elem_cal" && j.contains("prns")) {
@@ -1170,16 +1196,15 @@ void take_get(ChainRun& R, unsigned short port, const std::string& path, int k, 
 
 /// Every GET of the chain's combiner, as take_get.
 void fire_combiner_gets(ChainRun& R, unsigned short port, int k, Digests& d) {
-    const std::string c = "/" + R.s->pre + "_n2combine";
-    for (const char* v : {"/get_status", "/get_records", "/get_elements"})
-        take_get(R, port, c + v, k, d);
+    for (const char* v : {"get_status", "get_records", "get_elements"})
+        take_get(R, port, "", v, true, k, d);
 }
 
 /// Every GET of the chain's assembler @p u, and with @p combiner its combiner's, as take_get.
 void fire_gets(ChainRun& R, unsigned short port, const std::string& u, int k, Digests& d,
                bool combiner) {
-    for (const char* v : {"/get_elem_cal", "/get_spectrum", "/get_lane_inst"})
-        take_get(R, port, u + v, k, d);
+    for (const char* v : {"get_elem_cal", "get_spectrum", "get_lane_inst"})
+        take_get(R, port, u, v, false, k, d);
     if (combiner)
         fire_combiner_gets(R, port, k, d);
 }
@@ -1192,12 +1217,66 @@ bool slot_frame(const Scenario& sc, int k) {
            || std::find(sc.checkpoints.begin(), sc.checkpoints.end(), k) != sc.checkpoints.end();
 }
 
-/// The GETs of combiner @p name after frame @p k, digested per slot into @p out, get_records only
-/// with @p records.
-void read_slot_gets(unsigned short port, const std::string& name, int k, bool records, json& out) {
+/// The GETs of combiner @p name, or with @p chain of that row of combine host @p name, after
+/// frame @p k, digested per slot into @p out, get_records only with @p records.
+void read_slot_gets(unsigned short port, const std::string& name, int k, bool records, json& out,
+                    const std::string& chain = "") {
     for (const std::string verb : {"get_status", "get_elements", "get_records"})
         if (records || verb != "get_records")
-            slot_digests(verb, rest(port, name + "/" + verb, json{}), k, out);
+            slot_digests(
+                verb,
+                rest(port, name + "/" + verb + (chain.empty() ? "" : "?chain=" + chain), json{}), k,
+                out);
+}
+
+/// The combiner GETs of chain @p R after frame @p k, digested per slot, as read_slot_gets: at its
+/// combine host by chain with Scenario::by_chain.
+void read_own_slot_gets(const ChainRun& R, unsigned short port, int k, json& out) {
+    const bool records = k >= R.sc->swap_frame;
+    if (R.sc->by_chain)
+        read_slot_gets(port, combine_host(R.s->gpu), k, records, out, chain_of(*R.s));
+    else
+        read_slot_gets(port, "/" + R.s->pre + "_n2combine", k, records, out);
+}
+
+/// A GET's reply as it came: whether it was a 200 and its bytes.
+std::pair<bool, std::string> get_raw(unsigned short port, const std::string& path) {
+    return restClient::instance().make_request_blocking(path, json{}, "127.0.0.1", port, 0, 10);
+}
+
+/// With Scenario::rows, after frame @p k: every GET of every chain's assembler and combiner at
+/// its host by chain is byte for byte the GET at the chain's own path (a refused one refused
+/// there too), and without chain the host's reply holds each chain's under its chain.
+void check_by_chain(const std::vector<std::unique_ptr<ChainRun>>& runs, unsigned short port,
+                    int k) {
+    const int gpu = runs[0]->s->gpu;
+    for (const bool combiner : {false, true}) {
+        const std::vector<std::string> verbs =
+            combiner ? std::vector<std::string>{"get_status", "get_records", "get_elements"}
+                     : std::vector<std::string>{"get_elem_cal", "get_spectrum", "get_lane_inst"};
+        const std::string host = combiner ? combine_host(gpu) : records_host(gpu);
+        for (const auto& v : verbs) {
+            json want = json::object();
+            for (const auto& R : runs) {
+                const std::string own = (combiner ? "/" + R->s->pre + "_n2combine"
+                                                  : assembler_name(*R->s, R->idx, *R->sc))
+                                        + "/" + v;
+                const auto a = get_raw(port, own);
+                const auto b = get_raw(port, host + "/" + v + "?chain=" + chain_of(*R->s));
+                if (a != b)
+                    child_fail(82, fmt::format("after frame {:d}: {:s} {:s} {:.200s}, by chain "
+                                               "{:s} {:.200s}",
+                                               k, own, a.first ? "200" : "refused", a.second,
+                                               b.first ? "200" : "refused", b.second));
+                if (a.first)
+                    want[chain_of(*R->s)] = json::parse(a.second);
+            }
+            const auto all = get_raw(port, host + "/" + v);
+            if (!all.first || json::parse(all.second) != want)
+                child_fail(82, fmt::format("after frame {:d}: {:s}/{:s} without chain {:.200s}", k,
+                                           host, v, all.second));
+        }
+    }
 }
 
 /// The per-slot GETs of @p R's side combiners after frame @p k, which only the unmutated runs'
@@ -1578,8 +1657,7 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
             // compare it.
             if (sc.mut == Mutation::none && slot_frame(sc, k)) {
                 if (!checkpoint && !combined_after) // fire_gets read them
-                    read_slot_gets(port, "/" + s.pre + "_n2combine", k, k >= sc.swap_frame,
-                                   d.slots[s.pre]["own"]);
+                    read_own_slot_gets(*R, port, k, d.slots[s.pre]["own"]);
                 if (!sc.rec_shared)
                     read_side_slots(*R, port, k, d);
             }
@@ -1609,12 +1687,14 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
                 if (checkpoint)
                     fire_combiner_gets(*R, port, k, d);
                 else if (sc.mut == Mutation::none && slot_frame(sc, k))
-                    read_slot_gets(port, "/" + R->s->pre + "_n2combine", k, k >= sc.swap_frame,
-                                   d.slots[R->s->pre]["own"]);
+                    read_own_slot_gets(*R, port, k, d.slots[R->s->pre]["own"]);
             }
         }
-        if (std::find(sc.checkpoints.begin(), sc.checkpoints.end(), k) != sc.checkpoints.end())
+        if (std::find(sc.checkpoints.begin(), sc.checkpoints.end(), k) != sc.checkpoints.end()) {
             snapshot_board(k, d);
+            if (sc.rows)
+                check_by_chain(runs, port, k);
+        }
     }
 
     for (auto& R : runs) {
@@ -1633,19 +1713,19 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
         for (const SideCombiner& x : R->side)
             d.slots[pre][x.name]["cmb"] = x.rows;
     }
-    // Each host lists its rows, in key order, with the one-row stage each stands for.
+    // Each host lists its rows, in key order, with the one-row stage each stands for and its
+    // chain.
     if (sc.rows) {
-        std::vector<std::string> pres;
+        std::map<std::string, std::string> pres;
         for (const auto& s : cs)
-            pres.push_back(s.pre);
-        std::sort(pres.begin(), pres.end());
+            pres[s.pre] = chain_of(s);
         for (const auto& [host, suffix] : std::vector<std::pair<std::string, std::string>>{
                  {records_host(cs[0].gpu), "_n2assemble"},
                  {combine_host(cs[0].gpu), "_n2combine"},
                  {telem_host(cs[0].gpu), "_telem_pack"}}) {
             json want = json::array();
-            for (const auto& p : pres)
-                want.push_back({{"name", p}, {"stage", "/" + p + suffix}});
+            for (const auto& [p, chain] : pres)
+                want.push_back({{"name", p}, {"stage", "/" + p + suffix}, {"chain", chain}});
             const json got = rest(port, host + "/chains", json{});
             if (got != want)
                 child_fail(80, host + "/chains: " + got.dump() + ", not " + want.dump());
@@ -3202,6 +3282,28 @@ BOOST_AUTO_TEST_CASE(half_rec_buf) {
         BOOST_CHECK_MESSAGE(d.streams.at(s.pre + ".epl") == base.streams.at(s.pre + ".epl"),
                             "record buffer, shared tiles: " << s.pre << ".epl");
     BOOST_CHECK(base.pins == d.pins);
+}
+
+/// The POSTs through the hosts by chain, and the GETs there, ?chain=<c>, give the baseline's
+/// digests, as a node with --half-rec-buf; with GNSS_REPLAY_FULL=1 also with the rows reading the
+/// adapters' epl frames, each naming its chain without a gnss_row.
+BOOST_AUTO_TEST_CASE(by_chain) {
+    const Digests& base = baseline();
+    std::vector<Scenario> runs(1, half_rec_node(true));
+    if (full_run()) {
+        runs.push_back(base_scenario());
+        runs.back().cold_ref = true;
+        runs.back().rows = true;
+    }
+    for (Scenario& x : runs) {
+        x.by_chain = true;
+        const Digests d = run_scenario(chains(), x);
+        BOOST_CHECK_MESSAGE(changed(base, d).empty(),
+                            "by chain, gpu rows " << x.gpu_rows << ": " << join(changed(base, d)));
+        BOOST_CHECK(base.live == d.live);
+        BOOST_CHECK(base.pins == d.pins);
+        BOOST_CHECK(base.slots == d.slots);
+    }
 }
 
 /// A PRN swap on one row with the half's one record buffer and more rows than workers: the run

@@ -44,7 +44,7 @@ kotekan::prometheus::Gauge& add_gauge(const std::string& metric, const std::stri
 } // namespace
 
 CombinerChain::CombinerChain(Config& config, const std::string& cfg_path, const std::string& name,
-                             const std::string& chain) : _name(name) {
+                             const std::string& chain) : _name(name), _chain(chain) {
     set_log_level(config.get<std::string>(cfg_path, "log_level"));
     set_log_prefix(name);
     _n_elements = config.get<int>(cfg_path, "n_elements");

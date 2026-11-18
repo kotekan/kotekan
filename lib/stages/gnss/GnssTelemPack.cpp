@@ -97,7 +97,10 @@ GnssTelemPack::GnssTelemPack(Config& config, const std::string& unique_name,
         for (const gnss::HostWorker& w : _workers)
             register_inputs(w);
     }
-    gnss::rest_register_chains(unique_name, _host_rows, _rest_paths);
+    std::vector<std::string> chains;
+    for (Row& row : _rows)
+        chains.push_back(row.chain.chain());
+    gnss::rest_register_chains(unique_name, _host_rows, chains, _rest_paths);
 }
 
 GnssTelemPack::~GnssTelemPack() {

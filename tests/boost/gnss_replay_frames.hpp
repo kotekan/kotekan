@@ -126,6 +126,9 @@ struct Scenario {
     /// after another as without it, and the frame's records reach the readers once every chain
     /// has written its own.
     bool rec_shared = false;
+    /// true, with rows: the POSTs go to the hosts' paths by chain ({"chain": <c>, "body": <the
+    /// request>}), and the checkpoint and per-slot GETs are read there, ?chain=<c>.
+    bool by_chain = false;
 };
 
 /// Record index of frame 0's first record: a multiple of every window length the chains use

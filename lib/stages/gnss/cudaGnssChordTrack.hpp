@@ -35,7 +35,13 @@
  * lane.
  *
  * Each chain's REST endpoints are registered at the paths its config names. A path registered
- * twice is FATAL.
+ * twice is FATAL. With a @c chains block the command also serves them by chain at
+ * `/<half>_inject/<verb>` (gnss::rest_register_rows), <half> the name its rows' gnss_rows
+ * entries share before their chain. There, set_trim also takes
+ * `{"chains": {"<chain>": <a set_trim request>, ...}}`: every named chain's prn_mtx is held, in
+ * row order, while each request is checked as its own path checks it and, if none is refused,
+ * applied; otherwise nothing is applied. The reply is its own path's, or the first refusal,
+ * naming its chain.
  */
 class cudaGnssChordTrackState : public cudaCommandState {
 public:
@@ -59,6 +65,11 @@ public:
     }
 
 private:
+    /// POST set_trim of several chains at once (see the class).
+    void set_trim_rows(kotekan::connectionInstance& conn, nlohmann::json& request);
+
+    /// The path its rows' verbs are served at by chain: `/<half>_inject`.
+    std::string _host;
     std::vector<std::string> _rest_paths;
 };
 

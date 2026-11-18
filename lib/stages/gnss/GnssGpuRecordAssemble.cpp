@@ -18,13 +18,18 @@ using kotekan::Stage;
 REGISTER_KOTEKAN_STAGE(GnssGpuRecordAssemble);
 
 const std::vector<std::string> GnssGpuRecordAssemble::ROW_KEYS = {"out_buf", "prns", "channel_ids"};
-const std::vector<std::string> GnssGpuRecordAssemble::ROW_ONLY_KEYS = {
-    "beam_cube_chain", "cube_buf",
-    "ctl_buf",         "elem_sum_shared_ref",
-    "fg_total",        "gnss_row",
-    "in_buf",          "lane_transfer_freq_ids",
-    "rec_row",         "record_cp_mod_chips",
-    "tiles_buf"};
+const std::vector<std::string> GnssGpuRecordAssemble::ROW_ONLY_KEYS = {"beam_cube_chain",
+                                                                       "chain",
+                                                                       "cube_buf",
+                                                                       "ctl_buf",
+                                                                       "elem_sum_shared_ref",
+                                                                       "fg_total",
+                                                                       "gnss_row",
+                                                                       "in_buf",
+                                                                       "lane_transfer_freq_ids",
+                                                                       "rec_row",
+                                                                       "record_cp_mod_chips",
+                                                                       "tiles_buf"};
 
 std::vector<std::string> GnssGpuRecordAssemble::row_keys(Config& config,
                                                          const std::string& unique_name) {
@@ -50,6 +55,9 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     if (!_host_rows[0].key.empty() && config.exists(unique_name, "out_buf"))
         _rec_buf = get_buffer("out_buf");
     std::vector<gnss::RecRow> rec_rows;
+    // Each row's broker chain: its gnss_row's or its own chain, empty with neither.
+    std::vector<std::string> chains;
+    std::vector<std::vector<gnss::RestVerb>> verbs;
     for (const gnss::HostRow& hr : _host_rows) {
         // Exact paths: a row must not take its input from the host block or the root.
         const bool in = config.exists(hr.cfg_path, "in_buf");
@@ -119,7 +127,18 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
             row.cube_out_buf->register_producer(hr.name);
             row.chain.check_cube_buf(cbuf, row.cube_out_buf);
         }
-        gnss::rest_register_verbs(row.chain.rest_verbs(), _rest_paths);
+        chains.push_back(config.exists(hr.cfg_path, "chain")
+                             ? config.get<std::string>(hr.cfg_path, "chain")
+                             : "");
+        if (config.exists(hr.cfg_path, "gnss_row")) {
+            const std::string c =
+                gnss_gpu::gpu_row(config.get<nlohmann::json>(hr.cfg_path, "gnss_row")).chain;
+            if (!chains.back().empty() && chains.back() != c)
+                FATAL_ERROR("{:s}: chain {:s}, but its gnss_row is chain {:s}", hr.name,
+                            chains.back(), c);
+            chains.back() = c;
+        }
+        verbs.push_back(row.chain.rest_verbs());
     }
     if (_rec_buf) {
         _rec_dir = std::make_unique<gnss::RecDir>(unique_name, rec_rows, _rec_buf);
@@ -136,7 +155,7 @@ GnssGpuRecordAssemble::GnssGpuRecordAssemble(Config& config, const std::string& 
     }
     for (const gnss::HostWorker& w : _workers)
         register_inputs(w);
-    gnss::rest_register_chains(unique_name, _host_rows, _rest_paths);
+    gnss::rest_register_rows(unique_name, _host_rows, chains, verbs, _rest_paths);
 }
 
 void GnssGpuRecordAssemble::register_inputs(const gnss::HostWorker& w) {

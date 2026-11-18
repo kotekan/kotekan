@@ -52,6 +52,10 @@ public:
     int fft_len() const {
         return _fft_len;
     }
+    /// Its broker chain; empty for a one-row host.
+    const std::string& chain() const {
+        return _chain;
+    }
 
     /// Fold in one record frame, @p cur_hop its absolute hop (-1 = no frame metadata). Returns
     /// true when an emit is due.
@@ -63,7 +67,7 @@ public:
     std::vector<RestVerb> rest_verbs();
 
 private:
-    const std::string _name;
+    const std::string _name, _chain;
 
     /// REST get_status: the last emit's per-PRN snapshot (amplitudes, deep detection, DLL
     /// powers, carrier and ADR observables).

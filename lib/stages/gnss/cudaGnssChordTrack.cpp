@@ -2,8 +2,17 @@
 
 #include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO
 
+#include "fmt.hpp" // for format
+
+#include <algorithm>  // for min
+#include <functional> // for bind
+#include <mutex>      // for mutex, unique_lock
+
 using kotekan::bufferContainer;
 using kotekan::Config;
+using kotekan::connectionInstance;
+using kotekan::HTTP_RESPONSE;
+using nlohmann::json;
 
 // The keys a row of a chains block must set itself; the command must not set them, nor the ones
 // after them, which a row may set.
@@ -75,8 +84,68 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     }
     for (Row& r : rows)
         r.chain = std::make_unique<gnss::TrackChain>(config, r.host.cfg_path);
+    std::vector<gnss::HostRow> row_hosts;
+    std::vector<std::string> chains;
+    std::vector<std::vector<gnss::RestVerb>> verbs;
+    for (Row& r : rows) {
+        row_hosts.push_back(r.host);
+        chains.push_back(r.gpu.chain);
+        verbs.push_back(r.chain->rest_verbs());
+    }
+    if (hosted()) {
+        // The rows of one GPU half: gnss<g>_<chain>, as the generator names them.
+        for (const Row& r : rows) {
+            const std::string& n = r.gpu.name;
+            const size_t at = n.size() - std::min(n.size(), r.gpu.chain.size() + 1);
+            if (at == 0 || n.compare(at, std::string::npos, "_" + r.gpu.chain) != 0)
+                FATAL_ERROR_NON_OO("cudaGnssInject {:s}: gnss_rows row {:s} is not named "
+                                   "<half>_{:s}",
+                                   unique_name, n, r.gpu.chain);
+            const std::string h = "/" + n.substr(0, at) + "_inject";
+            if (!_host.empty() && h != _host)
+                FATAL_ERROR_NON_OO("cudaGnssInject {:s}: rows of two halves, {:s} and {:s}",
+                                   unique_name, _host, h);
+            _host = h;
+        }
+    }
+    using namespace std::placeholders;
+    gnss::rest_register_rows(
+        _host.empty() ? unique_name : _host, row_hosts, chains, verbs, _rest_paths,
+        {{"set_trim", std::bind(&cudaGnssChordTrackState::set_trim_rows, this, _1, _2)}});
+}
+
+void cudaGnssChordTrackState::set_trim_rows(connectionInstance& conn, json& request) {
+    const json& by_chain = request.at("chains");
+    std::vector<Row*> todo;
     for (Row& r : rows)
-        gnss::rest_register_verbs(r.chain->rest_verbs(), _rest_paths);
+        if (by_chain.is_object() && by_chain.contains(r.gpu.chain))
+            todo.push_back(&r);
+    if (!by_chain.is_object() || todo.size() != by_chain.size()) {
+        std::string have;
+        for (const Row& r : rows)
+            have += (have.empty() ? "" : ", ") + r.gpu.chain;
+        conn.send_error(fmt::format(fmt("{:s}/set_trim: chains must map chains of {:s} to their "
+                                        "set_trim requests"),
+                                    _host, have),
+                        HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    std::vector<std::unique_lock<std::mutex>> locks;
+    for (Row* r : todo)
+        locks.emplace_back(r->chain->prn_mtx);
+    std::vector<std::vector<std::pair<int, double>>> upd(todo.size());
+    for (size_t i = 0; i < todo.size(); ++i) {
+        const std::string err =
+            todo[i]->chain->parse_trims(by_chain.at(todo[i]->gpu.chain), upd[i]);
+        if (!err.empty()) {
+            conn.send_error(todo[i]->gpu.chain + ": bad trim payload: " + err,
+                            HTTP_RESPONSE::BAD_REQUEST);
+            return;
+        }
+    }
+    for (size_t i = 0; i < todo.size(); ++i)
+        todo[i]->chain->apply_trims(upd[i]);
+    conn.send_empty_reply(HTTP_RESPONSE::OK);
 }
 
 cudaGnssChordTrackState::~cudaGnssChordTrackState() {

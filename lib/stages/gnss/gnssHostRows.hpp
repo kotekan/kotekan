@@ -92,14 +92,32 @@ void rest_register_unique(
     std::function<void(kotekan::connectionInstance&, nlohmann::json&)> callback,
     std::vector<std::string>& paths);
 
-/// With a @c chains block, register GET `<unique_name>/chains`, which lists @p rows, and add it
-/// to @p paths.
+/// With a @c chains block, register GET `<unique_name>/chains`, which lists @p rows, each with
+/// its broker chain from @p chains unless that is empty, and add it to @p paths.
 void rest_register_chains(const std::string& unique_name, const std::vector<HostRow>& rows,
-                          std::vector<std::string>& paths);
+                          const std::vector<std::string>& chains, std::vector<std::string>& paths);
 
-/// Register @p verbs at their own paths and add the paths to @p paths, FATAL if one already has a
-/// callback.
-void rest_register_verbs(const std::vector<RestVerb>& verbs, std::vector<std::string>& paths);
+/**
+ * @brief Register the REST endpoints of host @p host, whose rows are @p rows, @p verbs[i] row
+ *        i's, and add their paths to @p paths.
+ *
+ * Each verb is served at its own path, FATAL if that already has a callback. With a @c chains
+ * block the host also serves rest_register_chains, and, when @p chains names every row's broker
+ * chain, each verb once at `<host>/<verb>` for the rows that have it:
+ *  - GET with `?chain=<c>` answers as row c's own path does to the other query arguments, and
+ *    without chain with `{"<c>": <row c's reply>, ...}`, or with the first row's refusal;
+ *  - POST takes `{"chain": "<c>", "body": <request>}` and answers as row c's own path does to
+ *    the request; `{"chains": {...}}` goes to @p batch's callback for the verb, if it has one.
+ * A request with no chain, or with a chain no row of the verb has, is refused (400), naming the
+ * chains that have it. The rows' own paths then count every request that reaches their
+ * callbacks in kotekan_gnss_rest_legacy_hits_total{path}, with the row's name as stage_name;
+ * the host's paths count nothing. Two rows of one chain are FATAL.
+ */
+void rest_register_rows(const std::string& host, const std::vector<HostRow>& rows,
+                        const std::vector<std::string>& chains,
+                        const std::vector<std::vector<RestVerb>>& verbs,
+                        std::vector<std::string>& paths,
+                        const std::map<std::string, RestPost>& batch = {});
 
 /// Release what a host claimed, for its destructor: remove its REST @p paths, waiting for any
 /// request in flight on them, then the metrics and row names of its @p rows, so that a new host

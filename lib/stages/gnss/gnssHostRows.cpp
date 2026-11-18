@@ -4,6 +4,9 @@
 #include "prometheusMetrics.hpp" // for Metrics
 #include "util.h"                // for string_tail
 
+#include "fmt.hpp" // for format
+
+#include <algorithm> // for find
 #include <mutex>     // for mutex, lock_guard
 #include <pthread.h> // for pthread_setaffinity_np, pthread_setname_np
 #include <sched.h>   // for CPU_SETSIZE
@@ -24,6 +27,117 @@ namespace {
 std::mutex host_lock;
 /// The row names host_rows has handed out and release_host has not taken back.
 std::set<std::string> row_names;
+
+/// The rows of a host that have one verb, as (chain, verb), in row order.
+using VerbRows = std::vector<std::pair<std::string, RestVerb>>;
+
+std::string chain_list(const VerbRows& rows) {
+    std::string out;
+    for (const auto& r : rows)
+        out += (out.empty() ? "" : ", ") + r.first;
+    return out;
+}
+
+const RestVerb* verb_of(const VerbRows& rows, const std::string& chain) {
+    for (const auto& r : rows)
+        if (r.first == chain)
+            return &r.second;
+    return nullptr;
+}
+
+void no_chain(connectionInstance& conn, const std::string& path, const std::string& chain,
+              const VerbRows& rows) {
+    conn.send_error(fmt::format(fmt("{:s} has no chain {:s}; its chains are {:s}"), path, chain,
+                                chain_list(rows)),
+                    HTTP_RESPONSE::BAD_REQUEST);
+}
+
+void get_rows(connectionInstance& conn, const std::string& path, const VerbRows& rows) {
+    RestQuery query = conn.get_query();
+    const auto it = query.find("chain");
+    if (it == query.end()) {
+        json reply = json::object();
+        for (const auto& [chain, v] : rows) {
+            try {
+                reply[chain] = v.get(query);
+            } catch (const std::invalid_argument& e) {
+                conn.send_error(chain + ": " + e.what(), HTTP_RESPONSE::BAD_REQUEST);
+                return;
+            }
+        }
+        conn.send_json_reply(reply);
+        return;
+    }
+    const RestVerb* v = verb_of(rows, it->second);
+    if (v == nullptr) {
+        no_chain(conn, path, it->second, rows);
+        return;
+    }
+    query.erase(it);
+    rest_reply(conn, v->get, query);
+}
+
+void post_rows(connectionInstance& conn, json& request, const std::string& path,
+               const VerbRows& rows, const RestPost& batch) {
+    if (batch && request.is_object() && request.size() == 1 && request.contains("chains")) {
+        batch(conn, request);
+        return;
+    }
+    if (!request.is_object() || request.size() != 2 || !request.contains("body")
+        || !request.contains("chain") || !request.at("chain").is_string()) {
+        conn.send_error(
+            fmt::format(fmt("{:s} takes {{\"chain\": <chain>, \"body\": <request>}}{:s}; its "
+                            "chains are {:s}"),
+                        path, batch ? " or {\"chains\": {<chain>: <request>, ...}}" : "",
+                        chain_list(rows)),
+            HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    const std::string chain = request.at("chain").get<std::string>();
+    const RestVerb* v = verb_of(rows, chain);
+    if (v == nullptr) {
+        no_chain(conn, path, chain, rows);
+        return;
+    }
+    v->post(conn, request.at("body"));
+}
+
+/// Register @p verbs at their own paths and add the paths to @p paths; with @p hits, each path
+/// counts the requests that reach it there.
+void register_verbs(const std::vector<RestVerb>& verbs, std::vector<std::string>& paths,
+                    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>* hits) {
+    for (const RestVerb& v : verbs) {
+        kotekan::prometheus::Counter* hit = nullptr;
+        if (hits) {
+            hit = &hits->labels({v.path});
+            // Shown from the start, so an unused path reads 0 rather than absent.
+            hit->inc(0);
+        }
+        if (!v.get) {
+            const RestPost post = v.post;
+            if (!hit)
+                rest_register_unique(v.path, post, paths);
+            else
+                rest_register_unique(
+                    v.path,
+                    [hit, post](connectionInstance& conn, json& request) {
+                        hit->inc();
+                        post(conn, request);
+                    },
+                    paths);
+            continue;
+        }
+        const RestGet get = v.get;
+        rest_register_unique(
+            v.path,
+            [hit, get](connectionInstance& conn) {
+                if (hit)
+                    hit->inc();
+                rest_reply(conn, get, conn.get_query());
+            },
+            paths);
+    }
+}
 
 void run_row(const std::function<void(size_t)>& run, size_t row) {
     try {
@@ -149,29 +263,74 @@ void rest_reply(connectionInstance& conn, const RestGet& get, const RestQuery& q
     conn.send_json_reply(reply);
 }
 
-void rest_register_verbs(const std::vector<RestVerb>& verbs, std::vector<std::string>& paths) {
-    for (const RestVerb& v : verbs) {
-        if (!v.get) {
-            rest_register_unique(v.path, v.post, paths);
-            continue;
-        }
-        const RestGet get = v.get;
-        rest_register_unique(
-            v.path, [get](connectionInstance& conn) { rest_reply(conn, get, conn.get_query()); },
-            paths);
-    }
-}
-
 void rest_register_chains(const std::string& unique_name, const std::vector<HostRow>& rows,
-                          std::vector<std::string>& paths) {
+                          const std::vector<std::string>& chains, std::vector<std::string>& paths) {
     if (rows[0].key.empty())
         return;
     json reply = json::array();
-    for (const HostRow& row : rows)
-        reply.push_back({{"name", row.key}, {"stage", row.name}});
+    for (size_t i = 0; i < rows.size(); ++i) {
+        json row = {{"name", rows[i].key}, {"stage", rows[i].name}};
+        if (!chains[i].empty())
+            row["chain"] = chains[i];
+        reply.push_back(row);
+    }
     rest_register_unique(
         unique_name + "/chains", [reply](connectionInstance& conn) { conn.send_json_reply(reply); },
         paths);
+}
+
+void rest_register_rows(const std::string& host, const std::vector<HostRow>& rows,
+                        const std::vector<std::string>& chains,
+                        const std::vector<std::vector<RestVerb>>& verbs,
+                        std::vector<std::string>& paths,
+                        const std::map<std::string, RestPost>& batch) {
+    const bool hosted = !rows[0].key.empty();
+    const bool by_chain = hosted && std::find(chains.begin(), chains.end(), "") == chains.end();
+    if (hosted && !by_chain)
+        INFO_NON_OO("{:s}: a row names no chain, so its verbs are served only at the rows' own "
+                    "paths",
+                    host);
+    // Each verb with the rows that have it, in the order the rows first have them.
+    std::vector<std::pair<std::string, VerbRows>> by_verb;
+    for (size_t i = 0; i < rows.size(); ++i) {
+        if (!by_chain) {
+            register_verbs(verbs[i], paths, nullptr);
+            continue;
+        }
+        for (size_t j = 0; j < i; ++j)
+            if (chains[j] == chains[i])
+                FATAL_ERROR_NON_OO("{:s}: rows {:s} and {:s} are both chain {:s}", host,
+                                   rows[j].key, rows[i].key, chains[i]);
+        register_verbs(verbs[i], paths,
+                       &kotekan::prometheus::Metrics::instance().add_counter(
+                           "kotekan_gnss_rest_legacy_hits_total", rows[i].name, {"path"}));
+        for (const RestVerb& v : verbs[i]) {
+            auto it = by_verb.begin();
+            while (it != by_verb.end() && it->first != v.verb)
+                ++it;
+            if (it == by_verb.end())
+                it = by_verb.insert(it, {v.verb, {}});
+            it->second.emplace_back(chains[i], v);
+        }
+    }
+    for (const auto& [verb, vrows] : by_verb) {
+        const std::string path = host + "/" + verb;
+        const VerbRows vr = vrows;
+        if (vr[0].second.get) {
+            rest_register_unique(
+                path, [path, vr](connectionInstance& conn) { get_rows(conn, path, vr); }, paths);
+            continue;
+        }
+        const auto b = batch.find(verb);
+        const RestPost bp = b == batch.end() ? nullptr : b->second;
+        rest_register_unique(
+            path,
+            [path, vr, bp](connectionInstance& conn, json& request) {
+                post_rows(conn, request, path, vr, bp);
+            },
+            paths);
+    }
+    rest_register_chains(host, rows, chains, paths);
 }
 
 void release_host(const std::vector<HostRow>& rows, const std::vector<std::string>& paths) {

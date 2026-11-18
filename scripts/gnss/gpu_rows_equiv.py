@@ -601,7 +601,8 @@ def rows_of(cfg):
     return half, corr, rows, synth_sink
 
 
-def rest(port, path, body=None, timeout=10):
+def rest_raw(port, path, body=None, timeout=10):
+    """(status, reply bytes) of GET path, or with body POST it."""
     url = f"http://127.0.0.1:{port}{path}"
     data = None if body is None else json.dumps(body).encode()
     req = urllib.request.Request(
@@ -609,9 +610,89 @@ def rest(port, path, body=None, timeout=10):
     )
     if data is not None:
         req.add_header("Content-Type", "application/json")
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        txt = r.read()
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.status, r.read()
+    except urllib.error.HTTPError as e:
+        try:
+            return e.code, e.read()
+        finally:
+            e.close()
+
+
+def rest(port, path, body=None, timeout=10):
+    status, txt = rest_raw(port, path, body, timeout)
+    if status != 200:
+        raise urllib.error.HTTPError(
+            path, status, txt.decode(errors="replace"), None, None
+        )
     return json.loads(txt) if txt else None
+
+
+class ByChain:
+    """The hosted inject's REST paths by chain (gnss::rest_register_rows), `/<half>_inject/<verb>`,
+    standing in for each row's own paths, and the checks run on them."""
+
+    def __init__(self, rows):
+        r = rows[0].row
+        self.base = "/%s_inject" % r["name"][: -len(r["chain"]) - 1]
+        self.rows = rows
+        self.problems = []
+
+    def get_prns(self, port, r):
+        return rest(port, f"{self.base}/get_prns?chain={r.name}")
+
+    def post(self, port, verb, r, body):
+        return rest(port, f"{self.base}/{verb}", {"chain": r.name, "body": body})
+
+    def check_gets(self, port, ep, when):
+        """Each row's get_prns by chain is byte for byte its own path's, and without chain the
+        host's reply holds each row's under its chain."""
+        want = {}
+        for r in self.rows:
+            own = rest_raw(port, ep[r.name]["get_prns_endpoint"])
+            by = rest_raw(port, f"{self.base}/get_prns?chain={r.name}")
+            if own != by or own[0] != 200:
+                self.problems.append(f"{when}: {r.name} get_prns {own} by chain {by}")
+            want[r.name] = json.loads(own[1])
+        if rest(port, f"{self.base}/get_prns") != want:
+            self.problems.append(f"{when}: get_prns without chain")
+
+    def check_refusals(self, port, rows, maps):
+        """Requests the host must refuse, each of which would move every row's trims to 0.9 if
+        any part of it applied: a batch with one bad entry, a batch with a chain no row has, and a
+        POST without chain."""
+        far = {
+            r.name: [{"prn": p, "trim_chips": 0.9} for p in maps[r.name]] for r in rows
+        }
+        bad = dict(far)
+        bad[rows[-1].name] = [{"prn": maps[rows[-1].name][0], "trim_chips": "x"}]
+        unknown = dict(far, nochain=[])
+        for body, want in (
+            ({"chains": bad}, f"{rows[-1].name}: bad trim payload"),
+            ({"chains": unknown}, "chains must map chains of"),
+            ({"chains": far, "chain": rows[0].name}, "takes {"),
+            (far[rows[0].name], "takes {"),
+            ({"chain": "nochain", "body": far[rows[0].name]}, "has no chain nochain"),
+        ):
+            status, txt = rest_raw(port, f"{self.base}/set_trim", body)
+            if status != 400 or want not in txt.decode(errors="replace"):
+                self.problems.append(f"set_trim {str(body)[:80]}: {status} {txt[:200]}")
+
+
+def legacy_hits(port):
+    """kotekan_gnss_rest_legacy_hits_total by path, from /metrics."""
+    with urllib.request.urlopen(f"http://127.0.0.1:{port}/metrics", timeout=10) as r:
+        text = r.read().decode()
+    out = {}
+    for ln in text.splitlines():
+        m = re.match(
+            r'kotekan_gnss_rest_legacy_hits_total\{stage_name="[^"]*",path="([^"]*)"\} (\S+)',
+            ln,
+        )
+        if m:
+            out[m.group(1)] = float(m.group(2))
+    return out
 
 
 def seed_for(base_seed, row, prn):
@@ -801,25 +882,37 @@ def run(a):
             time.sleep(0.5)
         timing["startup_s"] = time.time() - t0
         ep = {r.name: r.cmd for r in rows}
+        bc = ByChain(rows) if a.by_chain else None
+
+        def get_prns(r):
+            if bc:
+                return bc.get_prns(port, r)
+            return rest(port, ep[r.name]["get_prns_endpoint"])
+
+        def post(r, verb, key, body):
+            if bc:
+                return bc.post(port, verb, r, body)
+            return rest(port, ep[r.name][key], body)
+
         # The PRN maps, first two slots swapped, applied at the first frame. A refused map is
         # recorded and the row keeps its own.
         refused = {}
         for r in rows:
-            m = rest(port, ep[r.name]["get_prns_endpoint"])["prns"]
+            m = get_prns(r)["prns"]
             m[0], m[1] = m[1], m[0]
             if a.lever_prns == r.name:
                 m[2], m[3] = m[3], m[2]
             try:
-                rest(port, ep[r.name]["set_prns_endpoint"], {"prns": m})
+                post(r, "set_prns", "set_prns_endpoint", {"prns": m})
             except urllib.error.HTTPError as e:
-                refused[r.name] = f"{e.code}: {e.read().decode(errors='replace')}"
+                refused[r.name] = f"{e.code}: {e.msg}"
         step = f"/{VOLTAGE_STAGE}/generate_test_data"
         rest(port, step, {"num_frames": n_pre})
         maps = {}
         t0 = time.time()
         while len(maps) < len(rows):
             for r in rows:
-                g = rest(port, ep[r.name]["get_prns_endpoint"])
+                g = get_prns(r)
                 if not g["pending"] and g["last_hop"] == (n_pre - 1) * spd:
                     maps[r.name] = g["prns"]
             if time.time() - t0 > a.frame_timeout:
@@ -847,18 +940,24 @@ def run(a):
 
         def post_seeds(frame):
             for r, ss in zip(rows, [seeds_of(frame)[r.name] for r in rows]):
-                rest(port, ep[r.name]["seed_endpoint"], ss)
+                post(r, "set_seeds", "seed_endpoint", ss)
 
         post_seeds(0)
-        for r in rows:
-            rest(
-                port,
-                ep[r.name]["set_trim_endpoint"],
-                [
-                    {"prn": prn, "trim_chips": 0.3 if a.lever_trim == r.name else 0.05}
-                    for prn in maps[r.name]
-                ],
-            )
+        trims = {
+            r.name: [
+                {"prn": prn, "trim_chips": 0.3 if a.lever_trim == r.name else 0.05}
+                for prn in maps[r.name]
+            ]
+            for r in rows
+        }
+        if bc:
+            # Every row's trims in one batch, then the requests it must refuse whole.
+            rest(port, f"{bc.base}/set_trim", {"chains": trims})
+            bc.check_refusals(port, rows, maps)
+            bc.check_gets(port, ep, "maps applied")
+        else:
+            for r in rows:
+                rest(port, ep[r.name]["set_trim_endpoint"], trims[r.name])
         t_seed = time.time()
         sizes = {}
         for k, v in cfg.items():
@@ -899,14 +998,17 @@ def run(a):
                 # Slots 2 and 3 of one seeded row swap while every row runs, then the reseed.
                 m = maps[a.midswap][:]
                 m[2], m[3] = m[3], m[2]
-                rest(port, ep[a.midswap]["set_prns_endpoint"], {"prns": m})
+                mr = next(r for r in rows if r.name == a.midswap)
+                post(mr, "set_prns", "set_prns_endpoint", {"prns": m})
                 n_mid = 1
                 rest(port, step, {"num_frames": n_mid})
                 wait_frames(n_pre + a.reseed_at + n_mid)
-                g = rest(port, ep[a.midswap]["get_prns_endpoint"])
+                g = get_prns(mr)
                 if g["pending"] or g["prns"] != m:
                     raise SystemExit(f"the swap on {a.midswap} did not apply: {g}")
                 maps[a.midswap] = m
+                if bc:
+                    bc.check_gets(port, ep, "after the swap")
             post_seeds(a.reseed_at)
             post_seeds.last = time.time()
             rest(port, step, {"num_frames": n_total - n_pre - a.reseed_at - n_mid})
@@ -918,6 +1020,7 @@ def run(a):
             prof = rest(port, f"/gpu_profile/{half}")
             with open(a.profile_out, "w") as f:
                 json.dump(prof, f, indent=1)
+        hits = legacy_hits(port)
     finally:
         try:
             rest(port, "/kill", timeout=5)
@@ -1003,6 +1106,8 @@ def run(a):
             a.dop_rate or (a.leo_slots and a.leo_rate) or a.reseed_at is not None
         ),
         "rows": [r.name for r in rows],
+        "by_chain": bc.problems if bc else None,
+        "legacy_hits": hits,
         "maps": maps,
         "prn_map_refused": refused,
         "warm": a.warm,
@@ -1037,6 +1142,9 @@ def run(a):
     if bad:
         print(f"digest frames not warm: {bad}", file=sys.stderr)
         return 1
+    if bc and bc.problems:
+        print("by chain: " + "; ".join(bc.problems), file=sys.stderr)
+        return 3
     return 2 if a.scale_r0 and out["scale_r0"]["verdict"] != "pass" else 0
 
 
@@ -1342,6 +1450,12 @@ def main():
     p.add_argument("--lever", help="row whose slot 3 code phase moves by 0.25 chips")
     p.add_argument("--lever-prns", help="row whose PRN map also swaps slots 2 and 3")
     p.add_argument("--lever-trim", help="row whose trims are 0.3 chips instead of 0.05")
+    p.add_argument(
+        "--by-chain",
+        action="store_true",
+        help="a hosted config: every GET and POST by chain at the inject host, the trims in one "
+        "batch, with the checks of ByChain; exits 3 if one fails",
+    )
     p.add_argument(
         "--midswap",
         help="row whose PRN map swaps slots 2 and 3 at --reseed-at, while every row runs seeded",
