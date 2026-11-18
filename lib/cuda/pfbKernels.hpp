@@ -9,14 +9,15 @@
 #include <cuda_runtime.h>
 
 /**
- * The device prototype table the fused fold kernel reads: pfb_prototype() computed in
- * double on the host, rounded once to __half on upload. The prototype is symmetric (w[k] ==
+ * The device prototype table the fused fold kernel reads: pfb_prototype()'s hamming
+ * windowed sinc and normalization, computed in double on the GPU (the host version needs
+ * num_taps * fft_length doubles) and rounded once to __half. The prototype is symmetric (w[k] ==
  * w[num_taps * fft_length - 1 - k], exactly, in float), so the table holds only its first
  * half, num_taps / 2 * fft_length values; the kernel mirror-reads the upper taps. One
  * allocation is shared process-wide per (gpu_id, fft_length, num_taps): cudaSparkFEngine is a plain
  * Stage, not a cudaProcess command, so the device-global named-memory claims (one owner per
  * region) cannot express the share; this registry can. The caller must have gpu_id current
- * (set_thread_device) and gets reused = true when an earlier caller already uploaded the
+ * (set_thread_device) and gets reused = true when an earlier caller already built the
  * table. Tables are deliberately never freed: kotekan restarts by process, so they live
  * until exit.
  */

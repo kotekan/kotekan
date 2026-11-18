@@ -8,17 +8,44 @@
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 
+/// The longest transform gpu_tensor_fft runs in one CTA's shared memory.
+constexpr size_t TENSOR_FFT_ELEMS = 8192;
+
+/// How gpu_tensor_fft splits a length-n transform: log2(n / 8192) above 8192, else 0.
+inline int tensor_fft_split(size_t n) {
+    int split = 0;
+    while ((TENSOR_FFT_ELEMS << split) < n)
+        split++;
+    return split;
+}
+
+/// The bin at position p of a gpu_tensor_fft output with the given split (identity for 0).
+__host__ __device__ inline size_t tensor_fft_bin(size_t p, int split) {
+    return split ? ((p & (TENSOR_FFT_ELEMS - 1)) << split) | (p / TENSOR_FFT_ELEMS) : p;
+}
+
+/// The position of bin k in a gpu_tensor_fft output with the given split.
+__host__ __device__ inline size_t tensor_fft_pos(size_t k, int split) {
+    return split ? (k & ((size_t(1) << split) - 1)) * TENSOR_FFT_ELEMS + (k >> split) : k;
+}
+
 /**
  * Forward C2C DFT of length n on each of batch contiguous transforms:
  * out[b * n + k] = sum_j in[b * n + j] * exp(-2 pi i j k / n), unscaled, natural order in
  * and out — the same semantics as a batched forward cuFFT CUDA_C_16F plan. n must be a
- * power of two in 32..8192; in and out must be identical or non-overlapping.
+ * power of two in 32..32768; up to 8192, in and out must be identical or non-overlapping.
  *
  * Radix-16 decimation-in-frequency stages run as m16n8k16 mma against the 16-point DFT
  * matrix in its real [[Re,-Im],[Im,Re]] form, with fp32 accumulators and fp32 twiddles
  * between stages; a leftover factor of 2, 4 or 8 is one more mma stage against a
  * block-diagonal DFT matrix. Each CTA stages 8192 contiguous elements (one transform, or
  * 8192 / n of them) through shared memory.
+ *
+ * Longer transforms, n = 8192 << split, run on 2^split CTAs each, still in one pass: CTA c
+ * computes output c of the first, radix-2^split, decimation-in-frequency stage and the
+ * 8192-point FFT of that, which holds bins c, c + 2^split, c + 2 * 2^split, ... The bins
+ * then land in split order, bin k at position tensor_fft_pos(k, split), and in and out
+ * must not overlap.
  */
 void gpu_tensor_fft(const __half2* in, __half2* out, size_t n, size_t batch, cudaStream_t stream);
 

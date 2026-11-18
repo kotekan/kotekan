@@ -10,7 +10,9 @@
 // m16n8k16.f32.f16.f16.f32 mma with the data tile as the A operand and G^T as the B
 // operand transforms 16 butterflies at once and leaves (re, im) pairs together in the
 // fp32 accumulators for the inter-stage twiddles.
-static constexpr int ELEMS = 8192;
+static constexpr int ELEMS = (int)TENSOR_FFT_ELEMS;
+static constexpr int LOG2_ELEMS = 13;
+static_assert((1 << LOG2_ELEMS) == ELEMS);
 static constexpr int THREADS = 256;
 static constexpr int THREADS_F32 = 256;
 
@@ -71,14 +73,61 @@ __device__ static inline int bin_pos(int k, int s, int lr) {
     return (q << lr) | (k >> (4 * s));
 }
 
+// v * W_4^rot: one of the exact quarter turns of the first stage of a split transform.
+__device__ static inline float2 quarter_turn(float2 v, int rot) {
+    switch (rot) {
+        case 1:
+            return make_float2(v.y, -v.x);
+        case 2:
+            return make_float2(-v.x, -v.y);
+        case 3:
+            return make_float2(-v.y, v.x);
+        default:
+            return v;
+    }
+}
+
+// SPLIT > 0 runs transforms of n = ELEMS << SPLIT on 2^SPLIT CTAs each (tensorFFT.hpp):
+// CTA c of a transform forms y_c[i] = W_n^(i c) sum_q x[i + ELEMS q] W_(2^SPLIT)^(q c) from
+// all n inputs as it loads them, then runs the same in-smem stages on y_c (log2n = LOG2_ELEMS).
+// A transform's CTAs are neighbouring blocks, so all but the first read of its inputs come
+// from L2.
+template<int SPLIT>
 __global__ static void __launch_bounds__(THREADS, 3)
     tensor_fft(const __half2* __restrict__ in, __half2* __restrict__ out, int log2n, size_t total) {
     __shared__ __half2 sm[ELEMS];
-    const size_t base = (size_t)blockIdx.x * ELEMS;
+    const int c = blockIdx.x & ((1 << SPLIT) - 1);
+    const size_t base = (size_t)(blockIdx.x >> SPLIT) * (ELEMS << SPLIT);
 
     // Vector loads on full, aligned CTA chunks; the tail CTA and odd pointers go scalar.
+    // Split transforms are always full, aligned chunks (checked by the launcher).
     const bool vec = base + ELEMS <= total && ((uintptr_t)in & 15) == 0;
-    if (vec) {
+    if (SPLIT > 0) {
+        for (int i = threadIdx.x; i < ELEMS / 4; i += THREADS) {
+            float2 acc[4] = {};
+#pragma unroll
+            for (int q = 0; q < (1 << SPLIT); q++) {
+                const float4 v = ((const float4*)in)[(base + (size_t)q * ELEMS) / 4 + i];
+                const __half2* h = (const __half2*)&v;
+                const int rot = ((q * c) << (2 - SPLIT)) & 3;
+#pragma unroll
+                for (int e = 0; e < 4; e++) {
+                    const float2 x = quarter_turn(__half22float2(h[e]), rot);
+                    acc[e].x += x.x;
+                    acc[e].y += x.y;
+                }
+            }
+#pragma unroll
+            for (int e = 0; e < 4; e++) {
+                // W_n^(j c) with j c < n, so sincospi stays in (-2, 0].
+                const int j = 4 * i + e;
+                float s, co;
+                sincospif(-2.0f * (float)(j * c) / (float)(ELEMS << SPLIT), &s, &co);
+                sm[pad(j)] =
+                    __floats2half2_rn(acc[e].x * co - acc[e].y * s, acc[e].x * s + acc[e].y * co);
+            }
+        }
+    } else if (vec) {
         for (int i = threadIdx.x; i < ELEMS / 4; i += THREADS) {
             const float4 v = ((const float4*)in)[base / 4 + i];
             sm[pad(4 * i)] = *(const __half2*)&v.x;
@@ -161,6 +210,7 @@ __global__ static void __launch_bounds__(THREADS, 3)
 
     __syncthreads();
     const int m = (1 << log2n) - 1;
+    const size_t obase = base + (size_t)c * ELEMS; // CTA c of a split transform: bins c + 2^SPLIT k
     if (vec && ((uintptr_t)out & 15) == 0) {
         for (int i = threadIdx.x; i < ELEMS / 4; i += THREADS) {
             float4 v;
@@ -168,11 +218,11 @@ __global__ static void __launch_bounds__(THREADS, 3)
             *(__half2*)&v.y = sm[pad(((4 * i + 1) & ~m) | bin_pos((4 * i + 1) & m, s, lr))];
             *(__half2*)&v.z = sm[pad(((4 * i + 2) & ~m) | bin_pos((4 * i + 2) & m, s, lr))];
             *(__half2*)&v.w = sm[pad(((4 * i + 3) & ~m) | bin_pos((4 * i + 3) & m, s, lr))];
-            ((float4*)out)[base / 4 + i] = v;
+            ((float4*)out)[obase / 4 + i] = v;
         }
     } else {
         for (int i = threadIdx.x; i < ELEMS; i += THREADS) {
-            const size_t g = base + i;
+            const size_t g = obase + i;
             if (g < total)
                 out[g] = sm[pad((i & ~m) | bin_pos(i & m, s, lr))];
         }
@@ -331,15 +381,26 @@ void gpu_tensor_fft_f32(const float2* in, float2* out, size_t n, size_t batch,
 }
 
 void gpu_tensor_fft(const __half2* in, __half2* out, size_t n, size_t batch, cudaStream_t stream) {
-    assert(n >= 32 && n <= 8192 && (n & (n - 1)) == 0);
+    assert(n >= 32 && n <= 4 * (size_t)ELEMS && (n & (n - 1)) == 0);
     if (batch == 0)
         return;
+    const size_t total = n * batch;
+    const int split = tensor_fft_split(n);
+    if (split > 0) {
+        assert(((uintptr_t)in & 15) == 0 && ((uintptr_t)out & 15) == 0);
+        assert(in + total <= out || out + total <= in);
+        const unsigned blocks = (unsigned)(batch << split);
+        if (split == 1)
+            tensor_fft<1><<<blocks, THREADS, 0, stream>>>(in, out, LOG2_ELEMS, total);
+        else
+            tensor_fft<2><<<blocks, THREADS, 0, stream>>>(in, out, LOG2_ELEMS, total);
+        return;
+    }
     int log2n = 0;
     while ((size_t(1) << log2n) < n)
         log2n++;
-    const size_t total = n * batch;
     const int blocks = (int)((total + ELEMS - 1) / ELEMS);
-    tensor_fft<<<blocks, THREADS, 0, stream>>>(in, out, log2n, total);
+    tensor_fft<0><<<blocks, THREADS, 0, stream>>>(in, out, log2n, total);
 }
 
 // ---- Fused last pass: FFT2 + untangle + gain + quantize in one kernel. Each CTA owns a

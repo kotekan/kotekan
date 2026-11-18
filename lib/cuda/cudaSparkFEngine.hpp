@@ -57,7 +57,7 @@
  *         @buffer_metadata none
  *
  * @conf fft_length         Int. Samples per window; a multiple of samples_per_packet, at
- *                          most 2^28.
+ *                          most 2^31.
  * @conf samples_per_packet Int, default 4096.
  * @conf gain               Float, default 1.0. Scalar gain; multiplies the gain_buf table
  *                          when one is configured.
@@ -67,8 +67,8 @@
  *                          fp16, run the second batched FFT, untangle, gain and quantize
  *                          as one kernel over conjugate transform pairs plus a byte
  *                          transpose, so the spectrum never returns to global memory
- *                          (needs the four-step split's m2 >= 256, i.e. fft_length >=
- *                          2^18).
+ *                          (needs the four-step split's m2 in 256..8192, i.e. fft_length
+ *                          in 2^18..2^28).
  * @conf gpu_id             Int, default 0.
  * @conf fft_precision      String, default "fp32". "fp16" runs the four-step path: the
  *                          fft_length/2-point transform becomes two batched fp16 cuFFTs
@@ -77,9 +77,11 @@
  *                          scales by 1/m1), halving the memory traffic. Needs fft_length a
  *                          power of two of at least 2^11 and samples_per_packet a multiple
  *                          of 64.
- * @conf fft_impl           String, default "cufft". "tensor" (fft_length up to 2^27)
- *                          runs the four-step split on tensor cores: fp16 data on fp16
- *                          mma, or, with fft_precision fp32, fp32 data on TF32 mma (fp32
+ * @conf fft_impl           String, default "cufft". "tensor" runs the four-step split on
+ *                          tensor cores: fp16 data on fp16 mma (sub-FFTs above 8192
+ *                          points, fft_length above 2^27, run split over several CTAs in
+ *                          one pass where cuFFT takes two), or, with fft_precision fp32
+ *                          (fft_length up to 2^27), fp32 data on TF32 mma (fp32
  *                          storage and accumulation, TF32-rounded multiplies) in place of
  *                          kernel of tensorFFT.hpp, same layout and semantics.
  * @conf pfb_taps           Int, default 1 (plain FFT). 4 (fp16 only) makes the F-engine a
@@ -129,6 +131,8 @@ private:
     bool fused = false;
     bool pfb = false;
     size_t m1 = 0, m2 = 0;
+    /// tensorFFT.hpp splits of the two sub-FFTs (0 with cuFFT).
+    int split1 = 0, split2 = 0;
 
     std::shared_ptr<cudaDeviceInterface> device;
 

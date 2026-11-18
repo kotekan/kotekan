@@ -1,4 +1,5 @@
 #include "fEngineKernels.hpp"
+#include "tensorFFT.hpp" // for tensor_fft_bin, tensor_fft_pos
 
 #include <cstring> // for memcpy
 
@@ -94,12 +95,16 @@ __device__ static inline void store2(float2& d, float a, float b) {
     d = make_float2(a, b);
 }
 
+// Blocks are numbered with b fastest, so the blocks resident at once read neighbouring 96-byte
+// pieces of the same 32 rows. Numbered with a fastest they would read every row of the window
+// at once, which over host payload slots loses most of the read bandwidth once a window passes
+// about 0.4 GiB (2^28 points) on GB10.
 template<typename T2>
 __global__ static void unpack12_t(const uint64_t* __restrict__ lut, int sp, size_t m1, size_t m2,
                                   T2* __restrict__ out) {
     __shared__ T2 tile[32][33];
-    const size_t a0 = blockIdx.x * 32; // index along m1
-    const size_t b0 = blockIdx.y * 32; // index along m2
+    const size_t a0 = blockIdx.y * 32; // index along m1
+    const size_t b0 = blockIdx.x * 32; // index along m2
     for (int l = threadIdx.y; l < 32; l += 8) {
         // One row = 32 complex = 64 contiguous real samples starting at an even multiple
         // of 64, so it never straddles a packet (sp is a multiple of 64).
@@ -119,29 +124,32 @@ __global__ static void unpack12_t(const uint64_t* __restrict__ lut, int sp, size
 
 void gpu_unpack12_fp16_t(const uint64_t* lut, int samples_per_packet, size_t m1, size_t m2,
                          __half2* out, cudaStream_t stream) {
-    dim3 grid(m1 / 32, m2 / 32), block(32, 8);
+    dim3 grid(m2 / 32, m1 / 32), block(32, 8);
     unpack12_t<<<grid, block, 0, stream>>>(lut, samples_per_packet, m1, m2, out);
 }
 
 void gpu_unpack12_f32_t(const uint64_t* lut, int samples_per_packet, size_t m1, size_t m2,
                         float2* out, cudaStream_t stream) {
-    dim3 grid(m1 / 32, m2 / 32), block(32, 8);
+    dim3 grid(m2 / 32, m1 / 32), block(32, 8);
     unpack12_t<<<grid, block, 0, stream>>>(lut, samples_per_packet, m1, m2, out);
 }
 
+// split1 is the first FFT's tensorFFT.hpp split: in holds bin k1 of each row at position
+// tensor_fft_pos(k1, split1). A tile covers 32 positions, so its rows still load
+// coalesced, and each position's bin picks the output row.
 template<typename T2>
 __global__ static void
 twiddle_transpose(const T2* __restrict__ in, size_t m1, size_t m2, const float2* __restrict__ w_hi,
-                  const float2* __restrict__ w_lo, float inv_m1, T2* __restrict__ out) {
+                  const float2* __restrict__ w_lo, float inv_m1, int split1, T2* __restrict__ out) {
     __shared__ T2 tile[32][33];
-    const size_t k0 = blockIdx.x * 32; // index along m1 (k1)
+    const size_t p0 = blockIdx.x * 32; // position along m1
     const size_t b0 = blockIdx.y * 32; // index along m2 (b)
     for (int l = threadIdx.y; l < 32; l += 8)
-        tile[l][threadIdx.x] = in[(b0 + l) * m1 + k0 + threadIdx.x];
+        tile[l][threadIdx.x] = in[(b0 + l) * m1 + p0 + threadIdx.x];
     __syncthreads();
     const uint64_t mask = m1 * m2 - 1; // m is a power of two
     for (int r = threadIdx.y; r < 32; r += 8) {
-        const size_t k1 = k0 + r;
+        const size_t k1 = tensor_fft_bin(p0 + r, split1);
         const size_t b = b0 + threadIdx.x;
         const float2 v = tofloat2(tile[threadIdx.x][r]);
         const float2 w = twiddle_hilo(w_hi, w_lo, 2 * ((k1 * b) & mask));
@@ -151,16 +159,20 @@ twiddle_transpose(const T2* __restrict__ in, size_t m1, size_t m2, const float2*
 }
 
 void gpu_twiddle_transpose(const __half2* in, size_t m1, size_t m2, const float2* w_hi,
-                           const float2* w_lo, float inv_m1, __half2* out, cudaStream_t stream) {
+                           const float2* w_lo, float inv_m1, int split1, __half2* out,
+                           cudaStream_t stream) {
     dim3 grid(m1 / 32, m2 / 32), block(32, 8);
-    twiddle_transpose<<<grid, block, 0, stream>>>(in, m1, m2, w_hi, w_lo, inv_m1, out);
+    twiddle_transpose<<<grid, block, 0, stream>>>(in, m1, m2, w_hi, w_lo, inv_m1, split1, out);
 }
 
 void gpu_twiddle_transpose_f32(const float2* in, size_t m1, size_t m2, const float2* w_hi,
                                const float2* w_lo, float inv_m1, float2* out, cudaStream_t stream) {
     dim3 grid(m1 / 32, m2 / 32), block(32, 8);
-    twiddle_transpose<<<grid, block, 0, stream>>>(in, m1, m2, w_hi, w_lo, inv_m1, out);
+    twiddle_transpose<<<grid, block, 0, stream>>>(in, m1, m2, w_hi, w_lo, inv_m1, 0, out);
 }
+
+// Columns of quantizer tiles per band (see quantize_fourstep).
+static constexpr size_t QUANTIZE_BAND = 32;
 
 // K adjacent floats as one access, and K quantized bytes as one store.
 template<int K>
@@ -183,31 +195,44 @@ struct quantize_lanes<1> {
 // but one row of t's conjugate partners, run as neighbouring blocks, so the partner loads of
 // each are the other's own loads and come from L2: the spectrum crosses DRAM about once
 // instead of twice.
+//
+// Tiles are numbered in bands of QUANTIZE_BAND tile columns, k1 fastest within a band, so the
+// blocks resident at once write neighbouring pieces of a few hundred output rows. With k2
+// fastest throughout, their stores spread over the whole spectrum, which over a host output
+// frame loses most of the write bandwidth past about 2^28 points; with k1 fastest throughout,
+// the spectrum reads lose their locality instead.
+//
+// split2 is the second FFT's tensorFFT.hpp split. A tile's 32 columns are positions, with
+// k2 = tensor_fft_bin(position, split2); the partner column m2 - 1 - k2 sits at position
+// m2 - 1 - position, so only row 0 and the output rows need the mapping.
 template<typename T2, int K>
 __global__ static void __launch_bounds__(256)
     quantize_fourstep(const T2* __restrict__ spec, size_t m1, size_t m2,
                       const float2* __restrict__ w_hi, const float2* __restrict__ w_lo, float scale,
                       float gain, const float* __restrict__ gains, float* __restrict__ stats,
-                      uint8_t* __restrict__ out) {
+                      int split2, uint8_t* __restrict__ out) {
     using floats = typename quantize_lanes<K>::floats;
     using bytes = typename quantize_lanes<K>::bytes;
     __shared__ T2 fwd[32 * K * 32];
     __shared__ T2 par[32 * K * 32];
     const int lane = threadIdx.x % 32, warp = threadIdx.x / 32;
-    const size_t nb = m2 / 32, tiles = m1 / (32 * K) * nb;
+    const size_t na = m1 / (32 * K), nb = m2 / 32, tiles = na * nb;
     const size_t t = blockIdx.x % 2 ? tiles - 1 - blockIdx.x / 2 : blockIdx.x / 2;
-    const size_t k10 = t / nb * 32 * K, k20 = t % nb * 32;
+    const size_t g = nb < QUANTIZE_BAND ? nb : QUANTIZE_BAND, band = t / (g * na);
+    const size_t k10 = t % (g * na) / g * 32 * K, k20 = (band * g + t % g) * 32;
     for (int l = warp; l < 32 * K; l += 8) {
-        const size_t k1 = k10 + l, k2 = k20 + lane;
+        const size_t k1 = k10 + l, p2 = k20 + lane;
         const int s = l * 32 + (lane ^ (l / K));
-        fwd[s] = spec[k1 * m2 + k2];
+        fwd[s] = spec[k1 * m2 + p2];
         // The conjugate partner of (k1, k2) is (m1 - k1, m2 - 1 - k2), except row 0 pairs
         // with itself at column (m2 - k2) mod m2.
-        par[s] = k1 == 0 ? spec[(m2 - k2) % m2] : spec[(m1 - k1) * m2 + m2 - 1 - k2];
+        par[s] = k1 == 0 ? spec[tensor_fft_pos((m2 - tensor_fft_bin(p2, split2)) % m2, split2)]
+                         : spec[(m1 - k1) * m2 + m2 - 1 - p2];
     }
     __syncthreads();
     for (int r = warp; r < 32; r += 8) {
-        const size_t k = (k20 + r) * m1 + k10 + K * lane; // the lane's first bin
+        // The lane's first bin.
+        const size_t k = tensor_fft_bin(k20 + r, split2) * m1 + k10 + K * lane;
         float g[K], st[K];
         if (gains) {
             const floats v = *(const floats*)(gains + k);
@@ -240,24 +265,25 @@ __global__ static void __launch_bounds__(256)
 template<typename T2>
 static void launch_quantize_fourstep(const T2* spec, size_t m1, size_t m2, const float2* w_hi,
                                      const float2* w_lo, float scale, float gain,
-                                     const float* gains, float* stats, uint8_t* out,
+                                     const float* gains, float* stats, int split2, uint8_t* out,
                                      cudaStream_t stream) {
     if (m1 >= 64)
         quantize_fourstep<T2, 2><<<(unsigned)(m1 / 64 * (m2 / 32)), 256, 0, stream>>>(
-            spec, m1, m2, w_hi, w_lo, scale, gain, gains, stats, out);
+            spec, m1, m2, w_hi, w_lo, scale, gain, gains, stats, split2, out);
     else
         quantize_fourstep<T2, 1><<<(unsigned)(m1 / 32 * (m2 / 32)), 256, 0, stream>>>(
-            spec, m1, m2, w_hi, w_lo, scale, gain, gains, stats, out);
+            spec, m1, m2, w_hi, w_lo, scale, gain, gains, stats, split2, out);
 }
 
 void gpu_quantize_fourstep(const __half2* spec, size_t m1, size_t m2, const float2* w_hi,
                            const float2* w_lo, float scale, float gain, const float* gains,
-                           float* stats, uint8_t* out, cudaStream_t stream) {
-    launch_quantize_fourstep(spec, m1, m2, w_hi, w_lo, scale, gain, gains, stats, out, stream);
+                           float* stats, int split2, uint8_t* out, cudaStream_t stream) {
+    launch_quantize_fourstep(spec, m1, m2, w_hi, w_lo, scale, gain, gains, stats, split2, out,
+                             stream);
 }
 
 void gpu_quantize_fourstep_f32(const float2* spec, size_t m1, size_t m2, const float2* w_hi,
                                const float2* w_lo, float scale, float gain, const float* gains,
                                float* stats, uint8_t* out, cudaStream_t stream) {
-    launch_quantize_fourstep(spec, m1, m2, w_hi, w_lo, scale, gain, gains, stats, out, stream);
+    launch_quantize_fourstep(spec, m1, m2, w_hi, w_lo, scale, gain, gains, stats, 0, out, stream);
 }

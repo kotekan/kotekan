@@ -1,12 +1,45 @@
 #include "cudaUtils.hpp" // for CHECK_CUDA_ERROR_NON_OO
 #include "pfbKernels.hpp"
-#include "pfbPrototype.hpp" // for pfb_prototype
 
 #include <cstring> // for memcpy
 #include <map>
 #include <mutex>
 #include <tuple>
 #include <vector>
+
+// Tap r of the length-L prototype before normalization: pfb_prototype()'s hamming-windowed
+// sinc, sinc((r - (L - 1) / 2) / n) * (0.54 - 0.46 cos(2 pi r / (L - 1))), in double.
+__device__ static double pfb_proto_tap(size_t r, size_t n, size_t L) {
+    const double x = ((double)r - (double)(L - 1) / 2.0) / (double)n;
+    const double sinc = x == 0.0 ? 1.0 : sinpi(x) / (M_PI * x);
+    return sinc * (0.54 - 0.46 * cospi(2.0 * (double)r / (double)(L - 1)));
+}
+
+static constexpr int PROTO_THREADS = 256;
+static constexpr int PROTO_BLOCKS = 1024;
+
+// Per-block sums of the first half's taps.
+__global__ static void pfb_proto_sum(size_t n, size_t L, double* __restrict__ partial) {
+    __shared__ double red[PROTO_THREADS];
+    double acc = 0.0;
+    for (size_t r = blockIdx.x * (size_t)PROTO_THREADS + threadIdx.x; r < L / 2;
+         r += (size_t)PROTO_BLOCKS * PROTO_THREADS)
+        acc += pfb_proto_tap(r, n, L);
+    red[threadIdx.x] = acc;
+    for (int w = PROTO_THREADS / 2; w > 0; w /= 2) {
+        __syncthreads();
+        if (threadIdx.x < w)
+            red[threadIdx.x] += red[threadIdx.x + w];
+    }
+    if (threadIdx.x == 0)
+        partial[blockIdx.x] = red[0];
+}
+
+__global__ static void pfb_proto_half(size_t n, size_t L, double norm, __half* __restrict__ table) {
+    for (size_t r = blockIdx.x * (size_t)PROTO_THREADS + threadIdx.x; r < L / 2;
+         r += (size_t)PROTO_BLOCKS * PROTO_THREADS)
+        table[r] = __float2half_rn((float)(pfb_proto_tap(r, n, L) * norm));
+}
 
 const __half* pfb_proto_shared(int gpu_id, size_t fft_length, int num_taps, bool& reused) {
     static std::mutex lock;
@@ -16,14 +49,25 @@ const __half* pfb_proto_shared(int gpu_id, size_t fft_length, int num_taps, bool
     reused = table != nullptr;
     if (!reused) {
         // The windowed-sinc prototype is symmetric, w[k] == w[L-1-k] exactly in float, so
-        // only the first half is stored; the fold kernel mirror-reads the upper taps.
-        const std::vector<float> proto = pfb_prototype((int)fft_length, num_taps);
-        std::vector<__half> h(proto.size() / 2);
-        for (size_t i = 0; i < h.size(); i++)
-            h[i] = __float2half_rn(proto[i]);
-        CHECK_CUDA_ERROR_NON_OO(cudaMalloc(&table, h.size() * sizeof(__half)));
-        CHECK_CUDA_ERROR_NON_OO(
-            cudaMemcpy(table, h.data(), h.size() * sizeof(__half), cudaMemcpyHostToDevice));
+        // only the first half is stored; the fold kernel mirror-reads the upper taps. The
+        // taps are computed here on the GPU: at 2^30 points pfb_prototype() would take 2^32
+        // doubles and minutes of one core. The sum of all taps is twice the first half's.
+        const size_t L = (size_t)num_taps * fft_length;
+        double* d_partial;
+        CHECK_CUDA_ERROR_NON_OO(cudaMalloc(&d_partial, PROTO_BLOCKS * sizeof(double)));
+        pfb_proto_sum<<<PROTO_BLOCKS, PROTO_THREADS>>>(fft_length, L, d_partial);
+        std::vector<double> partial(PROTO_BLOCKS);
+        CHECK_CUDA_ERROR_NON_OO(cudaMemcpy(partial.data(), d_partial, PROTO_BLOCKS * sizeof(double),
+                                           cudaMemcpyDeviceToHost));
+        CHECK_CUDA_ERROR_NON_OO(cudaFree(d_partial));
+        double sum = 0.0;
+        for (const double v : partial)
+            sum += v;
+        CHECK_CUDA_ERROR_NON_OO(cudaMalloc(&table, L / 2 * sizeof(__half)));
+        pfb_proto_half<<<PROTO_BLOCKS, PROTO_THREADS>>>(fft_length, L,
+                                                        (double)fft_length / (2.0 * sum), table);
+        CHECK_CUDA_ERROR_NON_OO(cudaDeviceSynchronize());
+        CHECK_CUDA_ERROR_NON_OO(cudaGetLastError());
     }
     return table;
 }

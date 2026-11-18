@@ -76,15 +76,23 @@ cudaSparkFEngine::cudaSparkFEngine(Config& config, const std::string& unique_nam
     if (fused && !(tensor && fp16))
         throw std::invalid_argument(fmt::format(
             fmt("{:s}: fused_quantize needs fft_impl tensor and fft_precision fp16"), unique_name));
-    if (tensor && fft_length > (1ull << 27))
-        throw std::invalid_argument(fmt::format(
-            fmt("{:s}: fft_impl tensor supports fft_length up to 2^27 (sub-FFTs up to 8192)"),
-            unique_name));
+    // The tensor kernels run sub-FFTs of up to 8192 points in one CTA. The fp16 FFT splits
+    // longer ones over several CTAs (tensorFFT.hpp); the TF32 and fused ones do not.
+    if (tensor && !fp16 && fft_length > (1ull << 27))
+        throw std::invalid_argument(
+            fmt::format(fmt("{:s}: fft_impl tensor with fft_precision fp32 supports fft_length "
+                            "up to 2^27 (sub-FFTs up to 8192)"),
+                        unique_name));
+    if (fused && fft_length > (1ull << 28))
+        throw std::invalid_argument(
+            fmt::format(fmt("{:s}: fused_quantize supports fft_length up to 2^28 (second "
+                            "sub-FFT up to 8192)"),
+                        unique_name));
 
-    if (fft_length == 0 || fft_length % samples_per_packet != 0 || fft_length > (1ull << 28))
+    if (fft_length == 0 || fft_length % samples_per_packet != 0 || fft_length > (1ull << 31))
         throw std::invalid_argument(
             fmt::format(fmt("{:s}: fft_length {:d} must be a multiple of samples_per_packet "
-                            "{:d} and at most 2^28"),
+                            "{:d} and at most 2^31"),
                         unique_name, fft_length, samples_per_packet));
     num_packets = fft_length / samples_per_packet;
     // The PFB holds each window's payload frames three windows longer. Short of four
@@ -124,6 +132,10 @@ cudaSparkFEngine::cudaSparkFEngine(Config& config, const std::string& unique_nam
             log2m++;
         m1 = 1ull << ((log2m + 1) / 2);
         m2 = m / m1;
+        if (tensor) {
+            split1 = tensor_fft_split(m1);
+            split2 = tensor_fft_split(m2);
+        }
         if (fused && m2 < 256)
             throw std::invalid_argument(
                 fmt::format(fmt("{:s}: fused_quantize needs the four-step split's m2 >= 256 "
@@ -295,7 +307,7 @@ void cudaSparkFEngine::main_thread() {
                 gpu_tensor_fft(d_a, d_b, m1, m2, stream);
             else
                 CHECK_CUFFT(cufftXtExec(plan, d_a, d_b, CUFFT_FORWARD));
-            gpu_twiddle_transpose(d_b, m1, m2, d_whi, d_wlo, 1.0f / m1, d_a, stream);
+            gpu_twiddle_transpose(d_b, m1, m2, d_whi, d_wlo, 1.0f / m1, split1, d_a, stream);
             if (fused) {
                 gpu_tensor_fft2_quantize(d_a, m1, m2, d_whi, d_wlo, scale, gain, nullptr, nullptr,
                                          d_q, stream);
@@ -307,7 +319,7 @@ void cudaSparkFEngine::main_thread() {
             }
             if (!fused)
                 gpu_quantize_fourstep(d_b, m1, m2, d_whi, d_wlo, scale, gain, nullptr, nullptr,
-                                      (uint8_t*)d_a, stream);
+                                      split2, (uint8_t*)d_a, stream);
         } else if (fourstep) {
             gpu_unpack12_f32_t(d_lut, samples_per_packet, m1, m2, d_a32, stream);
             gpu_tensor_fft_f32(d_a32, d_b32, m1, m2, stream);
@@ -416,7 +428,7 @@ void cudaSparkFEngine::main_thread() {
                 gpu_tensor_fft(d_a, d_b, m1, m2, stream);
             else
                 CHECK_CUFFT(cufftXtExec(plan, d_a, d_b, CUFFT_FORWARD));
-            gpu_twiddle_transpose(d_b, m1, m2, d_whi, d_wlo, 1.0f / m1, d_a, stream);
+            gpu_twiddle_transpose(d_b, m1, m2, d_whi, d_wlo, 1.0f / m1, split1, d_a, stream);
             if (fused) {
                 gpu_tensor_fft2_quantize(d_a, m1, m2, d_whi, d_wlo, scale, gain, d_gains_t,
                                          d_stats_t, d_q, stream);
@@ -428,7 +440,7 @@ void cudaSparkFEngine::main_thread() {
             }
             if (!fused)
                 gpu_quantize_fourstep(d_b, m1, m2, d_whi, d_wlo, scale, gain, d_gains, d_stats,
-                                      out_frame, stream);
+                                      split2, out_frame, stream);
         } else if (fourstep) {
             gpu_unpack12_f32_t(d_lut, samples_per_packet, m1, m2, d_a32, stream);
             gpu_tensor_fft_f32(d_a32, d_b32, m1, m2, stream);

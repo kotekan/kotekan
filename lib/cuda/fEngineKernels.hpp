@@ -50,20 +50,25 @@ void gpu_unpack12_fp16_t(const uint64_t* lut, int samples_per_packet, size_t m1,
  * The four-step middle: in[b][k1] (the first FFT's output, m2 rows of m1) becomes
  * out[k1][b] = in[b][k1] * W^(2 * ((b * k1) mod m)) / m1 — the W_m^(b k1) twiddle and the
  * 1/m1 scaling, transposed so the second batched FFT (length m2, batch m1) runs contiguous.
+ * split1 is the first FFT's gpu_tensor_fft split (tensorFFT.hpp; 0 for cuFFT or a
+ * natural-order output): bin k1 of each input row sits at tensor_fft_pos(k1, split1).
  */
 void gpu_twiddle_transpose(const __half2* in, size_t m1, size_t m2, const float2* w_hi,
-                           const float2* w_lo, float inv_m1, __half2* out, cudaStream_t stream);
+                           const float2* w_lo, float inv_m1, int split1, __half2* out,
+                           cudaStream_t stream);
 
 /**
  * Untangle + quantize for the four-step output: spec[k1][k2] (m1 rows of m2) holds
  * Z[k2 * m1 + k1]; bin k's conjugate partner Z[m - k] sits at (m1 - k1, m2 - 1 - k2), or in
  * row 0 at (0, (m2 - k2) mod m2). The untangle, scaling and 4+4 encoding match
  * gpu_untangle_quantize; scale must also fold in the m1 the twiddle pass divided out.
+ * split2 is the second FFT's gpu_tensor_fft split (0 for cuFFT or a natural-order
+ * output): k2 of each row sits at tensor_fft_pos(k2, split2).
  * Bins move in pairs: out must be 2-byte aligned, gains and stats 8-byte.
  */
 void gpu_quantize_fourstep(const __half2* spec, size_t m1, size_t m2, const float2* w_hi,
                            const float2* w_lo, float scale, float gain, const float* gains,
-                           float* stats, uint8_t* out, cudaStream_t stream);
+                           float* stats, int split2, uint8_t* out, cudaStream_t stream);
 
 // The same three four-step passes on float2 data, for the TF32 tensor path.
 void gpu_unpack12_f32_t(const uint64_t* lut, int samples_per_packet, size_t m1, size_t m2,

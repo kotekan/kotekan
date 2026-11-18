@@ -350,10 +350,11 @@ public:
                 gpu_unpack12_fp16_t(d_luts + s * num_packets, (int)sp, m1, m2, d_a, nullptr);
             }
             gpu_tensor_fft(d_a, d_b, m1, m2, nullptr);
-            gpu_twiddle_transpose(d_b, m1, m2, d_whi, d_wlo, 1.0f / m1, d_a, nullptr);
+            gpu_twiddle_transpose(d_b, m1, m2, d_whi, d_wlo, 1.0f / m1, tensor_fft_split(m1), d_a,
+                                  nullptr);
             gpu_tensor_fft(d_a, d_b, m2, m1, nullptr);
             gpu_quantize_fourstep(d_b, m1, m2, d_whi, d_wlo, scale, (float)gain, nullptr, nullptr,
-                                  d_out, nullptr);
+                                  tensor_fft_split(m2), d_out, nullptr);
             CHECK_CUDA_ERROR(cudaDeviceSynchronize());
             CHECK_CUDA_ERROR(cudaGetLastError());
 
@@ -627,13 +628,37 @@ public:
         }
     }
 
+    // The stage's GPU-built table (pfb_proto_shared) against the first half of
+    // pfb_prototype() rounded to __half.
+    bool check_proto_table(size_t n) {
+        const auto ref = round_to_half(pfb_prototype((int)n, TAPS));
+        bool reused;
+        const __half* d_table = pfb_proto_shared(0, n, TAPS, reused);
+        std::vector<__half> table(ref.size() / 2);
+        CHECK_CUDA_ERROR(cudaMemcpy(table.data(), d_table, table.size() * sizeof(__half),
+                                    cudaMemcpyDeviceToHost));
+        size_t off = 0;
+        float worst = 0.0f;
+        for (size_t i = 0; i < table.size(); i++) {
+            const float d = std::abs(__half2float(table[i]) - ref[i]);
+            off += d != 0.0f;
+            worst = std::max(worst, d);
+        }
+        INFO("prototype table n={:d}: {:d} of {:d} weights differ from pfb_prototype(), worst by "
+             "{:g}",
+             n, off, table.size(), worst);
+        return off == 0;
+    }
+
     void main_thread() override {
         const size_t n = 8192, sp = 512, windows = 8;
         const auto raw = make_signal(windows, n, 777.25, 1500.0 / 2048.0, 100.0, 54321);
         const auto proto = round_to_half(pfb_prototype((int)n, TAPS));
 
         std::vector<std::vector<std::complex<double>>> x_gpu;
-        bool ok = run_fp32(n, raw, windows, proto, 6.0, x_gpu);
+        bool ok = check_proto_table(n);
+        ok = check_proto_table(1 << 20) && ok;
+        ok = run_fp32(n, raw, windows, proto, 6.0, x_gpu) && ok;
         ok = run_leakage_fp32(n, 700.5) && ok;
         ok = run_fp16(n, sp, raw, windows, proto, 6.0, true, false, x_gpu) && ok;
         ok = run_fp16(n, sp, raw, TAPS, proto, 6.0, true, true, x_gpu) && ok;

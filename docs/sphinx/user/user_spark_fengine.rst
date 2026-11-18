@@ -60,3 +60,11 @@ must hold two windows plus the posted and slack frames (the configs use
 ``2 * fft_length / samples_per_packet / packets_per_frame + 32``), in huge pages. At
 :math:`N = 2^{27}` and two ADCs that is about 850 huge pages plus roughly 0.6 GB of GPU
 buffers per chain; one window costs about 25 ms of GPU per 41.9 ms window period.
+
+Above :math:`2^{27}` use ``fft_impl: tensor``: it runs sub-FFTs longer than 8192 points split
+over several CTAs in one pass, where cuFFT takes two, and keeps a chain near 27 % of the window
+period up to :math:`2^{30}` (about 41 % with the PFB). The output format caps a window at 65536
+packets (16-bit ``stream_id``) of 8192 bins, so :math:`N \le 2^{30}` on the wire. The ibverbs
+stages register every receive and output frame with the NIC, which counts against the
+locked-memory limit (``ulimit -l``): at :math:`2^{30}` budget about 5 GB per chain, or 9 GB
+with the PFB.
