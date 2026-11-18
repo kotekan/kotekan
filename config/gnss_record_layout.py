@@ -120,17 +120,6 @@ def cube_frame_bytes(max_prn, max_bins, n_elem):
     )  # coh_re, coh_im, incoh (float)
 
 
-if __name__ == "__main__":
-    print(
-        "RECORD_FLOATS %d  ELEM_FLOATS %d  TELEM_HEADER_BYTES %d"
-        % (record_floats(), elem_floats(), telem_header_bytes())
-    )
-    print(
-        "CUBE_HEADER_BYTES %d  cube_frame_bytes(32, 8, 32) %d"
-        % (cube_header_bytes(), cube_frame_bytes(32, 8, 32))
-    )
-
-
 #: gnss::REC_ROW_ALIGN (gnssRecRows.hpp): each row's block in a frame of a GPU half's record
 #: buffer starts on a multiple of this.
 REC_ROW_ALIGN = 64
@@ -141,7 +130,7 @@ def rec_offsets(row_bytes):
     order, and the frame's bytes: after the directory (a two-int64 head, then a five-int64 entry
     and an int64 wstart per row, gnss::RecDir::bytes), each row on a REC_ROW_ALIGN boundary.
     Restates gnss::RecDir's tiling, which every host reading or writing the buffer checks its rows
-    against at start."""
+    against at start; config/test_gen_chord_gnss_config.py checks it against gnssRecRows."""
     offsets = []
     at = 16 + 48 * len(row_bytes)
     for b in row_bytes:
@@ -149,3 +138,14 @@ def rec_offsets(row_bytes):
         offsets.append(at)
         at += b
     return offsets, at
+
+
+if __name__ == "__main__":
+    print(
+        "RECORD_FLOATS %d  ELEM_FLOATS %d  TELEM_HEADER_BYTES %d"
+        % (record_floats(), elem_floats(), telem_header_bytes())
+    )
+    print(
+        "CUBE_HEADER_BYTES %d  cube_frame_bytes(32, 8, 32) %d"
+        % (cube_header_bytes(), cube_frame_bytes(32, 8, 32))
+    )

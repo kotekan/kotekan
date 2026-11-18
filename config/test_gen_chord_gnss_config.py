@@ -856,6 +856,40 @@ def test_half_rec_buf_form():
     check(not bad, "half_rec_buf_form: one record buffer, rows tiling it (%s)" % bad)
 
 
+def test_rec_offsets_are_the_stages():
+    """gnss_record_layout.rec_offsets tiles a frame as gnss::RecDir does: the directory's head,
+    entry and wstart widths and REC_ROW_ALIGN are those of gnssRecRows.hpp and .cpp."""
+    d = os.path.join(ROOT, "lib", "stages", "gnss")
+    with open(os.path.join(d, "gnssRecRows.hpp")) as f:
+        hpp = f.read()
+    with open(os.path.join(d, "gnssRecRows.cpp")) as f:
+        cpp = f.read()
+    found = [
+        re.search(r"constexpr size_t REC_ROW_ALIGN = (\d+);", hpp),
+        re.search(r"constexpr size_t HEAD_BYTES = (\d+) \* sizeof\(int64_t\);", cpp),
+        re.search(r"sizeof\(RecRow\) == (\d+) \* sizeof\(int64_t\)", cpp),
+        re.search(
+            r"return HEAD_BYTES \+ n \* \(sizeof\(RecRow\) \+ sizeof\(int64_t\)\);", cpp
+        ),
+    ]
+    bad = [i for i, m in enumerate(found) if m is None]
+    if not bad:
+        align, head, entry = (int(m.group(1)) for m in found[:3])
+        for row_bytes in ([4], [100, 8, 64], [1] * 17):
+            want, at = [], 8 * head + len(row_bytes) * 8 * (entry + 1)
+            for b in row_bytes:
+                at = -(-at // align) * align
+                want.append(at)
+                at += b
+            if g.rec_offsets(row_bytes) != (want, at):
+                bad.append(row_bytes)
+    check(
+        not bad,
+        "rec_offsets tiles a frame as gnss::RecDir does (patterns not found or rows "
+        "differing: %s)" % bad,
+    )
+
+
 def test_half_rec_buf():
     """--half-rec-buf, on top of --record-host --combine-host --telem-pack-host, puts each half's
     records in gnss<g>_rec_buf and changes nothing else: each chain's rec_row holds what its
