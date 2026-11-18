@@ -52,12 +52,20 @@ using kotekan::prometheus::Metrics;
  * fpga_seq_num + k time samples. dm_file lists the trial DMs and each one's sweep from the top
  * channel to the bottom, which gives the time at the top. The search waits for out_buf.
  *
+ * With snr_buf, every search pass also writes an image for monitoring: the highest S/N of each
+ * trial DM (IncoherentSearch::last_max_snr) in each of the last passes, one row per pass, the
+ * newest last. The buffer is meant to be peeked (peek_hold), not consumed.
+ *
  * The search runs in this stage's thread and its OpenMP threads, between frames. in_buf must
  * hold the frames that arrive during one search pass (0.3 s).
  *
  * @par Buffers
  * @buffer in_buf   Power frames of all halves.
  *     @buffer_format   NDArray uint16 [Trfi, F]; 0 marks a missing value.
+ *     @buffer_metadata chordMetadata
+ * @buffer snr_buf  Optional. Highest S/N per trial DM in the last search passes.
+ *     @buffer_format   NDArray float32 [Tpass, DM]: any number of passes (0.34 s each) by the
+ *                      number of trial DMs; 0 where there is no value.
  *     @buffer_metadata chordMetadata
  * @buffer out_buf  Optional. Dedispersed sums, one frame per search pass.
  *     @buffer_format   NDArray float32 [Trfi, DM], 256 time samples by the number of trial DMs
@@ -101,6 +109,7 @@ public:
         Stage(config, unique_name, buffers, std::bind(&IncoherentBeamSearch::main_thread, this)),
         in_buf(get_buffer("in_buf")),
         out_buf(config.exists(unique_name, "out_buf") ? get_buffer("out_buf") : nullptr),
+        snr_buf(config.exists(unique_name, "snr_buf") ? get_buffer("snr_buf") : nullptr),
         freq_id_base(config.get<int>(unique_name, "freq_id_base")),
         candidates_counter(Metrics::instance().add_counter(
             "kotekan_incoherent_beam_search_candidates_total", unique_name)),
@@ -158,6 +167,22 @@ public:
                 {period, 1}));
             out_desc = out_buf->get_frame_desc<kotekan::GenericNDArray>();
             params.keep_sums = true;
+        }
+        if (snr_buf != nullptr) {
+            // The frame holds as many passes as it has room for.
+            const size_t row_bytes = params.dms.size() * sizeof(float);
+            if (snr_buf->frame_size == 0 || snr_buf->frame_size % row_bytes != 0)
+                FATAL_ERROR("IncoherentBeamSearch: snr_buf {:s} must hold whole rows of {:d} "
+                            "float32, one per trial DM",
+                            snr_buf->buffer_name, params.dms.size());
+            snr_buf->register_producer(unique_name);
+            snr_buf->ensure_frame_desc(kotekan::GenericNDArray::describe(
+                kotekan::float32, "incoherent_beam_snr",
+                {(std::ptrdiff_t)(snr_buf->frame_size / row_bytes),
+                 (std::ptrdiff_t)params.dms.size()},
+                {"Tpass", "DM"}, {IncoherentSearch::chunk * period, 1}));
+            snr_desc = snr_buf->get_frame_desc<kotekan::GenericNDArray>();
+            snr_image.assign(snr_buf->frame_size / sizeof(float), 0.0f);
         }
         params.mask_bands_mhz = config.get_default<std::vector<std::pair<double, double>>>(
             unique_name, "mask_bands_mhz", {});
@@ -292,6 +317,7 @@ private:
         origin = next_sample = newest_end = sample;
         std::fill(ring.begin(), ring.end(), 0);
         std::fill(recent_max.begin(), recent_max.end(), 0.0);
+        std::fill(snr_image.begin(), snr_image.end(), 0.0f);
     }
 
     void search_next_sample() {
@@ -326,10 +352,35 @@ private:
         out_id = (out_id + 1) % out_buf->num_frames;
     }
 
+    // Appends the search pass that just ran to the image of recent passes and writes the image
+    // to snr_buf.
+    void write_snr() {
+        const std::vector<float>& newest = search->last_max_snr();
+        std::copy(snr_image.begin() + newest.size(), snr_image.end(), snr_image.begin());
+        std::copy(newest.begin(), newest.end(), snr_image.end() - newest.size());
+
+        uint8_t* const frame = snr_buf->wait_for_empty_frame(unique_name, snr_id);
+        if (frame == nullptr)
+            return;
+        std::copy(snr_image.begin(), snr_image.end(), (float*)frame);
+        snr_buf->allocate_new_metadata_object(snr_id);
+        const auto meta = get_chord_metadata(snr_buf, snr_id);
+        meta->set_from_frame_desc(snr_desc);
+        // The first row is the pass that ended this many passes ago.
+        const int64_t rows = snr_image.size() / newest.size();
+        const int64_t first = origin + search->num_samples() - rows * IncoherentSearch::chunk;
+        meta->set_fpga_seq_num(first * period + phase);
+        meta->set_time_downsampling_fpga(IncoherentSearch::chunk * period);
+        snr_buf->mark_frame_full(unique_name, snr_id);
+        snr_id = (snr_id + 1) % snr_buf->num_frames;
+    }
+
     // Called after each search pass.
     void report() {
         if (out_buf != nullptr)
             write_sums();
+        if (snr_buf != nullptr)
+            write_snr();
         recent_max[num_reports++ % recent_max.size()] = search->take_max_snr();
         max_snr_gauge.set(*std::max_element(recent_max.begin(), recent_max.end()));
         channels_used_gauge.set(search->channels_used());
@@ -358,6 +409,10 @@ private:
 
     Buffer* const in_buf;
     Buffer* const out_buf; // nullptr when the sums are not written
+    Buffer* const snr_buf; // nullptr when the image of recent passes is not written
+    std::shared_ptr<const kotekan::GenericNDArray> snr_desc;
+    std::vector<float> snr_image; // [pass][DM], the newest pass last
+    int snr_id = 0;
     const int freq_id_base;
     std::shared_ptr<const kotekan::GenericNDArray> in_desc;
     std::shared_ptr<const kotekan::GenericNDArray> out_desc;

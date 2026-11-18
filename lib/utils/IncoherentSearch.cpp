@@ -32,6 +32,9 @@ const int64_t unclipped_updates = 64;
 const double update_clip = 5.0;
 // A sample merges into a candidate at another DM only below this fraction of its S/N
 const double residue_fraction = 0.3;
+// A block of channels is left out of a time sample when the sum of its normalized samples
+// exceeds this many sigma
+const double block_clip = 6.0;
 // A sample merges into a candidate within this many samples of it, plus the sweep between the
 // two DMs
 const int merge_slack = 20;
@@ -99,6 +102,7 @@ IncoherentSearch::IncoherentSearch(const IncoherentSearchParams& params) :
     sum_var.assign((size_t)D * W, 0.0);
     sum_count.assign((size_t)D * W, 0);
     sigma_floor.assign(W, 0.0);
+    pass_max.assign(D, 0.0f);
     if (p.keep_sums)
         pass_sums.assign((size_t)D * chunk, 0.0f);
 
@@ -175,6 +179,37 @@ bool IncoherentSearch::add_sample(const float* power) {
     }
     if (n_used)
         zero_dm /= n_used;
+
+    // Interference in part of the band arrives in many channels of a block at once, and each
+    // is already at its limit. A dispersed pulse does not: its channels come at different
+    // times. Take such a block out of this sample and average the rest again.
+    bool block_cut = false;
+    for (int b = 0; b < IncoherentCandidate::num_blocks; ++b) {
+        double sum = 0;
+        int n = 0;
+        for (int c = block_start(b); c < block_start(b + 1); ++c)
+            if (state[c] == ChannelState::used) {
+                sum += scratch[c] - zero_dm;
+                ++n;
+            }
+        if (n == 0 || std::abs(sum) <= block_clip * std::sqrt((double)n))
+            continue;
+        for (int c = block_start(b); c < block_start(b + 1); ++c)
+            if (state[c] == ChannelState::used)
+                state[c] = ChannelState::masked;
+        block_cut = true;
+    }
+    if (block_cut) {
+        zero_dm = 0;
+        n_used = 0;
+        for (int c = 0; c < F; ++c)
+            if (state[c] == ChannelState::used) {
+                zero_dm += scratch[c];
+                ++n_used;
+            }
+        if (n_used)
+            zero_dm /= n_used;
+    }
     num_used = n_used;
 
     // Store the sample less the average of the used channels (zero DM). A masked channel stores
@@ -212,6 +247,7 @@ void IncoherentSearch::dedisperse_chunk() {
     std::vector<Hit> hits;
     double max_snr = 0;
     std::fill(pass_sums.begin(), pass_sums.end(), 0.0f);
+    std::fill(pass_max.begin(), pass_max.end(), 0.0f);
 #pragma omp parallel num_threads(p.num_threads)
     {
         std::vector<Hit> my_hits;
@@ -318,6 +354,7 @@ void IncoherentSearch::search_dm(int d, const float* sums, int64_t n, std::vecto
             if (updates >= min_count && t >= holdoff && sigma > 0) {
                 const double snr = v / sigma;
                 max_snr = std::max(max_snr, snr);
+                pass_max[d] = std::max(pass_max[d], (float)snr);
                 if (snr > p.threshold)
                     hits.push_back({(float)snr, d, wi, t});
             }
@@ -389,11 +426,9 @@ void IncoherentSearch::band_occupancy(IncoherentCandidate& cand, const Hit& hit)
     const int32_t* const dl = &delay[(size_t)hit.dm_index * F];
     const int wd = widths[hit.width_index];
     for (int b = 0; b < IncoherentCandidate::num_blocks; ++b) {
-        const int c0 = (int)((int64_t)b * F / IncoherentCandidate::num_blocks);
-        const int c1 = (int)((int64_t)(b + 1) * F / IncoherentCandidate::num_blocks);
         double sum = 0;
         int n = 0;
-        for (int c = c0; c < c1; ++c) {
+        for (int c = block_start(b); c < block_start(b + 1); ++c) {
             const int8_t* const h = row(c, hit.sample + dl[c]);
             n += h[0] != 0;
             for (int k = 0; k < wd; ++k)

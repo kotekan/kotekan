@@ -92,6 +92,31 @@ BOOST_AUTO_TEST_CASE(band_occupancy_shows_a_narrow_signal) {
     BOOST_CHECK_LE(filled, 7);
 }
 
+BOOST_AUTO_TEST_CASE(burst_in_part_of_the_band_is_cut) {
+    // Interference at DM 0 in part of the band: 8 sigma in the top 56 channels for 8 samples,
+    // searched at low DMs. Every sample is limited to 3 sigma, but 56 channels at the limit for
+    // 8 samples would still add up to about 20 sigma. The search leaves their blocks out of
+    // those samples instead.
+    IncoherentSearchParams p = test_params();
+    p.dms.clear();
+    for (double dm = 3; dm <= 30; dm += 0.5)
+        p.dms.push_back(dm);
+    IncoherentSearch search(p);
+    std::mt19937 rng(1);
+    std::normal_distribution<float> gauss(0, 1);
+    std::vector<float> power(p.num_freq);
+    size_t num_candidates = 0;
+    for (int t = 0; t < 12000; ++t) {
+        for (int c = 0; c < p.num_freq; ++c) {
+            const bool on = c >= 200 && t >= 6000 && t < 6008;
+            power[c] = (float)(1000 * (1 + p.thermal * (gauss(rng) + (on ? 8 : 0))));
+        }
+        search.add_sample(power.data());
+        num_candidates += search.take_candidates().size();
+    }
+    BOOST_CHECK_EQUAL(num_candidates, 0);
+}
+
 BOOST_AUTO_TEST_CASE(masked_band_is_not_searched) {
     // Channels 0-96 are at 400-550 MHz.
     IncoherentSearchParams p = test_params();
