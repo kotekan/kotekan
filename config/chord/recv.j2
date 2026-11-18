@@ -276,11 +276,28 @@ buffer_recv_incoherent_power:
 # with 6144 channels and the 4281 trials from DM 100: 8 threads search 2.2 s of data per
 # second (6 threads 1.8 s); the trials below DM 100 add 19 %.
 {% set incoherent_num_dm = 5089 %}
+
+# For monitoring: the highest S/N of each trial DM in each of the last 178 search passes
+# (60 s), the newest row last. Nothing consumes it; peek_hold keeps the newest image for
+# choco's pipeline page, which draws it. A pulse appears when the search has seen it, that
+# is when its sweep has reached the bottom of the band.
+incoherent_snr_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 4
+    peek_hold: true
+    value_type: float32
+    extents: [178, {{ incoherent_num_dm }}]
+    quantity_name: "incoherent_beam_snr"
+    dimnames: ["Tpass", "DM"]
+    dimscalings: [65536, 1]
+    metadata_pool: incoherent_power_pool
+
 incoherent_beam_search:
     kotekan_stage: IncoherentBeamSearch
     cpu_affinity: [4,5,6,7,8,9,10,11]
     num_threads: 8
     in_buf: incoherent_power_buffer
+    snr_buf: incoherent_snr_buffer
     freq_id_base: 1536
     num_local_freq: 6656
     num_feeds: num_elements
