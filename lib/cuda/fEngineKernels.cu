@@ -6,9 +6,10 @@ __global__ static void unpack12_f32(const uint64_t* __restrict__ lut, int num_pa
         const uint8_t* __restrict__ slot = (const uint8_t*)(uintptr_t)lut[p];
         float2* __restrict__ o = out + (size_t)p * pairs;
         for (int i = threadIdx.x; i < pairs; i += blockDim.x) {
+            // Two 12-bit two's complement samples, sign-extended.
             const unsigned b0 = slot[3 * i], b1 = slot[3 * i + 1], b2 = slot[3 * i + 2];
-            const int s0 = (int)(b0 | ((b1 & 0xf) << 8)) - 2048;
-            const int s1 = (int)((b1 >> 4) | (b2 << 4)) - 2048;
+            const int s0 = (int)((b0 | ((b1 & 0xf) << 8)) ^ 0x800) - 0x800;
+            const int s1 = (int)(((b1 >> 4) | (b2 << 4)) ^ 0x800) - 0x800;
             o[i] = make_float2(s0 * (1.0f / 2048.0f), s1 * (1.0f / 2048.0f));
         }
     }
@@ -80,8 +81,8 @@ __global__ static void unpack12_fp16_t(const uint64_t* __restrict__ lut, int sp,
             (const uint8_t*)(uintptr_t)lut[s0 / sp] + 3 * ((s0 % sp) / 2);
         const int c = threadIdx.x;
         const unsigned b_0 = base[3 * c], b_1 = base[3 * c + 1], b_2 = base[3 * c + 2];
-        const int v0 = (int)(b_0 | ((b_1 & 0xf) << 8)) - 2048;
-        const int v1 = (int)((b_1 >> 4) | (b_2 << 4)) - 2048;
+        const int v0 = (int)((b_0 | ((b_1 & 0xf) << 8)) ^ 0x800) - 0x800;
+        const int v1 = (int)(((b_1 >> 4) | (b_2 << 4)) ^ 0x800) - 0x800;
         tile[l][c] = __floats2half2_rn(v0 * (1.0f / 2048.0f), v1 * (1.0f / 2048.0f));
     }
     __syncthreads();

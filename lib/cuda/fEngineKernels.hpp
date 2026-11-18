@@ -9,9 +9,10 @@
 #include <cuda_runtime.h>
 
 /**
- * Gathers the window's packets through the lookup table and unpacks the 12-bit samples to
- * float, (raw - 2048) / 2048. lut holds num_packets device-readable payload-slot addresses
- * (see fftWindowJob.hpp); out gets num_packets * samples_per_packet floats in time order.
+ * Gathers the window's packets through the lookup table and unpacks the 12-bit two's
+ * complement samples to float, raw / 2048. lut holds num_packets device-readable payload-slot
+ * addresses (see fftWindowJob.hpp); out gets num_packets * samples_per_packet floats in time
+ * order.
  */
 void gpu_unpack12(const uint64_t* lut, int num_packets, int samples_per_packet, float* out,
                   cudaStream_t stream);

@@ -10,7 +10,7 @@ quantized spectra onward to an X-engine.
 Pipeline
 ========
 
-Per ADC (two by default, 3.2 Gsps of 12-bit samples, 4096 per packet)::
+Per ADC (two by default, 3.2 Gsps of 12-bit two's complement samples, 4096 per packet)::
 
                  header_buf ──► crsWindowAlign ──► job_buf ──┬─► cudaSparkFEngine ──► out_payload_buf ─┐
     ibvUdpRecv ──┤                                           │         ▲ gain_buf                      ├─► ibvUdpSend
