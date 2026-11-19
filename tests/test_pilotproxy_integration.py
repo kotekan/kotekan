@@ -265,6 +265,11 @@ def test_control_channel_is_recorded_and_never_masked(pipeline):
     profiles = pipeline.bundle["profiles"]
     for profile in profiles:
         profile["fine_calibration"]["cfar_multiplier_q16"] = 1
+    for profile in profiles[1:]:
+        # a bundle with its own control row gives that row the channel of profile 0
+        if profile["physical_channel"] == 37:
+            profile["physical_channel"] = profiles[0]["physical_channel"]
+            profile["fine_calibration"]["status"] = "calibrated"
     profiles[0]["fine_calibration"]["status"] = "control"
     profiles[0]["physical_channel"] = 37
     ids = pipeline.generator["manual_freq_ids"]
