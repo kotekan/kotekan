@@ -2898,14 +2898,15 @@
    "sep_deg": 2.26,
    "ref_input": 116,
    "drift_ns_s": -4.51,
-   "last_observed_utc": "2026-11-09T07:48:40Z",
-   "last_checked_utc": "2026-11-09T07:48:40Z",
-   "last_checked_sep_deg": 4.88,
-   "passes_found": 2,
+   "last_observed_utc": "2026-11-19T00:19:59Z",
+   "last_checked_utc": "2026-11-19T00:19:59Z",
+   "last_checked_sep_deg": 5.53,
+   "passes_found": 3,
    "passes_silent": 0,
    "passes": [
     ["2026-11-03T05:26:39Z", 2.15, true],
-    ["2026-11-09T07:48:40Z", 4.88, true]
+    ["2026-11-09T07:48:40Z", 4.88, true],
+    ["2026-11-19T00:19:59Z", 5.53, true]
    ]
   },
   "DIGUI-144": {
