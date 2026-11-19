@@ -109,9 +109,11 @@ void rest_register_chains(const std::string& unique_name, const std::vector<Host
  *  - POST takes `{"chain": "<c>", "body": <request>}` and answers as row c's own path does to
  *    the request; `{"chains": {...}}` goes to @p batch's callback for the verb, if it has one.
  * A request with no chain, or with a chain no row of the verb has, is refused (400), naming the
- * chains that have it. The rows' own paths then count every request that reaches their
- * callbacks in kotekan_gnss_rest_legacy_hits_total{path}, with the row's name as stage_name;
- * the host's paths count nothing. Two rows of one chain are FATAL.
+ * chains that have it; a chain given twice is taken as its last. A GET without chain builds
+ * every row's reply on the one REST thread, which serves nothing else meanwhile, so a caller
+ * that polls should ask by chain. The rows' own paths then count every request that reaches
+ * their callbacks in kotekan_gnss_rest_legacy_hits_total{path}, with the row's name as
+ * stage_name; the host's paths count nothing. Two rows of one chain are FATAL.
  */
 void rest_register_rows(const std::string& host, const std::vector<HostRow>& rows,
                         const std::vector<std::string>& chains,
