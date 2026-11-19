@@ -633,9 +633,11 @@ void GnssFleetTrim::post_trims() {
         return;
     {
         std::lock_guard<std::mutex> lk(_pend_mtx);
+        const auto now = std::chrono::steady_clock::now();
         for (const auto& c : closes) {
             ChainTrims& t = _trims[c.first];
             t.win = c.second.win;
+            t.at = now;
             const auto p = pend.find(c.first);
             if (p != pend.end()) {
                 t.body = p->second.dump();
@@ -717,11 +719,18 @@ void GnssFleetTrim::post_loop(int slot) {
                 continue;
             }
             std::string err;
-            const int status = t.half ? post_half(conns[t.url], t, due)
+            const int status = t.half ? post_half(conns[t.url], t, due, &err)
                                       : post(conns[t.url], t, it->second.dump(), &err);
             if (status < 0)
                 continue; // a handshake in flight: costs this thread nothing
             int& nfail = nfails[t.url];
+            // A GPU half's url carries every chain that names it, so its failure is logged.
+            if (t.half && status != 200 && nfail == 0)
+                WARN("GnssFleetTrim[{:s}]: {:s} failed ({:s}) -- every chain's trims to that "
+                     "GPU half are backed off until it answers",
+                     unique_name, t.url, err);
+            else if (t.half && status == 200 && nfail > 0)
+                INFO("GnssFleetTrim[{:s}]: {:s} answers again", unique_name, t.url);
             if (status == 200)
                 nfail = 0;
             else
@@ -798,35 +807,47 @@ int GnssFleetTrim::post(Conn& c, const Target& t, const std::string& body, std::
 /// The trims due at a GPU half's url: each chain's newest that the url has not been sent, once
 /// the url's round is complete. A round is a window: every chain closes each window within the
 /// burst of frames that opens the next, so the url waits while a chain that closed the previous
-/// window has yet to close the newest one, and posts once with every chain's trims. A chain two
-/// or more windows behind (its senders silent) holds nothing, so one that stops costs one round
-/// of waiting, until another chain closes the next window. `chains` maps each chain that names
-/// the url to its Target::seq: as for a tracker's own target, only trims formed after the
-/// policy named the url are due. A chain the url refused is due alone, after its backoff.
-/// Called with _pend_mtx held.
+/// window has yet to close the newest one, and posts once with every chain's trims. It waits
+/// one window at most: a round still open when the newest window moves on posts without the
+/// late chains, whose trims go in the next round, or chains closing at spread lags would hold
+/// the url for good. A chain two or more windows behind (its senders silent) holds nothing, and
+/// one that has closed no window for _close_stale no longer sets the newest window, which its
+/// last close, perhaps from before an F-engine restart, could hold far ahead.
+/// `chains` maps each chain that names the url to its Target::seq: as for a tracker's own
+/// target, only trims formed after the policy named the url are due. A chain the url refused
+/// is due alone, after its backoff. Called with _pend_mtx held.
 std::vector<GnssFleetTrim::Due>
 GnssFleetTrim::due_trims(const std::string& url, const std::map<std::string, uint64_t>& chains) {
+    Half& half = _halves[url];
+    const auto now = std::chrono::steady_clock::now();
     uint64_t newest = 0;
     for (const auto& c : chains) {
+        half.chains.emplace(c.first, HalfChain{c.second});
         const auto it = _trims.find(c.first);
-        if (it != _trims.end())
+        if (it != _trims.end() && now - it->second.at < _close_stale)
             newest = std::max(newest, it->second.win);
     }
-    std::map<std::string, HalfChain>& state = _halves[url];
+    bool open = false;
     std::vector<Due> due;
     for (const auto& c : chains) {
-        const HalfChain& h = state.emplace(c.first, HalfChain{c.second, 0, 0}).first->second;
+        const HalfChain& h = half.chains[c.first];
         const auto it = _trims.find(c.first);
         if (it == _trims.end())
             continue;
-        if (it->second.win + 1 == newest)
-            return {};
+        open = open || it->second.win + 1 == newest;
         if (it->second.seq > h.seq)
             due.push_back({c.first, it->second.body, h.nfail > 0});
     }
+    if (open && !(half.holding && newest > half.held)) {
+        if (!half.holding)
+            half.held = newest;
+        half.holding = true;
+        return {};
+    }
+    half.holding = false;
     std::vector<Due> out;
     for (Due& d : due) {
-        HalfChain& h = state[d.chain];
+        HalfChain& h = half.chains[d.chain];
         h.seq = _trims[d.chain].seq;
         if (d.alone && h.skip > 0)
             --h.skip;
@@ -839,16 +860,20 @@ GnssFleetTrim::due_trims(const std::string& url, const std::map<std::string, uin
 /// Drop the GPU halves' state of every (url, chain) no target names, so a chain that names a
 /// url again starts from its new Target::seq. Called with _pend_mtx held, after _targets changes.
 void GnssFleetTrim::prune_halves() {
-    std::map<std::string, std::map<std::string, HalfChain>> keep;
+    std::map<std::string, Half> keep;
     for (const Target& t : _targets) {
         if (!t.half)
             continue;
         const auto u = _halves.find(t.url);
         if (u == _halves.end())
             continue;
-        const auto c = u->second.find(t.chain);
-        if (c != u->second.end())
-            keep[t.url].insert(*c);
+        const auto c = u->second.chains.find(t.chain);
+        if (c == u->second.chains.end())
+            continue;
+        Half& k = keep[t.url];
+        k.holding = u->second.holding;
+        k.held = u->second.held;
+        k.chains.insert(*c);
     }
     _halves = std::move(keep);
 }
@@ -858,24 +883,24 @@ void GnssFleetTrim::prune_halves() {
 /// is re-posted chain by chain at once, so only the refused chain goes without, and the other
 /// chains' trims never wait out a backoff toward the trackers' TTL. Returns as post() does; a
 /// status other than 200 is a failure of the url, which backs off whole as a tracker's would.
-int GnssFleetTrim::post_half(Conn& c, const Target& t, const std::vector<Due>& due) {
+int GnssFleetTrim::post_half(Conn& c, const Target& t, const std::vector<Due>& due,
+                             std::string* err) {
     std::vector<const Due*> batch, alone;
     for (const Due& d : due)
         (d.alone ? alone : batch).push_back(&d);
-    std::string err;
     if (!batch.empty()) {
-        const int status = send_half(c, t, batch, &err);
+        const int status = send_half(c, t, batch, err);
         if (status == 400)
             alone.insert(alone.begin(), batch.begin(), batch.end());
         else if (status != 200)
             return status;
     }
     for (const Due* d : alone) {
-        const int status = send_half(c, t, {d}, &err);
+        const int status = send_half(c, t, {d}, err);
         if (status != 200 && status != 400)
             return status;
         if (status == 400 || d->alone)
-            half_answer(t.url, d->chain, status == 400, err);
+            half_answer(t.url, d->chain, status == 400, *err);
     }
     return 200;
 }
@@ -888,9 +913,9 @@ void GnssFleetTrim::half_answer(const std::string& url, const std::string& chain
     {
         std::lock_guard<std::mutex> lk(_pend_mtx);
         const auto u = _halves.find(url);
-        if (u == _halves.end() || !u->second.count(chain))
+        if (u == _halves.end() || !u->second.chains.count(chain))
             return; // no longer named
-        HalfChain& h = u->second[chain];
+        HalfChain& h = u->second.chains[chain];
         was = h.nfail;
         h.nfail = refused ? h.nfail + 1 : 0;
         h.skip = refused ? std::min(48, 1 << std::min(5, h.nfail)) : 0;
@@ -1128,7 +1153,7 @@ void GnssFleetTrim::stats_callback(kotekan::connectionInstance& conn) {
         std::lock_guard<std::mutex> pk(_pend_mtx);
         nlohmann::json r = nlohmann::json::object();
         for (const auto& u : _halves)
-            for (const auto& c : u.second)
+            for (const auto& c : u.second.chains)
                 if (c.second.nfail > 0)
                     r[u.first].push_back(c.first);
         reply["refused_chains"] = r;

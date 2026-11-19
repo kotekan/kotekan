@@ -43,7 +43,16 @@ requests are named alike in either form by node_api.canonical_requests.
      policy_ttl_s passes it must leave every request, its rows' and the halves', while the other
      chains keep every round.
 
-Leg 9 is a stress for the locking, meant for a TSAN build: threads post each chain's policy in
+  9  a refusal leaves with its chain. Once every policy of legs 5-8 has expired, with nothing
+     posting since, get_stats must name no refused chain and hold no post target.
+ 10  spread lags. gps_l5, gal_e5a and bds_b2a close their windows 0, 0.5 and 1.3 windows apart,
+     in real time, and name half 1. The half must still take about one request per window, each
+     chain's trims in most of them. gps_l2c names half 1 too: its senders stopped, far ahead of
+     the others' windows, after its last trims formed and before the half was named, so its
+     trims must never reach the half. gps_l5 also names a half the node does not have, and the
+     gather must log that url's failure.
+
+Leg 11 is a stress for the locking, meant for a TSAN build: threads post each chain's policy in
 either target form and read get_stats while frames flow unpaced. The gather must keep posting
 and stay up.
 
@@ -53,7 +62,7 @@ minute. Run it under flock /var/tmp/kvand-prs/kotekan-ports.lock where other gat
 host.
 
     scripts/gnss/fleettrim_multichain_gate.py [--bin PATH] [--config PATH] [--stage NAME]
-                                              [--stress-s S] [--keep DIR]
+                                              [--stress-s S] [--lag-s S] [--keep DIR]
 """
 import argparse
 import json
@@ -85,6 +94,10 @@ TRIM_TTL_S = 4.0  # the trackers' trim_ttl_s (gnssTrackChain.hpp)
 NODE = "http://127.0.0.1:%d" % FAKE
 SERVED = ["bds_b2a", "gal_e5a", "gps_l5"]  # the node's chains, on both halves
 REFUSED = "gal_e6"  # a chain the node does not serve
+DEAD = "gps_l2c"  # a chain the node serves whose senders stop before leg 10
+LAGS = {"gps_l5": 0.0, "gal_e5a": 0.5, "bds_b2a": 1.3}  # leg 10, in windows
+# One window, 4 records x 2048 hops x 5.12 us = 41.94 ms.
+WIN_S = fleetdll_gate.N_REC * fleetdll_gate.HOPS_PER_RECORD * 5.12e-6
 INSTANCES = [("node0.0", 7), ("node1.0", 6)]  # two senders per chain: min_instances
 PRN_ROWS = [4, 9, 27, 3, 16, 5, 12, 18, 21, 24, 30] + [0] * 5
 ARMED = [3, 4, 9, 27]
@@ -303,7 +316,7 @@ def data_legs(base, log, fails, pace_s):
                 fails.append(
                     "LEGS 5-8: the gather did not fold %s's window %d" % (c, w)
                 )
-                return
+                return w + 1
             # Leg 6: gal_e5a leaves half 0 while gps_l5 has closed this window and the other
             # chains have not, and comes back six windows later.
             if c == "gps_l5" and w in (20, 26):
@@ -473,7 +486,7 @@ def data_legs(base, log, fails, pace_s):
     # Leg 8: bds_b2a in no request once its rounds stop, and the stage says it expired.
     if gone is None:
         fails.append("LEG 8: bds_b2a never expired")
-        return
+        return w
     for win, rec, _, _ in rounds:
         if win > gone and any(x[1] == "bds_b2a" for x in rec):
             fails.append(
@@ -484,10 +497,131 @@ def data_legs(base, log, fails, pace_s):
             "LEG 8: bds_b2a's rounds stopped but its policy stands: %s"
             % st.get("policy_armed_requested")
         )
+    return w
+
+
+def fold(base, feed, c, w):
+    """Send chain c's window w and wait until the gather has folded it."""
+
+    def frames():
+        return (_get(base + "/get_stats")["chains"].get(c) or {}).get("frames", 0)
+
+    want = frames() + len(INSTANCES)
+    feed.send(c, w)
+    return wait_for(lambda: frames() >= want, 10.0)
+
+
+def expired_refusal(base, fails, w):
+    """Leg 9: every policy expires, a frame runs the sweep, and no refusal or target is left."""
+    time.sleep(TTL + 1.5)
+    if not fold(base, Feed(RECV), "gps_l5", w):
+        fails.append("LEG 9: the gather did not fold gps_l5's window %d" % w)
+    st = _get(base + "/get_stats")
+    print(
+        "LEG 9 every policy expired: policy_armed_requested %s, post_targets %s, "
+        "refused_chains %s"
+        % (
+            st.get("policy_armed_requested"),
+            st.get("post_targets"),
+            st.get("refused_chains"),
+        )
+    )
+    if st.get("policy_armed_requested") or st.get("post_targets"):
+        fails.append(
+            "LEG 9: policies %s and %s post target(s) outlived policy_ttl_s"
+            % (st.get("policy_armed_requested"), st.get("post_targets"))
+        )
+    if st.get("refused_chains"):
+        fails.append(
+            "LEG 9: refused_chains %s names chains whose policies expired"
+            % st.get("refused_chains")
+        )
+
+
+def spread_lags(base, log, gather_log, fails, w0, seconds):
+    """Leg 10: chains closing at spread lags, and a silent chain far ahead, on half 1."""
+    feed = Feed(RECV)
+    _post(base + "/set_policy", policy_for(DEAD, ARMED, [], p_floor_abs=1e-9))
+    w = w0 + 5000
+    for _ in range(80):
+        if not fold(base, feed, DEAD, w):
+            fails.append("LEG 10: the gather did not fold %s's window %d" % (DEAD, w))
+            return
+        w += 1
+        dll = _get(base + "/get_dll?chain=" + DEAD).get(DEAD) or {}
+        if any(isinstance(v, dict) and "trim_chips" in v for v in dll.values()):
+            break
+    else:
+        fails.append("LEG 10: %s formed no trims" % DEAD)
+        return
+    fold(base, feed, DEAD, w)  # one more close with trims, then its senders stop
+
+    absent = half_target(2, "gps_l5")
+
+    def post_all():
+        for c in sorted(LAGS) + [DEAD]:
+            t = [half_target(1, c)] + ([absent] if c == "gps_l5" else [])
+            _post(base + "/set_policy", policy_for(c, ARMED, t, p_floor_abs=1e-9))
+
+    log.poll()
+    start = len(log.lines)
+    post_all()
+    n = int(seconds / WIN_S) + 2
+    t0 = time.time() + 0.2
+    events = sorted(
+        (t0 + (k + lag) * WIN_S, c, w0 + k) for c, lag in LAGS.items() for k in range(n)
+    )
+    posted = time.time()
+    for t, c, win in events:
+        dt = t - time.time()
+        if dt > 0:
+            time.sleep(dt)
+        feed.send(c, win)
+        if time.time() - posted > 1.5:
+            post_all()
+            posted = time.time()
+    time.sleep(0.5)
+    log.poll()
+    rec = [x for x in trims_of(log.lines[start:]) if x[4] == "half" and x[0] == 1]
+    ta, tb = t0 + 1.5, t0 + n * WIN_S
+    ok = [x for x in rec if x[3] == 200 and ta <= x[6] <= tb]
+    wins = (tb - ta) / WIN_S
+    reqs = sum(1.0 / x[5] for x in ok)
+    took = dict((c, sorted(x[6] for x in ok if x[1] == c)) for c in LAGS)
+    print(
+        "LEG 10 %.0f windows: half 1 took %.1f requests per window; per window %s"
+        % (
+            wins,
+            reqs / wins,
+            ", ".join(
+                "%s %.2f" % (c, len(ts) / wins) for c, ts in sorted(took.items())
+            ),
+        )
+    )
+    if not 0.7 <= reqs / wins <= 1.3:
+        fails.append(
+            "LEG 10: half 1 took %.2f requests per window, not about one"
+            % (reqs / wins)
+        )
+    for c, ts in sorted(took.items()):
+        gaps = [b - a for a, b in zip([ta] + ts, ts + [tb])]
+        if len(ts) < 0.7 * wins or max(gaps) >= TRIM_TTL_S:
+            fails.append(
+                "LEG 10: half 1 took %s's trims %d times in %.0f windows, longest gap %.2f s"
+                % (c, len(ts), wins, max(gaps))
+            )
+    if any(x[1] == DEAD for x in rec):
+        fails.append(
+            "LEG 10: half 1 was sent %s's trims, formed before its policy named the half"
+            % DEAD
+        )
+    with open(gather_log) as f:
+        if not any("%s failed" % absent["url"] in line for line in f):
+            fails.append("LEG 10: the gather did not log %s's failure" % absent["url"])
 
 
 def stress(base, seconds, fails):
-    """Leg 9: policies in either form and get_stats from several threads while frames flow."""
+    """Leg 11: policies in either form and get_stats from several threads while frames flow."""
     stop = threading.Event()
     errors = []
 
@@ -530,13 +664,13 @@ def stress(base, seconds, fails):
         t.join()
     after = _get(base + "/get_stats").get("post_requests", 0)
     print(
-        "LEG 9 %d windows in %.0f s, %d posts, %d errors"
+        "LEG 11 %d windows in %.0f s, %d posts, %d errors"
         % (w - 1000, seconds, after - before, len(errors))
     )
     if errors:
-        fails.append("LEG 9: %d request(s) failed, e.g. %s" % (len(errors), errors[0]))
+        fails.append("LEG 11: %d request(s) failed, e.g. %s" % (len(errors), errors[0]))
     if after <= before:
-        fails.append("LEG 9: the gather posted nothing under load")
+        fails.append("LEG 11: the gather posted nothing under load")
 
 
 def main():
@@ -550,8 +684,9 @@ def main():
     )
     ap.add_argument("--stage", default="fleet_trim")
     ap.add_argument(
-        "--stress-s", type=float, default=3.0, help="leg 9's length, 0 = skip"
+        "--stress-s", type=float, default=3.0, help="leg 11's length, 0 = skip"
     )
+    ap.add_argument("--lag-s", type=float, default=6.0, help="leg 10's length")
     ap.add_argument(
         "--pace-s",
         type=float,
@@ -589,7 +724,7 @@ def main():
             "--port",
             str(FAKE),
             "--chains",
-            ",".join(SERVED),
+            ",".join(SERVED + [DEAD]),
             "--halves",
             "2",
             "--hosted",
@@ -754,7 +889,10 @@ def main():
                 % (FAKE, node_out.name)
             )
             return 1
-        data_legs(base, NodeLog(node_log), fails, a.pace_s)
+        nlog = NodeLog(node_log)
+        w = data_legs(base, nlog, fails, a.pace_s)
+        expired_refusal(base, fails, w)
+        spread_lags(base, nlog, log.name, fails, w + 1, a.lag_s)
         if a.stress_s > 0:
             stress(base, a.stress_s, fails)
         if proc.poll() is not None:

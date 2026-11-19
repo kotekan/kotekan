@@ -102,11 +102,13 @@ A target can also be a GPU half's, `{"url": "http://<node>:12048/gnss1_inject/se
 `{"chains": {"gps_l5": [...], "gal_e5a": [...], ...}}`, carrying every chain that names it, each
 with the body its own target would have been sent. A round is a window: the url waits until
 every chain that closed the previous window has closed the newest one (a chain further behind
-holds nothing), so it posts once per window, about 48 requests per second per node rather than
-one per chain instance. The node refuses a batch whole, so a refused round is re-posted chain by
-chain at once and only the refused chain is backed off; it is posted alone until the half takes
-it again, and `get_stats` names it in `refused_chains` and counts `post_refused`. A url takes one
-form only: naming it both ways is refused.
+holds nothing), but never past the next window's first close, so it posts once per window, about
+48 requests per second per node rather than one per chain instance. A chain that has closed no
+window for a second no longer sets which window is newest. The node refuses a
+batch whole, so a refused round is re-posted chain by chain at once and only the refused chain is
+backed off; it is posted alone until the half takes it again, and `get_stats` names it in
+`refused_chains` and counts `post_refused`. Any other failure backs off the url whole, with a WARN
+naming it. A url takes one form only: naming it both ways is refused.
 
 **State up** (controller -> Python, polled once per cycle) -- AS BUILT this is two GETs
 rather than the single `/get_state` first sketched:

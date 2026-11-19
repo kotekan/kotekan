@@ -118,6 +118,7 @@ private:
         std::string body; ///< its set_trim request, [{prn, trim_chips}, ...], as posted
         uint64_t seq = 0; ///< the chain's window closes when `body` was formed
         uint64_t win = 0; ///< the window its newest close closed, with or without trims
+        std::chrono::steady_clock::time_point at; ///< when its newest close was folded
     };
 
     /// A GPU half's target's state for one chain that names it.
@@ -125,6 +126,13 @@ private:
         uint64_t seq = 0; ///< ChainTrims::seq of the newest trims sent or passed over
         int nfail = 0;    ///< consecutive refusals; while > 0 the chain is posted alone
         int skip = 0;     ///< rounds still to skip after a refusal
+    };
+
+    /// A GPU half's target's state.
+    struct Half {
+        std::map<std::string, HalfChain> chains; ///< each chain that names the url
+        bool holding = false;                    ///< the round waits for a chain one window behind
+        uint64_t held = 0;                       ///< the newest window when the wait began
     };
 
     /// One chain's trims due at a GPU half's target.
@@ -178,7 +186,7 @@ private:
     std::vector<Due> due_trims(const std::string& url,
                                const std::map<std::string, uint64_t>& chains);
     void prune_halves();
-    int post_half(Conn& c, const Target& t, const std::vector<Due>& due);
+    int post_half(Conn& c, const Target& t, const std::vector<Due>& due, std::string* err);
     void half_answer(const std::string& url, const std::string& chain, bool refused,
                      const std::string& err);
     int send_half(Conn& c, const Target& t, const std::vector<const Due*>& chains,
@@ -222,10 +230,13 @@ private:
     /// a poster that falls behind sends each chain's newest and skips the rest.
     std::map<std::string, ChainTrims> _trims;
     uint64_t _close_gen = 0; ///< bumped when any chain's window closes
-    /// GPU half url -> chain -> its state. Here rather than in a poster, so a url that moves to
-    /// another poster when the list changes is neither sent a round twice nor re-sent a chain
-    /// it refused.
-    std::map<std::string, std::map<std::string, HalfChain>> _halves;
+    /// A chain that has closed no window for this long no longer sets the newest window of the
+    /// GPU halves it names (due_trims).
+    static constexpr std::chrono::seconds _close_stale{1};
+    /// GPU half url -> its state. Here rather than in a poster, so a url that moves to another
+    /// poster when the list changes is neither sent a round twice nor re-sent a chain it
+    /// refused.
+    std::map<std::string, Half> _halves;
     /// Per-request budget on an established connection: wider than the kernel's minimum RTO
     /// (200 ms) so a single lost segment recovers instead of costing the socket, short enough
     /// that a wedged tracker cannot hold a poster thread past the point where its trim would
