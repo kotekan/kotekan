@@ -48,9 +48,15 @@ void post_policy(unsigned short port, const json& payload) {
     BOOST_REQUIRE_MESSAGE(reply.first, "set_policy failed: " + reply.second);
 }
 
-json get_stats(unsigned short port) {
+bool policy_taken(const std::string& stage, unsigned short port, const json& payload) {
+    return restClient::instance()
+        .make_request_blocking(stage + "/set_policy", payload, "127.0.0.1", port)
+        .first;
+}
+
+json get_stats(unsigned short port, const std::string& stage = STAGE) {
     const auto reply =
-        restClient::instance().make_request_blocking(STAGE + "/get_stats", {}, "127.0.0.1", port);
+        restClient::instance().make_request_blocking(stage + "/get_stats", {}, "127.0.0.1", port);
     BOOST_REQUIRE_MESSAGE(reply.first, "get_stats failed: " + reply.second);
     return json::parse(reply.second);
 }
@@ -59,14 +65,19 @@ std::set<int> armed_in_fleet_dll(const json& stats, const std::string& chain) {
     return stats.at("policy").at(chain).at("armed").get<std::set<int>>();
 }
 
+unsigned short rest_port() {
+    if (restServer::instance().port() == 0)
+        restServer::instance().start("127.0.0.1", 0);
+    return restServer::instance().port();
+}
+
 } // namespace
 
 // A chain that stops posting /set_policy for policy_ttl_s is disarmed in FleetDll, so its trims
 // leak away, and its post targets are dropped; a chain that keeps posting is untouched. No
 // frames flow, so the other chain's posts are what run the sweep.
 BOOST_AUTO_TEST_CASE(silent_chain_is_disarmed_and_its_targets_dropped) {
-    restServer::instance().start("127.0.0.1", 0);
-    const unsigned short port = restServer::instance().port();
+    const unsigned short port = rest_port();
     BOOST_REQUIRE(port != 0);
 
     auto pool = metadataPool::create(2, 64, "test_pool", "GnssChanMetadata");
@@ -114,4 +125,52 @@ BOOST_AUTO_TEST_CASE(silent_chain_is_disarmed_and_its_targets_dropped) {
 
     // The posters exit on stop_thread, which the destructor does not set.
     stage.stop();
+}
+
+// A GPU half's target, {"url", "chain"}, is taken beside a tracker's own url. A policy is refused
+// whole, and changes nothing, when a target names another chain, is malformed, or names a url
+// another target names in the other form.
+BOOST_AUTO_TEST_CASE(half_targets_are_taken_and_mixed_forms_refused) {
+    const std::string stage = "/fleet_trim_half";
+    const unsigned short port = rest_port();
+    BOOST_REQUIRE(port != 0);
+
+    auto pool = metadataPool::create(2, 64, "half_pool", "GnssChanMetadata");
+    Buffer telem_buf(2, 4096, pool, "half_telem_buf", "standard", 0, false, false,
+                     std::vector<int>{}, true);
+    bufferContainer bc;
+    bc.add_buffer("telem_buf", &telem_buf);
+    json cfg;
+    cfg["log_level"] = "warn";
+    cfg["fleet_trim_half"] = {{"kotekan_stage", "GnssFleetTrim"},
+                              {"log_level", "warn"},
+                              {"cpu_affinity", std::vector<int>{}},
+                              {"in_buf", "telem_buf"},
+                              {"trim_state_file", "/tmp/test_gnss_fleet_trim_unused.json"},
+                              {"post_threads", 1}};
+    Config config;
+    config.update_config(cfg);
+    GnssFleetTrim trim(config, stage, bc);
+
+    const std::string half = "http://127.0.0.1:9/gnss0_inject/set_trim";
+    json pol = policy_for("gps_l5", {1}, "http://127.0.0.1:9/gnss0_gps_l5_inject/set_trim");
+    pol["chains"]["gps_l5"]["targets"].push_back({{"url", half}, {"chain", "gps_l5"}});
+    BOOST_CHECK(policy_taken(stage, port, pol));
+    pol = policy_for("gal_e5a", {6}, "http://127.0.0.1:9/gnss1_gal_e5a_inject/set_trim");
+    pol["chains"]["gal_e5a"]["targets"].push_back({{"url", half}, {"chain", "gal_e5a"}});
+    BOOST_CHECK(policy_taken(stage, port, pol));
+    BOOST_CHECK_EQUAL(get_stats(port, stage).at("post_targets").get<int>(), 4);
+
+    for (const json& bad : {json{{"url", half}, {"chain", "gps_l5"}}, json{{"url", half}},
+                            json{{"url", half}, {"chain", "bds_b2a"}, {"x", 1}}, json(7)}) {
+        pol = policy_for("bds_b2a", {2}, "http://127.0.0.1:9/gnss0_bds_b2a_inject/set_trim");
+        pol["chains"]["bds_b2a"]["targets"].push_back(bad);
+        BOOST_CHECK_MESSAGE(!policy_taken(stage, port, pol), "taken: " + bad.dump());
+    }
+    BOOST_CHECK(!policy_taken(stage, port, policy_for("bds_b2a", {2}, half)));
+    const json st = get_stats(port, stage);
+    BOOST_CHECK_EQUAL(st.at("post_targets").get<int>(), 4);
+    BOOST_CHECK(!st.at("policy_armed_requested").contains("bds_b2a"));
+
+    trim.stop();
 }

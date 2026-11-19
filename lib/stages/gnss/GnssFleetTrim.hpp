@@ -8,6 +8,7 @@
 #include "gnssFleetDll.hpp"
 #include "restServer.hpp"
 
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <map>
@@ -77,7 +78,11 @@
  *                                (?chain=<name> one chain).
  * `<unique_name>/get_stats`    -- counters, fold cost, trim store, policy and poster state.
  * `<unique_name>/set_policy`   -- POST {"chains": {chain: {armed, gain_per_s, leak_per_s,
- *                                 clamp, spacing, p_floor_abs, targets}}}.
+ *                                 clamp, spacing, p_floor_abs, targets}}}. A target is a
+ *                                 tracker's own set_trim URL, or a GPU half's,
+ *                                 {"url": <inject host>/set_trim, "chain": chain}, which takes
+ *                                 the trims of every chain that names it in one request,
+ *                                 {"chains": {chain: [{prn, trim_chips}, ...], ...}}.
  *
  * @author Keith Vanderlinde
  */
@@ -98,10 +103,41 @@ private:
         std::string path;
         std::string url;   ///< as posted; the sort key and the key for per-target poster state
         std::string chain; ///< which chain's payload it takes
+        /// A GPU half's set_trim ({url, chain}): one request per round carries every chain that
+        /// names the url (post_half).
+        bool half = false;
+        uint64_t seq = 0; ///< a GPU half's: the chain's ChainTrims::seq when the policy named it
         /// Resolved by parse_target on each /set_policy, never per post: lookups block, and at
         /// one post per instance per window they would stall the posters and overload the
         /// resolver.
         struct sockaddr_in addr;
+    };
+
+    /// One chain's newest trims, kept for the GPU halves' targets by post_trims.
+    struct ChainTrims {
+        std::string body; ///< its set_trim request, [{prn, trim_chips}, ...], as posted
+        uint64_t seq = 0; ///< the chain's window closes when `body` was formed
+        uint64_t win = 0; ///< the window its newest close closed, with or without trims
+    };
+
+    /// A GPU half's target's state for one chain that names it.
+    struct HalfChain {
+        uint64_t seq = 0; ///< ChainTrims::seq of the newest trims sent or passed over
+        int nfail = 0;    ///< consecutive refusals; while > 0 the chain is posted alone
+        int skip = 0;     ///< rounds still to skip after a refusal
+    };
+
+    /// One chain's trims due at a GPU half's target.
+    struct Due {
+        std::string chain, body;
+        bool alone = false; ///< the half refused this chain: post it on its own
+    };
+
+    /// A poster's kept-alive connection to one target url.
+    struct Conn {
+        int fd = -1;
+        bool connecting = false; ///< fd is a handshake in flight, not yet a connection
+        std::chrono::steady_clock::time_point since;
     };
 
     /// One chain's /set_policy request, before rearm() converts the per-second gain and leak to
@@ -138,6 +174,15 @@ private:
     static Target parse_target(const std::string& url, const std::string& chain);
     void post_trims();
     void post_loop(int slot);
+    int post(Conn& c, const Target& t, const std::string& body, std::string* err);
+    std::vector<Due> due_trims(const std::string& url,
+                               const std::map<std::string, uint64_t>& chains);
+    void prune_halves();
+    int post_half(Conn& c, const Target& t, const std::vector<Due>& due);
+    void half_answer(const std::string& url, const std::string& chain, bool refused,
+                     const std::string& err);
+    int send_half(Conn& c, const Target& t, const std::vector<const Due*>& chains,
+                  std::string* err);
     void rearm();
 
     Buffer* in_buf;
@@ -149,7 +194,8 @@ private:
 
     // ---- Actuator ----
     // Every instance tracking a chain needs the same trims, but each has its own /set_trim
-    // endpoint, so a post is one request per instance.
+    // endpoint, so a post is one request per instance. A GPU half whose inject host serves its
+    // rows by chain takes every chain's trims in one request per round instead (post_half).
     //
     // restClient is not usable here: make_request keeps only a pointer to the caller's
     // callback, make_request_blocking exits the process on timeout, and both send
@@ -162,14 +208,24 @@ private:
     // _pending holds when it next looks and skips the rest; nothing is queued.
     std::vector<Target> _targets; ///< one per tracker instance, sorted by url; guarded by _pend_mtx
     std::vector<std::thread> _post_threads;
-    /// Poster stride: thread i serves targets i, i + n, ... Set before any poster starts;
-    /// post_loop must not use _post_threads.size(), which grows while the first posters run.
+    /// Poster stride: thread i serves the targets of the list's distinct urls i, i + n, ... Set
+    /// before any poster starts; post_loop must not use _post_threads.size(), which grows while
+    /// the first posters run.
     int _n_post_threads = 1;
-    /// rearm() takes it while holding _mtx, so _mtx is never taken while this is held.
+    /// rearm() and policy_callback take it while holding _mtx, so _mtx is never taken while this
+    /// is held.
     std::mutex _pend_mtx;
     std::condition_variable _pend_cv;
     std::map<std::string, nlohmann::json> _pending; ///< chain -> payload, from the last post_trims
     uint64_t _pend_gen = 0;                         ///< bumped when _pending is replaced
+    /// chain -> its newest trims and window, for the GPU halves' targets. Merged, never queued:
+    /// a poster that falls behind sends each chain's newest and skips the rest.
+    std::map<std::string, ChainTrims> _trims;
+    uint64_t _close_gen = 0; ///< bumped when any chain's window closes
+    /// GPU half url -> chain -> its state. Here rather than in a poster, so a url that moves to
+    /// another poster when the list changes is neither sent a round twice nor re-sent a chain
+    /// it refused.
+    std::map<std::string, std::map<std::string, HalfChain>> _halves;
     /// Per-request budget on an established connection: wider than the kernel's minimum RTO
     /// (200 ms) so a single lost segment recovers instead of costing the socket, short enough
     /// that a wedged tracker cannot hold a poster thread past the point where its trim would
@@ -179,6 +235,8 @@ private:
     /// closed.
     std::map<std::string, uint64_t> _closed_seen;
     uint64_t _post_reqs = 0, _post_ok = 0, _post_fail = 0, _post_rounds = 0;
+    /// Requests to the GPU halves' targets, the chains they carried, and those refused (400).
+    uint64_t _post_halves = 0, _post_half_chains = 0, _post_refused = 0;
     std::string _post_last_err;
 
     // ---- Policy ----

@@ -96,6 +96,18 @@ drift -- adding a node would silently leave it out -- so the controller holds no
 knowledge at all. `armed` is REPLACED wholesale each cycle, never merged: a merge leaves a PRN
 armed forever after policy stops naming it.
 
+A target can also be a GPU half's, `{"url": "http://<node>:12048/gnss1_inject/set_trim", "chain":
+"gps_l5"}`, for a node whose inject host serves its rows by chain (the broker sends these with
+`--fleet-trim-half-targets`). The controller posts each such url once per round,
+`{"chains": {"gps_l5": [...], "gal_e5a": [...], ...}}`, carrying every chain that names it, each
+with the body its own target would have been sent. A round is a window: the url waits until
+every chain that closed the previous window has closed the newest one (a chain further behind
+holds nothing), so it posts once per window, about 48 requests per second per node rather than
+one per chain instance. The node refuses a batch whole, so a refused round is re-posted chain by
+chain at once and only the refused chain is backed off; it is posted alone until the half takes
+it again, and `get_stats` names it in `refused_chains` and counts `post_refused`. A url takes one
+form only: naming it both ways is refused.
+
 **State up** (controller -> Python, polled once per cycle) -- AS BUILT this is two GETs
 rather than the single `/get_state` first sketched:
 
@@ -155,6 +167,8 @@ Each instance has its own path and must be told separately, and `restClient` sen
 window. The C++ actuator posts every window from a small thread pool (`post_threads`);
 decimating would cost only latency (the trim moves at most 0.0625 chips/step). What defeats
 Python here is not the count -- it is connect-per-POST plus the GIL under five chain threads.
+A GPU half's inject host serves all its rows at one path by chain, and takes their trims in one
+request (section 4).
 
 ## 7. Two traps, named before they bite
 

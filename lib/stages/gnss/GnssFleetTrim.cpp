@@ -10,6 +10,7 @@
 #include <arpa/inet.h>
 #include <cerrno>
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
 #include <fstream>
@@ -63,11 +64,12 @@ int connect_poll(int fd, int timeout_ms) {
     return 1;
 }
 
-/// One HTTP/1.1 POST on an established kept-alive connection; true on a 200 reply. Any
-/// transport error closes the socket and sets *fd = -1, so the caller reconnects on a later
-/// round. Nothing here throws or exits.
-bool http_post(int* fd, const std::string& host, const std::string& path, const std::string& body,
-               std::string* err) {
+/// One HTTP/1.1 POST on an established kept-alive connection; returns the reply's status, or 0
+/// on a transport error, which closes the socket and sets *fd = -1, so the caller reconnects on
+/// a later round. Any status but 200 leaves the status line and the start of the reply in *err.
+/// Nothing here throws or exits.
+int http_post(int* fd, const std::string& host, const std::string& path, const std::string& body,
+              std::string* err) {
     {
         std::string req =
             "POST " + path + " HTTP/1.1\r\nHost: " + host
@@ -87,7 +89,7 @@ bool http_post(int* fd, const std::string& host, const std::string& path, const 
             ::close(*fd);
             *fd = -1;
             *err = "send: " + std::string(std::strerror(errno));
-            return false;
+            return 0;
         }
         // Read the whole response, headers and body, so the kept-alive connection is left
         // byte-clean: an unread tail (with enable_cors, restServer's headers alone are long)
@@ -127,6 +129,8 @@ bool http_post(int* fd, const std::string& host, const std::string& path, const 
                         break;
                     }
                     got += (size_t)n;
+                    if (resp.size() < hdr_end + 4 + 256)
+                        resp.append(buf, (size_t)n);
                 }
             }
         }
@@ -134,13 +138,16 @@ bool http_post(int* fd, const std::string& host, const std::string& path, const 
             ::close(*fd);
             *fd = -1;
             *err = "recv: " + std::string(std::strerror(errno));
-            return false;
+            return 0;
         }
-        if (resp.compare(0, 12, "HTTP/1.1 200") != 0 && resp.compare(0, 12, "HTTP/1.0 200") != 0) {
-            *err = "status: " + resp.substr(0, std::min<size_t>(resp.size(), 40));
-            return false; // response fully read, so the connection is still usable
-        }
-        return true;
+        int status = 0;
+        if (resp.compare(0, 9, "HTTP/1.1 ") == 0 || resp.compare(0, 9, "HTTP/1.0 ") == 0)
+            status = std::atoi(resp.c_str() + 9);
+        // The response is fully read, so the connection is still usable.
+        if (status != 200)
+            *err = "status: " + resp.substr(0, resp.find("\r\n")) + " "
+                   + resp.substr(hdr_end + 4, 256);
+        return status;
     }
 }
 
@@ -343,8 +350,23 @@ void GnssFleetTrim::policy_callback(kotekan::connectionInstance& conn, nlohmann:
             // This chain's tracker endpoints. Absent: the chain is armed and integrated but
             // nothing is posted for it.
             if (v.contains("targets"))
-                for (const auto& u : v.at("targets"))
-                    tg.push_back(parse_target(u.get<std::string>(), it.key()));
+                for (const auto& u : v.at("targets")) {
+                    if (u.is_string()) {
+                        tg.push_back(parse_target(u.get<std::string>(), it.key()));
+                        continue;
+                    }
+                    // A GPU half's target names this policy's chain, so a url's request
+                    // carries each chain once.
+                    if (!u.is_object() || u.size() != 2 || !u.contains("url")
+                        || !u.contains("chain") || !u.at("url").is_string()
+                        || u.at("chain") != it.key())
+                        throw std::runtime_error("target " + u.dump()
+                                                 + " is neither a url nor {\"url\": <url>, "
+                                                   "\"chain\": \""
+                                                 + it.key() + "\"}");
+                    tg.push_back(parse_target(u.at("url").get<std::string>(), it.key()));
+                    tg.back().half = true;
+                }
             got[it.key()] = p;
         }
     } catch (const std::exception& e) {
@@ -353,33 +375,50 @@ void GnssFleetTrim::policy_callback(kotekan::connectionInstance& conn, nlohmann:
         return;
     }
     const double now = current_time();
+    std::string clash;
     {
+        // _pend_mtx because the posters read the list; lock order _mtx, then _pend_mtx.
         std::lock_guard<std::mutex> lk(_mtx);
-        // Replace per chain: a posted chain's entry is replaced wholesale, so a PRN it stopped
-        // naming is disarmed, and chains absent from this post keep theirs (each broker chain
-        // thread posts only its own chain).
-        for (auto& kv : got) {
-            _policy[kv.first] = kv.second;
-            _policy_seen[kv.first] = now;
-        }
-        _policy_posts++;
-    }
-    {
+        std::lock_guard<std::mutex> pk(_pend_mtx);
         // Targets replace with the same per-chain scope as the policy: drop this post's
-        // chains' targets, keep the rest. _pend_mtx because the posters read the list.
-        std::lock_guard<std::mutex> lk(_pend_mtx);
+        // chains' targets, keep the rest.
         std::vector<Target> keep;
-        for (auto& t : _targets)
+        for (const auto& t : _targets)
             if (!got.count(t.chain))
-                keep.push_back(std::move(t));
-        for (auto& t : tg)
+                keep.push_back(t);
+        for (auto& t : tg) {
+            const auto ct = _trims.find(t.chain);
+            t.seq = ct == _trims.end() ? 0 : ct->second.seq;
             keep.push_back(std::move(t));
-        // Sort by url: the posters stride this list by index, so a target's position, and
-        // hence its thread, must depend only on the set of targets, not on which chain posted
-        // last. Otherwise sockets would be torn down and reopened on other threads every post.
+        }
+        // Sort by url: the posters stride this list's urls by index, so a target's position,
+        // and hence its thread, must depend only on the set of targets, not on which chain
+        // posted last. Otherwise sockets would be torn down and reopened on other threads
+        // every post.
         std::stable_sort(keep.begin(), keep.end(),
                          [](const Target& a, const Target& b) { return a.url < b.url; });
-        _targets = std::move(keep);
+        // A url takes one form of request: a tracker's own, or a GPU half's batch.
+        for (size_t i = 1; i < keep.size(); ++i)
+            if (keep[i].url == keep[i - 1].url && keep[i].half != keep[i - 1].half)
+                clash = keep[i].url;
+        if (clash.empty()) {
+            _targets = std::move(keep);
+            prune_halves();
+            // Replace per chain: a posted chain's entry is replaced wholesale, so a PRN it
+            // stopped naming is disarmed, and chains absent from this post keep theirs (each
+            // broker chain thread posts only its own chain).
+            for (auto& kv : got) {
+                _policy[kv.first] = kv.second;
+                _policy_seen[kv.first] = now;
+            }
+            _policy_posts++;
+        }
+    }
+    if (!clash.empty()) {
+        conn.send_error("bad policy payload: target " + clash
+                            + " is named both as a url and as {\"url\", \"chain\"}",
+                        kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
     }
     rearm();
     conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
@@ -447,6 +486,7 @@ void GnssFleetTrim::rearm() {
                     if (t.chain != it->first)
                         keep.push_back(std::move(t));
                 _targets = std::move(keep);
+                prune_halves();
             }
             _policy.erase(it->first);
             it = _policy_seen.erase(it);
@@ -561,6 +601,7 @@ void GnssFleetTrim::post_trims() {
     // Builds the payloads and hands them to the posters; no network I/O on the fold thread,
     // which would back-pressure telem_buf (see the class note).
     std::map<std::string, nlohmann::json> pend;
+    std::map<std::string, ChainTrims> closes; // the chains whose window closed
     {
         std::lock_guard<std::mutex> lk(_mtx);
         for (const auto& cv : _dll.chains()) {
@@ -571,6 +612,9 @@ void GnssFleetTrim::post_trims() {
             seen = closed;
             if (!moved)
                 continue;
+            closes[cv.first].seq = closed;
+            if (!cv.second.closed.empty())
+                closes[cv.first].win = cv.second.closed.back().win;
             if (cv.second.trim.empty())
                 continue;
             nlohmann::json rows = nlohmann::json::array();
@@ -585,58 +629,86 @@ void GnssFleetTrim::post_trims() {
         if (!pend.empty())
             _post_rounds++;
     }
-    if (pend.empty())
+    if (closes.empty())
         return;
     {
         std::lock_guard<std::mutex> lk(_pend_mtx);
+        for (const auto& c : closes) {
+            ChainTrims& t = _trims[c.first];
+            t.win = c.second.win;
+            const auto p = pend.find(c.first);
+            if (p != pend.end()) {
+                t.body = p->second.dump();
+                t.seq = c.second.seq;
+            }
+        }
+        _close_gen++;
         // Replace, never queue: the trim is absolute, so the newest payload supersedes any not
         // yet sent. _pending then holds only the chains posted by this call.
-        _pending = std::move(pend);
-        _pend_gen++;
+        if (!pend.empty()) {
+            _pending = std::move(pend);
+            _pend_gen++;
+        }
     }
     _pend_cv.notify_all();
 }
 
 void GnssFleetTrim::post_loop(int slot) {
-    uint64_t last = 0;
+    uint64_t last = 0, last_close = 0;
     // Per-target state is keyed by url, not list index: a kept-alive socket belongs to one
     // host, and /set_policy can rebuild the list between rounds.
-    struct Conn {
-        int fd = -1;
-        bool connecting = false; // fd is a handshake in flight, not yet a connection
-        std::chrono::steady_clock::time_point since;
-    };
-    // A handshake gets this long before it counts as a failure: enough for the kernel's SYN
-    // retransmits at 1 s and 3 s, and inside the trackers' trim TTL, so a target that comes
-    // back is served before its trims expire.
-    constexpr auto kConnectBudget = std::chrono::milliseconds(3500);
     std::map<std::string, Conn> conns; // target url -> socket, this thread's alone
     std::map<std::string, int> skips;  // rounds still to skip (backoff)
     std::map<std::string, int> nfails; // consecutive failures
     while (!stop_thread) {
         std::map<std::string, nlohmann::json> work;
-        std::vector<Target> tgt;
-        uint64_t gen = 0;
+        std::vector<Target> tgt;                        // this thread's targets, sorted by url
+        std::map<std::string, std::vector<Due>> rounds; // GPU half url -> the trims due there
+        std::map<std::string, std::map<std::string, uint64_t>> named; // GPU half url -> its chains
         {
             std::unique_lock<std::mutex> lk(_pend_mtx);
-            _pend_cv.wait_for(lk, std::chrono::milliseconds(200),
-                              [&] { return _pend_gen != last || stop_thread; });
+            _pend_cv.wait_for(lk, std::chrono::milliseconds(200), [&] {
+                return _pend_gen != last || _close_gen != last_close || stop_thread;
+            });
             if (stop_thread)
                 break;
-            if (_pend_gen == last)
+            if (_pend_gen == last && _close_gen == last_close)
                 continue;
-            gen = _pend_gen;
-            work = _pending; // a copy: the fold thread may replace it while we send
-            tgt = _targets;  // ditto -- /set_policy can replace the list mid-round
+            if (_pend_gen != last)
+                work = _pending; // a copy: the fold thread may replace it while we send
+            last = _pend_gen;
+            last_close = _close_gen;
+            // A copy of this thread's share -- /set_policy can replace the list mid-round. The
+            // threads' url strides are disjoint, so no socket is shared, and every target of a
+            // url is on one thread.
+            size_t k = 0;
+            for (size_t i = 0; i < _targets.size(); ++i) {
+                if (i > 0 && _targets[i].url != _targets[i - 1].url)
+                    ++k;
+                if (k % (size_t)_n_post_threads == (size_t)slot)
+                    tgt.push_back(_targets[i]);
+            }
+            for (const Target& t : tgt)
+                if (t.half)
+                    named[t.url].emplace(t.chain, t.seq);
+            for (const auto& n : named) {
+                std::vector<Due> due = due_trims(n.first, n.second);
+                if (!due.empty())
+                    rounds[n.first] = std::move(due);
+            }
         }
-        last = gen;
-        for (size_t i = (size_t)slot; i < tgt.size(); i += (size_t)_n_post_threads) {
-            const Target& t = tgt[i];
-            auto it = work.find(t.chain);
-            if (it == work.end())
+        for (const Target& t : tgt) {
+            auto it = work.end();
+            std::vector<Due> due;
+            if (t.half) {
+                // One round per url, taken by its first target.
+                const auto ri = rounds.find(t.url);
+                if (ri == rounds.end())
+                    continue;
+                due = std::move(ri->second);
+                rounds.erase(ri);
+            } else if ((it = work.find(t.chain)) == work.end())
                 continue;
-            // One kept-alive socket per target, owned by this thread; the threads' strides
-            // are disjoint, so no socket is shared.
             // Back off a failing target exponentially, reset by one success: a wedged tracker
             // costs its timeout every round, which would slow every target in this stride.
             int& skip = skips[t.url];
@@ -644,54 +716,22 @@ void GnssFleetTrim::post_loop(int slot) {
                 --skip;
                 continue;
             }
-            Conn& c = conns[t.url];
             std::string err;
-            bool ok = false;
-            if (c.fd < 0) {
-                c.fd = connect_start(t.addr);
-                c.connecting = true;
-                c.since = std::chrono::steady_clock::now();
-                if (c.fd < 0)
-                    err = "connect: " + std::string(std::strerror(errno));
-            }
-            if (c.fd >= 0 && c.connecting) {
-                const int r = connect_poll(c.fd, _post_timeout_ms);
-                if (r > 0)
-                    c.connecting = false;
-                else if (r < 0) {
-                    c.fd = -1;
-                    c.connecting = false;
-                    err = "connect: " + std::string(std::strerror(errno));
-                } else if (std::chrono::steady_clock::now() - c.since < kConnectBudget) {
-                    continue; // in flight: costs this thread nothing and counts as nothing
-                } else {
-                    ::close(c.fd);
-                    c.fd = -1;
-                    c.connecting = false;
-                    err = "connect: timed out";
-                }
-            }
-            if (c.fd >= 0)
-                ok = http_post(&c.fd, t.host, t.path, it->second.dump(), &err);
+            const int status = t.half ? post_half(conns[t.url], t, due)
+                                      : post(conns[t.url], t, it->second.dump(), &err);
+            if (status < 0)
+                continue; // a handshake in flight: costs this thread nothing
             int& nfail = nfails[t.url];
-            if (ok)
+            if (status == 200)
                 nfail = 0;
             else
                 skip = std::min(48, 1 << std::min(5, ++nfail)); // <= 32 rounds, ~1.3 s
-            std::lock_guard<std::mutex> lk(_mtx);
-            _post_reqs++;
-            if (ok)
-                _post_ok++;
-            else {
-                _post_fail++;
-                _post_last_err = t.url + ": " + err;
-            }
         }
         // A target that left this thread's stride (list changed) takes its socket with it:
         // close here rather than hold a connection nothing will use again.
         for (auto f = conns.begin(); f != conns.end();) {
             bool mine = false;
-            for (size_t i = (size_t)slot; i < tgt.size() && !mine; i += (size_t)_n_post_threads)
+            for (size_t i = 0; i < tgt.size() && !mine; ++i)
                 mine = tgt[i].url == f->first;
             if (mine) {
                 ++f;
@@ -707,6 +747,180 @@ void GnssFleetTrim::post_loop(int slot) {
     for (auto& f : conns)
         if (f.second.fd >= 0)
             ::close(f.second.fd);
+}
+
+/// POST body to a target on its kept-alive connection, connecting first if it has none, and
+/// count it. Returns the reply's status, 0 on a failure, or -1 while the handshake is still in
+/// flight, which counts as nothing.
+int GnssFleetTrim::post(Conn& c, const Target& t, const std::string& body, std::string* err) {
+    // A handshake gets this long before it counts as a failure: enough for the kernel's SYN
+    // retransmits at 1 s and 3 s, and inside the trackers' trim TTL, so a target that comes
+    // back is served before its trims expire.
+    constexpr auto kConnectBudget = std::chrono::milliseconds(3500);
+    int status = 0;
+    if (c.fd < 0) {
+        c.fd = connect_start(t.addr);
+        c.connecting = true;
+        c.since = std::chrono::steady_clock::now();
+        if (c.fd < 0)
+            *err = "connect: " + std::string(std::strerror(errno));
+    }
+    if (c.fd >= 0 && c.connecting) {
+        const int r = connect_poll(c.fd, _post_timeout_ms);
+        if (r > 0)
+            c.connecting = false;
+        else if (r < 0) {
+            c.fd = -1;
+            c.connecting = false;
+            *err = "connect: " + std::string(std::strerror(errno));
+        } else if (std::chrono::steady_clock::now() - c.since < kConnectBudget) {
+            return -1;
+        } else {
+            ::close(c.fd);
+            c.fd = -1;
+            c.connecting = false;
+            *err = "connect: timed out";
+        }
+    }
+    if (c.fd >= 0)
+        status = http_post(&c.fd, t.host, t.path, body, err);
+    std::lock_guard<std::mutex> lk(_mtx);
+    _post_reqs++;
+    if (status == 200)
+        _post_ok++;
+    else {
+        _post_fail++;
+        _post_last_err = t.url + ": " + *err;
+    }
+    return status;
+}
+
+/// The trims due at a GPU half's url: each chain's newest that the url has not been sent, once
+/// the url's round is complete. A round is a window: every chain closes each window within the
+/// burst of frames that opens the next, so the url waits while a chain that closed the previous
+/// window has yet to close the newest one, and posts once with every chain's trims. A chain two
+/// or more windows behind (its senders silent) holds nothing, so one that stops costs one round
+/// of waiting, until another chain closes the next window. `chains` maps each chain that names
+/// the url to its Target::seq: as for a tracker's own target, only trims formed after the
+/// policy named the url are due. A chain the url refused is due alone, after its backoff.
+/// Called with _pend_mtx held.
+std::vector<GnssFleetTrim::Due>
+GnssFleetTrim::due_trims(const std::string& url, const std::map<std::string, uint64_t>& chains) {
+    uint64_t newest = 0;
+    for (const auto& c : chains) {
+        const auto it = _trims.find(c.first);
+        if (it != _trims.end())
+            newest = std::max(newest, it->second.win);
+    }
+    std::map<std::string, HalfChain>& state = _halves[url];
+    std::vector<Due> due;
+    for (const auto& c : chains) {
+        const HalfChain& h = state.emplace(c.first, HalfChain{c.second, 0, 0}).first->second;
+        const auto it = _trims.find(c.first);
+        if (it == _trims.end())
+            continue;
+        if (it->second.win + 1 == newest)
+            return {};
+        if (it->second.seq > h.seq)
+            due.push_back({c.first, it->second.body, h.nfail > 0});
+    }
+    std::vector<Due> out;
+    for (Due& d : due) {
+        HalfChain& h = state[d.chain];
+        h.seq = _trims[d.chain].seq;
+        if (d.alone && h.skip > 0)
+            --h.skip;
+        else
+            out.push_back(std::move(d));
+    }
+    return out;
+}
+
+/// Drop the GPU halves' state of every (url, chain) no target names, so a chain that names a
+/// url again starts from its new Target::seq. Called with _pend_mtx held, after _targets changes.
+void GnssFleetTrim::prune_halves() {
+    std::map<std::string, std::map<std::string, HalfChain>> keep;
+    for (const Target& t : _targets) {
+        if (!t.half)
+            continue;
+        const auto u = _halves.find(t.url);
+        if (u == _halves.end())
+            continue;
+        const auto c = u->second.find(t.chain);
+        if (c != u->second.end())
+            keep[t.url].insert(*c);
+    }
+    _halves = std::move(keep);
+}
+
+/// One round of a GPU half's target: every due chain's trims in one request, but a chain the
+/// half refused goes alone, on its own backoff, until the half takes it again. A refused round
+/// is re-posted chain by chain at once, so only the refused chain goes without, and the other
+/// chains' trims never wait out a backoff toward the trackers' TTL. Returns as post() does; a
+/// status other than 200 is a failure of the url, which backs off whole as a tracker's would.
+int GnssFleetTrim::post_half(Conn& c, const Target& t, const std::vector<Due>& due) {
+    std::vector<const Due*> batch, alone;
+    for (const Due& d : due)
+        (d.alone ? alone : batch).push_back(&d);
+    std::string err;
+    if (!batch.empty()) {
+        const int status = send_half(c, t, batch, &err);
+        if (status == 400)
+            alone.insert(alone.begin(), batch.begin(), batch.end());
+        else if (status != 200)
+            return status;
+    }
+    for (const Due* d : alone) {
+        const int status = send_half(c, t, {d}, &err);
+        if (status != 200 && status != 400)
+            return status;
+        if (status == 400 || d->alone)
+            half_answer(t.url, d->chain, status == 400, err);
+    }
+    return 200;
+}
+
+/// A GPU half's answer to a chain posted alone: a refusal backs the chain off, and a chain the
+/// half takes again rejoins its batch.
+void GnssFleetTrim::half_answer(const std::string& url, const std::string& chain, bool refused,
+                                const std::string& err) {
+    int was = 0;
+    {
+        std::lock_guard<std::mutex> lk(_pend_mtx);
+        const auto u = _halves.find(url);
+        if (u == _halves.end() || !u->second.count(chain))
+            return; // no longer named
+        HalfChain& h = u->second[chain];
+        was = h.nfail;
+        h.nfail = refused ? h.nfail + 1 : 0;
+        h.skip = refused ? std::min(48, 1 << std::min(5, h.nfail)) : 0;
+    }
+    if (refused && was == 0)
+        WARN("GnssFleetTrim[{:s}]: {:s} REFUSED chain '{:s}' ({:s}) -- its trims are posted alone "
+             "and backed off, the half's other chains' still go every round",
+             unique_name, url, chain, err);
+    else if (!refused && was > 0)
+        INFO("GnssFleetTrim[{:s}]: {:s} takes chain '{:s}' again; it is batched with the half's "
+             "other chains",
+             unique_name, url, chain);
+}
+
+/// One request to a GPU half's target, {"chains": {chain: trims, ...}}, counted.
+int GnssFleetTrim::send_half(Conn& c, const Target& t, const std::vector<const Due*>& chains,
+                             std::string* err) {
+    std::string body = "{\"chains\":{";
+    for (size_t i = 0; i < chains.size(); ++i)
+        body += (i ? "," : "") + nlohmann::json(chains[i]->chain).dump() + ":" + chains[i]->body;
+    body += "}}";
+    const int status = post(c, t, body, err);
+    if (status < 0)
+        return status;
+    std::lock_guard<std::mutex> lk(_mtx);
+    _post_halves++;
+    _post_half_chains += chains.size();
+    if (status == 400)
+        _post_refused++;
+    return status;
 }
 
 void GnssFleetTrim::dll_callback(kotekan::connectionInstance& conn) {
@@ -895,12 +1109,30 @@ void GnssFleetTrim::stats_callback(kotekan::connectionInstance& conn) {
                            {"gain", cv.second.policy.gain}};
         reply["policy"] = a;
     }
-    reply["post_targets"] = _targets.size();
+    {
+        std::lock_guard<std::mutex> pk(_pend_mtx); // lock order: _mtx, then _pend_mtx
+        reply["post_targets"] = _targets.size();
+    }
     reply["post_threads"] = _post_threads.size();
     reply["post_rounds"] = _post_rounds;
     reply["post_requests"] = _post_reqs;
     reply["post_ok"] = _post_ok;
     reply["post_fail"] = _post_fail;
+    // The GPU halves' targets: post_half_chains / post_halves is the chains a request carries,
+    // post_refused counts their 400s, and refused_chains names, per half, each chain it
+    // refused that is still posted alone.
+    reply["post_halves"] = _post_halves;
+    reply["post_half_chains"] = _post_half_chains;
+    reply["post_refused"] = _post_refused;
+    {
+        std::lock_guard<std::mutex> pk(_pend_mtx);
+        nlohmann::json r = nlohmann::json::object();
+        for (const auto& u : _halves)
+            for (const auto& c : u.second)
+                if (c.second.nfail > 0)
+                    r[u.first].push_back(c.first);
+        reply["refused_chains"] = r;
+    }
     reply["post_last_err"] = _post_last_err;
     reply["n_win"] = _dll.n_win();
     reply["min_instances"] = _dll.min_instances();
