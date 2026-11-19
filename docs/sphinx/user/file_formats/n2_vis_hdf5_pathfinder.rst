@@ -67,13 +67,13 @@ Frequencies and time bins
 from centre 300.0 to 1500.0 MHz.
 
 **Time bins.** The upstream accumulator runs in ERA-binning mode
-(``bin_in_ERA: true``, ``num_bins_per_rotation: 8640``): bins are
-:math:`1/24^\circ` of Earth Rotation Angle each, so ``bin_start_ERA_deg``
-and ``bin_end_ERA_deg`` are exact multiples of :math:`1/24^\circ`. With the
-configured accumulation of 238 sub-integrations of 8192 FPGA ticks, the
-nominal accumulated length per bin (``frame_length_fpga_ticks``) is
-:math:`1\,949\,696` ticks :math:`\times\ 5120\,\mathrm{ns} \approx 9.982` s.
-Each file groups 20 consecutive bins and spans approximately 200 s.
+(``bin_in_ERA: true``, ``num_bins_per_rotation: 4096``): bins are
+:math:`360/4096 = 45/512^\circ` of Earth Rotation Angle each, so
+``bin_start_ERA_deg`` and ``bin_end_ERA_deg`` are exact multiples of
+:math:`45/512^\circ`. A bin lasts 21.04 s and holds 500 or 502
+sub-integrations of 8192 FPGA ticks (5120 ns each). The accumulator
+fringestops within each bin, to the bin's centre. Each file groups 40
+consecutive bins and spans approximately 840 s.
 
 **Key attribute values** following from this configuration:
 ``fpga_seq_length_ns`` = 5120, ``num_telescope_f`` = 8192,

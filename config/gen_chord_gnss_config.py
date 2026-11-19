@@ -1265,6 +1265,24 @@ def elem_steer_keys(args, arr, n_elem):
                 % (len(pos) // 3, n_elem)
             )
         key = "%s+%s" % (key, os.path.basename(args.elem_positions_file))
+    # The assembler refers every element's steering delay to the reference element's position,
+    # so the records are formed as if the antenna sat there. Every node and the broker's
+    # receiver position assume element 0's dish; a reference element on another dish shifts
+    # every record by the baseline's projection on the line of sight (11-18: E05, 42 m from
+    # A01, ~1.4 chips on the 10.23 Mcps chains, which lost most of their prompt). A live
+    # /set_reference_element does not move the steering reference, so a dark element 0 is
+    # handled live instead.
+    ref_el = getattr(args, "reference_element", 0)
+    r, r0 = pos[3 * ref_el : 3 * ref_el + 3], pos[0:3]
+    off = math.dist(r, r0) if len(r) == 3 else 0.0
+    if off > 0.5:
+        raise SystemExit(
+            "--reference-element %d sits %.1f m from element 0's dish (epoch %s): the steering "
+            "delays are referred to it, which would shift every record off the geometry the "
+            "rest of the fleet and the broker use. Keep it on element 0's dish, and move it "
+            "LIVE (POST <assemble>/set_reference_element, <srch_tap>/set_element) while that "
+            "element is dark." % (ref_el, off, key)
+        )
     return {
         "elem_positions_enu": pos,
         "elem_steer_sign": args.elem_steer_sign,
@@ -4791,9 +4809,9 @@ def main():
             print(
                 "  WARNING   the reference element %d is flagged bad: the record headers start "
                 "from it and the acquisition search taps it, so on a dark element no chain "
-                "locks. Pick a live one (--reference-element, the manifest's "
-                "reference-element) or move it live (POST <assemble>/set_reference_element "
-                "and <srch_tap>/set_element)." % _ref,
+                "locks. Move both to a live element LIVE on every node (POST "
+                "<assemble>/set_reference_element and <srch_tap>/set_element); a config value "
+                "off element 0's dish would also move the steering reference." % _ref,
                 file=sys.stderr,
             )
     else:
