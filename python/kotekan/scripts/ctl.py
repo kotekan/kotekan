@@ -90,5 +90,10 @@ def status(url):
         return
     if r.status_code == 200:
         host_addr = urlsplit(url).netloc
-        state = "running" if r.json()["running"] else "idle"
+        if r.json()["running"]:
+            state = "running"
+        elif r.json().get("starting"):
+            state = "starting"
+        else:
+            state = "idle"
         print("Kotekan instance on {} is {}.".format(host_addr, state))

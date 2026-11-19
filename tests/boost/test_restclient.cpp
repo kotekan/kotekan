@@ -279,3 +279,25 @@ BOOST_FIXTURE_TEST_CASE(_test_restclient_text_reply_blocking, TestContext) {
     json js = json::parse(reply.second);
     BOOST_CHECK(js["test"] == "failed");
 }
+
+BOOST_FIXTURE_TEST_CASE(_test_restserver_held_endpoint, TestContext) {
+    int port = restServer::instance().port();
+    json request;
+    request["array"] = {1, 2, 3};
+    request["flag"] = true;
+
+    // An endpoint registered while held answers 503 until released.
+    restServer::instance().hold_new_endpoints();
+    TestContext::init(
+        std::bind(&TestContext::callback_text, this, std::placeholders::_1, std::placeholders::_2),
+        "/test_restserver_held");
+    restClient::restReply reply = restClient::instance().make_request_blocking(
+        "/test_restserver_held", request, "127.0.0.1", port);
+    BOOST_CHECK(reply.first == false);
+
+    restServer::instance().release_new_endpoints();
+    reply = restClient::instance().make_request_blocking("/test_restserver_held", request,
+                                                         "127.0.0.1", port);
+    BOOST_CHECK(reply.first == true);
+    BOOST_CHECK(reply.second == "this is a test");
+}
