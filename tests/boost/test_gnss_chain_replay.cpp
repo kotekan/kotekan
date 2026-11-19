@@ -9,8 +9,9 @@
 //
 // GNSS_REPLAY_CONFIG=<json> replays the production stage blocks scripts/gnss/replay_extract.py
 // extracts instead of the built-in chains. GNSS_REPLAY_GOLDEN=<file> compares the baseline with a
-// golden (GNSS_REPLAY_BLESS=1 writes it), and GNSS_REPLAY_DUMP=<dir> writes the endpoints and the
-// stage configs. A replay takes seconds in a Test build, so by default only the baseline, which
+// golden (GNSS_REPLAY_BLESS=1 writes it), and GNSS_REPLAY_DUMP=<dir> writes each run's stage
+// configs and GET /endpoints reply there, <pid>.config.json and <pid>.endpoints.json, for
+// node_contract. A replay takes seconds in a Test build, so by default only the baseline, which
 // also runs each chain's PRN swap references (Scenario::cold_ref), and the zero-amplitude
 // control run; GNSS_REPLAY_FULL=1 adds the determinism, mutation and prefill
 // controls, a run whose combiners have no out_buf and one whose combiners keep slot state across
@@ -1734,6 +1735,11 @@ int child_main(const std::vector<ChainSpec>& cs, const Scenario& sc, const std::
     // The REST surface under the chains' stage names.
     {
         const json ep = rest(port, "/endpoints", json{});
+        if (const char* dir = std::getenv("GNSS_REPLAY_DUMP")) {
+            const std::string stem = std::string(dir) + "/" + std::to_string(getpid());
+            std::ofstream(stem + ".config.json") << build_config(cs, sc, cpus).dump(1);
+            std::ofstream(stem + ".endpoints.json") << ep.dump(1);
+        }
         std::vector<std::string> lines;
         for (const char* verb : {"GET", "POST"})
             for (const auto& p : ep.value(verb, std::vector<std::string>{}))
@@ -3935,11 +3941,6 @@ BOOST_AUTO_TEST_CASE(prn_swap_without_reset) {
 BOOST_AUTO_TEST_CASE(golden) {
     const char* path = std::getenv("GNSS_REPLAY_GOLDEN");
     const Digests& d = baseline();
-    if (const char* dir = std::getenv("GNSS_REPLAY_DUMP")) {
-        std::ofstream(std::string(dir) + "/endpoints.txt") << d.strings.at("endpoints");
-        std::ofstream(std::string(dir) + "/config.json")
-            << build_config(chains(), base_scenario(), {}).dump(1);
-    }
     if (path == nullptr) {
         BOOST_TEST_MESSAGE("GNSS_REPLAY_GOLDEN not set: no golden compare");
         return;

@@ -9,8 +9,9 @@ generator writes for cx52 today. On every form the paths by chain (the indexed f
 per-chain paths of the stages it hosts, regrouped by host, and none without a host; a combine
 row's chain renamed must show there alone. Without GNSS_CONTRACT_BASELINE only test_only_keys is checked
 and the test exits 77. With GNSS_REPLAY_DUMP=DIR2
-(test_gnss_chain_replay's config.json and endpoints.json) rest_surface of the replay's config
-must equal the per-chain endpoints its stages registered. With GNSS_CONTRACT_FOLDED=DIR3 (the
+(test_gnss_chain_replay's <run>.config.json and <run>.endpoints.json) rest_surface and
+indexed_surface of each run's config must equal the paths its stages registered, and some run
+must serve paths by chain. With GNSS_CONTRACT_FOLDED=DIR3 (the
 same node generated with --fold-epl) every folded assembler must carry its adapter's inputs
 and keys, keep its chain's stall budget at 8.75 or more and differ from DIR's only in placement
 and stall. With GNSS_CONTRACT_ROWS=DIR4 (the same node generated with --fold-epl --gpu-rows)
@@ -991,21 +992,37 @@ def test_half_rec(t_dir, h_dir):
     check(not bad, "half rec: one rec_row per row, tiling the half's buffer (%s)" % bad)
 
 
+# The stages a replay run constructs, by the ends of the names it gives them: its built-in chains'
+# config leaves out kotekan_stage. Its side combiners (<chain>_n2combine_<x>) are no node's and
+# are left out.
+REPLAY_STAGES = (
+    (r"_n2assemble$|^gnss\d+_records$", "GnssGpuRecordAssemble"),
+    (r"_n2combine$|^gnss\d+_combine$", "GnssCoherentCombiner"),
+    (r"_telem_pack$|^gnss\d+_telem$", "GnssTelemPack"),
+)
+
+
 def test_replay(dump):
-    """rest_surface of the replay's config against what its stages registered."""
-    cpath = os.path.join(dump, "config.json")
-    epath = os.path.join(dump, "endpoints.json")
-    if not (os.path.exists(cpath) and os.path.exists(epath)):
-        check(False, "GNSS_REPLAY_DUMP=%s holds config.json and endpoints.json" % dump)
-        return
-    with open(cpath) as f:
-        want = nc.rest_surface(json.load(f))
-    with open(epath) as f:
-        have = nc.endpoint_set(json.load(f))
+    """Each replay run's rest_surface and indexed_surface against what its stages registered."""
+    runs = sorted(f[:-12] for f in os.listdir(dump) if f.endswith(".config.json"))
+    bad, hosted = [], 0
+    for r in runs:
+        with open(os.path.join(dump, r + ".config.json")) as f:
+            cfg = json.load(f)
+        cfg = {u: b for u, b in cfg.items() if not re.search(r"_n2combine_\w+$", u)}
+        for u, b in cfg.items():
+            for pat, kind in REPLAY_STAGES:
+                if isinstance(b, dict) and re.search(pat, u):
+                    b["kotekan_stage"] = kind
+        with open(os.path.join(dump, r + ".endpoints.json")) as f:
+            lines, differ = nc.live(json.load(f), cfg)
+        if differ or not nc.rest_surface(cfg):
+            bad.append("%s: %s" % (r, lines[:3]))
+        hosted += bool(nc.indexed_surface(cfg))
     check(
-        want == have and want,
-        "replay: %d paths restated, %d registered; missing %s, extra %s"
-        % (len(want), len(have), sorted(want - have)[:3], sorted(have - want)[:3]),
+        runs and hosted and not bad,
+        "replay: %d runs, %d serving paths by chain, as restated (%s)"
+        % (len(runs), hosted, bad[:2]),
     )
 
 
