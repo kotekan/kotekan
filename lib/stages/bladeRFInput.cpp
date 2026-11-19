@@ -16,9 +16,12 @@
 #include <cmath>      // for sqrt
 #include <exception>  // for exception
 #include <functional> // for bind, _1, _2
+#include <future>     // for promise, future
 #include <json.hpp>   // for basic_json, json
+#include <memory>     // for make_shared
 #include <string.h>   // for memcpy, memset
-#include <thread>     // for sleep_for
+#include <thread>     // for sleep_for, thread
+#include <utility>    // for pair
 #include <vector>     // for vector
 
 #if !defined(LIBBLADERF_API_VERSION) || LIBBLADERF_API_VERSION < 0x02050000
@@ -83,6 +86,20 @@ bladeRFInput::bladeRFInput(Config& config, const std::string& unique_name,
     _startup_discard =
         config.get_default<double>(unique_name, "startup_discard_ms", 100) * 1e-3 * _sample_rate;
     _adcstat_timeout_ms = config.get_default<int>(unique_name, "adcstat_timeout_ms", 250);
+    _force_filter_open = config.get_default<bool>(unique_name, "force_filter_open", false);
+    _data_port_delay = config.get_default<int>(unique_name, "data_port_delay", -1);
+    _max_stream_restarts = config.get_default<int>(unique_name, "max_stream_restarts", 3);
+    if (_data_port_delay > 0xff) {
+        FATAL_ERROR("bladeRFInput: data_port_delay must be -1 or a register value 0-255, not {:d}",
+                    _data_port_delay);
+        return;
+    }
+    if (_force_filter_open && !_oversample) {
+        FATAL_ERROR("bladeRFInput: force_filter_open needs a sample_bw above {:.2f} (OVERSAMPLE); "
+                    "below that the digital filters set the band.",
+                    MAX_STANDARD_RATE / 1e6);
+        return;
+    }
 
     _gain_mode_name = config.get_default<std::string>(unique_name, "gain_mode", "manual");
     if (_gain_mode_name == "manual")
@@ -109,7 +126,10 @@ bladeRFInput::bladeRFInput(Config& config, const std::string& unique_name,
                     "num_buffers.");
         return;
     }
-    _set_bandwidth = !_oversample || config.exists(unique_name, "bandwidth");
+    // Forcing the filter open was measured from the filter libbladeRF tunes for 56 MHz.
+    _set_bandwidth = !_oversample || _force_filter_open || config.exists(unique_name, "bandwidth");
+    if (_force_filter_open && !config.exists(unique_name, "bandwidth"))
+        _bandwidth = MAX_BANDWIDTH;
 }
 
 bladeRFInput::~bladeRFInput() {
@@ -121,9 +141,36 @@ bladeRFInput::~bladeRFInput() {
     rest_server.remove_get_callback(unique_name + "/adcstat");
     rest_server.remove_get_callback(unique_name + "/get_config");
     if (dev != nullptr) {
-        bladerf_enable_module(dev, RX_CH, false);
-        bladerf_close(dev);
+        // libbladeRF can hang for good stopping a stream that has failed: it cancels its
+        // worker thread after 3 s, then waits forever for the stream to finish. Close on a
+        // separate thread, and abandon the device if that does not finish; it is released
+        // when kotekan exits.
+        struct bladerf* d = dev;
+        auto closed = std::make_shared<std::promise<void>>();
+        std::future<void> done = closed->get_future();
+        std::thread([d, closed] {
+            bladerf_enable_module(d, RX_CH, false);
+            bladerf_close(d);
+            closed->set_value();
+        }).detach();
+        if (done.wait_for(std::chrono::seconds(10)) != std::future_status::ready)
+            ERROR("Closing the bladeRF timed out: libbladeRF hung stopping the stream. Abandoning "
+                  "the device; it is released when kotekan exits.");
     }
+}
+
+bool bladeRFInput::write_rfic_register(uint16_t addr, uint8_t val) {
+    int status = bladerf_set_rfic_register(dev, addr, val);
+    uint8_t readback = 0;
+    if (status == 0)
+        status = bladerf_get_rfic_register(dev, addr, &readback);
+    if (status != 0 || readback != val) {
+        FATAL_ERROR(
+            "Writing 0x{:02x} to AD9361 register 0x{:03x} failed ({:s}); it reads 0x{:02x}.", val,
+            addr, status ? bladerf_strerror(status) : "no error", readback);
+        return false;
+    }
+    return true;
 }
 
 bool bladeRFInput::open_device() {
@@ -290,15 +337,54 @@ bool bladeRFInput::configure_device() {
     INFO("Tuned to {:d} Hz, gain mode {:s}, gain {:d} dB, bias tee {:s}", _freq, _gain_mode_name,
          _gain, _bias_tee ? "on" : "off");
 
+    // The RX mux is an FPGA register that survives closing and re-opening the device.
+    status = bladerf_set_rx_mux(dev, BLADERF_RX_MUX_BASEBAND);
+    if (status != 0) {
+        FATAL_ERROR("bladerf_set_rx_mux() failed: {:s}", bladerf_strerror(status));
+        return false;
+    }
+    if (_data_port_delay >= 0) {
+        if (!write_rfic_register(0x006, _data_port_delay))
+            return false;
+        INFO("AD9361 data port delay (0x006) set to 0x{:02x}", _data_port_delay);
+    }
+    if (_force_filter_open) {
+        // Bit 7 of 0x1E6 (TUNE_OVERRIDE) makes the BBF use the capacitors written to
+        // 0x1E7-0x1EC instead of the calibrated ones, and bits 1 and 3 of 0x1DB make the TIAs
+        // use the capacitors in 0x1DC-0x1DF. libbladeRF's OVERSAMPLE settings clear these
+        // override bits, so they have no effect.
+        uint8_t r2346 = 0, tia_config = 0, tia1_c = 0, tia2_c = 0;
+        if (bladerf_get_rfic_register(dev, 0x1e6, &r2346) != 0
+            || bladerf_get_rfic_register(dev, 0x1db, &tia_config) != 0
+            || bladerf_get_rfic_register(dev, 0x1dc, &tia1_c) != 0
+            || bladerf_get_rfic_register(dev, 0x1de, &tia2_c) != 0) {
+            FATAL_ERROR("Reading the AD9361 filter registers failed.");
+            return false;
+        }
+        const std::pair<uint16_t, uint8_t> writes[] = {
+            {0x1e6, (uint8_t)(r2346 | 0x80)}, // BBF tune override, keeping R2346
+            {0x1e7, 0},                       // BBF C1, C2, C3 at their minimum
+            {0x1e8, 0},
+            {0x1e9, 0},
+            {0x1ea, 0},
+            {0x1eb, 0},
+            {0x1ec, 0},
+            {0x1db, (uint8_t)(tia_config | 0x0a)}, // TIA1 and TIA2 capacitor override
+            {0x1dc, (uint8_t)(tia1_c & 0xc0)},     // TIA C at its minimum, keeping RF
+            {0x1dd, 0},
+            {0x1de, (uint8_t)(tia2_c & 0xc0)},
+            {0x1df, 0},
+        };
+        for (const auto& [addr, val] : writes)
+            if (!write_rfic_register(addr, val))
+                return false;
+        INFO("Forced the RX baseband filter and TIA capacitors to their minimum");
+    }
+
     status = bladerf_sync_config(dev, BLADERF_RX_X1, BLADERF_FORMAT_SC8_Q7_META, _num_buffers,
                                  _buffer_size, _num_transfers, _timeout_ms);
     if (status != 0) {
         FATAL_ERROR("bladerf_sync_config() failed: {:s}", bladerf_strerror(status));
-        return false;
-    }
-    status = bladerf_enable_module(dev, RX_CH, true);
-    if (status != 0) {
-        FATAL_ERROR("bladerf_enable_module() failed: {:s}", bladerf_strerror(status));
         return false;
     }
     return true;
@@ -456,6 +542,8 @@ void bladeRFInput::stream() {
         Metrics::instance().add_counter("kotekan_bladerfinput_dropped_samples_total", unique_name);
     auto& discont_metric =
         Metrics::instance().add_counter("kotekan_bladerfinput_discontinuities_total", unique_name);
+    auto& restart_metric =
+        Metrics::instance().add_counter("kotekan_bladerfinput_stream_restarts_total", unique_name);
     kotekan::prometheus::Gauge* pll_metric = nullptr;
     if (_ref_in_freq > 0) {
         pll_metric = &Metrics::instance().add_gauge("kotekan_bladerfinput_pll_locked", unique_name);
@@ -474,6 +562,17 @@ void bladeRFInput::stream() {
     // The first reads after enabling RX can hold stale samples from the previous session,
     // followed by a jump in the timestamps, so they are discarded.
     uint64_t to_discard = _startup_discard;
+    bool any_samples = false;
+    int consecutive_errors = 0;
+
+    // RX is enabled only now, right before the first read. With seconds between the two the
+    // stream sometimes never starts: 3 of 8 sessions with 3 s, none of 10 without, on the
+    // first unit with FX3 2.6.0.
+    int status = bladerf_enable_module(dev, RX_CH, true);
+    if (status != 0) {
+        FATAL_ERROR("bladerf_enable_module() failed: {:s}", bladerf_strerror(status));
+        return;
+    }
 
     while (!stop_thread) {
         struct bladerf_metadata meta;
@@ -481,11 +580,29 @@ void bladeRFInput::stream() {
         meta.flags = BLADERF_META_FLAG_RX_NOW;
         // Each read returns contiguous samples starting at meta.timestamp. On a dropout it
         // returns early, and the next read starts after the gap.
-        int status = bladerf_sync_rx(dev, chunk.data(), _buffer_size, &meta, _timeout_ms);
+        status = bladerf_sync_rx(dev, chunk.data(), _buffer_size, &meta, _timeout_ms);
         if (status != 0) {
-            FATAL_ERROR("bladerf_sync_rx() failed: {:s}", bladerf_strerror(status));
-            return;
+            // libbladeRF reports a read that timed out as an unexpected error.
+            if (!any_samples) {
+                FATAL_ERROR("The bladeRF delivered no samples ({:s}). It sometimes fails to start "
+                            "streaming, and only re-opening it, by restarting kotekan, recovers.",
+                            bladerf_strerror(status));
+                return;
+            }
+            if (++consecutive_errors > _max_stream_restarts) {
+                FATAL_ERROR("bladerf_sync_rx() failed {:d} times in a row: {:s}",
+                            consecutive_errors, bladerf_strerror(status));
+                return;
+            }
+            // The next read restarts the stream. Its first samples may be stale, as at startup.
+            WARN("bladerf_sync_rx() failed: {:s}. Restarting the stream ({:d} of {:d}).",
+                 bladerf_strerror(status), consecutive_errors, _max_stream_restarts);
+            restart_metric.inc();
+            to_discard = _startup_discard;
+            continue;
         }
+        consecutive_errors = 0;
+        any_samples = true;
 
         if (to_discard > 0) {
             to_discard -= std::min<uint64_t>(to_discard, meta.actual_count);
