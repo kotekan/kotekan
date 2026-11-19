@@ -29,9 +29,12 @@
  *        channel of a Nuand bladeRF 2.0 micro into a ``Buffer``.
  *
  * Above 61.44 MSPS the stage enables libbladeRF's OVERSAMPLE feature, which runs the
- * AD9361 at up to 122.88 MSPS, beyond its specification. In that mode libbladeRF fixes
- * the AD9361 analog baseband filters wide open and an analog bandwidth cannot be set, so
- * @c bandwidth is ignored and the passband is whatever that configuration gives.
+ * AD9361 at up to 122.88 MSPS, beyond its specification. libbladeRF's OVERSAMPLE register
+ * settings are meant to open the analog baseband filters wide, but on the first unit
+ * tested (FX3 2.4.0, FPGA 0.15.3) the filters stayed tuned: the passband was 35 MHz at
+ * -3 dB by default, and 58 MHz with @c bandwidth 56. Outside it the ADC's shaped
+ * quantisation noise, normally removed by the decimation filters that OVERSAMPLE
+ * bypasses, rises about 18 dB toward the band edges.
  *
  * The FPGA packs each 12-bit sample into 8 bits by keeping the top 8 bits, so one count
  * here is 16 ADC counts, and the truncation adds a -0.5 count bias to I and Q.
@@ -65,7 +68,8 @@
  * @conf   sample_bw       Float (default 122.88). Sample rate, in MSPS. Above 61.44 the
  *                         OVERSAMPLE feature is enabled.
  * @conf   bandwidth       Float (default: the sample rate, at most 56). Analog bandwidth,
- *                         in MHz. Ignored with OVERSAMPLE.
+ *                         in MHz. With OVERSAMPLE it is set only if given, and libbladeRF
+ *                         calls the result unknown; 56 widens the passband (see above).
  * @conf   gain_mode       String (default "manual"). One of "manual", "default",
  *                         "fast_attack", "slow_attack" or "hybrid". The AGC modes change
  *                         the gain under the data, which upsets anything that integrates.
@@ -149,8 +153,10 @@ private:
     /// Requested and actual sample rate, in samples/s.
     uint32_t _sample_rate;
     uint32_t _actual_sample_rate = 0;
-    /// Requested analog bandwidth, in Hz; unused with OVERSAMPLE.
+    /// Analog bandwidth, in Hz: requested, then actual once set.
     uint32_t _bandwidth;
+    /// Whether to set @c _bandwidth; with OVERSAMPLE only when configured.
+    bool _set_bandwidth;
     /// Whether the AD9361 runs with libbladeRF's OVERSAMPLE feature.
     bool _oversample;
     std::string _gain_mode_name;

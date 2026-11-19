@@ -109,10 +109,7 @@ bladeRFInput::bladeRFInput(Config& config, const std::string& unique_name,
                     "num_buffers.");
         return;
     }
-    if (_oversample && config.exists(unique_name, "bandwidth"))
-        WARN("bladeRFInput: bandwidth is ignored above {:.2f} MSPS, where libbladeRF fixes the "
-             "analog filters wide open.",
-             MAX_STANDARD_RATE / 1e6);
+    _set_bandwidth = !_oversample || config.exists(unique_name, "bandwidth");
 }
 
 bladeRFInput::~bladeRFInput() {
@@ -251,10 +248,7 @@ bool bladeRFInput::configure_device() {
     _actual_sample_rate = actual_rate;
     if (actual_rate != _sample_rate)
         WARN("Asked for {:d} samples/s, got {:d}", _sample_rate, actual_rate);
-    if (_oversample) {
-        INFO("Sample rate {:d} samples/s with OVERSAMPLE: the analog filters are wide open",
-             actual_rate);
-    } else {
+    if (_set_bandwidth) {
         bladerf_bandwidth actual_bw;
         status = bladerf_set_bandwidth(dev, RX_CH, _bandwidth, &actual_bw);
         if (status != 0) {
@@ -262,7 +256,12 @@ bool bladeRFInput::configure_device() {
                         bladerf_strerror(status));
             return false;
         }
-        INFO("Sample rate {:d} samples/s, analog bandwidth {:d} Hz", actual_rate, actual_bw);
+        _bandwidth = actual_bw;
+        INFO("Sample rate {:d} samples/s{:s}, analog bandwidth {:d} Hz", actual_rate,
+             _oversample ? " with OVERSAMPLE" : "", actual_bw);
+    } else {
+        INFO("Sample rate {:d} samples/s with OVERSAMPLE, analog bandwidth left to libbladeRF",
+             actual_rate);
     }
 
     status = bladerf_set_frequency(dev, RX_CH, _freq);
@@ -313,7 +312,7 @@ void bladeRFInput::get_config_callback(kotekan::connectionInstance& conn) {
     reply["freq"] = _freq;
     reply["sample_rate"] = _actual_sample_rate;
     reply["oversample"] = _oversample;
-    if (!_oversample)
+    if (_set_bandwidth)
         reply["bandwidth"] = _bandwidth;
     reply["gain_mode"] = _gain_mode_name;
     bladerf_gain gain;
