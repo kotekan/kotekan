@@ -147,6 +147,44 @@ def test_replay_pins_the_igs_registry_snapshot():
             os.environ["GNSS_IGS_SNX"] = saved
 
 
+def test_replay_pins_the_boresight_a_recording_ran_under():
+    """A recording that neither set --boresight nor read the pointing from a node ran under the
+    default az 180 el 81.41 and replays under it; one that read /config, or set the flag,
+    replays as recorded, and a golden's flags still come last."""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "t.jsonl")
+
+        def cmd_of(header, records, extra=()):
+            with open(path, "w") as f:
+                for r in [{"k": "argv", "v": header}] + records:
+                    f.write(json.dumps(r) + "\n")
+            cmd = _replay_run(path, extra)[0]
+            return [cmd[i + 1] for i, x in enumerate(cmd) if x == "--boresight"]
+
+        base = ["--signal", "gps_l5"]
+        now = {"k": "now", "v": 1.0}
+        get = {"k": "get", "u": "http://n:12048/config", "r": {}}
+        late = {"k": "get", "u": "http://n:12048/config", "r": {}}
+        check(
+            cmd_of(base, [now]) == [be.NOMINAL_BORESIGHT],
+            "no --boresight and no /config read: the nominal boresight",
+        )
+        check(cmd_of(base, [get, now]) == [], "a /config read: replayed as recorded")
+        check(
+            cmd_of(base, [now, late]) == [be.NOMINAL_BORESIGHT],
+            "a /config read after the first cycle is not the start-up read",
+        )
+        check(
+            cmd_of(base + ["--boresight", "none"], [now]) == ["none"],
+            "--boresight in the recording: replayed as recorded",
+        )
+        check(
+            cmd_of(base, [now], ["--boresight", "1,2"])
+            == [be.NOMINAL_BORESIGHT, "1,2"],
+            "a golden's --boresight comes after the pin, so it wins",
+        )
+
+
 def test_selftest_replays_the_flags_after_the_separator():
     """selftest under flags after -- must replay under them every time, as digest does."""
     calls = []
@@ -232,6 +270,7 @@ def test_tree_state_covers_the_broker_imports():
 def main():
     test_replay_never_reaches_a_live_gather()
     test_replay_pins_the_igs_registry_snapshot()
+    test_replay_pins_the_boresight_a_recording_ran_under()
     test_selftest_replays_the_flags_after_the_separator()
     test_tree_state_covers_the_broker_imports()
     print("-" * 70)

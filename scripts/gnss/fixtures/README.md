@@ -58,6 +58,10 @@ the gate.
   re-fetches weekly.
 * The CAS DCB product (`--dcb-bias`) is read from `~/.cache/kotekan_gps` and is not pinned;
   no current fixture's replay reaches the fetch.
+* The boresight. A recording that set no `--boresight` and read no `/config` before its first
+  cycle was made when the default was a fixed az 180, el 81.41, and replays under that
+  (`--boresight 180,81.41`, `NOMINAL_BORESIGHT`). Without it the replay's own start-up
+  pointing read takes the recording's first GET and every GET after it diverges.
 
 `bless` stamps the commit it ran at, says when the tree was dirty and records the BRDC pin's
 fingerprint, and `check` prints them back:

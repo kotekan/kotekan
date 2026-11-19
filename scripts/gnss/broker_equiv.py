@@ -49,6 +49,7 @@ import os
 import shlex
 import subprocess
 import sys
+import urllib.parse
 
 K = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BROKER = os.path.join(K, "python", "scripts", "gnss", "gps_distributed_broker.py")
@@ -102,6 +103,29 @@ RETIRED_FLAGS = {
     "--state-file": 1,
     "--state-read-dir": 1,
 }
+
+
+# The boresight of a recording whose broker took it from --boresight's default, az 180 el 81.41,
+# before it read the pointing from the nodes' /config. Such a recording holds no /config read, and
+# its replay runs under that boresight; one that read it replays the read.
+NOMINAL_BORESIGHT = "180,81.41"
+
+
+def _boresight_pin(path, argv):
+    """--boresight NOMINAL_BORESIGHT for a recording that neither set --boresight nor read the
+    pointing from a node before its first cycle, else nothing."""
+    if _last_value(argv, "--boresight") is not None:
+        return []
+    with _open(path) as f:
+        for line in f:
+            if not line.strip():
+                continue
+            r = json.loads(line)
+            if r.get("k") == "now":
+                break
+            if r.get("k") == "get" and urllib.parse.urlsplit(r["u"]).path == "/config":
+                return []
+    return ["--boresight", NOMINAL_BORESIGHT]
 
 
 def _open(path):
@@ -237,7 +261,7 @@ def replay(path, env=None, extra=()):
         argv = _strip(argv, flag, nargs)
     # `extra` goes after the transcript's flags: argparse keeps the last value, so a
     # golden's flags override the recording's.
-    argv = argv + list(extra)
+    argv = argv + _boresight_pin(path, argv) + list(extra)
     # A run recorded with a gather replays against DARK_GATHER, never the recorded endpoint.
     gather = _last_value(argv, "--telem-gather")
     argv = _strip(argv, "--telem-gather")
