@@ -29,7 +29,7 @@ every row's under its chain; a POST takes exactly {"chain": <c>, "body": <reques
 inject host's set_trim also {"chains": {<c>: [{prn, trim_chips}, ...]}}, applied to every
 named chain or, on any refusal, to none. Refusals are the node's, word for word. Each row keeps
 its own seeds, PRN map and trims, so a request that reaches the wrong row shows. --log writes
-every request it serves, one JSON line each, for reading the POST stream.
+every request it serves, one JSON line each with its time, for reading the POST stream.
 
 Everything it emits is a deterministic function of the detection-poll index and the requests
 posted to it, so two recordings of the same length are identical apart from wall-clock timing
@@ -40,6 +40,7 @@ import json
 import math
 import re
 import threading
+import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -408,6 +409,12 @@ def route(method, raw_path, body):
 
 
 class H(BaseHTTPRequestHandler):
+    # Kept-alive connections, as kotekan's REST server keeps them: the gather's poster reuses
+    # one connection per target. Without Nagle, a reply's header and body writes do not wait
+    # out the client's delayed ACK.
+    protocol_version = "HTTP/1.1"
+    disable_nagle_algorithm = True
+
     def log_message(self, *_):
         pass
 
@@ -423,7 +430,15 @@ class H(BaseHTTPRequestHandler):
         if a.log:
             with _lock, open(a.log, "a") as f:
                 f.write(
-                    json.dumps({"m": method, "p": self.path, "b": body, "s": code})
+                    json.dumps(
+                        {
+                            "m": method,
+                            "p": self.path,
+                            "b": body,
+                            "s": code,
+                            "t": time.time(),
+                        }
+                    )
                     + "\n"
                 )
 
