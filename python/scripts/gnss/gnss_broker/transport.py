@@ -16,6 +16,8 @@ import urllib.error
 import urllib.parse
 from datetime import datetime, timezone
 
+from . import node_api
+
 
 # ---------------------------------------------------------------------------------------
 # DNS cache. Every new HTTP connection resolves its host name, and the broker host's resolver
@@ -313,7 +315,11 @@ class _Transcript:
         # threads, each on its own cycle, and a shared clock would stamp chain A's cycle with
         # chain B's instant, which looks like clock jitter rather than a data race.
         self._t = threading.local()
-        self.posts = []  # replay+record: the ordered POST stream (the gate output)
+        # replay+record: the ordered POST stream (the gate output), each request named alike at a
+        # row's own path or by chain (node_api.canonical), with a mark for every divergence
+        self.posts = []
+        self.raw_posts = []  # the same POSTs as sent, for a golden of the raw stream
+        self.divergences = 0
         self.argv = None  # the recording run's own argv, carried in the header
 
     # -- lifecycle ------------------------------------------------------------------
@@ -366,6 +372,25 @@ class _Transcript:
         self._ix[kind] = i + 1
         return self._rd[kind][i]
 
+    def _check(self, kind, rec, key):
+        """Raise on a request whose canonical name is not the recorded one's, after marking the
+        POST stream so the digest cannot match a replay that kept to the recording."""
+        want = rec.get("c") or node_api.canonical(rec["u"])[0]
+        if want == key:
+            return
+        i = self._ix[kind] - 1
+        self.divergences += 1
+        self.posts.append(("TRANSCRIPT DIVERGENCE", json.dumps([kind, i, want, key])))
+        raise RuntimeError(
+            "TRANSCRIPT DIVERGENCE at %s #%d: recorded %s, replay %s %s"
+            % (kind, i, want, "asked for" if kind == "get" else "sent to", key)
+        )
+
+    def _write(self, rec, key):
+        if key != rec["u"]:
+            rec["c"] = key
+        self._emit(rec)
+
     # -- clock ----------------------------------------------------------------------
     def tick(self):
         """Start a new cycle: sample (or replay) the frozen clock."""
@@ -393,11 +418,7 @@ class _Transcript:
     def get(self, url, timeout):
         if self.mode == "read" and self._mine():
             r = self._take("get")
-            if r["u"] != url:
-                raise RuntimeError(
-                    "TRANSCRIPT DIVERGENCE at get #%d: recorded %s, replay "
-                    "asked for %s" % (self._ix["get"] - 1, r["u"], url)
-                )
+            self._check("get", r, node_api.canonical(url)[0])
             if r.get("e"):
                 raise RuntimeError(r["e"])
             return r["r"]
@@ -418,10 +439,13 @@ class _Transcript:
             _http_record("get", url, time.perf_counter() - _t0, False)
             _iface_failed(url, e)
             if self._mine() and self.mode == "write":
-                self._emit({"k": "get", "u": url, "r": None, "e": repr(e)})
+                self._write(
+                    {"k": "get", "u": url, "r": None, "e": repr(e)},
+                    node_api.canonical(url)[0],
+                )
             raise
         if self._mine() and self.mode == "write":
-            self._emit({"k": "get", "u": url, "r": v})
+            self._write({"k": "get", "u": url, "r": v}, node_api.canonical(url)[0])
         return v
 
     def post(self, url, payload, timeout):
@@ -431,14 +455,12 @@ class _Transcript:
         # Only while a transcript is open: nothing drains `posts`, so a live broker would grow
         # it without bound, and digest() is read only at the end of a replay.
         if self.mode is not None:
-            self.posts.append((url, json.dumps(payload, sort_keys=True)))
+            key, body = node_api.canonical_text(url, payload)
+            self.posts.append((key, body))
+            self.raw_posts.append((url, json.dumps(payload, sort_keys=True)))
         if self.mode == "read" and self._mine():
             r = self._take("post")
-            if r["u"] != url:
-                raise RuntimeError(
-                    "TRANSCRIPT DIVERGENCE at post #%d: recorded %s, replay "
-                    "sent to %s" % (self._ix["post"] - 1, r["u"], url)
-                )
+            self._check("post", r, key)
             if r.get("e"):
                 raise RuntimeError(r["e"])
             return r["s"]
@@ -465,16 +487,18 @@ class _Transcript:
             _http_record("post", url, time.perf_counter() - _t0, False)
             _iface_failed(url, e)
             if self._mine() and self.mode == "write":
-                self._emit({"k": "post", "u": url, "s": None, "e": repr(e)})
+                self._write({"k": "post", "u": url, "s": None, "e": repr(e)}, key)
             raise
         if self._mine() and self.mode == "write":
-            self._emit({"k": "post", "u": url, "s": s})
+            self._write({"k": "post", "u": url, "s": s}, key)
         return s
 
-    def digest(self):
-        """Hash of the ordered POST stream -- the equivalence gate's single number."""
+    def digest(self, raw=False):
+        """Hash of the ordered POST stream -- the equivalence gate's single number. raw: of the
+        POSTs as sent, without the divergence marks, as goldens were taken before canonical
+        requests."""
         h = hashlib.sha256()
-        for url, body in self.posts:
+        for url, body in self.raw_posts if raw else self.posts:
             h.update(url.encode())
             h.update(b"\x00")
             h.update(body.encode())

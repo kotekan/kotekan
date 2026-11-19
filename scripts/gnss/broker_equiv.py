@@ -27,6 +27,20 @@ The POST stream is the broker's entire output: seeds to the trackers, search com
 bits, carrier trim. Two brokers that POST the same bytes in the same order are the same
 broker as far as the instrument is concerned.
 
+Requests are compared and hashed canonically (gnss_broker/node_api.py canonical): a row's
+request to its own path, /gnss<g>_<chain>_<stage>/<verb>, and the same request to its host by
+chain, /gnss<g>_<host>/<verb> with the chain in the query or the body, are one request, named
+by (node, half, stage, chain, verb) with the row's own body. A replay that asks for a request
+the recording did not make marks the POST stream, so its digest cannot match. A golden whose
+provenance does not start with `canonical` hashed the POSTs as sent:
+
+  5. CANON: rewrite such goldens, each only once a replay at this tree reproduces it
+         broker_equiv.py canon out.jsonl
+     replays under every golden's flags, and for each whose raw digest the replay reproduces
+     with no divergence writes the canonical digest of the same replay; a transcript in
+     scripts/gnss/fixtures gains each row request's canonical name ("c"). A golden the tree
+     does not reproduce is reported STALE and left as it is.
+
 Byte-identical is a fair bar here (unlike the CUDA gates, where fmaf contraction moves with
 kernel shape): Python neither contracts nor reassociates float arithmetic, so a pure code
 move reproduces the numbers exactly. A moved digest is a real change.
@@ -47,11 +61,15 @@ import hashlib
 import json
 import os
 import shlex
+import re
 import subprocess
 import sys
 import urllib.parse
 
 K = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(K, "python", "scripts", "gnss"))
+from gnss_broker import node_api  # noqa: E402
+
 BROKER = os.path.join(K, "python", "scripts", "gnss", "gps_distributed_broker.py")
 PY = os.environ.get("GNSS_PY", "/home/kvand/gnss/venv/bin/python")
 # The shared pinned nav snapshot replays read when a transcript has no sidecar (NFS, not in
@@ -80,6 +98,8 @@ def _pin_for(transcript):
 
 
 FIXTURES = os.path.join(K, "scripts", "gnss", "fixtures")
+# The first word of a golden's provenance when it hashes canonical requests.
+CANONICAL = "canonical"
 
 # Broker flags retired after some fixtures were recorded, with the number of values each takes.
 # A transcript carries its argv verbatim, so replay drops these first; an unchanged digest is
@@ -219,6 +239,52 @@ def _read_gold(path):
     return (head[0] if head else ""), " ".join(head[1:])
 
 
+def _replay_tail(err):
+    """(raw digest, divergences) from a replay's closing log line; (None, None) without one."""
+    for line in reversed(err.splitlines()):
+        m = re.search(r"replay complete .* raw ([0-9a-f]{64}) divergences (\d+)", line)
+        if m:
+            return m.group(1), int(m.group(2))
+    return None, None
+
+
+def _canonical(prov):
+    return prov.split()[:1] == [CANONICAL]
+
+
+def _provenance(transcript, extra):
+    sha, dirty = _tree_state()
+    prov = "%s blessed-at %s%s brdc %s" % (
+        CANONICAL,
+        sha,
+        " DIRTY" if dirty else "",
+        _brdc_fingerprint(_pin_for(transcript)),
+    )
+    if extra:
+        prov += " argv " + shlex.join(extra)
+    return prov, dirty
+
+
+def _canon_records(path):
+    """Give each row request of a transcript in scripts/gnss/fixtures its canonical name ("c");
+    the number of records changed."""
+    if os.path.dirname(path) != FIXTURES or path.endswith(".gz"):
+        return 0
+    with open(path) as f:
+        recs = [json.loads(line) for line in f if line.strip()]
+    n = 0
+    for r in recs:
+        if r.get("k") in ("get", "post") and "c" not in r:
+            key = node_api.canonical(r["u"])[0]
+            if key != r["u"]:
+                r["c"] = key
+                n += 1
+    if n:
+        with open(path, "w") as f:
+            f.writelines(json.dumps(r) + "\n" for r in recs)
+    return n
+
+
 def _gold_argv(prov):
     """The flags a variant golden was blessed under, appended to the transcript's own."""
     return shlex.split(prov.split(" argv ", 1)[1]) if " argv " in prov else []
@@ -321,6 +387,11 @@ def _check(transcript, gold):
     if not os.path.exists(gold):
         sys.exit("no golden digest at %s -- run `bless` first" % gold)
     want, prov = _read_gold(gold)
+    if not _canonical(prov):
+        sys.exit(
+            "%s hashes the POSTs as sent: `broker_equiv.py canon %s` rewrites it once a "
+            "replay at this tree reproduces it" % (os.path.basename(gold), transcript)
+        )
     got, err = replay(transcript, extra=_gold_argv(prov))
     if got == want:
         print(
@@ -360,7 +431,7 @@ def main():
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument(
-        "action", choices=["record", "digest", "check", "bless", "selftest"]
+        "action", choices=["record", "digest", "check", "bless", "selftest", "canon"]
     )
     ap.add_argument("transcript")
     ap.add_argument(
@@ -405,14 +476,7 @@ def main():
                 "broker_equiv.py bless --variant <name> f.jsonl -- <flags>"
             )
         d, _ = replay(a.transcript, extra=extra)
-        sha, dirty = _tree_state()
-        prov = "blessed-at %s%s brdc %s" % (
-            sha,
-            " DIRTY" if dirty else "",
-            _brdc_fingerprint(_pin_for(a.transcript)),
-        )
-        if extra:
-            prov += " argv " + shlex.join(extra)
+        prov, dirty = _provenance(a.transcript, extra)
         with open(gold, "w") as f:
             f.write("%s  %s\n" % (d, prov))
         print("blessed %s = %s (%s)" % (os.path.basename(gold), d, prov))
@@ -423,6 +487,34 @@ def main():
                 "    and re-bless.",
                 file=sys.stderr,
             )
+        return
+
+    if a.action == "canon":
+        if extra or a.variant:
+            sys.exit("canon rewrites every golden of a transcript under its own flags")
+        stale = 0
+        for g in _goldens(a.transcript):
+            want, prov = _read_gold(g)
+            name = os.path.basename(g)
+            if _canonical(prov):
+                print("CANONICAL already  %s" % name)
+                continue
+            got, err = replay(a.transcript, extra=_gold_argv(prov))
+            raw, ndiv = _replay_tail(err)
+            if raw != want or ndiv != 0:
+                stale += 1
+                print(
+                    "STALE  %s: golden %s, this tree replays raw %s with %s divergence(s); "
+                    "left as it is" % (name, want, raw, ndiv)
+                )
+                continue
+            new = _provenance(a.transcript, _gold_argv(prov))[0]
+            with open(g, "w") as f:
+                f.write("%s  %s\n" % (got, new))
+            print("CANONICAL  %s  raw %s reproduced, canonical %s" % (name, raw, got))
+        print("%d record(s) of %s named" % (_canon_records(a.transcript), a.transcript))
+        if stale:
+            sys.exit(1)
         return
 
     if a.action == "check":

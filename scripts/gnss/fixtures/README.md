@@ -73,6 +73,18 @@ A digest is a claim about code. If you cannot name the commit it describes, it i
 so **bless from a clean tree, then commit the `.digest` in the same commit as the change
 that moved it.**
 
+**Requests are compared canonically.** A chain instance's request to its row's own path
+(`/gnss<g>_<chain>_<stage>/<verb>`) and the same request to its GPU half's host by chain
+(`/gnss<g>_<host>/<verb>`, the chain in the query or the body) are one request: the replay
+matches them, and the digest hashes them, as `node:<origin>/gnss<g>/<stage>/<chain>/<verb>`
+with the row's own body (`gnss_broker/node_api.py` canonical). Names from before the chain
+tags are read through `gnss_fleet.stage_chain`'s allowlists, and any other request is
+compared as sent. A recording names each row request canonically in `"c"`, and a replay that
+asks for a request the recording did not make marks the POST stream, so its digest cannot
+match. A golden whose provenance does not start with `canonical` hashed the POSTs as sent;
+`broker_equiv.py canon <transcript>` rewrites each of a transcript's goldens only after a
+replay at the current tree reproduces it, and reports it STALE otherwise.
+
 `broker_equiv.py` and the broker both read `.gz` transparently, so it is used exactly like
 any other fixture:
 

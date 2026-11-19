@@ -2470,8 +2470,14 @@ if __name__ == "__main__":
         # Normal end of a replay: the recording ran out. Print the digest on stdout so a
         # bare --transcript-read is useful without the harness.
         _log(
-            "transcript replay complete (%s); %d posts, digest %s"
-            % (e, len(_TR.posts), _TR.digest())
+            "transcript replay complete (%s); %d posts, digest %s raw %s divergences %d"
+            % (
+                e,
+                len(_TR.raw_posts),
+                _TR.digest(),
+                _TR.digest(raw=True),
+                _TR.divergences,
+            )
         )
         print(_TR.digest())
     finally:

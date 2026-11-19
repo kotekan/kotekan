@@ -1,0 +1,116 @@
+"""A chain instance's node REST requests, at its row's own path or by chain.
+
+The broker names a chain instance by its row's REST prefix, http://<node>:<port>/gnss<g>_<chain>_
+<stage> for the stages inject, n2assemble and n2combine, as the fleet expansion lists it
+(config/gnss_fleet.py). A node generated with --inject-host, --record-host or --combine-host
+hosts that stage's rows in one stage per GPU half, gnss<g>_inject, gnss<g>_records or
+gnss<g>_combine, which serves every row's verbs by chain: a GET at /gnss<g>_<host>/<verb>?chain=
+<chain>, a POST there of {"chain": <chain>, "body": <the row's own request>}, each answered with
+the row's own reply. The rows' own paths stay registered beside them until they are removed.
+
+canonical() names a request alike in either form, for the transcript gate (broker_equiv.py).
+"""
+import json
+import os
+import re
+import sys
+import urllib.parse
+
+from . import signals
+
+#: The per-chain stages a GPU half's host serves by chain, and that host: gnss<g>_<host>.
+HOSTS = {"inject": "inject", "n2assemble": "records", "n2combine": "combine"}
+_HOST_STAGE = {h: s for s, h in HOSTS.items()}
+_ROW = re.compile(
+    r"^(https?://[^/?#]+)/gnss(\d+)_([a-z0-9]+_[a-z0-9]+)_(inject|n2assemble|n2combine)$"
+)
+_HOST_PATH = re.compile(r"^/gnss(\d+)_(inject|records|combine)/([a-z0-9_]+)$")
+_ROW_PATH = re.compile(
+    r"^/(gnss(\d+)(?:_[a-z0-9_]+?)?_(inject|n2assemble|n2combine))/([a-z0-9_]+)$"
+)
+
+
+def row(prefix):
+    """(origin, half, chain, stage) of a row's REST prefix named by its broker chain, else None."""
+    m = _ROW.match(prefix)
+    if not m or m.group(3) not in signals._CHAINS:
+        return None
+    return m.group(1), int(m.group(2)), m.group(3), m.group(4)
+
+
+_legacy = []  # gnss_fleet.stage_chain, imported on first use
+
+
+def _legacy_chain(name, stage):
+    """A row name generated before the tags (gnss_fleet.stage_chain's allowlists), or None."""
+    if not _legacy:
+        conf = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), *[os.pardir] * 4, "config"
+        )
+        conf = os.path.normpath(conf)
+        if conf not in sys.path:
+            sys.path.append(conf)
+        import gnss_fleet
+
+        _legacy.append(gnss_fleet.stage_chain)
+    return _legacy[0](name, stage)
+
+
+def _key(origin, half, stage, chain, verb, query):
+    q = urllib.parse.urlencode(sorted(query))
+    return "node:%s/gnss%d/%s/%s/%s%s" % (
+        origin,
+        half,
+        stage,
+        chain,
+        verb,
+        "?" + q if q else "",
+    )
+
+
+def canonical(url, payload=None):
+    """(key, payload) of a request, the same whether it went to a row's own path or to its host
+    by chain: a row's request is node:<origin>/gnss<g>/<stage>/<chain>/<verb>[?<query>] with the
+    row's own body, its query less the chain, sorted. Any other request is (url, payload) as
+    given. A host's path without a chain is not a row's request."""
+    u = urllib.parse.urlsplit(url)
+    origin = "%s://%s" % (u.scheme, u.netloc)
+    query = urllib.parse.parse_qsl(u.query, keep_blank_values=True)
+    m = _HOST_PATH.match(u.path)
+    if m:
+        chains = [v for k, v in query if k == "chain"]
+        rest = [(k, v) for k, v in query if k != "chain"]
+        stage = _HOST_STAGE[m.group(2)]
+        if payload is None and len(chains) == 1:
+            return (
+                _key(origin, int(m.group(1)), stage, chains[0], m.group(3), rest),
+                None,
+            )
+        if (
+            payload is not None
+            and not chains
+            and isinstance(payload, dict)
+            and set(payload) == {"chain", "body"}
+        ):
+            return (
+                _key(
+                    origin, int(m.group(1)), stage, payload["chain"], m.group(3), rest
+                ),
+                payload["body"],
+            )
+    m = _ROW_PATH.match(u.path)
+    if m:
+        r = row(origin + "/" + m.group(1))
+        chain = r[2] if r else _legacy_chain(m.group(1), m.group(3))
+        if chain:
+            return (
+                _key(origin, int(m.group(2)), m.group(3), chain, m.group(4), query),
+                payload,
+            )
+    return url, payload
+
+
+def canonical_text(url, payload=None):
+    """canonical() as the transcript gate hashes it: (key, the payload's sorted JSON)."""
+    k, p = canonical(url, payload)
+    return k, json.dumps(p, sort_keys=True)
