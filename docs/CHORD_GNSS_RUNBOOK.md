@@ -348,6 +348,8 @@ Roll back in the reverse order: the previous gnss-broker checkout first (it asks
 own path, which every binary serves), then the gather, then the nodes. `GNSS_SKIP_IFACE=1` lets one
 start through out of order.
 
+On-demand tests of the 404 fallback and the start checks (not CI): `python3 scripts/gnss/rows_by_chain_tests.py`.
+
 ## 6. ⚠️ cf06: what is still there, and what will hurt you
 
 **Still on cf06, legitimately:** the cube archiver, the cube compactor, the static cube viewer
