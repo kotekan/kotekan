@@ -43,6 +43,9 @@ common:
     # manifest's --inject-host, --record-host and --combine-host; `fleet` expands to none, and
     # the broker gets no --node-hosts, while no node sets one.
     node-hosts: fleet
+    # The gather posts one batched set_trim per GPU half to its inject host (gnss_broker/trimarm.py)
+    # rather than one per tracker.
+    fleet-trim-half-targets: true
     # Paced garbage collection (gnss_broker/gcpace.py): the free-threaded interpreter's automatic
     # collections stopped the whole broker 0.2-0.9 s about nine times a minute (11-10, 20 Hz thread
     # sample), dropping telemetry and ending fleet-ADR arcs. Each paced collection still stops the
