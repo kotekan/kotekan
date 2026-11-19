@@ -1,6 +1,6 @@
 {
  "schema": "chord-gnss-guowang-1202-db/3",
- "about": "GuoWang 1202.025 MHz satellites identified in CHORD's beam dump (#227): the G2' phase of each one's code (guowang_codes.guowang_1202; PRN = phase + 1; phases are not unique) and theta, its code-start epoch: t_tx(code start) minus the nearest UTC 2 ms boundary, t_tx from the light-time TLE range on the broker's frame0 axis plus tag_early_us of the reference input (schema 2), so referenced to UTC; beams referenced to input 116 (theta carries the reference input's delay, ~0.1 us between inputs) and the newest TLE at or before the pass, as ~/gnss/builds/gw1202/gw_reduce.py measures them (DIGUI-26: the 10-30 baseband dump, its own reference). theta held to < 0.6 chip within a pass; across days it is untested. theta_unknown_us is the median of the near-zero group, for a satellite not yet measured (its spread there: 16 chips rms, 40 worst; two satellites sit near +400 us). Schema 1 (2026-11-03): status is transmitting or no_transmission, from the newest conclusive pass: a complete beam-dump window outside the no_sky periods on which the code was found, or on which the satellite passed within silent_max_sep_deg of the boresight without it. g2_phase is null for a satellite never found; one that stops keeps its code. last_observed_utc is the newest pass with the code found, last_checked_utc the newest conclusive pass; passes lists every conclusive pass as [utc mid-window, closest separation deg, found]. guowang_db.py folds the reductions in; git history is the time record. Schema 2 (2026-11-17): theta_us and theta_unknown_us are referenced to UTC, the reduction's theta (on our time tags) plus tag_early_us of its reference input: our tags read a signal that many us before it arrives, measured on 26 GPS, Galileo and BeiDou satellites in the 2026-10-30 baseband dump through the same reduction, +-0.01 us (guowang_paper scripts/gnss_rxdelay.py). guowang_db.py adds it as it folds a reduction in. A live chain places the code at -theta plus the receiver clock it solves from GPS (the joint state), which carries the live path's own tag delay. Schema 3 (2026-11-17): every theta_us is free of the unstretched-replica bias. gw_reduce.py before that day tracked the code with a replica that was never Doppler-stretched: it read the delay at the middle of the 1 ms code half and tagged it at the code's start, and the replica sat one sample late for a receding satellite. A theta measured that way carries range_rate_m_s (+ receding, at the centre of the measured chunk) and replica_corr_ns, the correction already added to it: -0.5 ms x range rate / c + 30.547 ns x the sign of the range rate (guowang_1202_floor_replica.json lists the rate of every such theta; guowang_paper review/REPLY_GUOWANG_20261117c.md). A theta from the fixed reducer carries replica \"stretched\" and no correction. theta_unknown_us is a search centre good to microseconds and is unchanged.",
+ "about": "GuoWang 1202.025 MHz satellites identified in CHORD's beam dump (#227): the G2' phase of each one's code (guowang_codes.guowang_1202; PRN = phase + 1; phases are not unique) and theta, its code-start epoch: t_tx(code start) minus the nearest UTC 2 ms boundary, t_tx from the light-time TLE range on the broker's frame0 axis plus tag_early_us of the reference input (schema 2), so referenced to UTC; beams referenced to input 116 (theta carries the reference input's delay, ~0.1 us between inputs) and the newest TLE at or before the pass, as ~/gnss/builds/gw1202/gw_reduce.py measures them (DIGUI-26: the 10-30 baseband dump, its own reference). theta held to < 0.6 chip within a pass; across days it is untested. theta_unknown_us is the median of the near-zero group, for a satellite not yet measured (its spread there: 16 chips rms, 40 worst; two satellites sit near +400 us). Schema 1 (2026-11-03): status is transmitting or no_transmission, from the newest conclusive pass: a complete beam-dump window outside the no_sky periods on which the code was found, or on which the satellite passed within silent_max_sep_deg of the boresight without it. g2_phase is null for a satellite never found; one that stops keeps its code. last_observed_utc is the newest pass with the code found, last_checked_utc the newest conclusive pass; passes lists every conclusive pass as [utc mid-window, closest separation deg, found]. guowang_db.py folds the reductions in; git history is the time record. Schema 2 (2026-11-17): theta_us and theta_unknown_us are referenced to UTC, the reduction's theta (on our time tags) plus tag_early_us of its reference input: our tags read a signal that many us before it arrives, measured on 26 GPS, Galileo and BeiDou satellites in the 2026-10-30 baseband dump through the same reduction, +-0.01 us (guowang_paper scripts/gnss_rxdelay.py). guowang_db.py adds it as it folds a reduction in. A live chain places the code at -theta plus the receiver clock it solves from GPS (the joint state), which carries the live path's own tag delay. Schema 3 (2026-11-17): every theta_us is free of the unstretched-replica bias. gw_reduce.py before that day tracked the code with a replica that was never Doppler-stretched: it read the delay at the middle of the 1 ms code half and tagged it at the code's start, and the replica sat one sample late for a receding satellite. A theta measured that way carries range_rate_m_s (+ receding, at the centre of the measured chunk) and replica_corr_ns, the correction already added to it: -0.5 ms x range rate / c + 30.547 ns x the sign of the range rate (guowang_1202_floor_replica.json lists the rate of every such theta; guowang_paper review/REPLY_GUOWANG_20261117c.md). A theta from the fixed reducer carries replica \"stretched\" and no correction. theta_unknown_us is a search centre good to microseconds and is unchanged. Schema 3 (2026-11-17): every theta_us is free of the unstretched-replica bias. gw_reduce.py before that day tracked the code with a replica that was never Doppler-stretched: it read the delay at the middle of the 1 ms code half and tagged it at the code's start, and the replica sat one sample late for a receding satellite. A theta measured that way carries range_rate_m_s (+ receding, at the centre of the measured chunk) and replica_corr_ns, the correction already added to it: -0.5 ms x range rate / c + 30.547 ns x the sign of the range rate (guowang_1202_floor_replica.json lists the rate of every such theta; guowang_paper review/REPLY_GUOWANG_20261117c.md). A theta from the fixed reducer carries replica \"stretched\" and no correction. theta_unknown_us is a search centre good to microseconds and is unchanged. From 2026-11-19 gw_reduce.py subtracts the light time on the satellite's own broadcast orbit when the window's pages give one: such a theta carries orbit \"broadcast\"; one without the field, or orbit \"tle\", is on the TLE, which was 100-1400 m off.",
  "theta_unknown_us": 0.738,
  "tag_early_us": {
   "100": 9.828,
@@ -2377,15 +2377,16 @@
    "sep_deg": 0.58,
    "ref_input": 116,
    "drift_ns_s": 3.46,
-   "last_observed_utc": "2026-11-13T22:03:58Z",
-   "last_checked_utc": "2026-11-13T22:03:58Z",
-   "last_checked_sep_deg": 0.68,
-   "passes_found": 2,
+   "last_observed_utc": "2026-11-19T00:59:30Z",
+   "last_checked_utc": "2026-11-19T00:59:30Z",
+   "last_checked_sep_deg": 1.66,
+   "passes_found": 3,
    "passes_silent": 1,
    "passes": [
     ["2026-11-04T05:32:43Z", 0.15, true],
     ["2026-11-11T03:32:47Z", 2.62, false],
-    ["2026-11-13T22:03:58Z", 0.68, true]
+    ["2026-11-13T22:03:58Z", 0.68, true],
+    ["2026-11-19T00:59:30Z", 1.66, true]
    ]
   },
   "DIGUI-122": {
@@ -2875,14 +2876,15 @@
    "sep_deg": 0.79,
    "ref_input": 116,
    "drift_ns_s": -3.55,
-   "last_observed_utc": "2026-11-09T08:01:02Z",
-   "last_checked_utc": "2026-11-09T08:01:02Z",
-   "last_checked_sep_deg": 0.1,
-   "passes_found": 2,
+   "last_observed_utc": "2026-11-19T00:32:19Z",
+   "last_checked_utc": "2026-11-19T00:32:19Z",
+   "last_checked_sep_deg": 1.22,
+   "passes_found": 3,
    "passes_silent": 0,
    "passes": [
     ["2026-11-04T05:05:37Z", 0.77, true],
-    ["2026-11-09T08:01:02Z", 0.1, true]
+    ["2026-11-09T08:01:02Z", 0.1, true],
+    ["2026-11-19T00:32:19Z", 1.22, true]
    ]
   },
   "DIGUI-143": {
