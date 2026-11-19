@@ -369,12 +369,17 @@ class Relay:
         inst = None
         if time.monotonic() - self.inst_t >= self.a.inst_period:
             self.inst_t = time.monotonic()
-            replies = [
-                r
-                for _, r in self.pool.map(
-                    self.get_inst, [u for u in self.units if u.source and u.inst_url]
-                )
-            ]
+            replies = []
+            for u, r in self.pool.map(
+                self.get_inst, [u for u in self.units if u.source and u.inst_url]
+            ):
+                if isinstance(r, dict) and "error" in r:
+                    self.rl(
+                        ("inst", u.name),
+                        "get_lane_inst %s: %s" % (u.inst_url, r["error"]),
+                        ERR_EVERY_S,
+                    )
+                replies.append(r)
             self.inst, self.inst_n = pool_inst(replies)
             inst = self.inst
         rx_status = {}

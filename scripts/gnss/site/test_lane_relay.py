@@ -6,9 +6,11 @@
 A lane's owner is the assembler's kotekan unique_name, which starts with '/', plus
 "/lane/<prn>" (GnssGpuRecordAssemble).
 """
+import concurrent.futures
 import os
 import sys
 import tempfile
+import types
 
 import yaml
 
@@ -168,6 +170,48 @@ def test_inst_stage():
         == "http://cx19:12048/gnss0_records/get_lane_inst?chain=gps_l5",
         "get_lane_inst at the row's own path, or by chain from its record host (%s)"
         % by_chain.inst_url,
+    )
+    unhosted = lane_relay.Gpu(
+        "node-a",
+        0,
+        stage,
+        3,
+        "gnss0_gps_l5_n2assemble",
+        lane_relay.gnss_fleet.config_host_bases(cfg, "http://node-a:12048"),
+    )
+    check(
+        unhosted.inst_url
+        == "http://node-a:12048/gnss0_gps_l5_n2assemble/get_lane_inst",
+        "a config without record hosts: the row's own path (%s)" % unhosted.inst_url,
+    )
+
+
+def test_inst_errors_are_logged():
+    """A failed get_lane_inst is logged, rate-limited, naming the url, as set_lanes is."""
+    relay = lane_relay.Relay.__new__(lane_relay.Relay)
+    relay.a = types.SimpleNamespace(inst_period=0.0)
+    relay.collect = lambda: ({}, {}, {})
+    relay.bright = {}
+    relay.inst_t = -1e9
+    unit = types.SimpleNamespace(
+        name="node-a/0",
+        source=True,
+        inst_url="http://node-a:12048/gnss0_records/get_lane_inst?chain=gps_l5",
+    )
+    relay.units = [unit]
+    relay.get_inst = lambda u: (u, {"error": "HTTPError 404"})
+    relay.pool = concurrent.futures.ThreadPoolExecutor(1)
+    logged = []
+    relay.rl = lambda key, msg, every: logged.append((key, msg))
+    try:
+        status = relay.cycle(post=False)
+    finally:
+        relay.pool.shutdown()
+    check(
+        logged
+        == [(("inst", "node-a/0"), "get_lane_inst %s: HTTPError 404" % unit.inst_url)]
+        and status["inst"]["instances"] == 0,
+        "get_lane_inst's failure is logged with its url (%s)" % logged,
     )
 
 
