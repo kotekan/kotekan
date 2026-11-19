@@ -816,26 +816,38 @@
    "catnum": 65050,
    "g2_phase": null,
    "last_observed_utc": null,
-   "last_checked_utc": "2026-11-02T21:53:38Z",
-   "last_checked_sep_deg": 1.3,
-   "passes_found": 0,
-   "passes_silent": 1,
-   "passes": [
-    ["2026-11-02T21:53:38Z", 1.3, false]
-   ]
-  },
-  "DIGUI-48": {
-   "status": "no_transmission",
-   "catnum": 65051,
-   "g2_phase": null,
-   "last_observed_utc": null,
-   "last_checked_utc": "2026-11-11T14:45:46Z",
-   "last_checked_sep_deg": 0.56,
+   "last_checked_utc": "2026-11-19T12:25:02Z",
+   "last_checked_sep_deg": 0.99,
    "passes_found": 0,
    "passes_silent": 2,
    "passes": [
+    ["2026-11-02T21:53:38Z", 1.3, false],
+    ["2026-11-19T12:25:02Z", 0.99, false]
+   ]
+  },
+  "DIGUI-48": {
+   "status": "transmitting",
+   "catnum": 65051,
+   "g2_phase": 1950,
+   "theta_us": 0.609,
+   "range_rate_m_s": -1163.66,
+   "replica": "stretched",
+   "orbit": "tle",
+   "carrier_minus_tle_ppb": 2.6,
+   "measured_utc": "2026-11-19T12:12:31Z",
+   "source": "2026-11-19 beam dump window 291 (gw_reduce, 28685 frames over 62 s)",
+   "sep_deg": 4.45,
+   "ref_input": 116,
+   "drift_ns_s": -2.72,
+   "last_observed_utc": "2026-11-19T12:12:27Z",
+   "last_checked_utc": "2026-11-19T12:12:27Z",
+   "last_checked_sep_deg": 4.31,
+   "passes_found": 1,
+   "passes_silent": 2,
+   "passes": [
     ["2026-11-08T20:14:34Z", 2.73, false],
-    ["2026-11-11T14:45:46Z", 0.56, false]
+    ["2026-11-11T14:45:46Z", 0.56, false],
+    ["2026-11-19T12:12:27Z", 4.31, true]
    ]
   },
   "DIGUI-49": {
@@ -4118,12 +4130,13 @@
    "catnum": null,
    "g2_phase": null,
    "last_observed_utc": null,
-   "last_checked_utc": "2026-11-12T18:51:46Z",
-   "last_checked_sep_deg": 1.83,
+   "last_checked_utc": "2026-11-19T12:19:29Z",
+   "last_checked_sep_deg": 1.78,
    "passes_found": 0,
-   "passes_silent": 1,
+   "passes_silent": 2,
    "passes": [
-    ["2026-11-12T18:51:46Z", 1.83, false]
+    ["2026-11-12T18:51:46Z", 1.83, false],
+    ["2026-11-19T12:19:29Z", 1.78, false]
    ]
   },
   "DIGUI-205": {
