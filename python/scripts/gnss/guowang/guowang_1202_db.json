@@ -892,15 +892,16 @@
    "ref_input": 116,
    "drift_ns_s": 2.1,
    "note": "partial copy, 56/64 channels",
-   "last_observed_utc": "2026-11-12T22:58:07Z",
-   "last_checked_utc": "2026-11-12T22:58:07Z",
-   "last_checked_sep_deg": 1.77,
-   "passes_found": 3,
+   "last_observed_utc": "2026-11-19T20:58:11Z",
+   "last_checked_utc": "2026-11-19T20:58:11Z",
+   "last_checked_sep_deg": 4.52,
+   "passes_found": 4,
    "passes_silent": 0,
    "passes": [
     ["2026-11-05T01:31:29Z", 5.59, true],
     ["2026-11-08T19:29:15Z", 4.37, true],
-    ["2026-11-12T22:58:07Z", 1.77, true]
+    ["2026-11-12T22:58:07Z", 1.77, true],
+    ["2026-11-19T20:58:11Z", 4.52, true]
    ]
   },
   "DIGUI-51": {
