@@ -18,7 +18,7 @@ void FloatPhaseUpdate::compute_phases(uint8_t* out_frame_int, const timespec& gp
                                       uint32_t beam_offset, uint8_t* gains_frame_int) {
 
     float* out_frame = (float*)out_frame_int;
-    float* gains_frame = (float*)gains_frame_int;
+    float16_t* gains_frame = (float16_t*)gains_frame_int;
 
     // Getting UTC time in ISO format from the GPS time in Unix format.
     struct tm* utc_time;
