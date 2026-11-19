@@ -60,7 +60,7 @@ LOBE_HOLDOFF_S = 120.0
 
 # The gather's REST family that says it takes a GPU half's target ({url, chain}) in /set_policy,
 # posts one set_trim of every chain that names it per round ({"chains": {...}}), and re-posts a
-# refused round without the chains the refusal names (--fleet-trim-half-targets).
+# refused round chain by chain, backing off only the refused chain (--fleet-trim-half-targets).
 GATHER_BATCH = "fleet_trim_batch"
 
 

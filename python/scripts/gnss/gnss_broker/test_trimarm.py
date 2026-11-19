@@ -165,11 +165,14 @@ def main():
 
     # 1d. The switch needs a gather whose interface lists rest/fleet_trim_batch.
     real_read = trimarm.iface.read_source
-    with_leaf = iface.golden().doc
-    with_leaf = dict(with_leaf, sections=dict(with_leaf["sections"]))
+    golden = iface.golden().doc
+    with_leaf = dict(golden, sections=dict(golden["sections"]))
     with_leaf["sections"]["rest"] = dict(
-        with_leaf["sections"]["rest"], **{trimarm.GATHER_BATCH: 1}
+        golden["sections"]["rest"], **{trimarm.GATHER_BATCH: 1}
     )
+    without = dict(golden, sections=dict(golden["sections"]))
+    without["sections"]["rest"] = dict(golden["sections"]["rest"])
+    without["sections"]["rest"].pop(trimarm.GATHER_BATCH, None)
 
     def read(doc):
         def f(src, timeout=None):
@@ -184,7 +187,7 @@ def main():
         trimarm.iface.read_source = read(with_leaf)
         ok = trimarm.gather_batches("http://127.0.0.1:12051/fleet_trim")
         asked = read.asked
-        trimarm.iface.read_source = read(iface.golden().doc)
+        trimarm.iface.read_source = read(without)
         no_leaf = trimarm.gather_batches("http://127.0.0.1:12051/fleet_trim")
         trimarm.iface.read_source = read(None)
         unread = trimarm.gather_batches("http://127.0.0.1:12051/fleet_trim")

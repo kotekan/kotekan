@@ -91,7 +91,14 @@ ROLES = {
         "rest/tap",
         "rest/host_rows",
     ),
-    "gather": ("telem", "record.row", "record.chan", "metadata", "rest/fleet_trim"),
+    "gather": (
+        "telem",
+        "record.row",
+        "record.chan",
+        "metadata",
+        "rest/fleet_trim",
+        "rest/fleet_trim_batch",
+    ),
     "aggregator": ("signals", "rest/search"),
     # The beam-cube archiver: the cube frames and their metadata, which the archive's readers
     # (gnss_cube_read.py) take apart.
