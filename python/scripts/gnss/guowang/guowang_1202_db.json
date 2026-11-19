@@ -1467,15 +1467,16 @@
    "sep_deg": 0.82,
    "ref_input": 116,
    "drift_ns_s": 1.86,
-   "last_observed_utc": "2026-11-10T11:39:47Z",
-   "last_checked_utc": "2026-11-10T11:39:47Z",
-   "last_checked_sep_deg": 11.41,
-   "passes_found": 3,
+   "last_observed_utc": "2026-11-19T08:32:11Z",
+   "last_checked_utc": "2026-11-19T08:32:11Z",
+   "last_checked_sep_deg": 1.67,
+   "passes_found": 4,
    "passes_silent": 0,
    "passes": [
     ["2026-11-02T18:00:48Z", 0.64, true],
     ["2026-11-09T16:00:53Z", 2.13, true],
-    ["2026-11-10T11:39:47Z", 11.41, true]
+    ["2026-11-10T11:39:47Z", 11.41, true],
+    ["2026-11-19T08:32:11Z", 1.67, true]
    ]
   },
   "DIGUI-80": {
@@ -2059,15 +2060,16 @@
    "sep_deg": 4.75,
    "ref_input": 116,
    "drift_ns_s": -2.6,
-   "last_observed_utc": "2026-11-10T11:59:20Z",
-   "last_checked_utc": "2026-11-10T11:59:20Z",
-   "last_checked_sep_deg": 7.84,
-   "passes_found": 3,
+   "last_observed_utc": "2026-11-19T08:52:49Z",
+   "last_checked_utc": "2026-11-19T08:52:49Z",
+   "last_checked_sep_deg": 2.48,
+   "passes_found": 4,
    "passes_silent": 0,
    "passes": [
     ["2026-11-03T13:59:29Z", 5.05, true],
     ["2026-11-07T07:57:18Z", 4.72, true],
-    ["2026-11-10T11:59:20Z", 7.84, true]
+    ["2026-11-10T11:59:20Z", 7.84, true],
+    ["2026-11-19T08:52:49Z", 2.48, true]
    ]
   },
   "DIGUI-106": {
