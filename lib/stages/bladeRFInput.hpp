@@ -88,6 +88,18 @@
  * @conf   startup_discard_ms Float (default 100). Samples discarded after enabling RX. The
  *                         first reads can hold stale samples from the previous session,
  *                         followed by a jump in the timestamps.
+ * @conf   force_filter_open Bool (default false). With OVERSAMPLE, force the RX baseband
+ *                         filter and TIA capacitors to their minimum after setup, which
+ *                         widens the passband: on the first unit L5 and E6 were about 9 dB
+ *                         down instead of lost. Sets @c bandwidth to 56 unless it is given.
+ * @conf   data_port_delay Int (default -1). Value for AD9361 register 0x006: the DATA_CLK
+ *                         delay in the high nibble and the RX data delay in the low one, in
+ *                         steps of about 0.3 ns. -1 keeps libbladeRF's 0x50. With OVERSAMPLE
+ *                         the data port runs at twice its rated clock. On the first unit
+ *                         0x50 sat at the edge of the data eye, giving 1-sample timestamp
+ *                         jumps and corrupted samples, and 0xa0 (160) was clean.
+ * @conf   max_stream_restarts Int (default 3). Consecutive failed reads that restart the
+ *                         stream before the stage stops kotekan.
  * @conf   adcstat_timeout_ms Int (default 250). How long a GET @c /adcstat waits for the
  *                         next frame before failing.
  *
@@ -96,11 +108,19 @@
  *         Samples the device dropped, which the stage replaced with zeros.
  * @metric kotekan_bladerfinput_discontinuities_total
  *         Number of separate dropouts.
+ * @metric kotekan_bladerfinput_stream_restarts_total
+ *         Times a failed read restarted the stream.
  * @metric kotekan_bladerfinput_pll_locked
  *         1 while the VCTCXO is locked to the reference; only with @c ref_in_freq.
  *
- * Stopping kotekan when the device fails needs nothing more: a failed or timed-out read
- * stops it.
+ * A failed read restarts the stream, as libbladeRF intends, up to @c max_stream_restarts
+ * times in a row. The bladeRF sometimes fails to start streaming at all, and then only
+ * re-opening it recovers, so the stage stops kotekan if no sample arrives after startup.
+ * That failure followed a delay between enabling RX and the first read, so the stage enables
+ * RX immediately before reading.
+ * Run kotekan under a supervisor that restarts it, such as systemd with Restart=on-failure.
+ * libbladeRF can hang for good closing a stream that failed, so the destructor gives up on
+ * the device after a few seconds rather than hang kotekan's exit.
  *
  * @author Keith Vanderlinde
  */
@@ -122,6 +142,9 @@ private:
     bool open_device();
     /// Sets the clock, sample rate, tuning and gains. False after a FATAL_ERROR.
     bool configure_device();
+    /// Writes @p val to AD9361 register @p addr and checks it reads back. False after a
+    /// FATAL_ERROR.
+    bool write_rfic_register(uint16_t addr, uint8_t val);
     /// Reads from the device until the stage stops, writing samples and zero-fill to frames.
     void stream();
 
@@ -163,6 +186,10 @@ private:
     bladerf_gain_mode _gain_mode;
     int _gain;
     bool _bias_tee;
+    bool _force_filter_open;
+    /// Value for AD9361 register 0x006, or -1 to leave it.
+    int _data_port_delay;
+    int _max_stream_restarts;
     /// REF IN frequency in Hz, or 0 for a free-running VCTCXO.
     uint64_t _ref_in_freq;
     int _num_buffers;

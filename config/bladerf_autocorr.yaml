@@ -54,8 +54,12 @@ bladerf_input:
     kotekan_stage: bladeRFInput
     out_buf: input_buf
     gain_mode: manual
-    gain: 30 # dB
+    gain: 25 # dB; ~17 counts RMS on a small GPS antenna, downtown
+    # true puts +5 V on the RX port for an active antenna; never with a 50 ohm terminator.
     bias_tee: false
+    # Both measured on the first unit at 122.88 MSPS (see bladeRFInput's docs).
+    force_filter_open: true
+    data_port_delay: 160 # 0xa0; libbladeRF's 0x50 sat at the edge of the data eye
 #    serial: ""             # uncomment & edit to pick a specific unit
 #    fpga_image: /usr/local/share/Nuand/bladeRF/images/hostedxA4-v0.16.0.rbf
 #    ref_in_freq: 10.       # MHz, to lock to a reference on REF IN
