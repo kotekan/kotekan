@@ -54,7 +54,9 @@ bladerf_input:
     kotekan_stage: bladeRFInput
     out_buf: input_buf
     gain_mode: manual
-    gain: 25 # dB; ~17 counts RMS on a small GPS antenna, downtown
+    # dB; ~22 counts RMS from a small GPS antenna on a few metres of cable,
+    # well clear of the board and the host.
+    gain: 45
     # true puts +5 V on the RX port for an active antenna; never with a 50 ohm terminator.
     bias_tee: false
     # Both measured on the first unit at 122.88 MSPS (see bladeRFInput's docs).
