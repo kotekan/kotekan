@@ -31,7 +31,7 @@ from . import signals
 HOSTS = {"inject": "inject", "n2assemble": "records", "n2combine": "combine"}
 _HOST_STAGE = {h: s for s, h in HOSTS.items()}
 _ROW = re.compile(
-    r"^(https?://[^/?#]+)/gnss(\d+)_([a-z0-9]+_[a-z0-9]+)_(inject|n2assemble|n2combine)$"
+    r"^(https?://[^/?#]+)/gnss(\d+)_([a-z0-9_]+)_(inject|n2assemble|n2combine)$"
 )
 _HOST_PATH = re.compile(r"^/gnss(\d+)_(inject|records|combine)/([a-z0-9_]+)$")
 _ROW_PATH = re.compile(

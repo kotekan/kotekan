@@ -37,6 +37,7 @@ import math
 import os
 import statistics
 import sys
+import threading
 import time
 
 # -- frame0 guard -----------------------------------------------------------------------
@@ -123,6 +124,11 @@ from gnss_broker import signals  # noqa: E402
 from gnss_broker import receiver  # noqa: E402
 from gnss_broker.state_filter import SatBiasFilter  # noqa: E402
 from gnss_broker.sky import _dh_dpos  # noqa: E402
+
+# The --node-hosts of this process's first chain. node_api's hosts are process-wide and
+# broker_multi runs every chain in one process, so a chain that names other hosts is refused.
+_NODE_HOSTS = []
+_NODE_HOSTS_LOCK = threading.Lock()
 
 
 def main(argv=None, rx=None, publisher=None):
@@ -320,12 +326,14 @@ def main(argv=None, rx=None, publisher=None):
     # The GPU halves whose hosts serve their rows by chain: the fleet's, so every chain of one
     # process names the same ones.
     _hosts = frozenset(parse_endpoints(args.node_hosts, base))
-    if node_api.hosts() and node_api.hosts() != _hosts:
-        ap.error("--node-hosts differs from another chain's in this process")
-    try:
-        node_api.set_hosts(_hosts)
-    except ValueError as e:
-        ap.error("--node-hosts: %s" % e)
+    with _NODE_HOSTS_LOCK:
+        if _NODE_HOSTS and _NODE_HOSTS[0] != _hosts:
+            ap.error("--node-hosts differs from another chain's in this process")
+        try:
+            node_api.set_hosts(_hosts)
+        except ValueError as e:
+            ap.error("--node-hosts: %s" % e)
+        _NODE_HOSTS[:] = [_hosts]
     # A gather whose document lacks rest/fleet_trim_batch would refuse every policy POST that
     # names a half. One that cannot be read yet is read again; until then its targets are the
     # trackers' own (trimarm.half_targets).

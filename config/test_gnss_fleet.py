@@ -483,15 +483,17 @@ def test_broker_dll_spacing_is_the_tables():
             raw = yaml.safe_load(fh)
         del raw["chains"]["glo_l2of"]
         raw["chains"]["gps_l2c"]["dll-spacing"] = 0.4
+        raw["chains"]["gal_e5a"]["node-hosts"] = "fleet"
         path = os.path.join(d, "chains.yaml")
         with open(path, "w") as fh:
             yaml.safe_dump(raw, fh)
         probs = gen_fleet.check_chains(six(), path)
     check(
         any("chains.gps_l2c sets dll-spacing" in p for p in probs)
-        and any("row glo_l2of" in p for p in probs),
-        "--check names a hand dll-spacing and a row without a broker chain (%s)"
-        % probs,
+        and any("row glo_l2of" in p for p in probs)
+        and any("chains.gal_e5a: node-hosts is the fleet's" in p for p in probs),
+        "--check names a hand dll-spacing, a row without a broker chain and a chain's "
+        "own node-hosts (%s)" % probs,
     )
 
 

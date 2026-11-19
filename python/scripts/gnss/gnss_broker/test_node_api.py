@@ -6,7 +6,7 @@
 import sys
 import time
 
-from gnss_broker import node_api
+from gnss_broker import node_api, signals
 
 
 _fails = []
@@ -38,6 +38,15 @@ def test_row():
         "http://localhost:12050/gps_search",
     ):
         check(node_api.row(p) is None, "not a row named by its broker chain: %s" % p)
+    signals._CHAINS["gps_l1_ca"] = signals._CHAINS["gps_l5"]
+    try:
+        check(
+            node_api.row(N + "/gnss0_gps_l1_ca_inject")
+            == (N, 0, "gps_l1_ca", "inject"),
+            "a chain key of three tokens",
+        )
+    finally:
+        del signals._CHAINS["gps_l1_ca"]
 
 
 def test_url_and_post_request():

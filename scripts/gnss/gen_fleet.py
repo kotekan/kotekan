@@ -425,9 +425,9 @@ def derived_instances(fleet, host):
 
 def check_chains(fleet, path=CHAINS):
     """Problems with the chains yaml against the fleet list and the chains table, as lines
-    (empty = none): a node endpoint key written by hand rather than `fleet`, an expanded URL on
-    a host outside the fleet, a dll-spacing written in the yaml, a chain without a table row,
-    or a row the broker runs no chain for."""
+    (empty = none): a node endpoint key written by hand rather than `fleet`, node-hosts outside
+    `common:`, an expanded URL on a host outside the fleet, a dll-spacing written in the yaml, a
+    chain without a table row, or a row the broker runs no chain for."""
     with open(path) as f:
         raw = yaml.safe_load(f) or {}
     keys = set(gnss_fleet.URL_KEYS) | set(gnss_fleet.SINGLE_KEYS)
@@ -437,6 +437,11 @@ def check_chains(fleet, path=CHAINS):
     for where, block in [("common", common)] + [
         ("chains." + c, v or {}) for c, v in (raw.get("chains") or {}).items()
     ]:
+        if where != "common" and gnss_fleet.HOSTS_KEY in block:
+            bad.append(
+                "%s: %s is the fleet's, set in common: alone (every chain of a broker "
+                "process asks the same hosts)" % (where, gnss_fleet.HOSTS_KEY)
+            )
         for k in sorted(keys & set(block)):
             v = block[k]
             if v is None or v == gnss_fleet.FLEET:
