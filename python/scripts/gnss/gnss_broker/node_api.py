@@ -178,3 +178,25 @@ def canonical_text(url, payload=None):
     """canonical() as the transcript gate hashes it: (key, the payload's sorted JSON)."""
     k, p = canonical(url, payload)
     return k, json.dumps(p, sort_keys=True)
+
+
+def canonical_requests(url, payload=None):
+    """[(key, payload)] of a request as canonical() names it, or, for an inject host's batched
+    set_trim ({"chains": {<chain>: <request>, ...}}), one per chain in chain order, each as the
+    chain's own set_trim, so a gather's batched POSTs compare with its per-chain ones."""
+    u = urllib.parse.urlsplit(url)
+    m = _HOST_PATH.match(u.path)
+    if (
+        m
+        and m.group(2) == "inject"
+        and m.group(3) == "set_trim"
+        and isinstance(payload, dict)
+        and list(payload) == ["chains"]
+        and isinstance(payload["chains"], dict)
+    ):
+        origin = "%s://%s" % (u.scheme, u.netloc)
+        return [
+            (_key(origin, int(m.group(1)), "inject", c, "set_trim", []), b)
+            for c, b in sorted(payload["chains"].items())
+        ]
+    return [canonical(url, payload)]

@@ -153,10 +153,30 @@ def test_canonical():
     check(c(k) == (k, None), "a canonical name is its own")
 
 
+def test_canonical_requests():
+    """A batched set_trim is each chain's own set_trim; any other request is canonical()'s."""
+    trims = {"gps_l5": [{"prn": 3, "trim_chips": 0.1}], "gal_e5a": []}
+    got = node_api.canonical_requests(N + "/gnss1_inject/set_trim", {"chains": trims})
+    want = [
+        node_api.canonical(N + "/gnss1_gal_e5a_inject/set_trim", []),
+        node_api.canonical(N + "/gnss1_gps_l5_inject/set_trim", trims["gps_l5"]),
+    ]
+    check(got == want, "a batch is its chains' own set_trims, in chain order")
+    body = {"chain": "gal_e5a", "body": []}
+    check(
+        node_api.canonical_requests(N + "/gnss1_inject/set_trim", body)
+        == [node_api.canonical(N + "/gnss1_inject/set_trim", body)]
+        and node_api.canonical_requests(N + "/gnss1_records/set_trim", {"chains": {}})
+        == [(N + "/gnss1_records/set_trim", {"chains": {}})],
+        "anything else as canonical() names it",
+    )
+
+
 def main():
     test_row()
     test_url_and_post_request()
     test_canonical()
+    test_canonical_requests()
     print("-" * 70)
     if _fails:
         for f in _fails:
