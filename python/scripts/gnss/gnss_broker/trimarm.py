@@ -72,14 +72,14 @@ _gather = {}
 
 def trim_targets(trackers, by_half=False):
     """The set_trim targets of a chain's policy: each tracker's own /set_trim; with by_half, a
-    tracker on a GPU half whose inject host serves by chain (node_api.hosts()) as that half's
+    tracker on a GPU half whose inject host serves by chain (node_api.hosted()) as that half's
     {"url": "<host>/set_trim", "chain": <chain>}, which the gather batches with the other chains
     that name the same url."""
     out = []
     for t in trackers:
-        r = node_api.row(t) if by_half else None
-        base = r and node_api.host_base(r[0], r[1], r[3])
-        if base and base in node_api.hosts():
+        r = node_api.hosted(t) if by_half else None
+        if r:
+            base = node_api.host_base(r[0], r[1], r[3])
             out.append({"url": base + "/set_trim", "chain": r[2]})
         else:
             out.append("%s/set_trim" % t)

@@ -4,6 +4,7 @@
 """
 
 import sys
+import time
 
 from gnss_broker import node_api
 
@@ -153,6 +154,49 @@ def test_canonical():
     check(c(k) == (k, None), "a canonical name is its own")
 
 
+def test_by_row():
+    """A 404 by chain puts the request at its row's own path and the host's rows there for
+    BY_ROW_S; anything else is not a host's request by chain."""
+    node_api.set_hosts([N + "/gnss1_inject", N + "/gnss0_records"])
+    try:
+        u, p = node_api.post_request(INJ, "set_seeds", [1])
+        check(
+            node_api.by_row(u, p) == (INJ + "/set_seeds", [1], N + "/gnss1_inject"),
+            "a POST by chain goes to its row with the row's own body",
+        )
+        check(
+            node_api.url(INJ, "get_prns") == INJ + "/get_prns"
+            and node_api.post_request(INJ, "set_trim", [2]) == (INJ + "/set_trim", [2])
+            and node_api.hosted(INJ) is None,
+            "then the host's rows are asked at their own paths",
+        )
+        check(
+            node_api.url(ASM, "get_spectrum")
+            == N + "/gnss0_records/get_spectrum?chain=gps_l5",
+            "and another host is still asked by chain",
+        )
+        check(
+            node_api.by_row(N + "/gnss0_records/get_spectrum?chain=gps_l5&window=3")
+            == (ASM + "/get_spectrum?window=3", None, N + "/gnss0_records"),
+            "a GET by chain keeps the rest of its query",
+        )
+        node_api._by_row[N + "/gnss1_inject"] = time.monotonic() - 1.0
+        check(
+            node_api.url(INJ, "get_prns") == N + "/gnss1_inject/get_prns?chain=gal_e5a",
+            "after BY_ROW_S the host is asked by chain again",
+        )
+        for u, p in (
+            (INJ + "/set_seeds", [1]),
+            (N + "/gnss0_records/get_spectrum", None),
+            (N + "/gnss1_inject/set_trim", {"chains": {"gal_e5a": []}}),
+            ("http://localhost:12050/gps_search/get_detections", None),
+        ):
+            check(node_api.by_row(u, p) is None, "not a request by chain: %s" % u)
+    finally:
+        node_api.set_hosts([])
+        node_api._by_row.clear()
+
+
 def test_canonical_requests():
     """A batched set_trim is each chain's own set_trim; any other request is canonical()'s."""
     trims = {"gps_l5": [{"prn": 3, "trim_chips": 0.1}], "gal_e5a": []}
@@ -176,6 +220,7 @@ def main():
     test_row()
     test_url_and_post_request()
     test_canonical()
+    test_by_row()
     test_canonical_requests()
     print("-" * 70)
     if _fails:

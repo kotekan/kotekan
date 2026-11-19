@@ -12,7 +12,9 @@ url() (a GET) and post_request() put a request in the form its node serves: by c
 half's host is listed (set_hosts(), the broker's --node-hosts, or a tool's own list from the
 node's generated config), and at the row's own path otherwise. A prefix that is not a row of
 those stages named by its broker chain (a search, a tap, a name generated before the tags) is
-used as given.
+used as given. A listed host that answers 404 by chain runs an older form or binary than the
+listing says: by_row() puts the request at its row's own path, and the host's rows are asked
+there for BY_ROW_S.
 
 canonical() names a request alike in either form, for the transcript gate (broker_equiv.py).
 """
@@ -20,6 +22,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.parse
 
 from . import signals
@@ -38,6 +41,10 @@ _ROW_PATH = re.compile(
 
 _HOST_BASE = re.compile(r"^https?://[^/?#]+/gnss\d+_(inject|records|combine)$")
 _hosts = frozenset()
+#: Seconds a listed host that answered 404 by chain is asked at its rows' own paths.
+BY_ROW_S = 60.0
+# host base -> time.monotonic() until which its rows are asked at their own paths
+_by_row = {}
 
 
 def set_hosts(bases):
@@ -70,16 +77,21 @@ def host_base(origin, half, stage):
     return "%s/gnss%d_%s" % (origin, half, HOSTS[stage])
 
 
-def _hosted(prefix, hosts):
+def hosted(prefix, hosts=None):
+    """row(prefix) where its half's host is listed in `hosts` (default: set_hosts()') and has not
+    answered 404 by chain within BY_ROW_S, else None."""
     hosts = _hosts if hosts is None else hosts
     r = row(prefix) if hosts else None
-    return r if r and host_base(r[0], r[1], r[3]) in hosts else None
+    if not r:
+        return None
+    base = host_base(r[0], r[1], r[3])
+    return r if base in hosts and _by_row.get(base, 0.0) <= time.monotonic() else None
 
 
 def url(prefix, verb, query="", hosts=None):
     """The URL of a GET of `verb` of the instance at `prefix`, `query` ("window=3") appended.
     `hosts`, the bases of the hosts that serve by chain, defaults to set_hosts()'."""
-    r = _hosted(prefix, hosts)
+    r = hosted(prefix, hosts)
     if r is None:
         return "%s/%s%s" % (prefix, verb, "?" + query if query else "")
     return "%s/%s?chain=%s%s" % (
@@ -93,12 +105,41 @@ def url(prefix, verb, query="", hosts=None):
 def post_request(prefix, verb, payload, hosts=None):
     """(url, body) of a POST of `payload` to `verb` of the instance at `prefix` (`hosts` as for
     url())."""
-    r = _hosted(prefix, hosts)
+    r = hosted(prefix, hosts)
     if r is None:
         return "%s/%s" % (prefix, verb), payload
     return (
         "%s/%s" % (host_base(r[0], r[1], r[3]), verb),
         {"chain": r[2], "body": payload},
+    )
+
+
+def by_row(url, payload=None):
+    """(url, payload, host base) of a request to a GPU half's host by chain, a GET (payload None)
+    or a POST, put at its row's own path; None for any other request. Its host's rows are then
+    asked at their own paths (hosted()) for BY_ROW_S."""
+    u = urllib.parse.urlsplit(url)
+    m = _HOST_PATH.match(u.path)
+    if not m:
+        return None
+    query = urllib.parse.parse_qsl(u.query, keep_blank_values=True)
+    chains = [v for k, v in query if k == "chain"]
+    rest = urllib.parse.urlencode([(k, v) for k, v in query if k != "chain"])
+    if payload is None and len(chains) == 1:
+        chain, body = chains[0], None
+    elif not chains and isinstance(payload, dict) and set(payload) == {"chain", "body"}:
+        chain, body = payload["chain"], payload["body"]
+    else:
+        return None
+    origin = "%s://%s" % (u.scheme, u.netloc)
+    half, host, verb = int(m.group(1)), m.group(2), m.group(3)
+    base = "%s/gnss%d_%s" % (origin, half, host)
+    _by_row[base] = time.monotonic() + BY_ROW_S
+    return (
+        "%s/gnss%d_%s_%s/%s%s"
+        % (origin, half, chain, _HOST_STAGE[host], verb, "?" + rest if rest else ""),
+        body,
+        base,
     )
 
 

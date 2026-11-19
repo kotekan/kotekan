@@ -180,6 +180,33 @@ def http_request(method, url, timeout, data=None, headers=None):
         return r.status, body
 
 
+_by_row_logged = {}  # host base -> time.monotonic() of its last by_row WARN
+
+
+def _row_request(method, url, timeout, payload=None, data=None):
+    """http_request of a GET, or of a POST of data, payload as JSON. A 404 from a GPU half's host
+    asked by chain is asked again at the row's own path (node_api.by_row): the node runs an older
+    form or binary than --node-hosts says, and serves the rows' own paths."""
+    hdr = None if method == "GET" else {"Content-Type": "application/json"}
+    try:
+        return http_request(method, url, timeout, data=data, headers=hdr)
+    except urllib.error.HTTPError as e:
+        alt = node_api.by_row(url, payload) if e.code == 404 else None
+        if alt is None:
+            raise
+    alt_url, alt_payload, base = alt
+    if time.monotonic() - _by_row_logged.get(base, -1e9) >= 600.0:
+        _by_row_logged[base] = time.monotonic()
+        _log(
+            "WARN %s answered 404: %s does not serve its rows by chain (an older form or "
+            "binary than --node-hosts), so they are asked at their own paths, %s first, and by "
+            "chain again in %.0f s" % (url, base, alt_url, node_api.BY_ROW_S)
+        )
+    if method != "GET":
+        data = json.dumps(alt_payload).encode()
+    return http_request(method, alt_url, timeout, data=data, headers=hdr)
+
+
 # ---------------------------------------------------------------------------------------
 # The interface fence (gnss_broker/iface_watch.py). In enforce mode the interface watcher fences
 # a node origin whose kotekan disagrees with the golden this broker speaks, and it then looks
@@ -428,7 +455,7 @@ class _Transcript:
                 raise IfaceRefused("%s: fenced by the interface watcher" % url)
             _node_check(url)
             try:
-                _st, _body = http_request("GET", url, timeout)
+                _st, _body = _row_request("GET", url, timeout)
             except Exception as _e:
                 _node_note(url, False, _e)
                 raise
@@ -471,13 +498,7 @@ class _Transcript:
                 raise IfaceRefused("%s: fenced by the interface watcher" % url)
             _node_check(url)
             try:
-                s = http_request(
-                    "POST",
-                    url,
-                    timeout,
-                    data=data,
-                    headers={"Content-Type": "application/json"},
-                )[0]
+                s = _row_request("POST", url, timeout, payload, data)[0]
             except Exception as _e:
                 _node_note(url, False, _e)
                 raise
