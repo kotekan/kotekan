@@ -262,4 +262,7 @@ Monitoring
 * A bundle profile with the status ``control`` (channel 37, which has no DTV) is
   decided and recorded like a pilot, and its mask stays zero. Its fine support
   stays ``(-1, -1)``, so ``DtvRfiMask`` never clears it. Only channel 37 can
-  have this status. Calibration uses it to set the noise floor.
+  have this status. Calibration uses it to set the noise floor. With the
+  detector's ``mask_control`` set (``dtv_mask_control`` in
+  ``config/chord/dtv.j2``), the control is masked like a pilot, so its false
+  alarms show what the mask does to a channel without DTV.

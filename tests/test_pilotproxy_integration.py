@@ -260,8 +260,12 @@ def test_too_few_fine_power_rows_stop_the_run(pipeline):
     assert "more than dtv_fine_powers_rows" in output, output[-12000:]
 
 
-def test_control_channel_is_recorded_and_never_masked(pipeline):
+@pytest.mark.parametrize("mask_control", [False, True])
+def test_control_channel_is_recorded_and_masked_only_with_mask_control(
+    pipeline, mask_control
+):
     pipeline.calibrate()
+    pipeline.detector["mask_control"] = mask_control
     profiles = pipeline.bundle["profiles"]
     for profile in profiles:
         profile["fine_calibration"]["cfar_multiplier_q16"] = 1
@@ -295,9 +299,14 @@ def test_control_channel_is_recorded_and_never_masked(pipeline):
         if p["receiver_channel_id"] in ids
     ]
     assert power[:, control].any()
-    assert not mask[:, control].any()
-    # DtvRfiMask clears a frequency with support (0, n), so the control row has none
-    assert (support[:, control] == -1).all()
+    if mask_control:
+        # at multiplier 1 the control fires and gets rank support, as the pilots do
+        assert mask[:, control].any()
+        assert (support[:, control, 0] >= 0).all()
+    else:
+        assert not mask[:, control].any()
+        # DtvRfiMask clears a frequency with support (0, n), so the control row has none
+        assert (support[:, control] == -1).all()
     assert (support[:, others, 0] >= 0).all()
     assert mask[:, others].any()
 

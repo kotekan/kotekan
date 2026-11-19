@@ -114,7 +114,7 @@ public:
         // fine_calibration for the mask epilogue, used only
         // when status == "calibrated" or "control"
         bool fine_calibrated = false;
-        // decided and recorded like a pilot, but its mask stays zero
+        // decided and recorded like a pilot, and masked only with mask_control
         bool control = false;
         bool archive_review_only = false;
         int anchor_bin = 0;
@@ -593,6 +593,9 @@ private:
  *                                  On CHORD, bufferBadInputs also flags the RFI antennas.
  * @conf bf_mask_lifetime_in_samples Int. Samples each bad feed mask element covers, a
  *                                  multiple of the detector block. Required with bf_mask_name.
+ * @conf mask_control               Bool. Mask the control (channel 37) like a pilot, so its
+ *                                  false alarms show what the mask does without DTV. Default
+ *                                  false: its mask stays 0 and its fine support (-1,-1).
  * @conf enabled_updatable_config   Optional block with `enabled` and `valid_at_time_ns`.
  *                                  First block at or after that time; 0 selects the next block.
  *                                  While off, mask/powers are 0 and support is (-1,-1).
@@ -636,6 +639,7 @@ private:
     const int dtv_fine_powers_rows;          // R, 0 without fine powers
     const std::string enabled_config_path;
     const std::string bf_mask_name; // empty: every input is summed
+    const bool mask_control;
 
     // Block geometry
     const int detector_window_samples;    // K
@@ -691,6 +695,7 @@ cudaPilotProxyDetector::cudaPilotProxyDetector(kotekan::Config& config,
     enabled_config_path(
         config.get_default<std::string>(unique_name, "enabled_updatable_config", "")),
     bf_mask_name(config.get_default<std::string>(unique_name, "bf_mask_name", "")),
+    mask_control(config.get_default<bool>(unique_name, "mask_control", false)),
     // Block geometry
     detector_window_samples(query_window_samples(*detector_state->core)),
     samples_per_detector_frame(detector_window_samples * query_fine_windows(*detector_state->core)),
@@ -1036,8 +1041,9 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
         unsigned long long* const channel_powers =
             reinterpret_cast<unsigned long long*>(powers_memory + 3 * channel.freq_index);
         // fine CFAR decision, with the frame powers saved for validation
-        // the control row keeps support (-1,-1), so DtvRfiMask never clears channel 37
-        if (support_memory && !profile.control) {
+        // without mask_control the control row keeps support (-1,-1), so DtvRfiMask never
+        // clears channel 37
+        if (support_memory && (mask_control || !profile.control)) {
             // rank support does not cover packet loss or feed health
             state.core->Compute_FusedFineMaskWithSupport_U64(
                 profile.detector_handle, weights, profile.anchor_bin, profile.designated_half_width,
@@ -1061,7 +1067,7 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
         // The int32 mask cell is folded into the int8 mask product. The value is
         // 0 or 1, so a copy of the little-endian low byte is exact (both CUDA
         // targets are little-endian).
-        if (!profile.control)
+        if (mask_control || !profile.control)
             CHECK_CUDA_ERROR(cudaMemcpyAsync(mask_memory + channel.freq_index,
                                              state.mask_i32_scratch, 1, cudaMemcpyDeviceToDevice,
                                              kotekan_stream));
