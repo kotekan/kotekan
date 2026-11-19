@@ -375,8 +375,13 @@ class _Transcript:
                 r = json.loads(line)
                 if r["k"] == "argv":
                     self.argv = r["v"]
-                else:
-                    self._rd[r["k"]].append(r)
+                    continue
+                if "c" in r and not node_api.names(r["u"], r["c"]):
+                    raise ValueError(
+                        "%s: %s #%d was sent to %s, which %s does not name"
+                        % (path, r["k"], len(self._rd[r["k"]]), r["u"], r["c"])
+                    )
+                self._rd[r["k"]].append(r)
 
     def close(self):
         if self._fh:

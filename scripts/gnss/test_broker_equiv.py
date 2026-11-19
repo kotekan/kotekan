@@ -229,6 +229,12 @@ def test_a_request_to_another_chains_row_fails():
             "gnss0_gps_l5_inject,%s/gnss1_gal_e5a_inject" % v[i].split("/gnss", 1)[0],
         )
 
+    def url_only(recs):
+        r = next(
+            r for r in recs if r["k"] == "post" and "gnss1_gps_l5_inject" in r["u"]
+        )
+        r["u"] = r["u"].replace("gps_l5", "gal_e5a")
+
     with tempfile.TemporaryDirectory() as tmp:
         for what, edit in (
             ("one recorded set_seeds names gal_e5a's row", recorded),
@@ -240,12 +246,23 @@ def test_a_request_to_another_chains_row_fails():
                 "%s: the digest moves (%s) and the replay diverges (%s)"
                 % (what, got[:16], be._replay_tail(err)[1]),
             )
+        err = io.StringIO()
+        try:
+            with contextlib.redirect_stderr(err):
+                got = be.replay(_swap_chain(tmp, url_only))[0]
+        except SystemExit as e:
+            got = "exit: %s" % e
+        check(
+            got.startswith("exit:") and "does not name" in err.getvalue(),
+            "one recorded set_seeds sent to gal_e5a's row under gps_l5's name: the "
+            "transcript is refused (%s)" % got[:40],
+        )
 
 
 def test_each_form_replays_as_the_other():
     """The fake rows recorded at the rows' own paths, replayed asking every request by chain
     (--node-hosts), and the ones recorded by chain, replayed at the rows' own paths, keep their
-    goldens: each variant golden is its transcript's plain one, and check verifies both."""
+    goldens: each variant golden is its transcript's plain one, and both replay to it."""
     for name, variant, hosts in (
         ("broker_fake_rows.jsonl", "hosted", True),
         ("broker_fake_rows_hosted.jsonl", "legacy", False),
@@ -261,6 +278,14 @@ def test_each_form_replays_as_the_other():
             and bool(be._last_value(be._header_argv(path), "--node-hosts")) != hosts,
             "%s: the %s variant (%s) is the plain golden"
             % (name, variant, " ".join(argv)[:40]),
+        )
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            ok = [be._check(path, g) for g in be._goldens(path)]
+        check(
+            ok == [True, True],
+            "%s: check replays both goldens (%s)"
+            % (name, " | ".join(out.getvalue().split("\n"))[:200]),
         )
 
 

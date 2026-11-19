@@ -215,6 +215,20 @@ def canonical(url, payload=None):
     return url, payload
 
 
+_KEY_CHAIN = re.compile(r"^node:https?://[^/]+/gnss\d+/[a-z0-9]+/([a-z0-9_]+)/")
+
+
+def names(url, key):
+    """Whether canonical() can name a request to `url` `key`: its own key where the url names its
+    row, or, for a POST to a host by chain (the chain rides the body), that host's half, stage
+    and verb with the key's chain."""
+    own = canonical(url)[0]
+    if own != url:
+        return own == key
+    m = _KEY_CHAIN.match(key)
+    return bool(m) and canonical(url, {"chain": m.group(1), "body": None})[0] == key
+
+
 def canonical_text(url, payload=None):
     """canonical() as the transcript gate hashes it: (key, the payload's sorted JSON)."""
     k, p = canonical(url, payload)

@@ -206,6 +206,28 @@ def test_by_row():
         node_api._by_row.clear()
 
 
+def test_names():
+    """A recorded request's canonical name must name the url it was sent to."""
+    body = {"chain": "gal_e5a", "body": [1]}
+    for u, p in (
+        (INJ + "/set_seeds", [1]),
+        (N + "/gnss1_inject/set_seeds", body),
+        (N + "/gnss0_records/get_spectrum?chain=gps_l5&window=3", None),
+        (N + "/gnss1_n2combine/get_status", None),
+    ):
+        check(node_api.names(u, node_api.canonical(u, p)[0]), "its own name: %s" % u)
+    key = node_api.canonical(INJ + "/set_seeds")[0]
+    other = key.replace("gal_e5a", "bds_b2a")
+    check(
+        not node_api.names(N + "/gnss1_bds_b2a_inject/set_seeds", key)
+        and not node_api.names(INJ + "/set_seeds", other)
+        and not node_api.names(N + "/gnss0_inject/set_seeds", key)
+        and not node_api.names(N + "/gnss1_records/set_seeds", key)
+        and not node_api.names("http://localhost:12050/gps_search/x", key),
+        "a name that does not fit the url: another chain, half or host",
+    )
+
+
 def test_canonical_requests():
     """A batched set_trim is each chain's own set_trim; any other request is canonical()'s."""
     trims = {"gps_l5": [{"prn": 3, "trim_chips": 0.1}], "gal_e5a": []}
@@ -230,6 +252,7 @@ def main():
     test_url_and_post_request()
     test_canonical()
     test_by_row()
+    test_names()
     test_canonical_requests()
     print("-" * 70)
     if _fails:

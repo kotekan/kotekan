@@ -82,9 +82,12 @@ with the row's own body (`gnss_broker/node_api.py` canonical). Names from before
 tags are read through `gnss_fleet.stage_chain`'s allowlists, and any other request is
 compared as sent. A recording names each row request canonically in `"c"`, and a replay that
 asks for a request the recording did not make marks the POST stream, so its digest cannot
-match. A golden whose provenance does not start with `canonical` hashed the POSTs as sent;
-`broker_equiv.py canon <transcript>` rewrites each of a transcript's goldens only after a
-replay at the current tree reproduces it, and reports it STALE otherwise.
+match. A transcript whose `"c"` does not name the url it was sent to is refused. A golden whose
+provenance does not start with `canonical` hashed the POSTs as sent: `check` compares it with
+the replay's raw digest and reports it STALE when that moved, and `broker_equiv.py canon
+<transcript>` rewrites each of a transcript's goldens only after a replay at the current tree
+reproduces it, and reports it STALE otherwise. `check` reports every golden of a transcript and
+fails if any did not pass.
 
 `broker_equiv.py` and the broker both read `.gz` transparently, so it is used exactly like
 any other fixture:

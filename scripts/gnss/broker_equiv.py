@@ -383,22 +383,31 @@ def _last_value(argv, flag):
 
 
 def _check(transcript, gold):
-    """One golden against one replay; exits on a moved digest."""
+    """One golden against one replay, reported; True when the replay reproduces it. A golden of
+    the POSTs as sent is checked against the replay's raw digest, and reported STALE when the
+    replay does not reproduce it."""
+    name = os.path.basename(gold)
     if not os.path.exists(gold):
-        sys.exit("no golden digest at %s -- run `bless` first" % gold)
+        print("MISSING  no golden digest at %s -- run `bless` first" % gold)
+        return False
     want, prov = _read_gold(gold)
-    if not _canonical(prov):
-        sys.exit(
-            "%s hashes the POSTs as sent: `broker_equiv.py canon %s` rewrites it once a "
-            "replay at this tree reproduces it" % (os.path.basename(gold), transcript)
-        )
     got, err = replay(transcript, extra=_gold_argv(prov))
-    if got == want:
+    if not _canonical(prov):
+        raw, ndiv = _replay_tail(err)
+        if raw == want and ndiv == 0:
+            print(
+                "EQUIVALENT  %s  raw %s; `broker_equiv.py canon %s` rewrites it as "
+                "canonical %s" % (name, raw, transcript, got)
+            )
+            return True
         print(
-            "EQUIVALENT  %s  %s%s"
-            % (os.path.basename(gold), got, "  [%s]" % prov if prov else "")
+            "STALE  %s: golden %s hashes the POSTs as sent; this tree replays raw %s with %s "
+            "divergence(s)" % (name, want, raw, ndiv)
         )
-        return
+        return False
+    if got == want:
+        print("EQUIVALENT  %s  %s%s" % (name, got, "  [%s]" % prov if prov else ""))
+        return True
     sys.stderr.write(err[-4000:] + "\n")
     now_brdc = _brdc_fingerprint(_pin_for(transcript))
     brdc_note = ""
@@ -412,18 +421,13 @@ def _check(transcript, gold):
             "concluding anything about the diff."
             % (prov.split("brdc ")[-1].split()[0], now_brdc)
         )
-    sys.exit(
+    print(
         "DIGEST MOVED  %s\n  golden %s%s\n  now    %s\nThe POST stream changed: the "
         "refactor is not behaviour-preserving.\nIf the change is intended, "
         "`bless` from a clean tree and commit the .digest with the code.%s"
-        % (
-            os.path.basename(gold),
-            want,
-            "  [%s]" % prov if prov else "",
-            got,
-            brdc_note,
-        )
+        % (name, want, "  [%s]" % prov if prov else "", got, brdc_note)
     )
+    return False
 
 
 def main():
@@ -520,8 +524,20 @@ def main():
     if a.action == "check":
         if extra:
             sys.exit("check takes a golden's flags from the golden itself")
-        for g in [gold] if a.variant else _goldens(a.transcript):
-            _check(a.transcript, g)
+        bad = [
+            g
+            for g in ([gold] if a.variant else _goldens(a.transcript))
+            if not _check(a.transcript, g)
+        ]
+        if bad:
+            sys.exit(
+                "%d of the goldens of %s did not pass: %s"
+                % (
+                    len(bad),
+                    os.path.basename(a.transcript),
+                    ", ".join(os.path.basename(g) for g in bad),
+                )
+            )
         return
 
     if a.action == "selftest":
