@@ -1565,7 +1565,7 @@ numa_{{ numa }}:
         kotekan_stage: frbNetworkSend
         in_buf: host_frb3_beams_buffer{{ numa_sfx }}
         offsetscale_buf: host_frb3_beams_offsetscale_buffer{{ numa_sfx }}
-        udp_frb_port_number: 1314 # change to 1313 (the L1 port) at deployment
+        udp_frb_port_number: 1313
         num_frequencies: num_local_freq # total number of *coarse* frequencies
         # The L1 nodes are on the VLANs 10.6.0.0/16 to 10.9.0.0/16; this node
         # needs an address on each of them.
@@ -1573,7 +1573,6 @@ numa_{{ numa }}:
         beam_offset: 0
         ping_dead_threshold: 30
         updatable_config: /frb/update_beam_offset
-        # From the legacy CHIME config
         L1_node_ips:
             # Rack 1
             - 10.6.201.10
