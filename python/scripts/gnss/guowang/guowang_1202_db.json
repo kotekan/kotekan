@@ -299,14 +299,15 @@
    "sep_deg": 0.86,
    "ref_input": 116,
    "drift_ns_s": 1.38,
-   "last_observed_utc": "2026-11-10T17:23:51Z",
-   "last_checked_utc": "2026-11-10T17:23:51Z",
-   "last_checked_sep_deg": 4.27,
-   "passes_found": 2,
+   "last_observed_utc": "2026-11-19T10:28:31Z",
+   "last_checked_utc": "2026-11-19T10:28:31Z",
+   "last_checked_sep_deg": 1.75,
+   "passes_found": 3,
    "passes_silent": 0,
    "passes": [
     ["2026-11-02T19:57:12Z", 0.56, true],
-    ["2026-11-10T17:23:51Z", 4.27, true]
+    ["2026-11-10T17:23:51Z", 4.27, true],
+    ["2026-11-19T10:28:31Z", 1.75, true]
    ]
   },
   "DIGUI-19": {
@@ -3622,14 +3623,15 @@
    "sep_deg": 2.01,
    "ref_input": 116,
    "drift_ns_s": 2.82,
-   "last_observed_utc": "2026-11-10T17:30:07Z",
-   "last_checked_utc": "2026-11-10T17:30:07Z",
-   "last_checked_sep_deg": 1.72,
-   "passes_found": 2,
+   "last_observed_utc": "2026-11-19T10:34:47Z",
+   "last_checked_utc": "2026-11-19T10:34:47Z",
+   "last_checked_sep_deg": 4.24,
+   "passes_found": 3,
    "passes_silent": 0,
    "passes": [
     ["2026-11-02T20:03:27Z", 2.06, true],
-    ["2026-11-10T17:30:07Z", 1.72, true]
+    ["2026-11-10T17:30:07Z", 1.72, true],
+    ["2026-11-19T10:34:47Z", 4.24, true]
    ]
   },
   "DIGUI-177": {
@@ -4072,24 +4074,25 @@
    "status": "transmitting",
    "catnum": 100364,
    "g2_phase": 390,
-   "theta_us": -16.8296,
-   "range_rate_m_s": 1304.8,
-   "replica_corr_ns": 28.371,
-   "carrier_minus_tle_ppb": 0.2,
-   "measured_utc": "2026-11-10T13:49:24Z",
-   "source": "2026-11-10 beam dump window 89 (gw_reduce, 63022 frames over 153 s)",
-   "sep_deg": 5.21,
+   "theta_us": -47.58,
+   "range_rate_m_s": 1088.85,
+   "replica": "stretched",
+   "orbit": "tle",
+   "carrier_minus_tle_ppb": -4.2,
+   "measured_utc": "2026-11-19T10:42:41Z",
+   "source": "2026-11-19 beam dump window 285 (gw_reduce, 64220 frames over 156 s)",
+   "sep_deg": 4.72,
    "ref_input": 116,
-   "drift_ns_s": -0.21,
-   "note": "inferred satellite: theta and ppb on its TLE moved +0.901 s along track (fitted to the carrier)",
-   "last_observed_utc": "2026-11-10T13:49:25Z",
-   "last_checked_utc": "2026-11-10T13:49:25Z",
-   "last_checked_sep_deg": 5.22,
-   "passes_found": 2,
+   "drift_ns_s": 4.06,
+   "last_observed_utc": "2026-11-19T10:42:42Z",
+   "last_checked_utc": "2026-11-19T10:42:42Z",
+   "last_checked_sep_deg": 4.71,
+   "passes_found": 3,
    "passes_silent": 0,
    "passes": [
     ["2026-11-05T10:53:59Z", 5.61, true],
-    ["2026-11-10T13:49:25Z", 5.22, true]
+    ["2026-11-10T13:49:25Z", 5.22, true],
+    ["2026-11-19T10:42:42Z", 4.71, true]
    ]
   },
   "DIGUI-202": {
