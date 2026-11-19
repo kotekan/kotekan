@@ -17,7 +17,7 @@
 #include <functional> // for bind, function
 #include <memory>     // for shared_ptr
 #include <mutex>      // for mutex, lock_guard
-#include <stdint.h>   // for int16_t
+#include <stdint.h>   // for int16_t, int8_t
 #include <string.h>   // for memcpy
 
 using kotekan::bufferContainer;
@@ -36,8 +36,8 @@ fftwEngine::fftwEngine(Config& config, const std::string& unique_name,
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
 
-    // Output is cfloat32 1-D regardless of input_type (we accept either int16
-    // reals or cint16 IQ pairs upstream, so in_buf's descriptor is intentionally
+    // Output is cfloat32 1-D regardless of input_type (we accept int16 reals or
+    // cint16 or cint8 IQ pairs upstream, so in_buf's descriptor is intentionally
     // left for the upstream producer to assert). out_buf's descriptor is declared
     // in config (kotekan_buffer: ndarray); require_frame_desc confirms it.
     out_buf->require_frame_desc();
@@ -49,8 +49,12 @@ fftwEngine::fftwEngine(Config& config, const std::string& unique_name,
         _real_input = true;
     } else if (input_type == "complex") {
         _real_input = false;
+    } else if (input_type == "complex_int8") {
+        _real_input = false;
+        _int8_input = true;
     } else {
-        FATAL_ERROR("fftwEngine: unknown input_type '{:s}'; expected 'complex' or 'real'.",
+        FATAL_ERROR("fftwEngine: unknown input_type '{:s}'; expected 'complex', 'complex_int8' "
+                    "or 'real'.",
                     input_type);
         return;
     }
@@ -62,14 +66,16 @@ fftwEngine::fftwEngine(Config& config, const std::string& unique_name,
                     _spectrum_length);
         return;
     }
-    // A transform reads 4 * spectrum_length bytes of int16 in either mode and writes
-    // spectrum_length fftwf_complex bins, so an output frame is twice the input frame.
-    const size_t transform_bytes = 4 * (size_t)_spectrum_length;
+    // A transform reads 4 * spectrum_length bytes of int16 in either mode (half that of
+    // int8 pairs) and writes spectrum_length fftwf_complex bins, so an output frame is
+    // twice the input frame (four times for int8).
+    const size_t transform_bytes = (_int8_input ? 2 : 4) * (size_t)_spectrum_length;
+    const size_t out_per_in = (sizeof(fftwf_complex) * _spectrum_length) / transform_bytes;
     if (in_buf->frame_size % transform_bytes != 0
-        || out_buf->frame_size != 2 * in_buf->frame_size) {
+        || out_buf->frame_size != out_per_in * in_buf->frame_size) {
         FATAL_ERROR("fftwEngine: in_buf frames ({:d} B) must hold whole transforms of {:d} B, "
-                    "and out_buf frames ({:d} B) must be twice their size.",
-                    in_buf->frame_size, transform_bytes, out_buf->frame_size);
+                    "and out_buf frames ({:d} B) must be {:d} times their size.",
+                    in_buf->frame_size, transform_bytes, out_buf->frame_size, out_per_in);
         return;
     }
 
@@ -141,7 +147,9 @@ void fftwEngine::main_thread() {
 
         const int samples_per_input_frame = in_buf->frame_size / BYTES_PER_SAMPLE;
 
-        if (_real_input) {
+        if (_int8_input) {
+            complex_transforms((const int8_t*)in_local, in_buf->frame_size / 2, out_local);
+        } else if (_real_input) {
             const int fft_len = _spectrum_length * 2;
             for (int j = 0; j < samples_per_input_frame; j += fft_len) {
                 DEBUG("Running real FFT, {:d}", in_local[j]);
@@ -162,38 +170,42 @@ void fftwEngine::main_thread() {
                 out_local += _spectrum_length;
             }
         } else {
-            // Complex IQ: each input sample is an int16 pair, so step by 2*_spectrum_length ints.
-            for (int j = 0; j < samples_per_input_frame / 2; j += _spectrum_length) {
-                DEBUG("Running complex FFT, {:d}", in_local[2 * j]);
-                if (_num_taps > 1) {
-                    for (int i = 0; i < _spectrum_length; i++) {
-                        _block_complex[i] =
-                            std::complex<float>(in_local[2 * (i + j)], in_local[2 * (i + j) + 1]);
-                    }
-                    pfb_push(_hist_complex.data(), _block_complex.data(), _spectrum_length,
-                             _num_taps);
-                    // fftwf_complex has the layout of std::complex<float> (FFTW manual, 4.1.1).
-                    pfb_fold(_hist_complex.data(), _proto.data(), _spectrum_length, _num_taps,
-                             reinterpret_cast<std::complex<float>*>(complex_samples));
-                } else {
-                    for (int i = 0; i < _spectrum_length; i++) {
-                        complex_samples[i][0] = in_local[2 * (i + j)];
-                        complex_samples[i][1] = in_local[2 * (i + j) + 1];
-                    }
-                }
-                fftwf_execute(fft_plan);
-                // Shift DC into the centre.
-                memcpy(out_local, spectrum + _spectrum_length / 2,
-                       sizeof(fftwf_complex) * _spectrum_length / 2);
-                memcpy(out_local + _spectrum_length / 2, spectrum,
-                       sizeof(fftwf_complex) * _spectrum_length / 2);
-                out_local += _spectrum_length;
-            }
+            complex_transforms(in_local, samples_per_input_frame / 2, out_local);
         }
 
         in_buf->mark_frame_empty(unique_name, frame_in);
         out_buf->mark_frame_full(unique_name, frame_out);
         frame_in = (frame_in + 1) % in_buf->num_frames;
         frame_out = (frame_out + 1) % out_buf->num_frames;
+    }
+}
+
+template<typename T>
+void fftwEngine::complex_transforms(const T* in_local, int num_samples, fftwf_complex* out_local) {
+    // Complex IQ: each input sample is a pair of T, so step by 2*_spectrum_length values.
+    for (int j = 0; j < num_samples; j += _spectrum_length) {
+        DEBUG("Running complex FFT, {:d}", in_local[2 * j]);
+        if (_num_taps > 1) {
+            for (int i = 0; i < _spectrum_length; i++) {
+                _block_complex[i] =
+                    std::complex<float>(in_local[2 * (i + j)], in_local[2 * (i + j) + 1]);
+            }
+            pfb_push(_hist_complex.data(), _block_complex.data(), _spectrum_length, _num_taps);
+            // fftwf_complex has the layout of std::complex<float> (FFTW manual, 4.1.1).
+            pfb_fold(_hist_complex.data(), _proto.data(), _spectrum_length, _num_taps,
+                     reinterpret_cast<std::complex<float>*>(complex_samples));
+        } else {
+            for (int i = 0; i < _spectrum_length; i++) {
+                complex_samples[i][0] = in_local[2 * (i + j)];
+                complex_samples[i][1] = in_local[2 * (i + j) + 1];
+            }
+        }
+        fftwf_execute(fft_plan);
+        // Shift DC into the centre.
+        memcpy(out_local, spectrum + _spectrum_length / 2,
+               sizeof(fftwf_complex) * _spectrum_length / 2);
+        memcpy(out_local + _spectrum_length / 2, spectrum,
+               sizeof(fftwf_complex) * _spectrum_length / 2);
+        out_local += _spectrum_length;
     }
 }
