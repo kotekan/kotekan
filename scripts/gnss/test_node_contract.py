@@ -128,8 +128,27 @@ def hosted_kinds(cfg):
     return kinds
 
 
+def check_live(cfg, what):
+    """live finds no difference on a node that registers what cfg restates, with each host's
+    /chains and paths that are no chain's."""
+    reply = {"GET": ["/status", "/metrics"], "POST": ["/kill"]}
+    hosts = {"/" + u for u in cfg if re.match(r"gnss\d+_(records|combine|telem)$", u)}
+    for p in set(nc.rest_surface(cfg)) | set(nc.indexed_surface(cfg)):
+        verb, path = p.split(" ", 1)
+        reply[verb].append(path)
+        if nc.INDEXED.search(path):
+            hosts.add(path.rsplit("/", 1)[0])
+    reply["GET"] += [h + "/chains" for h in hosts]
+    lines, bad = nc.live(reply, cfg)
+    check(
+        not bad, "%s: live on a node that registers its config (%s)" % (what, lines[:3])
+    )
+
+
 def check_indexed(snap, cfg, what):
-    """The paths by chain are exactly the per-chain paths of what cfg hosts, by host."""
+    """The paths by chain are exactly the per-chain paths of what cfg hosts, by host, and live
+    tells them apart."""
+    check_live(cfg, what)
     kinds = hosted_kinds(cfg)
     want = regrouped(snap["rest"], kinds)
     have = {(k, tuple(v)) for k, v in snap["indexed"].items()}
@@ -1008,8 +1027,19 @@ def test_test_only():
     )
 
 
+def test_diff_without_a_facet():
+    new = {f: {} for f in nc.FACETS}
+    new["rest"] = ["GET /gnss0_a_n2combine/get_status"]
+    old = {f: v for f, v in new.items() if f != "indexed"}
+    lines = nc.diff(old, new) + nc.diff(new, old)
+    check(
+        not lines, "diff reads a snapshot without a facet as empty there (%s)" % lines
+    )
+
+
 def main():
     test_test_only()
+    test_diff_without_a_facet()
     d = os.environ.get("GNSS_CONTRACT_BASELINE")
     if not d:
         if _fails:

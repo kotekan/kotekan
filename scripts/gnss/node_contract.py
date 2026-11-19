@@ -83,6 +83,9 @@ INJECT_VERBS = (
 # psi_sync_build: cudaGnssChordTrack waits for every Psi build on the GPU thread.
 TEST_ONLY = ("psi_sync_build",)
 PER_CHAIN = re.compile(r"_(inject|n2assemble|n2combine)/[^/]+$")
+# A hosted inject's paths. PER_CHAIN matches them too, as it would an untagged chain's inject
+# paths; the generator tags every chain.
+INJECT_HOST = re.compile(r"^/gnss\d+_inject/")
 INDEXED = re.compile(r"^/gnss\d+_(inject|records|combine)/(?!chains$)[^/]+$")
 IN_KEYS = ("in_buf", "in_bufs", "tiles_buf", "ctl_buf", "buf")
 OUT_KEYS = ("out_buf", "out_bufs", "cube_buf")
@@ -274,7 +277,7 @@ def endpoint_set(reply):
         "%s %s" % (verb, p)
         for verb in ("GET", "POST")
         for p in reply.get(verb, [])
-        if PER_CHAIN.search(p)
+        if PER_CHAIN.search(p) and not INJECT_HOST.match(p)
     }
 
 
@@ -286,6 +289,24 @@ def indexed_set(reply):
         for p in reply.get(verb, [])
         if INDEXED.search(p)
     }
+
+
+def live(reply, cfg):
+    """live's lines for a GET /endpoints reply against cfg, and whether they differ."""
+    lines, bad = [], False
+    for what, have, want in (
+        ("per-chain", endpoint_set(reply), rest_surface(cfg)),
+        ("by-chain", indexed_set(reply), set(indexed_surface(cfg))),
+    ):
+        for p in sorted(want - have):
+            lines.append("- %s  (in the config, not registered)" % p)
+        for p in sorted(have - want):
+            lines.append("+ %s  (registered, not in the config)" % p)
+        lines.append(
+            "%d %s paths registered, %d expected" % (len(have), what, len(want))
+        )
+        bad = bad or want != have
+    return lines, bad
 
 
 def _cube(u, scope, host):
@@ -568,8 +589,8 @@ def diff(a, b, allow=()):
     """One line per facet difference between snapshots a and b: '- key' (only in a), '+ key'
     (only in b) or '~ key: a -> b', key = 'facet: key ...'. Keys matching an allow pattern
     are left out."""
-    fa = dict(_flat({f: a.get(f) for f in FACETS}, ()))
-    fb = dict(_flat({f: b.get(f) for f in FACETS}, ()))
+    fa = dict(_flat({f: a.get(f, {}) for f in FACETS}, ()))
+    fb = dict(_flat({f: b.get(f, {}) for f in FACETS}, ()))
     out = []
     for k in sorted(set(fa) | set(fb)):
         va, vb = fa.get(k), fb.get(k)
@@ -633,18 +654,8 @@ def main():
     url = "http://%s:%d/endpoints" % (a.host, PORT)
     with urllib.request.urlopen(url, timeout=10) as r:
         reply = json.loads(r.read())
-    cfg = load(a.config)
-    bad = False
-    for what, have, want in (
-        ("per-chain", endpoint_set(reply), rest_surface(cfg)),
-        ("by-chain", indexed_set(reply), set(indexed_surface(cfg))),
-    ):
-        for p in sorted(want - have):
-            print("- %s  (in the config, not registered)" % p)
-        for p in sorted(have - want):
-            print("+ %s  (registered, not in the config)" % p)
-        print("%d %s paths registered, %d expected" % (len(have), what, len(want)))
-        bad = bad or want != have
+    lines, bad = live(reply, load(a.config))
+    print("\n".join(lines))
     return 1 if bad else 0
 
 
