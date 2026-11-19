@@ -1091,15 +1091,18 @@ rfi_first_stage_enabled:
     enabled: true
     valid_at_time_ns: 0
 
-# Updatable Config for second stage RFI excision.
+# Updatable Config for second stage RFI excision. A sub-integration is masked when 4 or more of
+# its 32 SK values are above 3 sigma (count > fraction * 32). Measured on the Oct 29/30 2026
+# baseband dumps: this masks under 0.1% of the sub-integrations in quiet channels, and the
+# unflagged samples it removes carry 15 to 2000 times the thermal variance.
 rfi_second_stage_enabled:
     kotekan_update_endpoint: json
-    enabled: false
+    enabled: true
     valid_at_time_ns: 0
 
 rfi_second_stage_thresholds:
     kotekan_update_endpoint: json
-    thresholds: []
+    thresholds: [{threshold: 3.0, fraction: 0.1}]
     valid_at_time_ns: 0
 
 # Updatable config for fringestopping in N2Accumulate; changes apply at the next bin start.
