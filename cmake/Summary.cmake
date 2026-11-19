@@ -195,6 +195,16 @@ if(DEFINED KOTEKAN_AIRSPY_ENABLED)
     set(_airspy_present "${KOTEKAN_AIRSPY_ENABLED}")
 endif()
 
+if(DEFINED KOTEKAN_BLADERF_REASON)
+    set(BLADERF_REASON "${KOTEKAN_BLADERF_REASON}")
+else()
+    set(BLADERF_REASON "disabled")
+endif()
+set(_bladerf_present OFF)
+if(DEFINED KOTEKAN_BLADERF_ENABLED)
+    set(_bladerf_present "${KOTEKAN_BLADERF_ENABLED}")
+endif()
+
 # Checks done; now print availability of various features
 
 # GPU
@@ -218,8 +228,9 @@ kfeature_row("LAPACK/Blaze" "${USE_LAPACK_BLAZE}" "${LAPACK_BLAZE_REASON}"
 
 # Other
 kfeature_header("Other")
-# Alphabetical: Airspy, DPDK, Julia, NUMA, OpenMP, OpenSSL
+# Alphabetical: Airspy, bladeRF, DPDK, Julia, NUMA, OpenMP, OpenSSL
 kfeature_row("Airspy" "${USE_AIRSPY}" "${AIRSPY_REASON}" "${_airspy_present}" USE_AIRSPY)
+kfeature_row("bladeRF" "${USE_BLADERF}" "${BLADERF_REASON}" "${_bladerf_present}" USE_BLADERF)
 # Note: When WITH_BOOST_TESTS=ON, DPDK is disabled to avoid linker issues
 kfeature_row("DPDK" "${USE_DPDK}" "${DPDK_REASON}" "${USE_DPDK}" USE_DPDK)
 kfeature_row("Julia" "${USE_JULIA}" "${JULIA_REASON}" "${USE_JULIA}" USE_JULIA)

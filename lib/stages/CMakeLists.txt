@@ -137,6 +137,12 @@ if(LIBAIRSPY_FOUND)
     endif()
 endif()
 
+if(LIBBLADERF_FOUND)
+    target_sources(kotekan_stages PRIVATE bladeRFInput.cpp)
+    target_include_directories(kotekan_stages SYSTEM PRIVATE ${LIBBLADERF_INCLUDE_DIR})
+    target_link_libraries(kotekan_stages PRIVATE ${LIBBLADERF_LIBRARIES})
+endif()
+
 if(FFTW_FOUND)
     target_sources(kotekan_stages PRIVATE fftwEngine.cpp)
     target_link_libraries(kotekan_stages PRIVATE ${FFTW_LIBRARIES})
