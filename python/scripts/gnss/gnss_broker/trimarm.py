@@ -102,12 +102,13 @@ def gather_batches(url, timeout=3.0):
     return True, None
 
 
-def read_gather(url):
-    """gather_batches(url), kept for half_targets, with an ERROR while the gather cannot batch."""
+def read_gather(url, at_start=False):
+    """gather_batches(url), kept for half_targets, with an ERROR while the gather cannot batch
+    (but at_start, where a gather without the leaf refuses the chain instead)."""
     ok, why = gather_batches(url, timeout=2.0)
     was = _gather.get(url)
     _gather[url] = (ok, time.monotonic())
-    if not ok:
+    if ok is None or (ok is False and not at_start):
         _log(
             "ERROR --fleet-trim-half-targets: the gather at %s cannot batch a GPU half's "
             "set_trim: %s -- its targets are the trackers' own set_trim until a read, every "

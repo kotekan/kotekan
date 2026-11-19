@@ -342,7 +342,7 @@ def main(argv=None, rx=None, publisher=None):
         and args.fleet_trim_url
         and not args.transcript_read
     ):
-        _ok, _why = trimarm.read_gather(args.fleet_trim_url)
+        _ok, _why = trimarm.read_gather(args.fleet_trim_url, at_start=True)
         if _ok is False:
             ap.error(
                 "--fleet-trim-half-targets: the gather at %s cannot batch a GPU half's "
