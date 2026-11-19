@@ -60,6 +60,15 @@ aggregator:
             - "GPS_L5_Q:131,133,135"
 
 common:
+    # Signal as index (F1-F7): each GPU half runs its chains as rows of one tiles and control
+    # array, with one inject, record, combine and telemetry host and one record buffer.
+    fold-epl: true
+    gpu-rows: true
+    inject-host: true
+    record-host: true
+    combine-host: true
+    telem-pack-host: true
+    half-rec-buf: true
     # Fleet lanes (docs/CHORD_FLEET_LANES.md): GnssN2Project takes lanes the relay carries from the
     # other nodes; fleet-lane-transfer is the relay's table (site-only, not a generator flag).
     fleet-lanes: true
