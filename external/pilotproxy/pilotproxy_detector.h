@@ -521,6 +521,56 @@ void PilotProxy_Compute_FusedFineMaskWithSupport_U64(
 int PilotProxy_Supports_FusedFineMaskWithSupport(void);
 
 /**
+ * @brief Form fine decision v2 for every batch entry.
+ *
+ * The datapath, arguments and outputs are those of
+ * PilotProxy_Compute_FusedFineMask_U64. Only the decision differs. The
+ * reference is the reference power den[b] = S_lo[b] + S_up[b] of zero-based
+ * rank cfar_rank over the bulk bins with den[b] > 0, and a designated bin
+ * fires when
+ *
+ *     2 S_target[bin] * 2^16 > multiplier_q16 * den_r.
+ *
+ * The acceptance test is bit-equality of the mask with
+ * pilot_proxy.fine_decision.fine_mask_decision_v2 over the same exact powers
+ * (tests/kernel/test_fused_mask_median_reference_gpu.py).
+ */
+void PilotProxy_Compute_FusedFineMaskV2_U64(
+    void* handle,
+    const InputType* w_in,
+    int anchor_bin,
+    int designated_half_width,
+    const unsigned long long* bulk_mask_words,
+    int cfar_rank,
+    unsigned long long multiplier_q16,
+    unsigned long long* d_fine_power_out,
+    int* d_mask_out,
+    unsigned long long* d_power_out,
+    int* d_row_sums_out);
+
+/**
+ * @brief Form fine decision v2 with the rank-support outputs of
+ *        PilotProxy_Compute_FusedFineMaskWithSupport_U64.
+ */
+void PilotProxy_Compute_FusedFineMaskV2WithSupport_U64(
+    void* handle,
+    const InputType* w_in,
+    int anchor_bin,
+    int designated_half_width,
+    const unsigned long long* bulk_mask_words,
+    int cfar_rank,
+    unsigned long long multiplier_q16,
+    unsigned long long* d_fine_power_out,
+    int* d_mask_out,
+    int* d_rank_valid_out,
+    int* d_n_bulk_out,
+    unsigned long long* d_power_out,
+    int* d_row_sums_out);
+
+/** @brief Return 1 when the fine decision v2 entry points are available. */
+int PilotProxy_Supports_FusedFineMaskV2(void);
+
+/**
  * @brief Query the frozen fine-reduction geometry (128 / 2 / 256).
  *
  * @note Any parameter can be NULL if not needed.

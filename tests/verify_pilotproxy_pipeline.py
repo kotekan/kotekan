@@ -185,9 +185,10 @@ def expected_row_projections(real, imag, weights_packed):
 def synthetic_calibration(bundle):
     """Write a synthetic fine calibration into every bundle profile.
 
-    The anchors alternate between an even and an odd fine bin. The bulk is every
-    second bin more than two fine bins from the anchor, so the designated set and
-    one independent bin on each side are excluded. Physical channel 37 keeps
+    The anchors alternate between an even and an odd fine bin, and the decision
+    version alternates in pairs of profiles. The bulk is every second bin more than
+    two fine bins from the anchor, so the designated set and one independent bin on
+    each side are excluded. Physical channel 37 keeps
     the status ``control``, as the detector requires. The calibration is for
     tests only.
     """
@@ -200,7 +201,9 @@ def synthetic_calibration(bundle):
         ]
         row["fine_calibration"] = {
             "status": "control" if row.get("physical_channel") == 37 else "calibrated",
-            "decision_version": "fine_decision_v1",
+            "decision_version": (
+                "fine_decision_v2" if index % 4 >= 2 else "fine_decision_v1"
+            ),
             "anchor_bin": anchor,
             "designated_half_width": half_width,
             "cfar_rank": len(bulk) // 2,
@@ -270,7 +273,7 @@ def expected_products(
     integer CFAR reference of PilotProxy. No GPU output is used to construct the
     expected products.
     """
-    from pilot_proxy.fine_decision import fine_mask_decision
+    from pilot_proxy.fine_decision import decision_functions
     from pilot_proxy.fxfft import fine_power_fx
 
     profiles = {
@@ -305,7 +308,8 @@ def expected_products(
             raise ValueError(
                 f"physical channel {profile['physical_channel']} is not calibrated"
             )
-        decision = fine_mask_decision(
+        decide, _ = decision_functions(calibration["decision_version"])
+        decision = decide(
             fine,
             anchor_bin=calibration["anchor_bin"],
             designated_half_width=calibration["designated_half_width"],

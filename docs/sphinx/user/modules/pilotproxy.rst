@@ -60,8 +60,12 @@ For each of the 256 fine bins, the core divides the power in a target cell at
 the pilot by the mean power in two reference cells beside it. A rank statistic
 of this ratio is taken over the bundle's bulk bins, and the block is
 rejected when the ratio in a bin at the pilot exceeds a calibrated multiple of
-that statistic. All of the arithmetic is exact integer arithmetic, and the GPU
-result matches the CPU reference bit for bit.
+that statistic. This is ``fine_decision_v1``. With ``fine_decision_v2``, the
+rank statistic is taken of the reference power over the bulk bins, and the block
+is rejected when the target power in a bin at the pilot exceeds a calibrated
+multiple of it. The ``decision_version`` of each bundle profile selects the
+test. All of the arithmetic is exact integer arithmetic, and the GPU result
+matches the CPU reference bit for bit.
 
 ``dtv_fine_support`` records the validity of each test. A row of ``(1, n)`` is
 a valid test with ``n`` bulk bins. A row of ``(0, n)`` has too few usable bulk

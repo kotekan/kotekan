@@ -124,6 +124,8 @@ public:
         int designated_half_width = 0;
         int cfar_rank = 0;
         unsigned long long multiplier_q16 = 0;
+        // fine_decision_v2 compares the largest target bin with the median reference
+        bool decision_v2 = false;
         std::array<unsigned long long, 4> bulk_mask_words{{0, 0, 0, 0}};
         void* detector_handle =
             nullptr; // PilotProxy_Create handle (d_in = d_packed), if calibrated
@@ -421,11 +423,13 @@ private:
                         && selection.value("qualification", "") == "archive_review_only";
                 }
             }
-            if (calibration.value("decision_version", "") != "fine_decision_v1")
+            const std::string decision_version = calibration.value("decision_version", "");
+            if (decision_version != "fine_decision_v1" && decision_version != "fine_decision_v2")
                 FATAL_ERROR("cudaPilotProxyDetector: unsupported fine "
                             "decision version for physical "
                             "channel {:d}",
                             profile.physical_channel);
+            profile.decision_v2 = decision_version == "fine_decision_v2";
             if (calibration_status != "pending_campaign" && calibration_status != "calibrated"
                 && calibration_status != "control")
                 FATAL_ERROR("cudaPilotProxyDetector: unknown fine "
@@ -521,7 +525,9 @@ private:
  * on CHORD and 16384 on CHIME.
  * Each bound pilot channel uses the fine CFAR mask and must have a calibrated
  * profile, or the stage stops at the first frame. An uncalibrated channel must be
- * removed from the bundle or listed in permanent_mask_freq_ids.
+ * removed from the bundle or listed in permanent_mask_freq_ids. The profile's
+ * decision_version selects the test: fine_decision_v1 ranks the bin ratios, and
+ * fine_decision_v2 ranks the reference powers and compares the target powers with it.
  *
  * dtv_mask holds one byte per frequency (1 = reject). dtv_powers holds the target,
  * lower-reference, and upper-reference frame powers as uint64, each the sum of the
@@ -1111,19 +1117,23 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
             reinterpret_cast<unsigned long long*>(powers_memory + 3 * channel.freq_index);
         // fine CFAR decision, with the frame powers saved for validation
         // the control row keeps support (-1,-1), so DtvRfiMask never clears channel 37
+        const auto with_support = profile.decision_v2
+                                      ? state.core->Compute_FusedFineMaskV2WithSupport_U64
+                                      : state.core->Compute_FusedFineMaskWithSupport_U64;
+        const auto without_support = profile.decision_v2 ? state.core->Compute_FusedFineMaskV2_U64
+                                                         : state.core->Compute_FusedFineMask_U64;
         if (support_memory && !profile.control) {
             // rank support does not cover packet loss or feed health
-            state.core->Compute_FusedFineMaskWithSupport_U64(
-                profile.detector_handle, weights, profile.anchor_bin, profile.designated_half_width,
-                profile.bulk_mask_words.data(), profile.cfar_rank, profile.multiplier_q16,
-                state.fine_power_scratch, state.mask_i32_scratch,
-                support_memory + 2 * channel.freq_index,
-                support_memory + 2 * channel.freq_index + 1, channel_powers, nullptr);
+            with_support(profile.detector_handle, weights, profile.anchor_bin,
+                         profile.designated_half_width, profile.bulk_mask_words.data(),
+                         profile.cfar_rank, profile.multiplier_q16, state.fine_power_scratch,
+                         state.mask_i32_scratch, support_memory + 2 * channel.freq_index,
+                         support_memory + 2 * channel.freq_index + 1, channel_powers, nullptr);
         } else {
-            state.core->Compute_FusedFineMask_U64(
-                profile.detector_handle, weights, profile.anchor_bin, profile.designated_half_width,
-                profile.bulk_mask_words.data(), profile.cfar_rank, profile.multiplier_q16,
-                state.fine_power_scratch, state.mask_i32_scratch, channel_powers, nullptr);
+            without_support(profile.detector_handle, weights, profile.anchor_bin,
+                            profile.designated_half_width, profile.bulk_mask_words.data(),
+                            profile.cfar_rank, profile.multiplier_q16, state.fine_power_scratch,
+                            state.mask_i32_scratch, channel_powers, nullptr);
         }
         if (const char* error = state.core->LastError(); error != nullptr && error[0] != '\0')
             FATAL_ERROR("PilotProxy fine detector failed for physical channel {:d}: {:s}",

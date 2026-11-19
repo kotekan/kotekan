@@ -931,6 +931,7 @@ kernel_fused_fine(
     unsigned long long bulk_mask_w3,
     int cfar_rank,
     unsigned long long multiplier_q16,
+    int decision_version,
     int num_streams,
     int detector_rows_per_block,
     int batch)
@@ -1195,7 +1196,14 @@ kernel_fused_fine(
                 if (!PILOTPROXY_BULK_BIT(j) || s_den[j] == 0ULL) {
                     continue;
                 }
-                if (pilotproxy_frac_less(s_num[j], s_den[j],
+                if (decision_version == 2) {
+                    /* Fine decision v2 ranks the reference powers. */
+                    if (s_den[j] < s_den[i]) {
+                        c_lt++;
+                    } else if (s_den[j] == s_den[i]) {
+                        c_eq++;
+                    }
+                } else if (pilotproxy_frac_less(s_num[j], s_den[j],
                                     s_num[i], s_den[i])) {
                     c_lt++;
                 } else if (!pilotproxy_frac_less(s_num[i], s_den[i],
@@ -1235,10 +1243,17 @@ kernel_fused_fine(
             const int bin = (anchor_bin - designated_half_width + t
                              + PILOTPROXY_FINE_NUM_BINS)
                             & (PILOTPROXY_FINE_NUM_BINS - 1);
-            if (s_den[bin] > 0ULL
-                && pilotproxy_triple_greater(
-                       s_num[bin], den_r, 1ULL << 16,
-                       multiplier_q16, num_r, s_den[bin])) {
+            /* Fine decision v2 reads the target against the reference of
+             * the rank alone, multiplier_q16 / 2^16 < num[bin] / den_r, as
+             * the exact ratio test multiplier_q16 * den_r < num[bin] * 2^16. */
+            const int hit = (decision_version == 2)
+                ? pilotproxy_frac_less(
+                      multiplier_q16, 1ULL << 16, s_num[bin], den_r)
+                : (s_den[bin] > 0ULL
+                   && pilotproxy_triple_greater(
+                          s_num[bin], den_r, 1ULL << 16,
+                          multiplier_q16, num_r, s_den[bin]));
+            if (hit) {
                 fired = 1;
             }
         }
@@ -1841,7 +1856,7 @@ void PilotProxy_Compute_FusedFine_U64(
         d_row_sums_out,
         NULL,            /* no decision epilogue */
         NULL, NULL,      /* no rank-support diagnostics */
-        0, 0, 0ULL, 0ULL, 0ULL, 0ULL, 0, 0ULL,
+        0, 0, 0ULL, 0ULL, 0ULL, 0ULL, 0, 0ULL, 1,
         num_streams,
         h->detector_rows_per_block,
         h->batch);
@@ -1872,7 +1887,8 @@ static void pilotproxy_compute_fused_fine_mask(
     int* d_rank_valid_out,
     int* d_n_bulk_out,
     unsigned long long* d_power_out,
-    int* d_row_sums_out)
+    int* d_row_sums_out,
+    int decision_version)
 {
     clear_last_error();
     PilotProxyHandle* h = static_cast<PilotProxyHandle*>(handle);
@@ -1957,6 +1973,7 @@ static void pilotproxy_compute_fused_fine_mask(
         bulk_mask_words[3],
         cfar_rank,
         multiplier_q16,
+        decision_version,
         num_streams,
         h->detector_rows_per_block,
         h->batch);
@@ -1976,7 +1993,18 @@ void PilotProxy_Compute_FusedFineMask_U64(
 {
     pilotproxy_compute_fused_fine_mask(handle, w_in, anchor_bin, designated_half_width,
         bulk_mask_words, cfar_rank, multiplier_q16, d_fine_power_out, d_mask_out,
-        nullptr, nullptr, d_power_out, d_row_sums_out);
+        nullptr, nullptr, d_power_out, d_row_sums_out, 1);
+}
+
+void PilotProxy_Compute_FusedFineMaskV2_U64(
+    void* handle, const InputType* w_in, int anchor_bin, int designated_half_width,
+    const unsigned long long* bulk_mask_words, int cfar_rank,
+    unsigned long long multiplier_q16, unsigned long long* d_fine_power_out,
+    int* d_mask_out, unsigned long long* d_power_out, int* d_row_sums_out)
+{
+    pilotproxy_compute_fused_fine_mask(handle, w_in, anchor_bin, designated_half_width,
+        bulk_mask_words, cfar_rank, multiplier_q16, d_fine_power_out, d_mask_out,
+        nullptr, nullptr, d_power_out, d_row_sums_out, 2);
 }
 
 void PilotProxy_Compute_FusedFineMaskWithSupport_U64(
@@ -1993,7 +2021,29 @@ void PilotProxy_Compute_FusedFineMaskWithSupport_U64(
     }
     pilotproxy_compute_fused_fine_mask(handle, w_in, anchor_bin, designated_half_width,
         bulk_mask_words, cfar_rank, multiplier_q16, d_fine_power_out, d_mask_out,
-        d_rank_valid_out, d_n_bulk_out, d_power_out, d_row_sums_out);
+        d_rank_valid_out, d_n_bulk_out, d_power_out, d_row_sums_out, 1);
+}
+
+void PilotProxy_Compute_FusedFineMaskV2WithSupport_U64(
+    void* handle, const InputType* w_in, int anchor_bin, int designated_half_width,
+    const unsigned long long* bulk_mask_words, int cfar_rank,
+    unsigned long long multiplier_q16, unsigned long long* d_fine_power_out,
+    int* d_mask_out, int* d_rank_valid_out, int* d_n_bulk_out,
+    unsigned long long* d_power_out, int* d_row_sums_out)
+{
+    clear_last_error();
+    if (d_rank_valid_out == nullptr || d_n_bulk_out == nullptr) {
+        record_api_error("rank validity and bulk count output pointers must be non-null.");
+        return;
+    }
+    pilotproxy_compute_fused_fine_mask(handle, w_in, anchor_bin, designated_half_width,
+        bulk_mask_words, cfar_rank, multiplier_q16, d_fine_power_out, d_mask_out,
+        d_rank_valid_out, d_n_bulk_out, d_power_out, d_row_sums_out, 2);
+}
+
+int PilotProxy_Supports_FusedFineMaskV2(void)
+{
+    return 1;
 }
 
 int PilotProxy_Supports_FusedFineMaskWithSupport(void)
