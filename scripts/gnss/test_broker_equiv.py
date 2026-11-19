@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""broker_equiv.py's own checks: what a replay runs under, what selftest replays, and what a
-bless calls dirty.
+"""broker_equiv.py's own checks: what a replay runs under, what selftest replays, what a
+bless calls dirty, and that the canonical check fails a request sent to another chain's row.
 
     python3 scripts/gnss/test_broker_equiv.py
 
-No broker runs here. replay() is driven with subprocess.run captured, selftest with replay()
-replaced, and _tree_state() against a throwaway git repository laid out like this one.
+replay() is driven with subprocess.run captured, selftest with replay() replaced, and
+_tree_state() against a throwaway git repository laid out like this one. The canonical check's
+cases replay broker_fake_rows.jsonl, changed copies of it, through the broker.
 """
 import contextlib
 import importlib.util
@@ -188,6 +189,59 @@ def test_replay_pins_the_boresight_a_recording_ran_under():
         )
 
 
+ROWS = os.path.join(HERE, "fixtures", "broker_fake_rows.jsonl")
+
+
+def _swap_chain(tmp, edit):
+    """A copy of the rows fixture with edit(records) applied; its path."""
+    with open(ROWS) as f:
+        recs = [json.loads(line) for line in f if line.strip()]
+    edit(recs)
+    path = os.path.join(tmp, os.path.basename(ROWS))
+    with open(path, "w") as f:
+        f.writelines(json.dumps(r) + "\n" for r in recs)
+    return path
+
+
+def test_a_request_to_another_chains_row_fails():
+    """The rows fixture replays to its golden with no divergence, and does not when one
+    recorded request names another chain's row, or when the broker sends one verb to another
+    chain's row (a tracker of its argv swapped)."""
+    want = be._read_gold(be._gold_path(ROWS))[0]
+    got, err = be.replay(ROWS)
+    check(
+        got == want and be._replay_tail(err)[1] == 0,
+        "the fixture replays to its golden with no divergence (%s)" % got[:16],
+    )
+
+    def recorded(recs):
+        r = next(
+            r for r in recs if r["k"] == "post" and "gnss1_gps_l5_inject" in r["u"]
+        )
+        r["u"] = r["u"].replace("gps_l5", "gal_e5a")
+        r["c"] = r["c"].replace("gps_l5", "gal_e5a")
+
+    def sent(recs):
+        v = recs[0]["v"]
+        i = v.index("--trackers") + 1
+        v[i] = v[i].replace(
+            "gnss{0..1}_gps_l5_inject",
+            "gnss0_gps_l5_inject,%s/gnss1_gal_e5a_inject" % v[i].split("/gnss", 1)[0],
+        )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        for what, edit in (
+            ("one recorded set_seeds names gal_e5a's row", recorded),
+            ("the broker sends set_seeds to gal_e5a's row", sent),
+        ):
+            got, err = be.replay(_swap_chain(tmp, edit))
+            check(
+                got != want and be._replay_tail(err)[1] > 0,
+                "%s: the digest moves (%s) and the replay diverges (%s)"
+                % (what, got[:16], be._replay_tail(err)[1]),
+            )
+
+
 def test_selftest_replays_the_flags_after_the_separator():
     """selftest under flags after -- must replay under them every time, as digest does."""
     calls = []
@@ -274,6 +328,7 @@ def main():
     test_replay_never_reaches_a_live_gather()
     test_replay_pins_the_igs_registry_snapshot()
     test_replay_pins_the_boresight_a_recording_ran_under()
+    test_a_request_to_another_chains_row_fails()
     test_selftest_replays_the_flags_after_the_separator()
     test_tree_state_covers_the_broker_imports()
     print("-" * 70)
@@ -281,7 +336,10 @@ def main():
         for f in _fails:
             print("FAIL: %s" % f)
         return 1
-    print("GATE GOOD: replay argv and registry pin, selftest flags, bless provenance")
+    print(
+        "GATE GOOD: replay argv and registry pin, selftest flags, bless provenance, "
+        "canonical check"
+    )
     return 0
 
 
