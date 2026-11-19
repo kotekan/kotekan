@@ -49,8 +49,10 @@ either fails. The psi_sync_build runs give no shifted cases, so they pass a pack
 scale rows by job, not by slot; only --async-build runs whose seeds ramp or reseed check that, and
 how many shifted cases they give depends on the builder's timing, so --min-shifted N fails a run
 with fewer. A pack that scales each record by its own energy fails only the controls, by the
-energy's change within the frame. digests.json records the run's arguments and the half's
-cpu_affinity.
+energy's change within the frame. With a hosted inject each row's own paths must count, in
+kotekan_gnss_rest_legacy_hits_total, exactly the requests the run sent there, from 0 at the start;
+the run exits 4 otherwise. digests.json records the run's arguments and the half's cpu_affinity,
+and endpoints.json the GET /endpoints reply.
 
 compare reports which (row, kind) digests differ between two runs over their digest frames
 (--all-frames: every digested frame). It fails unless both runs have the same rows and frames,
@@ -64,6 +66,7 @@ one gnss_row, a row naming no gnss_rows entry, a gnss_rows entry no row takes, a
 one REST path.
 """
 import argparse
+import collections
 import copy
 import hashlib
 import json
@@ -601,8 +604,20 @@ def rows_of(cfg):
     return half, corr, rows, synth_sink
 
 
+# Requests sent to each path, its query left out, for the legacy hit counters.
+SENT = collections.Counter()
+# The keys of an injector's own paths, each counted in kotekan_gnss_rest_legacy_hits_total.
+OWN_PATHS = (
+    "seed_endpoint",
+    "set_trim_endpoint",
+    "get_prns_endpoint",
+    "set_prns_endpoint",
+)
+
+
 def rest_raw(port, path, body=None, timeout=10):
     """(status, reply bytes) of GET path, or with body POST it."""
+    SENT[path.split("?")[0]] += 1
     url = f"http://127.0.0.1:{port}{path}"
     data = None if body is None else json.dumps(body).encode()
     req = urllib.request.Request(
@@ -813,6 +828,9 @@ def run(a):
         raise SystemExit("--midswap needs --reseed-at")
     cfg = load_config(a.config)
     half, corr, rows, synth_sink = rows_of(cfg)
+    hosted = any(
+        "chains" in c for c in cfg[half]["commands"] if c["name"] == "cudaGnssInject"
+    )
     spd = cfg["samples_per_data_set"]
     os.makedirs(a.outdir, exist_ok=True)
     raw = os.path.join(a.outdir, "raw")
@@ -894,6 +912,16 @@ def run(a):
             time.sleep(0.5)
         timing["startup_s"] = time.time() - t0
         ep = {r.name: r.cmd for r in rows}
+        # A hosted inject's own paths each count every request, shown at 0 from the start; an
+        # unhosted one has no counters.
+        own = [r.cmd[k] for r in rows for k in OWN_PATHS] if hosted else []
+        hit_problems = []
+        SENT.clear()
+        start = legacy_hits(port)
+        if start != {p: 0.0 for p in own}:
+            hit_problems.append(
+                f"at the start {len(start)} series: {sorted(start.items())[:4]}"
+            )
         bc = ByChain(rows) if a.by_chain else None
 
         def get_prns(r):
@@ -1033,6 +1061,12 @@ def run(a):
             with open(a.profile_out, "w") as f:
                 json.dump(prof, f, indent=1)
         hits = legacy_hits(port)
+        sent = {p: float(SENT[p]) for p in own}
+        for p in sorted(set(hits) | set(sent)):
+            if hits.get(p) != sent.get(p):
+                hit_problems.append(f"{p} counted {hits.get(p)}, sent {sent.get(p)}")
+        with open(os.path.join(a.outdir, "endpoints.json"), "w") as f:
+            json.dump(rest(port, "/endpoints"), f, indent=1)
     finally:
         try:
             rest(port, "/kill", timeout=5)
@@ -1120,6 +1154,7 @@ def run(a):
         "rows": [r.name for r in rows],
         "by_chain": bc.problems if bc else None,
         "legacy_hits": hits,
+        "legacy_hit_problems": hit_problems,
         "maps": maps,
         "prn_map_refused": refused,
         "warm": a.warm,
@@ -1157,6 +1192,9 @@ def run(a):
     if bc and bc.problems:
         print("by chain: " + "; ".join(bc.problems), file=sys.stderr)
         return 3
+    if hit_problems:
+        print("legacy hits: " + "; ".join(hit_problems), file=sys.stderr)
+        return 4
     return 2 if a.scale_r0 and out["scale_r0"]["verdict"] != "pass" else 0
 
 
