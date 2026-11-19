@@ -1061,7 +1061,7 @@ rfi_second_stage_thresholds:
 # A restart returns to this value, not to the last posted one.
 fringestop_enabled:
     kotekan_update_endpoint: json
-    enabled: false
+    enabled: true
     valid_at_time_ns: 0
 
 n2_accumulate:
@@ -1072,7 +1072,9 @@ n2_accumulate:
     input_order: CHORDBeamformer
     variance_mode: EvenOddPosDef
     bin_in_ERA: true
-    num_bins_per_rotation: 8640
+    # 21.04 s bins. A power of two for the mapmaker; fringestopping keeps the loss on the
+    # longest east-west baselines small at this length.
+    num_bins_per_rotation: 4096
     fringestop_updatable_config: /fringestop_enabled
     num_workers: 1
     rfi_first_stage_enabled_updatable_config: /rfi_first_stage_enabled

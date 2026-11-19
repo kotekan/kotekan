@@ -11,7 +11,7 @@
 # Depth of the subset receive buffer, in accumulation bins. hdf5N2Write writes a whole file
 # when it finalizes it (late_frame_grace_seconds after its last frame) and takes no frames
 # meanwhile: ~90 s for a 40-bin, 20 GB file. At buffer_depth (4 bins) the buffer filled after
-# ~45 s and bufferRecv dropped the next 3-4 bins of every file. 16 bins (160 s) covers the
+# ~45 s and bufferRecv dropped the next 3-4 bins of every file. 16 bins (337 s) covers the
 # stall with margin, at ~0.7 GB per bin (recv1 has 1 TB).
 {% set subset_recv_depth = 16 %}
 
