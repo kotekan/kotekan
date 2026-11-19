@@ -14,6 +14,7 @@ a stale bias must widen the search rather than narrow it.
 
 import statistics
 
+from gnss_broker import node_api
 from gnss_broker.transport import _now, _post, _log, _log_rl, axis_now_utc, now_utc_s
 from gnss_broker.sky import brdc_predict, nearest_boresight
 from gnss_broker import timebase
@@ -187,11 +188,10 @@ def stage_almanac_predict(ctx):
                 if _body:
                     _okc = 0
                     for _u2 in ctx.dll_combiners:
+                        _asm = _u2.replace("n2combine", "n2assemble")
                         try:
                             _post(
-                                "%s/set_sat_geometry"
-                                % _u2.replace("n2combine", "n2assemble"),
-                                _body,
+                                *node_api.post_request(_asm, "set_sat_geometry", _body),
                                 timeout=2.0,
                             )
                             _okc += 1

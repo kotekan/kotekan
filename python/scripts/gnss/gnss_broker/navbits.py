@@ -19,6 +19,7 @@ cadence (the decode-health export, --decode-health-file), so a drift shows as a 
 @author Keith Vanderlinde
 """
 
+from gnss_broker import node_api
 from gnss_broker.transport import _now, _get, _log, _log_rl
 from gnss_broker.sky import (
     _lnav_brdc_xcheck,
@@ -79,7 +80,7 @@ def stage_nav_bits(ctx):
             try:
                 _aux = {
                     int(r["prn"]): r
-                    for r in _get("%s/get_status" % ctx.nav.cnav_combiner)
+                    for r in _get(node_api.url(ctx.nav.cnav_combiner, "get_status"))
                     if r.get("prn")
                 }
             except Exception as e:
@@ -102,7 +103,7 @@ def stage_nav_bits(ctx):
             try:
                 _iaux = {
                     int(r["prn"]): r
-                    for r in _get("%s/get_status" % ctx.nav.inav_combiner)
+                    for r in _get(node_api.url(ctx.nav.inav_combiner, "get_status"))
                     if r.get("prn")
                 }
             except Exception as e:
@@ -157,7 +158,7 @@ def stage_nav_bits(ctx):
             try:
                 _faux = {
                     int(r["prn"]): r
-                    for r in _get("%s/get_status" % ctx.nav.fnav_combiner)
+                    for r in _get(node_api.url(ctx.nav.fnav_combiner, "get_status"))
                     if r.get("prn")
                 }
             except Exception as e:
@@ -205,7 +206,7 @@ def stage_nav_bits(ctx):
             try:
                 _baux = {
                     int(r["prn"]): r
-                    for r in _get("%s/get_status" % ctx.nav.bcnav2_combiner)
+                    for r in _get(node_api.url(ctx.nav.bcnav2_combiner, "get_status"))
                     if r.get("prn")
                 }
             except Exception as e:
@@ -257,7 +258,7 @@ def stage_nav_bits(ctx):
             try:
                 _c1aux = {
                     int(r["prn"]): r
-                    for r in _get("%s/get_status" % ctx.nav.bcnav1_combiner)
+                    for r in _get(node_api.url(ctx.nav.bcnav1_combiner, "get_status"))
                     if r.get("prn")
                 }
             except Exception as e:
@@ -309,7 +310,7 @@ def stage_nav_bits(ctx):
             try:
                 _c2aux = {
                     int(r["prn"]): r
-                    for r in _get("%s/get_status" % ctx.nav.cnav2_combiner)
+                    for r in _get(node_api.url(ctx.nav.cnav2_combiner, "get_status"))
                     if r.get("prn")
                 }
             except Exception as e:

@@ -37,6 +37,7 @@ import math
 import os
 import statistics
 import sys
+import threading
 import time
 
 # -- frame0 guard -----------------------------------------------------------------------
@@ -75,6 +76,7 @@ from gnss_broker.transport import (  # noqa: E402
     record_cycle,
     NodeDown,
 )
+from gnss_broker import node_api  # noqa: E402
 from gnss_broker import nodehealth  # noqa: E402
 from gnss_broker import sky as _sky  # noqa: E402
 from gnss_broker import telem as _telem  # noqa: E402
@@ -122,6 +124,11 @@ from gnss_broker import signals  # noqa: E402
 from gnss_broker import receiver  # noqa: E402
 from gnss_broker.state_filter import SatBiasFilter  # noqa: E402
 from gnss_broker.sky import _dh_dpos  # noqa: E402
+
+# The --node-hosts of this process's first chain. node_api's hosts are process-wide and
+# broker_multi runs every chain in one process, so a chain that names other hosts is refused.
+_NODE_HOSTS = []
+_NODE_HOSTS_LOCK = threading.Lock()
 
 
 def main(argv=None, rx=None, publisher=None):
@@ -316,6 +323,31 @@ def main(argv=None, rx=None, publisher=None):
         # only the feed can bring that below infinity
 
     base = args.rest_url.rstrip("/")
+    # The GPU halves whose hosts serve their rows by chain: the fleet's, so every chain of one
+    # process names the same ones.
+    _hosts = frozenset(parse_endpoints(args.node_hosts, base))
+    with _NODE_HOSTS_LOCK:
+        if _NODE_HOSTS and _NODE_HOSTS[0] != _hosts:
+            ap.error("--node-hosts differs from another chain's in this process")
+        try:
+            node_api.set_hosts(_hosts)
+        except ValueError as e:
+            ap.error("--node-hosts: %s" % e)
+        _NODE_HOSTS[:] = [_hosts]
+    # A gather whose document lacks rest/fleet_trim_batch would refuse every policy POST that
+    # names a half. One that cannot be read yet is read again; until then its targets are the
+    # trackers' own (trimarm.half_targets).
+    if (
+        args.fleet_trim_half_targets
+        and args.fleet_trim_url
+        and not args.transcript_read
+    ):
+        _ok, _why = trimarm.read_gather(args.fleet_trim_url, at_start=True)
+        if _ok is False:
+            ap.error(
+                "--fleet-trim-half-targets: the gather at %s cannot batch a GPU half's "
+                "set_trim: %s" % (args.fleet_trim_url, _why)
+            )
     detectors = parse_endpoints(args.detectors, base)
     trackers = parse_endpoints(args.trackers, base)
     combiner = resolve_prefix(args.combiner, base)
@@ -2431,7 +2463,7 @@ def main(argv=None, rx=None, publisher=None):
         ok, down = 0, 0
         for t_ep in trackers:
             try:
-                _post("%s/set_seeds" % t_ep, _ctx.payload)
+                _post(*node_api.post_request(t_ep, "set_seeds", _ctx.payload))
                 ok += 1
             except NodeDown:
                 down += 1  # logged once, by the tracker
@@ -2470,8 +2502,14 @@ if __name__ == "__main__":
         # Normal end of a replay: the recording ran out. Print the digest on stdout so a
         # bare --transcript-read is useful without the harness.
         _log(
-            "transcript replay complete (%s); %d posts, digest %s"
-            % (e, len(_TR.posts), _TR.digest())
+            "transcript replay complete (%s); %d posts, digest %s raw %s divergences %d"
+            % (
+                e,
+                len(_TR.raw_posts),
+                _TR.digest(),
+                _TR.digest(raw=True),
+                _TR.divergences,
+            )
         )
         print(_TR.digest())
     finally:

@@ -7,7 +7,9 @@
 
 The manifest holds every node's config/gen_chord_gnss_config.py flags, so each config can be
 reproduced from a committed file; a node's config is regenerated, never hand-edited. Its
-`nodes:` is the fleet list (config/gnss_fleet.py): the nodes written are its hosts, each node's
+`chains:` is the chains table (config/gnss_chain_table.py): every row but the primary goes to
+the generator as --extra-signal DESCRIPTOR:PRNS, after `common:`'s flags. Its `nodes:` is the
+fleet list (config/gnss_fleet.py): the nodes written are its hosts, each node's
 search-port-base comes from its slot, and the search aggregator's config (the manifest's
 `aggregator:` block) is written from the same list, so a node joining or leaving is one line
 there and one run of this.
@@ -28,6 +30,7 @@ that cannot run, a crash here).
 BRDC.
 """
 import argparse
+import ast
 import difflib
 import json
 import os
@@ -49,6 +52,7 @@ OUTDIR = os.path.join(K, "config", "generated")
 sys.path.append(os.path.join(K, "python", "scripts", "gnss"))
 sys.path.insert(0, os.path.join(K, "config"))
 import kotekan_src  # noqa: E402
+import gnss_chain_table  # noqa: E402
 import gnss_fleet  # noqa: E402
 
 CHAINS = os.path.join(K, "config", "gnss_chains_chord.yaml")
@@ -156,15 +160,41 @@ def _relay_notes(node, stderr):
             sys.stderr.write("%s: %s\n" % (node, line))
 
 
-def flags_from(mapping):
+def negatable_flags(path=GEN):
+    """The generator's flags that argparse.BooleanOptionalAction gives a --no- form, read from
+    its source."""
+    with open(path) as fh:
+        tree = ast.parse(fh.read(), path)
+    flags = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        actions = [ast.unparse(k.value) for k in node.keywords if k.arg == "action"]
+        if actions == ["argparse.BooleanOptionalAction"]:
+            for a in node.args:
+                if isinstance(a, ast.Constant) and str(a.value).startswith("--"):
+                    flags.add(a.value[2:])
+    return flags
+
+
+def flags_from(mapping, negatable=()):
     """Manifest keys -> generator flags, same convention as gnss_chains_chord.yaml:
     true -> a bare flag, false/None -> omitted, anything else -> --key value.
 
     A list repeats the flag, as argparse's action="append" expects:
     `extra-signal: [A, B]` -> `--extra-signal A --extra-signal B`.
+
+    A flag with a --no- form (`negatable`, from negatable_flags) is turned off by that form,
+    `no-<key>: true`. `<key>: false` would be omitted and leave the generator's default, so it
+    is refused.
     """
     out = []
     for k, v in mapping.items():
+        if v is False and k in negatable:
+            raise SystemExit(
+                "manifest key %s: false is omitted, which leaves the generator's default; "
+                "write no-%s: true to turn it off" % (k, k)
+            )
         if v is False or v is None:
             continue
         for item in v if isinstance(v, (list, tuple)) else [v]:
@@ -174,10 +204,15 @@ def flags_from(mapping):
     return out
 
 
-def common_flags(man):
-    """The manifest's `common:` as generator flags, less the keys only site services read."""
+def common_flags(man, negatable=()):
+    """The manifest's `common:` as generator flags, less the keys only site services read, then
+    an --extra-signal DESCRIPTOR:PRNS per row of the chains table but the first, the primary,
+    which the generator builds on its own."""
     common = man.get("common") or {}
-    return flags_from({k: v for k, v in common.items() if k not in gnss_fleet.SITE_KEYS})
+    extra = ["%s:%s" % (r.descriptor, r.prns) for r in gnss_chain_table.rows(man)[1:]]
+    return flags_from(
+        {k: v for k, v in common.items() if k not in gnss_fleet.SITE_KEYS}, negatable
+    ) + flags_from({"extra-signal": extra})
 
 
 # ---- PRN content gate (--check-prns) -------------------------------------------------------
@@ -226,14 +261,13 @@ def check_prns(man, rise_deg=RISE_DEG, hours=24.0, step_min=10.0):
 
     lists = {}
     fdma_k = {}  # FDMA chains (PRN@k): {name: {slot: k}}
-    for ent in man.get("common", {}).get("extra-signal") or []:
-        name, _, prn_s = str(ent).partition(":")
-        prns, ks = parse_slots(prn_s)
-        lists[name] = sorted(prns)
+    for row in gnss_chain_table.rows(man)[1:]:
+        prns, ks = parse_slots(row.prns)
+        lists[row.descriptor] = sorted(prns)
         if ks:
-            fdma_k[name] = dict(zip(prns, ks))
+            fdma_k[row.descriptor] = dict(zip(prns, ks))
     if not lists:
-        print("no extra-signal PRN lists in the manifest -- nothing to check")
+        print("no chains but the primary in the manifest -- nothing to check")
         return 0
 
     # Chains whose broker block sets probe-dark (config/gnss_chains_chord.yaml): only there is a
@@ -360,20 +394,21 @@ def check_prns(man, rise_deg=RISE_DEG, hours=24.0, step_min=10.0):
     return 1 if bad else 0
 
 
-_COMBINE = re.compile(r"^gnss(\d+)_\w*n2combine$")
+_ASSEMBLE = re.compile(r"^gnss(\d+)_\w*n2assemble$")
 
 
 def built_instances(text):
-    """{chain: {gpu}} of the chains a generated node config builds: one n2combine stage per
-    chain instance (gnss<g><tag>_n2combine, read by gnss_fleet.stage_chain)."""
+    """{chain: {gpu}} of the chains a generated node config builds: one record assembler per
+    chain instance (gnss<g><tag>_n2assemble, a stage of its own or a row of gnss<g>_records:
+    gnss_fleet.assembler_rows), read by gnss_fleet.stage_chain."""
     cfg = yaml.load(
         _split_header(text)[1], Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader)
     )
     out = {}
-    for k in cfg or {}:
-        m = _COMBINE.match(str(k))
+    for k, _ in gnss_fleet.assembler_rows(cfg):
+        m = _ASSEMBLE.match(k)
         if m:
-            chain = gnss_fleet.stage_chain(str(k), "n2combine")
+            chain = gnss_fleet.stage_chain(k, "n2assemble")
             out.setdefault(chain, set()).add(int(m.group(1)))
     return out
 
@@ -389,17 +424,24 @@ def derived_instances(fleet, host):
 
 
 def check_chains(fleet, path=CHAINS):
-    """Problems with the chains yaml against the fleet list, as lines (empty = none): a node
-    endpoint key written by hand rather than `fleet`, or an expanded URL on a host outside
-    the fleet."""
+    """Problems with the chains yaml against the fleet list and the chains table, as lines
+    (empty = none): a node endpoint key written by hand rather than `fleet`, node-hosts outside
+    `common:`, an expanded URL on a host outside the fleet, a dll-spacing written in the yaml, a
+    chain without a table row, or a row the broker runs no chain for."""
     with open(path) as f:
         raw = yaml.safe_load(f) or {}
     keys = set(gnss_fleet.URL_KEYS) | set(gnss_fleet.SINGLE_KEYS)
+    keys.add(gnss_fleet.HOSTS_KEY)
     bad = []
     common = raw.get("common") or {}
     for where, block in [("common", common)] + [
         ("chains." + c, v or {}) for c, v in (raw.get("chains") or {}).items()
     ]:
+        if where != "common" and gnss_fleet.HOSTS_KEY in block:
+            bad.append(
+                "%s: %s is the fleet's, set in common: alone (every chain of a broker "
+                "process asks the same hosts)" % (where, gnss_fleet.HOSTS_KEY)
+            )
         for k in sorted(keys & set(block)):
             v = block[k]
             if v is None or v == gnss_fleet.FLEET:
@@ -407,6 +449,21 @@ def check_chains(fleet, path=CHAINS):
             bad.append(
                 "%s: %s is written by hand (%s); set it to `fleet` so it follows the "
                 "fleet list" % (where, k, str(v)[:60])
+            )
+    try:
+        gnss_fleet.table_keys(raw, fleet.chains)
+    except gnss_fleet.FleetError as e:
+        bad.append(str(e))
+    common_signal = (raw.get("common") or {}).get("signal")
+    run = {
+        str((v or {}).get("signal", common_signal or c))
+        for c, v in (raw.get("chains") or {}).items()
+    }
+    for r in fleet.chains:
+        if r.key not in run:
+            bad.append(
+                "chains table row %s: the nodes build it and the chains yaml runs no "
+                "chain for it" % r.key
             )
     try:
         cfg = gnss_fleet.expand_chains(raw, fleet)
@@ -470,7 +527,7 @@ def check_combs(fleet, hosts):
     return out
 
 
-def aggregator_cmd(man, fleet, base_dir):
+def aggregator_cmd(man, fleet, base_dir, negatable=()):
     """(generator argv, output path) for the manifest's aggregator: block, or None."""
     agg = man.get("aggregator")
     if not agg:
@@ -484,7 +541,7 @@ def aggregator_cmd(man, fleet, base_dir):
         [sys.executable, GEN, "--base", base, "--node", fleet.hosts[0]]
         + ["--aggregator-instance"]
         + feeds
-        + flags_from(agg.pop("flags", None) or {})
+        + flags_from(agg.pop("flags", None) or {}, negatable)
     )
     if agg:
         raise SystemExit("aggregator: unknown keys %s" % ", ".join(sorted(agg)))
@@ -540,7 +597,7 @@ def main():
     ap.add_argument(
         "--check-prns",
         action="store_true",
-        help="check the manifest's extra-signal PRN lists against live BRDC and a 24 h "
+        help="check the chains table's PRN lists (but the primary's) against live BRDC and a 24 h "
         "visibility sweep, and exit: reports dead slots (no active satellite; warn), "
         "dark slots on a probe-dark chain (noted), and active, capable satellites that "
         "rise above 10 deg here without a slot (fail, exit 1). Not part of --check, "
@@ -578,7 +635,8 @@ def main():
         )
         raise SystemExit(2)
     suffix = man.get("suffix", "")
-    common = common_flags(man)
+    negatable = negatable_flags()
+    common = common_flags(man, negatable)
     # Every config, written or checked, is diffed against the stock render (stock_parity.py);
     # an undeclared difference stops a write and fails --check. Rendered once here.
     stock_ref = stock_parity.render_stock(base)
@@ -632,7 +690,7 @@ def main():
             [sys.executable, GEN, "--base", base, "--node", node]
             + common
             + ["--search-port-base", str(fleet.search_port_base(node))]
-            + flags_from(fleet.gen_flags(node))
+            + flags_from(fleet.gen_flags(node), negatable)
         )
 
         if a.print_cmd:
@@ -761,7 +819,11 @@ def main():
 
     # The search aggregator, from the same fleet list. Not a node config: no stock parity and
     # no live values, so it compares byte for byte (the interface stamp aside).
-    agg = aggregator_cmd(man, fleet, a.preview_dir or OUTDIR) if not a.node else None
+    agg = (
+        aggregator_cmd(man, fleet, a.preview_dir or OUTDIR, negatable)
+        if not a.node
+        else None
+    )
     if agg:
         cmd, out = agg
         if a.print_cmd:

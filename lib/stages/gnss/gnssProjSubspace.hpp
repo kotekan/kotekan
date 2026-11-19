@@ -430,9 +430,12 @@ struct ProjEntry {
 /// chain measures applies to the others directly, matched by freq_id, never by position. No
 /// same-record rendezvous is needed: a direction a second old still nulls to ~-30 dB, so
 /// readers use every entry younger than max_age_s. One mutex; writers copy k x n
-/// complex<float> per channel per record.
+/// complex<float> per channel per record. Tests may build their own.
 class ProjBoard {
 public:
+    using Key = std::tuple<std::string, int, std::string>; ///< (group, freq_id, owner)
+
+    ProjBoard() = default;
     static ProjBoard& instance() {
         static ProjBoard b;
         return b;
@@ -470,11 +473,15 @@ public:
             f(e);
         }
     }
+    /// A copy of every entry, in key order, taken under the lock.
+    std::vector<std::pair<Key, ProjEntry>> snapshot() const {
+        std::lock_guard<std::mutex> lk(_m);
+        return {_e.begin(), _e.end()};
+    }
 
 private:
-    ProjBoard() = default;
     mutable std::mutex _m;
-    std::map<std::tuple<std::string, int, std::string>, ProjEntry> _e;
+    std::map<Key, ProjEntry> _e;
 };
 
 } // namespace gnss

@@ -16,6 +16,8 @@ import urllib.error
 import urllib.parse
 from datetime import datetime, timezone
 
+from . import node_api
+
 
 # ---------------------------------------------------------------------------------------
 # DNS cache. Every new HTTP connection resolves its host name, and the broker host's resolver
@@ -178,6 +180,33 @@ def http_request(method, url, timeout, data=None, headers=None):
         return r.status, body
 
 
+_by_row_logged = {}  # host base -> time.monotonic() of its last by_row WARN
+
+
+def _row_request(method, url, timeout, payload=None, data=None):
+    """http_request of a GET, or of a POST of data, payload as JSON. A 404 from a GPU half's host
+    asked by chain is asked again at the row's own path (node_api.by_row): the node runs an older
+    form or binary than --node-hosts says, and serves the rows' own paths."""
+    hdr = None if method == "GET" else {"Content-Type": "application/json"}
+    try:
+        return http_request(method, url, timeout, data=data, headers=hdr)
+    except urllib.error.HTTPError as e:
+        alt = node_api.by_row(url, payload) if e.code == 404 else None
+        if alt is None:
+            raise
+    alt_url, alt_payload, base = alt
+    if time.monotonic() - _by_row_logged.get(base, -1e9) >= 600.0:
+        _by_row_logged[base] = time.monotonic()
+        _log(
+            "WARN %s answered 404: %s does not serve its rows by chain (an older form or "
+            "binary than --node-hosts), so they are asked at their own paths, %s first, and by "
+            "chain again in %.0f s" % (url, base, alt_url, node_api.BY_ROW_S)
+        )
+    if method != "GET":
+        data = json.dumps(alt_payload).encode()
+    return http_request(method, alt_url, timeout, data=data, headers=hdr)
+
+
 # ---------------------------------------------------------------------------------------
 # The interface fence (gnss_broker/iface_watch.py). In enforce mode the interface watcher fences
 # a node origin whose kotekan disagrees with the golden this broker speaks, and it then looks
@@ -313,7 +342,11 @@ class _Transcript:
         # threads, each on its own cycle, and a shared clock would stamp chain A's cycle with
         # chain B's instant, which looks like clock jitter rather than a data race.
         self._t = threading.local()
-        self.posts = []  # replay+record: the ordered POST stream (the gate output)
+        # replay+record: the ordered POST stream (the gate output), each request named alike at a
+        # row's own path or by chain (node_api.canonical), with a mark for every divergence
+        self.posts = []
+        self.raw_posts = []  # the same POSTs as sent, for a golden of the raw stream
+        self.divergences = 0
         self.argv = None  # the recording run's own argv, carried in the header
 
     # -- lifecycle ------------------------------------------------------------------
@@ -342,8 +375,13 @@ class _Transcript:
                 r = json.loads(line)
                 if r["k"] == "argv":
                     self.argv = r["v"]
-                else:
-                    self._rd[r["k"]].append(r)
+                    continue
+                if "c" in r and not node_api.names(r["u"], r["c"]):
+                    raise ValueError(
+                        "%s: %s #%d was sent to %s, which %s does not name"
+                        % (path, r["k"], len(self._rd[r["k"]]), r["u"], r["c"])
+                    )
+                self._rd[r["k"]].append(r)
 
     def close(self):
         if self._fh:
@@ -365,6 +403,25 @@ class _Transcript:
             raise _TranscriptDone("%s stream exhausted after %d entries" % (kind, i))
         self._ix[kind] = i + 1
         return self._rd[kind][i]
+
+    def _check(self, kind, rec, key):
+        """Raise on a request whose canonical name is not the recorded one's, after marking the
+        POST stream so the digest cannot match a replay that kept to the recording."""
+        want = rec.get("c") or node_api.canonical(rec["u"])[0]
+        if want == key:
+            return
+        i = self._ix[kind] - 1
+        self.divergences += 1
+        self.posts.append(("TRANSCRIPT DIVERGENCE", json.dumps([kind, i, want, key])))
+        raise RuntimeError(
+            "TRANSCRIPT DIVERGENCE at %s #%d: recorded %s, replay %s %s"
+            % (kind, i, want, "asked for" if kind == "get" else "sent to", key)
+        )
+
+    def _write(self, rec, key):
+        if key != rec["u"]:
+            rec["c"] = key
+        self._emit(rec)
 
     # -- clock ----------------------------------------------------------------------
     def tick(self):
@@ -393,11 +450,7 @@ class _Transcript:
     def get(self, url, timeout):
         if self.mode == "read" and self._mine():
             r = self._take("get")
-            if r["u"] != url:
-                raise RuntimeError(
-                    "TRANSCRIPT DIVERGENCE at get #%d: recorded %s, replay "
-                    "asked for %s" % (self._ix["get"] - 1, r["u"], url)
-                )
+            self._check("get", r, node_api.canonical(url)[0])
             if r.get("e"):
                 raise RuntimeError(r["e"])
             return r["r"]
@@ -407,7 +460,7 @@ class _Transcript:
                 raise IfaceRefused("%s: fenced by the interface watcher" % url)
             _node_check(url)
             try:
-                _st, _body = http_request("GET", url, timeout)
+                _st, _body = _row_request("GET", url, timeout)
             except Exception as _e:
                 _node_note(url, False, _e)
                 raise
@@ -418,10 +471,13 @@ class _Transcript:
             _http_record("get", url, time.perf_counter() - _t0, False)
             _iface_failed(url, e)
             if self._mine() and self.mode == "write":
-                self._emit({"k": "get", "u": url, "r": None, "e": repr(e)})
+                self._write(
+                    {"k": "get", "u": url, "r": None, "e": repr(e)},
+                    node_api.canonical(url)[0],
+                )
             raise
         if self._mine() and self.mode == "write":
-            self._emit({"k": "get", "u": url, "r": v})
+            self._write({"k": "get", "u": url, "r": v}, node_api.canonical(url)[0])
         return v
 
     def post(self, url, payload, timeout):
@@ -431,14 +487,12 @@ class _Transcript:
         # Only while a transcript is open: nothing drains `posts`, so a live broker would grow
         # it without bound, and digest() is read only at the end of a replay.
         if self.mode is not None:
-            self.posts.append((url, json.dumps(payload, sort_keys=True)))
+            key, body = node_api.canonical_text(url, payload)
+            self.posts.append((key, body))
+            self.raw_posts.append((url, json.dumps(payload, sort_keys=True)))
         if self.mode == "read" and self._mine():
             r = self._take("post")
-            if r["u"] != url:
-                raise RuntimeError(
-                    "TRANSCRIPT DIVERGENCE at post #%d: recorded %s, replay "
-                    "sent to %s" % (self._ix["post"] - 1, r["u"], url)
-                )
+            self._check("post", r, key)
             if r.get("e"):
                 raise RuntimeError(r["e"])
             return r["s"]
@@ -449,13 +503,7 @@ class _Transcript:
                 raise IfaceRefused("%s: fenced by the interface watcher" % url)
             _node_check(url)
             try:
-                s = http_request(
-                    "POST",
-                    url,
-                    timeout,
-                    data=data,
-                    headers={"Content-Type": "application/json"},
-                )[0]
+                s = _row_request("POST", url, timeout, payload, data)[0]
             except Exception as _e:
                 _node_note(url, False, _e)
                 raise
@@ -465,16 +513,18 @@ class _Transcript:
             _http_record("post", url, time.perf_counter() - _t0, False)
             _iface_failed(url, e)
             if self._mine() and self.mode == "write":
-                self._emit({"k": "post", "u": url, "s": None, "e": repr(e)})
+                self._write({"k": "post", "u": url, "s": None, "e": repr(e)}, key)
             raise
         if self._mine() and self.mode == "write":
-            self._emit({"k": "post", "u": url, "s": s})
+            self._write({"k": "post", "u": url, "s": s}, key)
         return s
 
-    def digest(self):
-        """Hash of the ordered POST stream -- the equivalence gate's single number."""
+    def digest(self, raw=False):
+        """Hash of the ordered POST stream -- the equivalence gate's single number. raw: of the
+        POSTs as sent, without the divergence marks, as goldens were taken before canonical
+        requests."""
         h = hashlib.sha256()
-        for url, body in self.posts:
+        for url, body in self.raw_posts if raw else self.posts:
             h.update(url.encode())
             h.update(b"\x00")
             h.update(body.encode())
@@ -831,7 +881,7 @@ class Failover(object):
         for k in range(n):
             j = (self.i + k) % n
             try:
-                r = getter("%s/%s" % (self.candidates[j], verb))
+                r = getter(node_api.url(self.candidates[j], verb))
             except Exception as e:
                 err = e
                 continue

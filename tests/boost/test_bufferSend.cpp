@@ -70,7 +70,7 @@ static json sender_config(const std::string& name, uint16_t port) {
     return cfg;
 }
 
-// A pool for the send buffer. The tests never allocate from it.
+// A pool for the send buffer.
 static std::shared_ptr<metadataPool> send_pool() {
     return metadataPool::create(4, sizeof(chordMetadata), "send_pool", "chordMetadata");
 }
@@ -113,6 +113,79 @@ BOOST_AUTO_TEST_CASE(test_frame_without_metadata, *boost::unit_test::timeout(10)
     send.stop();
     buf.send_shutdown_signal();
     send.join();
+    close(conn);
+    close(listener);
+}
+
+// Reads exactly @p n bytes from @p fd into @p p; false on EOF or error.
+static bool recv_all(int fd, void* p, size_t n) {
+    uint8_t* b = (uint8_t*)p;
+    while (n > 0) {
+        const ssize_t r = recv(fd, b, n, 0);
+        if (r <= 0)
+            return false;
+        b += r;
+        n -= (size_t)r;
+    }
+    return true;
+}
+
+/// A bufferSend that sends the first SHORT_BYTES of each frame.
+struct ShortSend : bufferSend {
+    using bufferSend::bufferSend;
+    static constexpr size_t SHORT_BYTES = 100;
+    size_t frame_send_bytes(int) override {
+        return SHORT_BYTES;
+    }
+};
+
+BOOST_AUTO_TEST_CASE(test_send_part_of_each_frame, *boost::unit_test::timeout(10)) {
+    uint16_t port = 0;
+    const int listener = bind_localhost(port, true);
+
+    json cfg = sender_config("send_short", port);
+    cfg["send_short"]["drop_frames"] = false;
+    cfg["send_short"]["use_config_tracker"] = false;
+    Config config;
+    config.update_config(cfg);
+
+    Buffer buf(4, 1024, send_pool(), "send_buf", "standard", 0, false, false, std::vector<int>{},
+               true);
+    buf.register_producer("test");
+    bufferContainer bc;
+    bc.add_buffer("send_buf", &buf);
+    ShortSend send(config, "/send_short", bc);
+    send.start();
+
+    const int conn = accept(listener, nullptr, nullptr);
+    BOOST_REQUIRE(conn >= 0);
+
+    // Each frame is sent as its leading SHORT_BYTES, and the next frame's header follows them.
+    for (int id = 0; id < 2; ++id) {
+        uint8_t* frame = buf.wait_for_empty_frame("test", id);
+        BOOST_REQUIRE(frame != nullptr);
+        for (size_t i = 0; i < buf.frame_size; ++i)
+            frame[i] = (uint8_t)(i + 7 * id);
+        buf.allocate_new_metadata_object(id);
+        buf.mark_frame_full("test", id);
+    }
+    for (int id = 0; id < 2; ++id) {
+        bufferFrameHeaderNoConfigTracker header;
+        BOOST_REQUIRE(recv_all(conn, &header, sizeof(header)));
+        BOOST_CHECK_EQUAL(header.frame_size, ShortSend::SHORT_BYTES);
+        std::vector<uint8_t> metadata(header.metadata_size), data(ShortSend::SHORT_BYTES);
+        BOOST_REQUIRE(recv_all(conn, metadata.data(), metadata.size()));
+        BOOST_REQUIRE(recv_all(conn, data.data(), data.size()));
+        for (size_t i = 0; i < data.size(); ++i)
+            BOOST_REQUIRE_EQUAL(data[i], (uint8_t)(i + 7 * id));
+    }
+
+    send.stop();
+    buf.send_shutdown_signal();
+    send.join();
+    // Nothing follows the second frame.
+    uint8_t byte;
+    BOOST_CHECK_EQUAL(recv(conn, &byte, 1, 0), 0);
     close(conn);
     close(listener);
 }

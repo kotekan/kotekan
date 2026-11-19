@@ -2,11 +2,13 @@
 
 #include "GnssChanMetadata.hpp"
 #include "StageFactory.hpp"
-#include "kotekanLogging.hpp"
 
 #include <algorithm>
-#include <cstring>
 #include <functional>
+#include <set>
+#include <sys/syscall.h> // for SYS_gettid
+#include <unistd.h>      // for syscall
+#include <utility>       // for pair
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -14,261 +16,238 @@ using kotekan::Stage;
 
 REGISTER_KOTEKAN_STAGE(GnssTelemPack);
 
-GnssTelemPack::GnssTelemPack(Config& config, const std::string& unique_name,
-                             bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&GnssTelemPack::main_thread, this)) {
-    in_buf = get_buffer("in_buf");
-    in_buf->register_consumer(unique_name);
-    out_buf = get_buffer("out_buf");
-    out_buf->register_producer(unique_name);
+const std::vector<std::string> GnssTelemPack::ROW_KEYS = {"in_buf",  "chain",  "n_prn",
+                                                          "max_prn", "n_chan", "channel_ids"};
+const std::vector<std::string> GnssTelemPack::ROW_ONLY_KEYS = {"rec_row"};
 
-    _chain = config.get<std::string>(unique_name, "chain");
-    _inst = config.get<std::string>(unique_name, "inst");
-    _n_prn = config.get<int>(unique_name, "n_prn");
-    _n_elem = config.get_default<int>(unique_name, "n_elements", 0);
-    _max_prn = config.get<int>(unique_name, "max_prn");
-    _rec_per_frame = config.get_default<int>(unique_name, "records_per_frame", 4);
-    _hops_per_record = config.get<int>(unique_name, "hops_per_record");
-    _fft_len = config.get<int>(unique_name, "fft_len");
-    _n_chan = config.get_default<int>(unique_name, "n_chan", 0);
-    // The comb's column labels, sent in every frame header.
-    _chan_ids = config.get_default<std::vector<int>>(unique_name, "channel_ids", {});
-    if (!config.get_default<bool>(unique_name, "chan_export", true)) {
-        FATAL_ERROR("GnssTelemPack[{:s}]: chan_export must be true -- every frame ships the comb",
-                    unique_name);
-        return;
-    }
+GnssTelemPack::Out::Out(Buffer* buf, const std::string& producer) :
+    buf(buf), producer(producer), id(buf) {}
 
-    // Fatal here, where the config is to blame: a truncated tag would merge two senders'
-    // streams, and the gather drops every frame with more than TELEM_MAX_REC records.
-    if (_chain.size() >= gnss::TELEM_NAME || _inst.size() >= gnss::TELEM_NAME) {
-        FATAL_ERROR("GnssTelemPack[{:s}]: chain '{:s}' / inst '{:s}' must be < {:d} chars -- these "
-                    "tags are how the broker tells senders apart, and a truncated one silently "
-                    "merges two streams",
-                    unique_name, _chain, _inst, gnss::TELEM_NAME);
-        return;
-    }
-    // max_prn is a wire capacity, not n_prn: rows are compacted to the PRNs despread in each
-    // window. Overflow is checked per window in main_thread and only WARNs; telemetry is not
-    // worth stopping the tracker for.
-    if (_max_prn < 1) {
-        FATAL_ERROR("GnssTelemPack[{:s}]: max_prn {:d} must be >= 1", unique_name, _max_prn);
-        return;
-    }
-    if (_max_prn < _n_prn)
-        INFO("GnssTelemPack[{:s}]: wire carries {:d} PRN rows for a {:d}-slot record buffer -- "
-             "rows are compacted to the PRNs with signal, and a window with more than {:d} live "
-             "will WARN and ship the lowest-numbered ones",
-             unique_name, _max_prn, _n_prn, _max_prn);
-    if (_rec_per_frame < 1 || _rec_per_frame > gnss::TELEM_MAX_REC) {
-        FATAL_ERROR("GnssTelemPack[{:s}]: records_per_frame {:d} outside [1, {:d}]", unique_name,
-                    _rec_per_frame, gnss::TELEM_MAX_REC);
-        return;
-    }
-    if (_hops_per_record <= 0 || _fft_len <= 0) {
-        FATAL_ERROR("GnssTelemPack[{:s}]: hops_per_record {:d} and fft_len {:d} must both be > 0 "
-                    "-- they define the window index every instance collates on",
-                    unique_name, _hops_per_record, _fft_len);
-        return;
-    }
+GnssTelemPack::Row::Row(Config& config, const gnss::HostRow& row, Buffer* in, Out* out) :
+    in_buf(in), in_id(in), out(out), chain(config, row.cfg_path, row.name) {}
 
-    if ((int)_chan_ids.size() != _n_chan || _n_chan <= 0) {
-        FATAL_ERROR("GnssTelemPack[{:s}]: the comb needs n_chan >= 1 and channel_ids matching it "
-                    "(got {:d} ids for n_chan {:d}). The broker labels the comb from these; a "
-                    "mismatch mislabels the frequency axis of every delay fit.",
-                    unique_name, (int)_chan_ids.size(), _n_chan);
-        return;
-    }
-    if (_n_chan > gnss::TELEM_MAX_CHAN) {
-        FATAL_ERROR("GnssTelemPack[{:s}]: {:d} channels exceeds the wire's {:d} columns. "
-                    "TELEM_MAX_CHAN is a WIRE constant -- raising it means rebuilding and "
-                    "restarting BOTH ends and regenerating the gather config.",
-                    unique_name, _n_chan, gnss::TELEM_MAX_CHAN);
-        return;
-    }
-
-    _rec_samples = _hops_per_record * _fft_len;
-    _win_samples = (int64_t)_rec_per_frame * _rec_samples;
-
-    // Each sender ships only its own comb columns; TELEM_MAX_CHAN is the format's ceiling.
-    const size_t need = gnss::telem_frame_bytes(_rec_per_frame, _max_prn, _n_chan);
-    if ((size_t)out_buf->frame_size != need) {
-        // Exact, not ">=": bufferSend ships the whole buffer frame, so padding would cross the
-        // link for nothing, and bufferRecv drops the connection when a frame exceeds the
-        // gather's receive buffer. The config generator sizes out_buf from the same three
-        // numbers.
-        FATAL_ERROR("GnssTelemPack[{:s}]: out_buf frame is {:d} B but the wire format needs "
-                    "exactly {:d} B ({:d} records x {:d} PRN x {:d} floats + {:d} B header). The "
-                    "gather's receive buffer must be sized from the SAME two numbers.",
-                    unique_name, (size_t)out_buf->frame_size, need, _rec_per_frame, _max_prn,
-                    gnss::telem_row_floats(_n_chan), sizeof(gnss::TelemHeader));
-        return;
-    }
-    const size_t in_need = gnss::frame_floats(_n_prn, _n_elem, _n_chan) * sizeof(float);
-    if ((size_t)in_buf->frame_size < in_need) {
-        FATAL_ERROR("GnssTelemPack[{:s}]: in_buf frame {:d} B < {:d} B ({:d} PRN x stride {:d})",
-                    unique_name, (size_t)in_buf->frame_size, in_need, _n_prn,
-                    gnss::record_stride(_n_elem));
-        return;
-    }
-
-    _rows.assign((size_t)_rec_per_frame * _max_prn * gnss::telem_row_floats(_n_chan), 0.0f);
-    _row_of.assign((size_t)_n_prn, -1);
-
-    INFO("GnssTelemPack[{:s}]: {:s}/{:s} -- {:d} records/frame x {:d} PRN rows x {:d} floats = "
-         "{:d} B/frame; window = {:d} hops = {:d} samples on the F-engine clock",
-         unique_name, _chain, _inst, _rec_per_frame, _max_prn, gnss::RECORD_FLOATS, need,
-         _win_samples / _fft_len, _win_samples);
+std::vector<std::string> GnssTelemPack::row_keys(Config& config, const std::string& unique_name) {
+    std::vector<std::string> keys = ROW_KEYS;
+    if (config.exists(unique_name, "in_buf"))
+        std::replace(keys.begin(), keys.end(), std::string("in_buf"), std::string("rec_row"));
+    if (!config.exists(unique_name, "out_buf"))
+        keys.push_back("out_buf");
+    return keys;
 }
 
-bool GnssTelemPack::flush(frameID& out_id) {
-    if (_cur_win < 0)
+GnssTelemPack::GnssTelemPack(Config& config, const std::string& unique_name,
+                             bufferContainer& buffer_container) :
+    Stage(config, unique_name, buffer_container, std::bind(&GnssTelemPack::main_thread, this)),
+    _host_rows(gnss::host_rows(config, unique_name, "_telem_pack", row_keys(config, unique_name),
+                               ROW_ONLY_KEYS)),
+    _workers(gnss::host_workers(config, unique_name, _host_rows)) {
+    // A host block's out_buf is every row's: one stream for the host.
+    const bool shared = !_host_rows[0].key.empty() && config.exists(unique_name, "out_buf");
+    // A host block's in_buf is every row's: the GPU half's record buffer.
+    const bool rec_shared = !_host_rows[0].key.empty() && config.exists(unique_name, "in_buf");
+    std::vector<gnss::RecRow> rec_rows;
+    if (shared)
+        _outs.emplace_back(get_buffer("out_buf"), unique_name);
+    std::set<std::pair<std::string, std::string>> senders;
+    for (const gnss::HostRow& hr : _host_rows) {
+        if (shared && config.exists(hr.cfg_path, "out_buf"))
+            FATAL_ERROR("{:s}: row {:s} sets out_buf, which the host block sets for every row",
+                        unique_name, hr.key);
+        if (!shared)
+            _outs.emplace_back(
+                buffer_container.get_buffer(config.get<std::string>(hr.cfg_path, "out_buf")),
+                hr.name);
+        Row& row = _rows.emplace_back(
+            config, hr, buffer_container.get_buffer(config.get<std::string>(hr.cfg_path, "in_buf")),
+            &_outs.back());
+        row.chain.check_bufs(row.in_buf, row.out->buf, !shared);
+        if (rec_shared) {
+            if (config.exists(hr.cfg_path, "in_buf"))
+                FATAL_ERROR("{:s}: row {:s} sets in_buf, which the host block sets for every row",
+                            unique_name, hr.key);
+            const gnss::RecRow rec =
+                gnss::rec_row(config.get<nlohmann::json>(hr.cfg_path, "rec_row"));
+            row.chain.check_rec_row(rec);
+            row.rec_offset = rec.offset;
+            rec_rows.push_back(rec);
+        } else if (config.exists(hr.cfg_path, "rec_row")) {
+            FATAL_ERROR("{:s}: rec_row is set, but the host block sets no in_buf for its rows",
+                        hr.name);
+        }
+        if (!senders.insert({row.chain.chain(), row.chain.inst()}).second)
+            FATAL_ERROR("{:s}: two rows send chain {:s} inst {:s}; the gather would merge their "
+                        "streams",
+                        unique_name, row.chain.chain(), row.chain.inst());
+        if (shared)
+            row.dropped =
+                &kotekan::prometheus::Metrics::instance()
+                     .add_counter("kotekan_gnss_telem_dropped_frames_total", hr.name, {"chain"})
+                     .labels({row.chain.chain()});
+    }
+    for (Out& o : _outs)
+        o.buf->register_producer(o.producer);
+    if (rec_shared) {
+        _rec_buf = _rows[0].in_buf;
+        _rec_dir = std::make_unique<gnss::RecDir>(unique_name, rec_rows, _rec_buf);
+        for (Row& row : _rows)
+            row.dir_row = _rec_dir->find((int64_t)row.rec_offset);
+        for (const gnss::HostWorker& w : _workers)
+            _rec_buf->register_consumer(consumer_name(w));
+    } else {
+        for (const gnss::HostWorker& w : _workers)
+            register_inputs(w);
+    }
+    std::vector<std::string> chains;
+    for (Row& row : _rows)
+        chains.push_back(row.chain.chain());
+    gnss::rest_register_chains(unique_name, _host_rows, chains, _rest_paths);
+}
+
+GnssTelemPack::~GnssTelemPack() {
+    gnss::release_host(_host_rows, _rest_paths);
+}
+
+void GnssTelemPack::register_inputs(const gnss::HostWorker& w) {
+    std::set<Buffer*> taken;
+    for (size_t i : w.rows) {
+        Buffer* b = _rows[i].in_buf;
+        if (!taken.insert(b).second)
+            FATAL_ERROR("{:s}: {:s} reads {:s} for two rows", _host_rows[i].name, w.name,
+                        b->buffer_name);
+        b->register_consumer(consumer_name(w));
+    }
+}
+
+const std::string& GnssTelemPack::consumer_name(const gnss::HostWorker& w) const {
+    return w.rows.size() == 1 ? _host_rows[w.rows[0]].name : w.name;
+}
+
+bool GnssTelemPack::flush(size_t i) {
+    Row& row = _rows[i];
+    if (!row.chain.window_open())
         return true;
 
-    uint8_t* frame = out_buf->wait_for_empty_frame(unique_name, out_id);
+    Out& out = *row.out;
+    std::lock_guard<std::mutex> lock(out.lock);
+    if (row.dropped && !out.buf->is_frame_empty(out.id)) {
+        row.chain.drop();
+        row.dropped->inc();
+        return true;
+    }
+    uint8_t* frame = out.buf->wait_for_empty_frame(out.producer, out.id);
     if (frame == nullptr)
         return false;
 
-    gnss::TelemHeader h;
-    std::memset(&h, 0, sizeof(h));
-    h.magic = gnss::TELEM_MAGIC;
-    h.version = gnss::TELEM_VERSION;
-    h.n_rec = (uint16_t)_rec_per_frame;
-    h.n_prn = (uint16_t)_max_prn;
-    h.n_row = (uint16_t)gnss::RECORD_FLOATS;
-    h.n_chan = (uint16_t)_n_chan;
-    h.max_chan = (uint16_t)_n_chan;
-    h.n_row_total = (uint16_t)gnss::telem_row_floats(_n_chan);
-    for (int ch = 0; ch < _n_chan; ++ch)
-        h.chan_id[ch] = (uint16_t)_chan_ids[(size_t)ch];
-    h.n_elem = (uint16_t)_n_elem;
-    h.hops_per_record = (uint32_t)_hops_per_record;
-    h.fft_len = (uint32_t)_fft_len;
-    h.win = (uint64_t)_cur_win;
-    h.seq = _seq++;
-    h.wstart0 = _cur_win * _win_samples;
-    h.utc0 = _cur_utc0;
-    h.present = _cur_present;
-    gnss::telem_set_name(h.chain, _chain);
-    gnss::telem_set_name(h.inst, _inst);
-
-    std::memcpy(frame, &h, sizeof(h));
-    std::memcpy(frame + sizeof(h), _rows.data(), _rows.size() * sizeof(float));
+    const int64_t wstart0 = row.chain.pack(frame);
 
     // bufferSend ships only frames that carry a metadata object. Its sample_seq mirrors the
     // header's wstart0, so the frame can be addressed from its metadata without parsing the
     // payload; readers of the wire key on the header's `win`.
-    out_buf->allocate_new_metadata_object(out_id);
-    if (GnssChanMetadata* m = get_gnss_chan_metadata(out_buf, out_id))
-        m->sample_seq = h.wstart0;
-    out_buf->mark_frame_full(unique_name, out_id++);
-
-    _cur_win = -1;
-    _cur_present = 0;
-    _cur_utc0 = 0.0;
-    std::fill(_rows.begin(), _rows.end(), 0.0f);
-    // The row map belongs to the window that just went out; the next window builds its own.
-    std::fill(_row_of.begin(), _row_of.end(), -1);
-    _map_built = false;
+    out.buf->allocate_new_metadata_object(out.id);
+    if (GnssChanMetadata* m = get_gnss_chan_metadata(out.buf, out.id))
+        m->sample_seq = wstart0;
+    out.buf->mark_frame_full(out.producer, out.id++);
     return true;
 }
 
 void GnssTelemPack::main_thread() {
-    frameID in_id(in_buf);
-    frameID out_id(out_buf);
-    const int in_stride = gnss::record_stride(_n_elem);
-
-    while (!stop_thread) {
-        float* in = (float*)in_buf->wait_for_full_frame(unique_name, in_id);
-        if (in == nullptr)
-            break;
-
-        int64_t wstart = -1;
-        if (metadata_is_gnss_chan(in_buf)) {
-            const GnssChanMetadata* m = get_gnss_chan_metadata(in_buf, in_id);
-            if (m)
-                wstart = m->sample_seq;
-        }
-
-        if (wstart < 0 || (wstart % _rec_samples) != 0) {
-            // No absolute address, or one off the record grid: the record has no slot. Logged
-            // every 1000th, because if it fires it fires on every record.
-            if ((_dropped++ % 1000) == 0)
-                WARN("GnssTelemPack[{:s}]: dropping record with wstart {:d} (metadata missing, or "
-                     "not a multiple of the {:d}-sample record) -- {:d} so far",
-                     unique_name, wstart, _rec_samples, _dropped);
-            in_buf->mark_frame_empty(unique_name, in_id++);
-            continue;
-        }
-
-        // wstart >= 0, so this division is a floor.
-        const int64_t win = wstart / _win_samples;
-
-        if (_cur_win >= 0 && win != _cur_win) {
-            // Any change of window closes the open frame, including a backwards jump (an
-            // F-engine re-base or a replay).
-            if (!flush(out_id))
-                break;
-        }
-        if (_cur_win < 0)
-            _cur_win = win;
-
-        // In [0, _rec_per_frame): wstart >= 0 is on the record grid and win is its floor.
-        const int slot = (int)((wstart - win * _win_samples) / _rec_samples);
-
-        // Row compaction, built once per window from its first record. A PRN gets a wire row
-        // if it has replica energy, i.e. was despread; the record buffer has a slot for every
-        // configured PRN whether or not it ran. The map is fixed for the window because readers
-        // take each row's PRN from the first filled record slot and apply it to every slot, so
-        // a PRN that starts being despread mid-window gets a row from the next window.
-        if (!_map_built) {
-            int next = 0;
-            for (int p = 0; p < _n_prn; ++p) {
-                if (in[(size_t)p * in_stride + gnss::REC_P_ENERGY] <= 0.0f)
-                    continue; // not despread this window: silence, not a row of zeros
-                if (next >= _max_prn) {
-                    // More live PRNs than wire rows: ship the lowest slots and name the first
-                    // one dropped, since downstream a missing row looks like a lost satellite.
-                    // Logged every 200th window.
-                    if ((_prn_overflow++ % 200) == 0)
-                        WARN("GnssTelemPack[{:s}]: more live PRNs than the {:d} wire rows -- "
-                             "shipping the lowest-numbered and DROPPING the rest (PRN {:.0f} "
-                             "onwards); raise telem_max_prn. {:d} windows so far",
-                             unique_name, _max_prn, in[(size_t)p * in_stride + gnss::REC_PRN],
-                             _prn_overflow);
-                    break;
-                }
-                _row_of[(size_t)p] = next++;
-            }
-            _map_built = true;
-        }
-
-        for (int p = 0; p < _n_prn; ++p) {
-            const int wrow = _row_of[(size_t)p];
-            if (wrow < 0)
-                continue;
-            float* row = &_rows[gnss::telem_row_offset(slot, wrow, _max_prn,
-                                                       gnss::telem_row_floats(_n_chan))];
-            std::memcpy(row, in + (size_t)p * in_stride, gnss::RECORD_FLOATS * sizeof(float));
-            // Copied per column: the input and wire column offsets come from different layouts
-            // (chan_offset, telem_chan_offset) that only happen to share a stride.
-            for (int ch = 0; ch < _n_chan; ++ch)
-                std::memcpy(row + gnss::telem_chan_offset(ch),
-                            in + gnss::chan_offset(p, ch, _n_prn, _n_chan, _n_elem),
-                            gnss::CHAN_FLOATS * sizeof(float));
-        }
-        _cur_present |= (1u << slot);
-        if (slot == 0 && _n_prn > 0)
-            _cur_utc0 = *reinterpret_cast<const double*>(in + gnss::RECORD_UTC_SLOT);
-
-        in_buf->mark_frame_empty(unique_name, in_id++);
-
-        // Emit a full window at once rather than when the next record crosses the boundary:
-        // that record may be a whole correlator frame away, and a chain whose records stop
-        // leaves no complete window unsent.
-        if (_cur_present == ((1u << _rec_per_frame) - 1u))
-            if (!flush(out_id))
-                break;
+    if (_workers[0].cpus.empty()) {
+        gnss::run_rows(_workers.size(), get_cpu_affinity(),
+                       std::bind(&GnssTelemPack::run_worker, this, std::placeholders::_1));
+        return;
     }
-    flush(out_id);
+    std::vector<std::string> names;
+    std::vector<std::vector<int>> cpus;
+    for (const gnss::HostWorker& w : _workers) {
+        names.push_back(consumer_name(w));
+        cpus.push_back(w.cpus);
+    }
+    gnss::run_workers(names, cpus,
+                      std::bind(&GnssTelemPack::run_pinned, this, std::placeholders::_1));
+}
+
+void GnssTelemPack::run_pinned(size_t w) {
+    const pid_t tid = syscall(SYS_gettid);
+    register_tid(tid);
+    run_worker(w);
+    unregister_tid(tid);
+}
+
+void GnssTelemPack::run_worker(size_t w) {
+    const gnss::HostWorker& wk = _workers[w];
+    bool running = true;
+    if (_rec_dir) {
+        run_frames(wk);
+        running = false;
+    }
+    while (running && !stop_thread)
+        for (size_t r : wk.rows)
+            if (!take_record(r, consumer_name(wk))) {
+                running = false;
+                break;
+            }
+    for (size_t r : wk.rows)
+        flush(r);
+}
+
+void GnssTelemPack::run_frames(const gnss::HostWorker& w) {
+    const std::string& consumer = consumer_name(w);
+    for (int id = 0; !stop_thread; id = (id + 1) % _rec_buf->num_frames) {
+        const uint8_t* f = _rec_buf->wait_for_full_frame(consumer, id);
+        if (f == nullptr)
+            return;
+        _rec_dir->check(consumer, id, f);
+        for (size_t i : w.rows) {
+            const Row& row = _rows[i];
+            if (!add_record(i, (const float*)(f + row.rec_offset),
+                            _rec_dir->wstart(f, row.dir_row)))
+                return;
+        }
+        _rec_buf->mark_frame_empty(consumer, id);
+        for (size_t i : w.rows)
+            if (!flush_full(i))
+                return;
+    }
+}
+
+bool GnssTelemPack::take_record(size_t i, const std::string& consumer) {
+    Row& row = _rows[i];
+    Buffer* in_buf = row.in_buf;
+
+    float* in = (float*)in_buf->wait_for_full_frame(consumer, row.in_id);
+    if (in == nullptr)
+        return false;
+
+    int64_t wstart = -1;
+    if (metadata_is_gnss_chan(in_buf)) {
+        const GnssChanMetadata* m = get_gnss_chan_metadata(in_buf, row.in_id);
+        if (m)
+            wstart = m->sample_seq;
+    }
+
+    if (!add_record(i, in, wstart))
+        return false;
+    in_buf->mark_frame_empty(consumer, row.in_id++);
+    return flush_full(i);
+}
+
+bool GnssTelemPack::add_record(size_t i, const float* in, int64_t wstart) {
+    gnss::TelemChain& chain = _rows[i].chain;
+    if (!chain.on_grid(wstart))
+        return true;
+    if (chain.window_changes(wstart))
+        if (!flush(i))
+            return false;
+    chain.add_record(in, wstart);
+    return true;
+}
+
+bool GnssTelemPack::flush_full(size_t i) {
+    // Emit a full window at once rather than when the next record crosses the boundary:
+    // that record may be a whole correlator frame away, and a chain whose records stop
+    // leaves no complete window unsent.
+    if (_rows[i].chain.window_full())
+        if (!flush(i))
+            return false;
+    return true;
 }

@@ -10,6 +10,8 @@ hosts outside the fleet: those run production's stock kotekan and are the stock 
 generator asks for the EOP table and the bad-input block (a role-off node is given back to
 production, so it is one too).
 
+The chains are the chains table, `chains:` in the same manifest (config/gnss_chain_table.py).
+
 Derived from the list and nothing else:
   * each node's search-port-base (gen_fleet.py passes it to the generator);
   * the search aggregator's feeds (gen_chord_gnss_config.py --aggregator-instance);
@@ -18,7 +20,9 @@ Derived from the list and nothing else:
     node GPU that holds a covering channel of the chain's signal: the same covering rule the
     generator builds the chain with (chord_band_plan.covering_channels), so a GPU without the
     chain is never listed (L2C, L2OC) and gen_fleet.py --check compares the two;
-  * the site scripts' host lists (`gnss_fleet.py hosts`, or hosts() from Python).
+  * the site scripts' host lists (`gnss_fleet.py hosts`, or hosts() from Python);
+  * with the manifest's host flags, the GPU halves' hosts that serve their rows by chain
+    (host_bases), the chains yaml's `node-hosts: fleet`.
 
     python3 config/gnss_fleet.py hosts            # the fleet's hosts, space-separated
     python3 config/gnss_fleet.py hosts --stock    # the stock reference hosts
@@ -30,11 +34,14 @@ the covering-channel computation (instances, expand_chains) and stage_chain impo
 chord_band_plan lazily.
 """
 import argparse
+import operator
 import os
 import re
 import sys
 
 import yaml
+
+import gnss_chain_table
 
 CONF = os.path.dirname(os.path.abspath(__file__))
 MANIFEST = os.path.join(CONF, "gnss_fleet_chord.yaml")
@@ -65,6 +72,18 @@ URL_KEYS = {
     "rf-stats-endpoints": "srch_tap",
 }
 SINGLE_KEYS = ("rest-url", "combiner")
+#: The chains-yaml key that may be `fleet` in `common:`, expanded to the bases of every GPU half's
+#: hosts that serve their rows' verbs by chain (Fleet.host_bases), for the broker's --node-hosts.
+HOSTS_KEY = "node-hosts"
+#: The generator flags that host a per-chain stage's rows in one stage per GPU half, the stage,
+#: and the host's name, gnss<g>_<host> (gen_chord_gnss_config.py inject_host_form,
+#: record_host_form, combine_host_form). A host serves its rows' verbs by chain at
+#: /gnss<g>_<host>/<verb>.
+HOST_FLAGS = {
+    "inject-host": ("inject", "inject"),
+    "record-host": ("n2assemble", "records"),
+    "combine-host": ("n2combine", "combine"),
+}
 
 
 class FleetError(ValueError):
@@ -100,19 +119,29 @@ def signal_tag(name):
 
 _STAGE_CHAINS = {}  # tag -> broker chain, filled by stage_chain's first call
 
+#: The per-chain stages whose untagged name, gnss<g>_<stage>, was the primary's before every
+#: chain was tagged. No host takes one of these names; a host's (gnss<g>_inject, _records,
+#: _combine, _telem, _telem_send, _cube_send) names no chain.
+UNTAGGED_STAGES = ("n2assemble", "n2combine", "n2ctl", "telem_pack")
+
 
 def stage_chain(name, stage):
     """The broker chain of a per-chain stage `gnss<g><tag>_<stage>`, from its name alone or
-    as it sits in a lane owner or a cube sender (after `/`, `<host>/` or `<host>_`):
-    gnss0_gal_e5a_n2assemble -> gal_e5a. None when the name is not that stage's or names no
-    chain.
+    as it sits in a REST prefix or lane owner (`/<name>`), a cube sender (`<host>//<name>`) or
+    a cube file (`<host>_<name>`): gnss0_gal_e5a_n2assemble -> gal_e5a. None when the name is
+    not that stage's or names no chain.
 
-    Names generated before the tag was the chain key are read by the rule that made them: no
-    tag is the primary (the node table's signals.primary), and a band tag is the other chain
-    on that band (gnss0_e5a_n2assemble -> gal_e5a, gnss0_l5_n2assemble -> sbas_l5).
+    The tag is a broker chain key. Names generated before it was are read through two
+    allowlists: a band tag is the other chain on that band (gnss0_e5a_n2assemble -> gal_e5a,
+    gnss0_l5_n2assemble -> sbas_l5), and no tag is the primary (the node table's
+    signals.primary), for the stages in UNTAGGED_STAGES only.
     """
-    m = re.search(r"(?:^|[/_])gnss\d+(?:_([a-z0-9_]+))?_%s$" % re.escape(stage), name)
-    if not m:
+    m = re.match(
+        r"(?:/|[a-z][a-z0-9.-]*//?|[a-z][a-z0-9.-]*_)?gnss\d+(?:_([a-z0-9_]+))?_%s$"
+        % re.escape(stage),
+        name,
+    )
+    if not m or (m.group(1) is None and stage not in UNTAGGED_STAGES):
         return None
     if not _STAGE_CHAINS:
         # Lazy: chord_band_plan imports the interface golden (gnss_broker.iface).
@@ -129,6 +158,73 @@ def stage_chain(name, stage):
         _STAGE_CHAINS.update({c: c for c in chains})
         _STAGE_CHAINS[""] = prim
     return _STAGE_CHAINS.get(m.group(1) or "")
+
+
+def host_rows(cfg, kotekan_stage, suffix):
+    """[(name, block)] of the stages of type kotekan_stage in a parsed node config, by name. A
+    top-level block is one, named by its key, unless it hosts rows (`chains:`): then each row is
+    one, named `<row key><suffix>` as the host names it, which is the stage it stands for. A
+    row's block is the host's keys overlaid with its own, with its worker's cpu_affinity where
+    the host has `workers`: the block of that stage."""
+    out = []
+    for k, v in (cfg or {}).items():
+        if not isinstance(v, dict) or v.get("kotekan_stage") != kotekan_stage:
+            continue
+        if "chains" not in v:
+            out.append((k, v))
+            continue
+        host = {h: x for h, x in v.items() if h not in ("chains", "workers")}
+        cpus = {r: w["cpu_affinity"] for w in v.get("workers") or [] for r in w["rows"]}
+        for key, row in v["chains"].items():
+            block = dict(host, **row)
+            if key in cpus:
+                block["cpu_affinity"] = cpus[key]
+            out.append((key + suffix, block))
+    return sorted(out, key=operator.itemgetter(0))
+
+
+def assembler_rows(cfg):
+    """host_rows of the record assemblers (GnssGpuRecordAssemble), a row of gnss<g>_records
+    (gen_chord_gnss_config.py --record-host) named `<row key>_n2assemble`, its REST prefix, lane
+    owner and cube sender."""
+    return host_rows(cfg, "GnssGpuRecordAssemble", "_n2assemble")
+
+
+def config_host_bases(cfg, origin):
+    """<origin>/<host> of the hosts in a parsed node config that serve their rows' verbs by
+    chain: gnss<g>_records and gnss<g>_combine, and the gnss<g>_inject of each GPU half whose
+    cudaGnssInject hosts the half's injectors (--inject-host), as the manifest's host flags
+    give them (Fleet.host_bases)."""
+    out = set()
+    for k, v in (cfg or {}).items():
+        if not isinstance(v, dict):
+            continue
+        if "chains" in v and v.get("kotekan_stage") in (
+            "GnssGpuRecordAssemble",
+            "GnssCoherentCombiner",
+        ):
+            out.add("%s/%s" % (origin, k))
+        for c in v.get("commands") or []:
+            if (
+                isinstance(c, dict)
+                and c.get("name") == "cudaGnssInject"
+                and "chains" in c
+            ):
+                for r in c["chains"]:
+                    out.add("%s/%s_inject" % (origin, r.split("_", 1)[0]))
+    return sorted(out)
+
+
+def combiner_rows(cfg):
+    """host_rows of the combiners (GnssCoherentCombiner), a row of gnss<g>_combine
+    (gen_chord_gnss_config.py --combine-host) named `<row key>_n2combine`, its REST prefix."""
+    return host_rows(cfg, "GnssCoherentCombiner", "_n2combine")
+
+
+def telem_rows(cfg):
+    """host_rows of the telemetry packs (GnssTelemPack), a row of gnss<g>_telem
+    (gen_chord_gnss_config.py --telem-pack-host) named `<row key>_telem_pack`."""
+    return host_rows(cfg, "GnssTelemPack", "_telem_pack")
 
 
 class Fleet:
@@ -153,6 +249,23 @@ class Fleet:
             self.manifest_path = "<manifest>"
         site_nodes = self.site.get("nodes") or {}
         self.site_hosts = [h for h, v in site_nodes.items() if isinstance(v, dict)]
+        try:
+            self.chains = gnss_chain_table.rows(self.man)
+        except gnss_chain_table.TableError as e:
+            raise FleetError("%s: %s" % (self.manifest_path, e))
+        if not self.chains:
+            raise FleetError("%s: no chains" % self.manifest_path)
+        prim = broker_chain_name(self.site["signals"]["primary"])
+        if self.chains[0].key != prim:
+            raise FleetError(
+                "%s: the first chains row is %s, but the node table's primary is chain %s"
+                % (self.manifest_path, self.chains[0].key, prim)
+            )
+        if "extra-signal" in (self.man.get("common") or {}):
+            raise FleetError(
+                "%s: common sets extra-signal; the chains are the rows of chains: "
+                "(config/gnss_chain_table.py), so move it there" % self.manifest_path
+            )
         if "search-port-base" in (self.man.get("common") or {}):
             raise FleetError(
                 "%s: common sets search-port-base; each node's is derived from its slot "
@@ -211,45 +324,64 @@ class Fleet:
     def offsets(self, host):
         return list(self.site["nodes"][host]["gpu_offsets_mod16"])
 
+    def hosted(self, host):
+        """The stages whose rows one stage per GPU half hosts on this node, as the generator
+        resolves the manifest: a host flag set true in `common:` or the node's own entry (a
+        store_true flag, so neither can unset the other)."""
+        common = self.man.get("common") or {}
+        node = self.gen_flags(host)
+        return sorted(
+            stage
+            for flag, (stage, _) in HOST_FLAGS.items()
+            if common.get(flag) is True or node.get(flag) is True
+        )
+
+    def host_bases(self):
+        """http://<node>:<port>/gnss<g>_<host> of every host the fleet's nodes run: per node, each
+        GPU half that builds a chain and each stage hosted() names."""
+        names = {stage: name for stage, name in HOST_FLAGS.values()}
+        out = []
+        for host in self.hosts:
+            stages = self.hosted(host)
+            if not stages:
+                continue
+            gpus = sorted(
+                {
+                    g
+                    for c in self.tracker_signals()
+                    for h, g in self.instances(c)
+                    if h == host
+                }
+            )
+            out += [
+                "%s/gnss%d_%s" % (self.rest_url(host), g, names[s])
+                for g in gpus
+                for s in stages
+            ]
+        return out
+
     # ---- chains ----------------------------------------------------------------------------
     def tracker_signals(self):
-        """{broker chain: (descriptor, tag)} for every chain the nodes build: the primary
-        (node table signals.tracker) and each manifest extra-signal."""
-        sig = self.site["signals"]
-        out = {
-            broker_chain_name(sig["primary"]): (
-                sig.get("tracker", sig["primary"]),
-                signal_tag(sig["primary"]),
-            )
-        }
-        for ent in (self.man.get("common") or {}).get("extra-signal") or []:
-            name = str(ent).partition(":")[0].strip()
-            out[broker_chain_name(name)] = (name, signal_tag(name))
-        return out
+        """{broker chain: (descriptor, tag)} for every chain the nodes build: the rows of the
+        chains table, the primary first."""
+        return {r.key: (r.descriptor, signal_tag(r.descriptor)) for r in self.chains}
 
     def instances(self, chain):
         """[(host, gpu)] of the chain's instances, slot-major: every fleet GPU holding at least
         one of the chain's covering channels, by the rule the generator builds it with."""
-        sigs = self.tracker_signals()
-        prim = broker_chain_name(self.site["signals"]["primary"])
-        if chain not in sigs:
+        row = next((r for r in self.chains if r.key == chain), None)
+        if row is None:
             raise FleetError(
-                "chain %s: no node builds it (the primary is %s; extra-signal in %s: %s)"
-                % (
-                    chain,
-                    self.site["signals"]["primary"],
-                    self.manifest_path,
-                    ", ".join(sorted(c for c in sigs if c != prim)),
-                )
+                "chain %s: no node builds it (chains: in %s: %s)"
+                % (chain, self.manifest_path, ", ".join(r.key for r in self.chains))
             )
-        name = sigs[chain][0]
         out = []
         for host in self.hosts:
-            for gpu in self._chain_gpus(host, name, primary=chain == prim):
+            for gpu in self._chain_gpus(host, row):
                 out.append((host, gpu))
         return out
 
-    def _chain_gpus(self, host, name, primary):
+    def _chain_gpus(self, host, row):
         # Lazy: chord_band_plan imports the interface golden (gnss_broker.iface).
         if CONF not in sys.path:
             sys.path.insert(0, CONF)
@@ -264,23 +396,17 @@ class Fleet:
         sig = self.site["signals"]
         doppler = float(sig["max_doppler_hz"])
         chans = node_channels(self.site, host)
-        if primary:
+        if row.primary:
             # As gen_chord_gnss_config.py: the node table's carrier and chip rate.
             cov = covering_channels(
                 chans, float(sig["carrier_hz"]), float(sig["chip_rate_hz"]), doppler
             )
         else:
             # As gen_chord_gnss_config.py: an FDMA chain covers the union of its slots' lobes.
-            prn_s = next(
-                (
-                    str(e).partition(":")[2]
-                    for e in (self.man.get("common") or {}).get("extra-signal") or []
-                    if str(e).partition(":")[0].strip() == name
-                ),
-                "",
+            ks = parse_slots(row.prns)[1]
+            cov = chain_covering_channels(
+                chans, signal_table()[row.descriptor], doppler, ks
             )
-            ks = parse_slots(prn_s)[1]
-            cov = chain_covering_channels(chans, signal_table()[name], doppler, ks)
         offs = self.offsets(host)
         return sorted({offs.index(f % 16) for f in cov})
 
@@ -309,8 +435,7 @@ class Fleet:
                 continue
             if stage == "srch_tap":
                 # The search taps: one per GPU holding the primary's covering channels.
-                prim = broker_chain_name(self.site["signals"]["primary"])
-                inst = self.instances(prim)
+                inst = self.instances(self.chains[0].key)
             else:
                 inst = self.instances(chain)
             out[key] = ",".join(self.stage_url(h, g, chain, stage) for h, g in inst)
@@ -342,7 +467,11 @@ def expand_chains(cfg, fleet=None):
     def wants(d):
         return any(d.get(k) == FLEET for k in keys)
 
-    if not (wants(common) or any(wants(c) for c in chains.values())):
+    if not (
+        wants(common)
+        or common.get(HOSTS_KEY) == FLEET
+        or any(wants(c) for c in chains.values())
+    ):
         return cfg
     if fleet is None:
         fleet = Fleet()
@@ -350,6 +479,9 @@ def expand_chains(cfg, fleet=None):
         fleet = fleet()
     if common.get("rest-url") == FLEET:
         common["rest-url"] = fleet.rest_url(fleet.hosts[0])
+    if common.get(HOSTS_KEY) == FLEET:
+        # None, so the broker gets no --node-hosts, when no node hosts a stage.
+        common[HOSTS_KEY] = ",".join(fleet.host_bases()) or None
     for name, spec in chains.items():
         merged = dict(common)
         merged.update(spec)
@@ -362,18 +494,56 @@ def expand_chains(cfg, fleet=None):
     return cfg
 
 
+def table_keys(cfg, table, where="the chains table"):
+    """A parsed chains yaml with each chain's dll-spacing set from its row of the chains table
+    (the input is not modified): the spacing the node generator puts on the chain's taps, so
+    the trim law and the taps cannot disagree. A dll-spacing written in the yaml is refused,
+    as is a chain without a row (no node builds it)."""
+    cfg = dict(cfg or {})
+    if "dll-spacing" in (cfg.get("common") or {}):
+        raise FleetError(
+            "common sets dll-spacing; each chain's comes from its row in %s" % where
+        )
+    rows = {r.key: r for r in table}
+    common_signal = (cfg.get("common") or {}).get("signal")
+    chains = {}
+    for name, spec in (cfg.get("chains") or {}).items():
+        spec = dict(spec or {})
+        if "dll-spacing" in spec:
+            raise FleetError(
+                "chains.%s sets dll-spacing; it comes from the chain's row in %s"
+                % (name, where)
+            )
+        key = str(spec.get("signal", common_signal or name))
+        if key not in rows:
+            raise FleetError("chains.%s: %s has no row in %s" % (name, key, where))
+        spec["dll-spacing"] = rows[key].dll_spacing_chips
+        chains[name] = spec
+    cfg["chains"] = chains
+    return cfg
+
+
 def load_chains(path=None, fleet=None):
-    """The chains yaml at `path`, parsed and expanded. Without `fleet`, the fleet list and the
-    node table are the ones beside the chains file (a checkout's config/), else this module's."""
+    """The chains yaml at `path`, parsed, expanded, and each chain's dll-spacing taken from the
+    chains table (table_keys). Without `fleet`, the fleet list, the chains table and the node
+    table are the ones beside the chains file (a checkout's config/), else this module's."""
     path = path or CHAINS_YAML
     cfg = _load_yaml(path)
+    d = os.path.dirname(os.path.abspath(path))
+    man = os.path.join(d, os.path.basename(MANIFEST))
     if fleet is None:
-        d = os.path.dirname(os.path.abspath(path))
-        man = os.path.join(d, os.path.basename(MANIFEST))
         nodes = os.path.join(d, os.path.basename(NODE_FILE))
         if os.path.exists(man) and os.path.exists(nodes):
             fleet = lambda: Fleet(man, nodes)  # noqa: E731  (built only if needed)
-    return expand_chains(cfg, fleet)
+    if isinstance(fleet, Fleet):
+        table, man = fleet.chains, fleet.manifest_path
+    else:
+        man = man if os.path.exists(man) else MANIFEST
+        try:
+            table = gnss_chain_table.load(man)
+        except gnss_chain_table.TableError as e:
+            raise FleetError("%s: %s" % (man, e))
+    return table_keys(expand_chains(cfg, fleet), table, "%s chains:" % man)
 
 
 def live_comb(host, port, science_band, timeout=4.0):

@@ -12,8 +12,9 @@ the probe-anchored floor.
 
 import sys
 import time
+import urllib.error
 
-from gnss_broker import combdll, transport, trimarm
+from gnss_broker import combdll, iface, node_api, transport, trimarm
 
 
 _fails = []
@@ -54,6 +55,8 @@ def run(
     dr_state=None,
     chip_rate_hz=10.23e6,
     trackers=("http://cx19:12048/gnss0_inject",),
+    half=False,
+    post_error=None,
 ):
     """Drive the stage once at cycle clock t0 (default: now); return (policy dict the gather
     would receive, ctx). Pass `dls` to carry the loop state across cycles."""
@@ -62,6 +65,8 @@ def run(
     def fake_post(url, doc, timeout=None):
         sent["url"] = url
         sent["doc"] = doc
+        if post_error is not None:
+            raise post_error
         return {}
 
     def fake_get(url, timeout=None):
@@ -80,6 +85,7 @@ def run(
                 fleet_trim_readback=0,
                 signal="gps_l5",
                 chip_rate_hz=chip_rate_hz,
+                fleet_trim_half_targets=half,
             ),
             dllp=_Obj(
                 fleet=fleet
@@ -130,6 +136,141 @@ def main():
     check(
         pol.get("targets") == ["http://cx27:12048/gnss0_inject/set_trim"],
         "a fenced tracker is left out of the targets (%r)" % pol.get("targets"),
+    )
+
+    # 1c. With --fleet-trim-half-targets, a tracker on a GPU half whose inject host serves by
+    #     chain is that half's target, {url, chain}; any other tracker stays its own /set_trim,
+    #     as every tracker does without the switch.
+    trk = (
+        "http://node-a:12048/gnss1_gps_l5_inject",
+        "http://node-a:12048/gnss0_gps_l5_inject",
+        "http://node-b:12048/gnss0_inject",
+    )
+    gather = "http://127.0.0.1:12051/fleet_trim"
+    node_api.set_hosts(["http://node-a:12048/gnss1_inject"])
+    trimarm._gather[gather] = (True, time.monotonic())
+    try:
+        half, _ = run(trackers=trk, half=True)
+        own, _ = run(trackers=trk)
+    finally:
+        node_api.set_hosts([])
+        trimarm._gather.clear()
+    check(
+        half.get("targets")
+        == [
+            {"url": "http://node-a:12048/gnss1_inject/set_trim", "chain": "gps_l5"},
+            "http://node-a:12048/gnss0_gps_l5_inject/set_trim",
+            "http://node-b:12048/gnss0_inject/set_trim",
+        ],
+        "half targets: the hosted half by chain, the rest at their own paths (%r)"
+        % half.get("targets"),
+    )
+    check(
+        own.get("targets") == [t + "/set_trim" for t in trk],
+        "without the switch every tracker is its own target, hosted or not",
+    )
+
+    # 1d. The switch needs a gather whose interface lists rest/fleet_trim_batch.
+    real_read = trimarm.iface.read_source
+    golden = iface.golden().doc
+    with_leaf = dict(golden, sections=dict(golden["sections"]))
+    with_leaf["sections"]["rest"] = dict(
+        golden["sections"]["rest"], **{trimarm.GATHER_BATCH: 1}
+    )
+    without = dict(golden, sections=dict(golden["sections"]))
+    without["sections"]["rest"] = dict(golden["sections"]["rest"])
+    without["sections"]["rest"].pop(trimarm.GATHER_BATCH, None)
+
+    def read(doc):
+        def f(src, timeout=None):
+            if doc is None:
+                raise iface.SourceError("refused")
+            if doc == "legacy":
+                raise iface.Legacy("no gnss interface")
+            read.asked = src
+            return iface.Source(doc, None, src)
+
+        return f
+
+    try:
+        trimarm.iface.read_source = read(with_leaf)
+        ok = trimarm.gather_batches(gather)
+        asked = read.asked
+        trimarm.iface.read_source = read(without)
+        no_leaf = trimarm.gather_batches(gather)
+        trimarm.iface.read_source = read("legacy")
+        legacy = trimarm.gather_batches(gather)
+        trimarm.iface.read_source = read(None)
+        unread = trimarm.gather_batches(gather)
+    finally:
+        trimarm.iface.read_source = real_read
+    check(
+        ok == (True, None) and asked == "http://127.0.0.1:12051",
+        "a gather with the leaf batches, read at its origin",
+    )
+    check(
+        no_leaf[0] is False and "no rest/fleet_trim_batch" in no_leaf[1],
+        "a gather without the leaf cannot batch (%s)" % (no_leaf,),
+    )
+    check(
+        legacy[0] is False and "no interface document" in legacy[1],
+        "nor can one that serves no document (%s)" % (legacy,),
+    )
+    check(
+        unread[0] is None and "could not be read" in unread[1],
+        "an unreadable gather is unknown, not refused (%s)" % (unread,),
+    )
+
+    # 1e. A gather unknown at the start takes the trackers' own set_trim until a read finds the
+    #     leaf, at most every GATHER_RECHECK_S; a policy it refuses (400) asks again.
+    reads = []
+
+    def batches(answer):
+        def f(url, timeout=None):
+            reads.append(url)
+            return answer
+
+        return f
+
+    real_batches = trimarm.gather_batches
+    node_api.set_hosts(["http://node-a:12048/gnss1_inject"])
+    try:
+        trimarm.gather_batches = batches((None, "refused"))
+        first, _ = run(trackers=trk[:1], half=True)
+        trimarm.gather_batches = batches((True, None))
+        held, _ = run(trackers=trk[:1], half=True)
+        trimarm._gather[gather] = (None, time.monotonic() - trimarm.GATHER_RECHECK_S)
+        after, _ = run(trackers=trk[:1], half=True)
+        n_reads = len(reads)
+        again, _ = run(trackers=trk[:1], half=True)
+        refused = urllib.error.HTTPError(gather, 400, "bad policy payload", {}, None)
+        run(trackers=trk[:1], half=True, post_error=refused)
+        unsure = trimarm._gather[gather][0]
+        retry, _ = run(trackers=trk[:1], half=True)
+    finally:
+        trimarm.gather_batches = real_batches
+        node_api.set_hosts([])
+        trimarm._gather.clear()
+    row = ["http://node-a:12048/gnss1_gps_l5_inject/set_trim"]
+    half_t = [{"url": "http://node-a:12048/gnss1_inject/set_trim", "chain": "gps_l5"}]
+    check(
+        first.get("targets") == row and held.get("targets") == row,
+        "an unreadable gather takes the tracker's own set_trim, and is not read again "
+        "within GATHER_RECHECK_S (%s, %s)"
+        % (first.get("targets"), held.get("targets")),
+    )
+    check(
+        after.get("targets") == half_t
+        and again.get("targets") == half_t
+        and n_reads == 2
+        and len(reads) == 2,
+        "once a read finds the leaf the half is the target, and the gather is not read "
+        "again (%s after %d reads)" % (after.get("targets"), n_reads),
+    )
+    check(
+        unsure is None and retry.get("targets") == row and len(reads) == 2,
+        "a policy the gather refuses makes it unknown: the tracker's own set_trim until "
+        "the next read (%s, %s)" % (unsure, retry.get("targets")),
     )
 
     # 2. Presence with a hold: a PRN absent this cycle stays armed inside the hold and is
@@ -366,7 +507,10 @@ def main():
         "below floor and slewing: PRN 4 held off and not armed, PRN 1 armed (%r)"
         % sorted(pol.get("armed") or []),
     )
-    check(4 not in ctx.dls.trim and ctx.dls.trim.get(1) == 0.1, "PRN 4's Python trim is dropped")
+    check(
+        4 not in ctx.dls.trim and ctx.dls.trim.get(1) == 0.1,
+        "PRN 4's Python trim is dropped",
+    )
     check(4 not in ctx.dls.hold, "and the floor row does not stamp its hold")
 
     print("-" * 70)

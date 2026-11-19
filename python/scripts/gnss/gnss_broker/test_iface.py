@@ -56,6 +56,32 @@ CPP_DOUBLES = (
 # `kotekan --interfaces-json` from a build at the pinned commit. A sync adds the new golden's
 # entry here; an unrecorded golden fails test_digests_are_the_ones_kotekan_served.
 KOTEKAN_SERVED = {
+    "fnv1a64:7dbdc9afed1b1906": {
+        "cube": "fnv1a64:9d8189ee49526cd3",
+        "enums": "fnv1a64:ce7f87e79a2838f6",
+        "gpu_chain": "fnv1a64:1f5f16e80dbb5c93",
+        "metadata": "fnv1a64:ff0b089558622884",
+        "record.chan": "fnv1a64:df5e8f24a8e017fe",
+        "record.cmb": "fnv1a64:e049ac69f9ee836a",
+        "record.elem": "fnv1a64:b61468c5a83782d3",
+        "record.row": "fnv1a64:436522cd6437ce2d",
+        "rest": "fnv1a64:29869239a9dce149",
+        "signals": "fnv1a64:2f11b5c04c12aeaa",
+        "telem": "fnv1a64:4fc6ec77e47425b8",
+    },
+    "fnv1a64:071e51c537c932d5": {
+        "cube": "fnv1a64:9d8189ee49526cd3",
+        "enums": "fnv1a64:ce7f87e79a2838f6",
+        "gpu_chain": "fnv1a64:1f5f16e80dbb5c93",
+        "metadata": "fnv1a64:ff0b089558622884",
+        "record.chan": "fnv1a64:df5e8f24a8e017fe",
+        "record.cmb": "fnv1a64:e049ac69f9ee836a",
+        "record.elem": "fnv1a64:b61468c5a83782d3",
+        "record.row": "fnv1a64:436522cd6437ce2d",
+        "rest": "fnv1a64:b2f833485243900c",
+        "signals": "fnv1a64:2f11b5c04c12aeaa",
+        "telem": "fnv1a64:4fc6ec77e47425b8",
+    },
     "fnv1a64:991d7a6b0c071d3a": {
         "cube": "fnv1a64:9d8189ee49526cd3",
         "enums": "fnv1a64:ce7f87e79a2838f6",
@@ -315,6 +341,7 @@ class TestGolden(unittest.TestCase):
                     "rest/combiner",
                     "rest/assembler",
                     "rest/tap",
+                    "rest/host_rows",
                 ),
                 "gather": (
                     "telem",
@@ -322,6 +349,7 @@ class TestGolden(unittest.TestCase):
                     "record.chan",
                     "metadata",
                     "rest/fleet_trim",
+                    "rest/fleet_trim_batch",
                 ),
                 "aggregator": ("signals", "rest/search"),
                 "cubearch": ("cube", "metadata"),
@@ -463,6 +491,34 @@ class TestCompare(unittest.TestCase):
             got = {r: iface.compare(g, doc, role=r).state for r in want}
             self.assertEqual(got, want)
             self.assertEqual(iface.compare(g, doc).state, iface.MISMATCH)
+
+    def test_a_node_without_host_rows_is_refused(self):
+        """A node binary that cannot serve its host stages' rows by chain (rest/host_rows) is a
+        MISMATCH for this golden, while a golden without the family reads one that serves it as
+        COMPATIBLE."""
+        g = iface.golden()
+        old = golden_doc()
+        del old["sections"]["rest"]["host_rows"]
+        c = iface.compare(g, old, role="node")
+        self.assertEqual(c.state, iface.MISMATCH)
+        self.assertEqual([iface.path_str(p) for p, _, _ in c.fails], ["rest/host_rows"])
+        self.assertEqual(iface.compare(old, golden_doc()).state, iface.COMPATIBLE)
+
+    def test_a_gather_without_fleet_trim_batch_is_refused(self):
+        """A gather binary that cannot post one request for a GPU half's chains
+        (rest/fleet_trim_batch) is a MISMATCH for this golden's gather role and still a MATCH
+        for its node role, while a golden without the family reads one that has it as
+        COMPATIBLE."""
+        g = iface.golden()
+        old = golden_doc()
+        del old["sections"]["rest"]["fleet_trim_batch"]
+        c = iface.compare(g, old, role="gather")
+        self.assertEqual(c.state, iface.MISMATCH)
+        self.assertEqual(
+            [iface.path_str(p) for p, _, _ in c.fails], ["rest/fleet_trim_batch"]
+        )
+        self.assertEqual(iface.compare(g, old, role="node").state, iface.MATCH)
+        self.assertEqual(iface.compare(old, golden_doc()).state, iface.COMPATIBLE)
 
     def test_several_roles_compare_the_union_of_their_scopes(self):
         g = iface.golden()

@@ -126,9 +126,12 @@ cudaError_t launch_correlate_nm(const unsigned char* data, const float* chan_sca
  * are not conjugates of each other.
  *
  * @param wave       [3*n_job][n_chan][n_hops] float2, from @ref launch_waveform
- * @param energy     [4*n_job][n_chan] double, rows E/P/L/P_HEAD, from @ref launch_waveform.
- *                   cudaGnssInject passes the frame's first record for every record, so the
- *                   E/P/L scales are constant over a frame.
+ * @param energy     [4*n_job][n_chan] double, rows E/P/L/P_HEAD, from @ref launch_waveform
+ * @param energy_scale nullptr: the scale comes from @c energy. Else in/out
+ *                   [n_slot][4][n_chan] double, rows E/P/L/P_HEAD per slot (cudaGnssInject's
+ *                   d_energy0): a set row gives the scale; a row still NaN (unset) is
+ *                   scaled from @c energy and set to it, so a slot keeps the scale of its
+ *                   first record in the frame.
  * @param jobs       [n_job] device jobs (m_head, chan_mask)
  * @param slot2spec  [n_slot] device: job index of each PRN slot this record, -1 = inactive
  * @param lanes_per_slot 4 (E/P/L/P_HEAD) or 2 (P/P_HEAD); anything else is refused
@@ -142,11 +145,11 @@ cudaError_t launch_correlate_nm(const unsigned char* data, const float* chan_sca
  * @param lane_pitch length of the synth array's lane axis
  * @param synth      base of this record's rows: [n_hops][frame_chan_stride][lane_pitch] bytes
  */
-cudaError_t launch_pack44(const float2* wave, const double* energy, const DespreadJob* jobs,
-                          const int* slot2spec, int n_slot, int lanes_per_slot, int n_chan,
-                          int n_hops, const int* chan_map, int frame_chan_stride, int n_lanes,
-                          int lane_base, int lane_pitch, unsigned char* synth,
-                          cudaStream_t stream);
+cudaError_t launch_pack44(const float2* wave, const double* energy, double* energy_scale,
+                          const DespreadJob* jobs, const int* slot2spec, int n_slot,
+                          int lanes_per_slot, int n_chan, int n_hops, const int* chan_map,
+                          int frame_chan_stride, int n_lanes, int lane_base, int lane_pitch,
+                          unsigned char* synth, cudaStream_t stream);
 
 } // namespace gnss_cuda
 

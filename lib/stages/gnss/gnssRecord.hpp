@@ -153,7 +153,7 @@ constexpr int REC_ANG0 = 26;
 /// undo it across records. The /get_spectrum windows and the beam cube publish the same phi0.
 constexpr int REC_PHI0 = 28;
 
-/// Bright-satellite projection cost on this record (GnssGpuRecordAssemble::proj_slot_diag): the
+/// Bright-satellite projection cost on this record (gnss::RecordChain::proj_slot_diag): the
 /// fraction of this satellite's live element weights lying in the projected subspace, cos^2 in
 /// [0, 1] averaged over its covering channels with a basis in force; the projection leaves it
 /// (1 - cost)^2 of its prompt power. -1 = not applicable: no basis in force on this record, the
@@ -162,7 +162,7 @@ constexpr int REC_PHI0 = 28;
 constexpr int REC_PROJ_COST = 29;
 
 /// Bright-satellite projection rank on this record: the largest k over this instance's channels
-/// (GnssGpuRecordAssemble::proj_prepare_record), 0 when no basis is in force. The same value on
+/// (gnss::RecordChain::proj_prepare_record), 0 when no basis is in force. The same value on
 /// every PRN row of the record.
 constexpr int REC_PROJ_K = 30;
 

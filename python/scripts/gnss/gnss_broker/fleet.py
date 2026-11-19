@@ -17,6 +17,7 @@ import numpy as _np
 import random
 import re
 
+from . import node_api
 from .transport import NodeDown, _get, _log_rl, _now
 
 
@@ -62,9 +63,12 @@ def sk_summary(r):
 def parse_drops(metrics_text, gpu):
     """Pull this instance's drop counters out of a node's /metrics dump. buffer-send drops are
     per gnss{gpu} stage (telem: the GPS L5 chain's, gnss{gpu}_gps_l5_telem_send, or
-    gnss{gpu}_telem_send on a config generated before the stages carried the chain key); dpdk
-    misses/ring-full are node-level (shared by both GPUs, reported so a single congested NIC is
-    visible on every instance rather than nowhere)."""
+    gnss{gpu}_telem_send, the half's one telemetry stream with --telem-pack-host, counting every
+    chain's frames, or on a config generated before the stages carried the chain key); with
+    --telem-pack-host each chain's windows dropped on the half's full telemetry buffer are
+    telem_row_drops, {chain: count}, which leave out the send's own drops;
+    dpdk misses/ring-full are node-level (shared by both GPUs, reported so a single congested
+    NIC is visible on every instance rather than nowhere)."""
     out = {}
     srch = re.search(
         r'kotekan_buffer_send_dropped_frame_count\{stage_name="/gnss%d_srch_send"\}\s+([0-9.eE+-]+)'
@@ -76,10 +80,17 @@ def parse_drops(metrics_text, gpu):
         r"\s+([0-9.eE+-]+)" % gpu,
         metrics_text,
     )
+    rows = re.findall(
+        r'kotekan_gnss_telem_dropped_frames_total\{stage_name="/gnss%d_[^"]*",chain="([^"]*)"\}'
+        r"\s+([0-9.eE+-]+)" % gpu,
+        metrics_text,
+    )
     if srch:
         out["srch_send_drops"] = int(float(srch.group(1)))
     if telem:
         out["telem_send_drops"] = int(float(telem.group(1)))
+    if rows:
+        out["telem_row_drops"] = {c: int(float(n)) for c, n in rows}
     miss = [
         int(float(x))
         for x in re.findall(
@@ -422,7 +433,7 @@ def fleet_dll(
     polled = {}
     for url in endpoints:
         try:
-            polled[url] = _get("%s/get_status" % url) or []
+            polled[url] = _get(node_api.url(url, "get_status")) or []
         except Exception as e:
             if not isinstance(e, NodeDown):  # a DOWN node is logged once, by nodehealth
                 _log_rl(
@@ -1098,7 +1109,7 @@ def fleet_coherent(
         return {}
     for url in endpoints:
         try:
-            recs = _get("%s/get_records" % url)
+            recs = _get(node_api.url(url, "get_records"))
         except Exception as e:
             if not isinstance(e, NodeDown):
                 _log_rl(
@@ -1468,7 +1479,7 @@ def fleet_spectrum_aligned(endpoints, prns=None, log=None, stale_margin=0):
     avail, served, dropped, reanchored = {}, {}, [], []
     for url in endpoints:
         try:
-            r = _get("%s/get_spectrum" % url)
+            r = _get(node_api.url(url, "get_spectrum"))
         except Exception as e:
             if not isinstance(e, NodeDown):
                 _log_rl(
@@ -1509,7 +1520,7 @@ def fleet_spectrum_aligned(endpoints, prns=None, log=None, stale_margin=0):
             dropped.append((url, "window %d outside [%d,%d]" % (idx, lo, hi)))
             continue
         try:
-            r = _get("%s/get_spectrum?window=%d" % (url, idx))
+            r = _get(node_api.url(url, "get_spectrum", "window=%d" % idx))
         except Exception as e:
             dropped.append((url, "unreachable on second poll (%s)" % e))
             continue

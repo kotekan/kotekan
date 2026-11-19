@@ -161,6 +161,14 @@ config/gnss_bad_inputs.json
 # ---- 10-28: the array code group-delay map (gnss_broker/gdvmap.py) ----
 glob:config/gdvmap_*.json
 
+# ---- the fleet's chains table (config/gnss_fleet.py and the generator import it) ----
+config/gnss_chain_table.py
+config/test_gnss_chain_table.py
+
+# ---- a chain instance's node requests, at its row's own path or by chain ----
+python/scripts/gnss/gnss_broker/node_api.py
+python/scripts/gnss/gnss_broker/test_node_api.py
+
 # ---- the new repo's root files: scripts/gnss/repo_root/X becomes X (no scripts/gnss/repo_root/ copy is kept).
 #      MUST stay the last line: filters above test the original name. ----
 scripts/gnss/repo_root/==>

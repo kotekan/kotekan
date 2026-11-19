@@ -32,6 +32,8 @@ BASE = "config/base/live_config_20260730.json"
 
 sys.path.insert(0, HERE)
 import gen_chord_gnss_config as g  # noqa: E402
+import gnss_chain_table  # noqa: E402
+import gnss_fleet  # noqa: E402
 
 sys.path.append(os.path.join(ROOT, "python", "scripts", "gnss"))
 import kotekan_src  # noqa: E402
@@ -49,6 +51,16 @@ def check(ok, what):
 def node_cfg():
     with open(g.NODE_FILE) as fh:
         return yaml.safe_load(fh)
+
+
+def row(descriptor):
+    """The chains table's row for a descriptor."""
+    return next(r for r in gnss_chain_table.load() if r.descriptor == descriptor)
+
+
+def spec(descriptor):
+    """The --extra-signal DESCRIPTOR:PRNS gen_fleet passes for a descriptor's row."""
+    return "%s:%s" % (descriptor, row(descriptor).prns)
 
 
 def run_gen(*argv, env=None):
@@ -295,17 +307,63 @@ def test_unknown_descriptor_is_refused():
             and "%s GPS_L9_X: not a descriptor in the interface golden" % where in err,
             "%s GPS_L9_X is refused, naming it (rc %d)" % (where, rc),
         )
-    cfg = node_cfg()
-    cfg["signals"]["tracker"] = "GPS_L5_Q_NHX"
+    rc, _, err = run_gen(
+        "--base",
+        BASE,
+        "--node",
+        "cx19",
+        "--gather-instance",
+        "--extra-signal",
+        "GPS_L1CA:1,2",
+    )
+    check(
+        rc != 0 and "--extra-signal GPS_L1CA: no row in the chains table" in err,
+        "a descriptor the golden has but no chains-table row holds is refused (rc %d)"
+        % rc,
+    )
+    rc, _, err = run_gen(
+        "--base",
+        BASE,
+        "--node",
+        "cx19",
+        "--gather-instance",
+        "--extra-signal",
+        "GAL_E5A_Q_CS:2,3",
+    )
+    check(
+        rc != 0
+        and "--extra-signal GAL_E5A_Q_CS: PRNs 2,3 are not its chains-table row's"
+        in err,
+        "PRNs other than the chain's row's are refused (rc %d)" % rc,
+    )
+    rows = gnss_chain_table.load()
+    g._CHAIN_ROWS[:] = [rows[0]._replace(descriptor="GPS_L5_Q_NHX")] + rows[1:]
     args = argparse.Namespace(extra_signal=None, aggregator_extra_search=None)
+    try:
+        g.check_descriptors(node_cfg(), args)
+        msg = None
+    except SystemExit as e:
+        msg = str(e)
+    finally:
+        g._CHAIN_ROWS[:] = []
+    check(
+        msg is not None
+        and "chain gps_l5 (id 1): descriptor GPS_L5_Q_NHX is not one signal_by_name"
+        in msg,
+        "a chains-table descriptor the golden lacks is refused (%s)" % msg,
+    )
+    cfg = node_cfg()
+    cfg["signals"]["primary"] = "GAL_E5A_Q"
     try:
         g.check_descriptors(cfg, args)
         msg = None
     except SystemExit as e:
         msg = str(e)
     check(
-        msg is not None and msg.startswith("signals.tracker GPS_L5_Q_NHX:"),
-        "a tracker descriptor the golden lacks is refused (%s)" % msg,
+        msg is not None
+        and "the first row is gps_l5, but signals.primary (GAL_E5A_Q) is chain gal_e5a"
+        in msg,
+        "a first row that is not the node table's primary is refused (%s)" % msg,
     )
     cfg = node_cfg()
     args = argparse.Namespace(
@@ -418,6 +476,516 @@ def test_psi_synth_needs_epl():
         "--psi-synth alone is refused naming --epl-from-prompt (%r)" % (exc,),
     )
     check(not fake.urls, "the refusal probes nothing")
+
+
+def test_record_host_needs_gpu_rows():
+    """--record-host is refused without --gpu-rows, before anything is probed."""
+    with fleet(FakeFleet(None)) as fake:
+        exc, _, _ = run_main(["--base", BASE, "--node", "cx19", "--record-host"])
+    check(
+        exc is not None and "--gpu-rows" in exc,
+        "--record-host alone is refused naming --gpu-rows (%r)" % (exc,),
+    )
+    check(not fake.urls, "the refusal probes nothing")
+
+
+def test_record_row_keys_are_the_stages():
+    """RECORD_ROW_KEYS is GnssGpuRecordAssemble's ROW_KEYS and ROW_ONLY_KEYS: a key it leaves
+    out could land on the host, where the stage refuses it or a row would inherit it."""
+    with open(
+        os.path.join(ROOT, "lib", "stages", "gnss", "GnssGpuRecordAssemble.cpp")
+    ) as f:
+        src = f.read()
+    keys = set()
+    for name in ("ROW_KEYS", "ROW_ONLY_KEYS"):
+        m = re.search(r"GnssGpuRecordAssemble::%s = \{(.*?)\};" % name, src, re.S)
+        keys |= (
+            set(re.findall(r'"(\w+)"', m.group(1))) if m else {"<%s missing>" % name}
+        )
+    check(
+        keys == set(g.RECORD_ROW_KEYS),
+        "RECORD_ROW_KEYS is the stage's row keys (only in one: %s)"
+        % sorted(keys ^ set(g.RECORD_ROW_KEYS)),
+    )
+
+
+def test_record_host_form():
+    """record_host_form: keys every chain shares at one value go on the host, the rest and
+    every RECORD_ROW_KEYS key stay in the rows, each row its own worker on its core."""
+    blocks = {
+        "gnss1_a_n2assemble": {
+            "kotekan_stage": "GnssGpuRecordAssemble",
+            "cpu_affinity": [57],
+            "out_buf": "gnss1_a_n2rec_buf",
+            "prns": [1],
+            "channel_ids": [7],
+            "ctl_buf": "gnss1_rows_ctl_buf",
+            "elem_proj_sys": "G",
+            "chan_export": True,
+        },
+        "gnss1_b_n2assemble": {
+            "kotekan_stage": "GnssGpuRecordAssemble",
+            "cpu_affinity": [50],
+            "out_buf": "gnss1_b_n2rec_buf",
+            "prns": [1],
+            "channel_ids": [7],
+            "ctl_buf": "gnss1_rows_ctl_buf",
+            "elem_proj_sys": "E",
+            "chan_export": True,
+            "record_cp_mod_chips": 1.0,
+        },
+        "gnss1_b_n2rec_buf": {"kotekan_buffer": "standard"},
+    }
+    g.record_host_form(blocks, [{"pre": "gnss1_b_"}, {"pre": "gnss1_a_"}], 1)
+    want = {
+        "kotekan_stage": "GnssGpuRecordAssemble",
+        "chan_export": True,
+        "cpu_affinity": [50, 57],
+        "chains": {
+            "gnss1_a": {
+                "out_buf": "gnss1_a_n2rec_buf",
+                "prns": [1],
+                "channel_ids": [7],
+                "ctl_buf": "gnss1_rows_ctl_buf",
+                "elem_proj_sys": "G",
+            },
+            "gnss1_b": {
+                "out_buf": "gnss1_b_n2rec_buf",
+                "prns": [1],
+                "channel_ids": [7],
+                "ctl_buf": "gnss1_rows_ctl_buf",
+                "elem_proj_sys": "E",
+                "record_cp_mod_chips": 1.0,
+            },
+        },
+        "workers": [
+            {"rows": ["gnss1_b"], "cpu_affinity": [50]},
+            {"rows": ["gnss1_a"], "cpu_affinity": [57]},
+        ],
+    }
+    check(
+        sorted(blocks) == ["gnss1_b_n2rec_buf", "gnss1_records"]
+        and blocks["gnss1_records"] == want,
+        "record_host_form hosts the rows in gnss_rows order (%s)"
+        % json.dumps(blocks.get("gnss1_records"), sort_keys=True)[:300],
+    )
+
+
+def test_combine_row_keys_are_the_stages():
+    """COMBINE_ROW_KEYS is GnssCoherentCombiner's ROW_KEYS and ROW_ONLY_KEYS."""
+    with open(
+        os.path.join(ROOT, "lib", "stages", "gnss", "GnssCoherentCombiner.cpp")
+    ) as f:
+        src = f.read()
+    keys = set()
+    for name in ("ROW_KEYS", "ROW_ONLY_KEYS"):
+        m = re.search(r"GnssCoherentCombiner::%s = \{(.*?)\};" % name, src, re.S)
+        keys |= (
+            set(re.findall(r'"(\w+)"', m.group(1))) if m else {"<%s missing>" % name}
+        )
+    check(
+        keys == set(g.COMBINE_ROW_KEYS),
+        "COMBINE_ROW_KEYS is the stage's row keys (only in one: %s)"
+        % sorted(keys ^ set(g.COMBINE_ROW_KEYS)),
+    )
+
+
+def test_combine_host_form():
+    """combine_host_form: keys every chain shares at one value go on the host, the rest and
+    every COMBINE_ROW_KEYS key stay in the rows, each row its own worker on its core."""
+    blocks = {
+        "gnss0_a_n2combine": {
+            "kotekan_stage": "GnssCoherentCombiner",
+            "cpu_affinity": [41],
+            "in_bufs": ["gnss0_a_n2rec_buf"],
+            "out_buf": "gnss0_a_n2cmb_buf",
+            "n_prn": 32,
+            "n_elements": 128,
+            "record_export": 128,
+        },
+        "gnss0_b_n2combine": {
+            "kotekan_stage": "GnssCoherentCombiner",
+            "cpu_affinity": [35],
+            "in_bufs": ["gnss0_b_n2rec_buf"],
+            "out_buf": "gnss0_b_n2cmb_buf",
+            "n_prn": 32,
+            "n_elements": 128,
+            "record_export": 128,
+            "integration_length": 200,
+        },
+        "gnss0_b_n2rec_buf": {"kotekan_buffer": "standard"},
+    }
+    g.combine_host_form(
+        blocks, [{"pre": "gnss0_b_", "name": "b"}, {"pre": "gnss0_a_", "name": "a"}], 0
+    )
+    want = {
+        "kotekan_stage": "GnssCoherentCombiner",
+        "n_elements": 128,
+        "record_export": 128,
+        "cpu_affinity": [35, 41],
+        "chains": {
+            "gnss0_a": {
+                "in_bufs": ["gnss0_a_n2rec_buf"],
+                "out_buf": "gnss0_a_n2cmb_buf",
+                "n_prn": 32,
+                "chain": "a",
+            },
+            "gnss0_b": {
+                "in_bufs": ["gnss0_b_n2rec_buf"],
+                "out_buf": "gnss0_b_n2cmb_buf",
+                "n_prn": 32,
+                "integration_length": 200,
+                "chain": "b",
+            },
+        },
+        "workers": [
+            {"rows": ["gnss0_b"], "cpu_affinity": [35]},
+            {"rows": ["gnss0_a"], "cpu_affinity": [41]},
+        ],
+    }
+    check(
+        sorted(blocks) == ["gnss0_b_n2rec_buf", "gnss0_combine"]
+        and blocks["gnss0_combine"] == want,
+        "combine_host_form hosts the rows in gnss_rows order, n_prn, out_buf and the broker "
+        "chain in each "
+        "(%s)" % json.dumps(blocks.get("gnss0_combine"), sort_keys=True)[:300],
+    )
+
+
+def test_telem_row_keys_are_the_stages():
+    """TELEM_ROW_KEYS is GnssTelemPack's ROW_KEYS and ROW_ONLY_KEYS."""
+    with open(os.path.join(ROOT, "lib", "stages", "gnss", "GnssTelemPack.cpp")) as f:
+        src = f.read()
+    keys = set()
+    for name in ("ROW_KEYS", "ROW_ONLY_KEYS"):
+        m = re.search(r"GnssTelemPack::%s = \{(.*?)\};" % name, src, re.S)
+        keys |= (
+            set(re.findall(r'"(\w+)"', m.group(1))) if m else {"<%s missing>" % name}
+        )
+    check(
+        keys == set(g.TELEM_ROW_KEYS),
+        "TELEM_ROW_KEYS is the stage's row keys (only in one: %s)"
+        % sorted(keys ^ set(g.TELEM_ROW_KEYS)),
+    )
+
+
+def test_telem_host_form():
+    """telem_host_form: the packs as rows of gnss<g>_telem writing one gnss<g>_telem_buf, as
+    deep as their buffers together and as wide as the widest, which one GnssTelemSend ships at
+    the sum of their pacing; a send key that differs between the chains is refused."""
+
+    def pack(pre, core, max_prn):
+        return {
+            "kotekan_stage": "GnssTelemPack",
+            "in_buf": pre + "n2rec_buf",
+            "out_buf": pre + "telem_buf",
+            "chain": pre[6:-1],
+            "inst": "node.0",
+            "n_prn": 32,
+            "max_prn": max_prn,
+            "n_chan": 4,
+            "channel_ids": [1, 2, 3, 4],
+            "cpu_affinity": [core],
+        }
+
+    def send(pre, mbps):
+        return {
+            "kotekan_stage": "bufferSend",
+            "buf": pre + "telem_buf",
+            "server_ip": "10.0.0.1",
+            "server_port": 11060,
+            "drop_frames": True,
+            "max_pacing_rate_mbps": mbps,
+            "cpu_affinity": [36],
+        }
+
+    def blocks():
+        out = {}
+        for pre, max_prn, size, mbps in (
+            ("gnss0_b_", 14, 1000, 1.25),
+            ("gnss0_a_", 32, 2000, 2.5),
+        ):
+            out[pre + "telem_pack"] = pack(pre, 35, max_prn)
+            out[pre + "telem_buf"] = {
+                "kotekan_buffer": "standard",
+                "metadata_pool": "gnss_pool",
+                "num_frames": 32,
+                "frame_size": size,
+            }
+            out[pre + "telem_send"] = send(pre, mbps)
+        return out
+
+    pres = [{"pre": "gnss0_b_"}, {"pre": "gnss0_a_"}]
+    b = blocks()
+    g.telem_host_form(b, pres, 0)
+    rows = {
+        "gnss0_"
+        + c: {
+            "in_buf": "gnss0_%s_n2rec_buf" % c,
+            "chain": c,
+            "n_prn": 32,
+            "max_prn": m,
+            "n_chan": 4,
+            "channel_ids": [1, 2, 3, 4],
+        }
+        for c, m in (("a", 32), ("b", 14))
+    }
+    want = {
+        "gnss0_telem": {
+            "kotekan_stage": "GnssTelemPack",
+            "inst": "node.0",
+            "cpu_affinity": [35],
+            "chains": rows,
+            "workers": [
+                {"rows": ["gnss0_b"], "cpu_affinity": [35]},
+                {"rows": ["gnss0_a"], "cpu_affinity": [35]},
+            ],
+            "out_buf": "gnss0_telem_buf",
+        },
+        "gnss0_telem_buf": {
+            "kotekan_buffer": "standard",
+            "metadata_pool": "gnss_pool",
+            "num_frames": 3 * 64,
+            "frame_size": 2000,
+        },
+        "gnss0_telem_send": dict(
+            send("gnss0_", 3.75), kotekan_stage="GnssTelemSend", buf="gnss0_telem_buf",
+        ),
+    }
+    check(
+        b == want,
+        "telem_host_form: one host, one buffer and one GnssTelemSend for the half (%s)"
+        % json.dumps(b, sort_keys=True)[:400],
+    )
+    b = blocks()
+    b["gnss0_a_telem_send"]["send_timeout"] = 2
+    try:
+        g.telem_host_form(b, pres, 0)
+        msg = None
+    except SystemExit as e:
+        msg = str(e)
+    check(
+        msg
+        == "gnss0: --telem-pack-host needs send_timeout the same on every chain's telem_send",
+        "telem_host_form refuses a send key the chains differ on (%s)" % msg,
+    )
+
+
+def test_half_rec_buf_form():
+    """half_rec_buf_form: the chains' record buffers become gnss<g>_rec_buf, HALF_REC_DEPTH
+    frames of one record of every chain after the directory, in gnss_rows order; each host
+    names it once on its block, and each row sets its rec_row in place of its own buffer."""
+    pres = [{"pre": "gnss1_b_"}, {"pre": "gnss1_a_"}]
+    blocks = {
+        "gnss1_records": {
+            "n_elements": 2,
+            "chan_export": True,
+            "chains": {
+                "gnss1_a": {
+                    "out_buf": "gnss1_a_n2rec_buf",
+                    "prns": [1, 2, 3],
+                    "channel_ids": [7],
+                    "gnss_row": {"chain_id": 4},
+                },
+                "gnss1_b": {
+                    "out_buf": "gnss1_b_n2rec_buf",
+                    "prns": [5],
+                    "channel_ids": [7, 8],
+                    "gnss_row": {"chain_id": 9},
+                },
+            },
+        },
+        "gnss1_combine": {
+            "chains": {
+                k: {"in_bufs": [k + "_n2rec_buf"], "n_prn": 1}
+                for k in ("gnss1_a", "gnss1_b")
+            }
+        },
+        "gnss1_telem": {
+            "chains": {
+                k: {"in_buf": k + "_n2rec_buf", "n_prn": 1}
+                for k in ("gnss1_a", "gnss1_b")
+            }
+        },
+        "gnss1_a_n2rec_buf": {"kotekan_buffer": "standard"},
+        "gnss1_b_n2rec_buf": {"kotekan_buffer": "standard"},
+    }
+    g.half_rec_buf_form(blocks, pres, 1)
+    stride = g.record_stride(2)
+    b_bytes = 4 * 1 * (stride + 2 * g.chan_floats())
+    a_bytes = 4 * 3 * (stride + 1 * g.chan_floats())
+    b_off = 128  # 16 + 48 * 2 = 112, up to 64
+    a_off = -(-(b_off + b_bytes) // 64) * 64
+    rows = {
+        "gnss1_b": {
+            "chain_id": 9,
+            "n_prn": 1,
+            "n_chan": 2,
+            "offset": b_off,
+            "bytes": b_bytes,
+        },
+        "gnss1_a": {
+            "chain_id": 4,
+            "n_prn": 3,
+            "n_chan": 1,
+            "offset": a_off,
+            "bytes": a_bytes,
+        },
+    }
+    bad = []
+    if blocks.get("gnss1_rec_buf") != {
+        "kotekan_buffer": "standard",
+        "num_frames": g.HALF_REC_DEPTH,
+        "frame_size": a_off + a_bytes,
+        "peek_hold": True,
+    }:
+        bad.append("gnss1_rec_buf %s" % blocks.get("gnss1_rec_buf"))
+    if any(k.endswith("_n2rec_buf") for k in blocks):
+        bad.append("a chain's record buffer is left")
+    for host, key, value in (
+        ("gnss1_records", "out_buf", "gnss1_rec_buf"),
+        ("gnss1_combine", "in_bufs", ["gnss1_rec_buf"]),
+        ("gnss1_telem", "in_buf", "gnss1_rec_buf"),
+    ):
+        h = blocks[host]
+        if h.get(key) != value:
+            bad.append("%s %s %s" % (host, key, h.get(key)))
+        for k, row in h["chains"].items():
+            if key in row or row.get("rec_row") != rows[k]:
+                bad.append("%s %s %s" % (host, k, row))
+    check(not bad, "half_rec_buf_form: one record buffer, rows tiling it (%s)" % bad)
+
+
+def test_rec_offsets_are_the_stages():
+    """gnss_record_layout.rec_offsets tiles a frame as gnss::RecDir does: the directory's head,
+    entry and wstart widths and REC_ROW_ALIGN are those of gnssRecRows.hpp and .cpp."""
+    d = os.path.join(ROOT, "lib", "stages", "gnss")
+    with open(os.path.join(d, "gnssRecRows.hpp")) as f:
+        hpp = f.read()
+    with open(os.path.join(d, "gnssRecRows.cpp")) as f:
+        cpp = f.read()
+    found = [
+        re.search(r"constexpr size_t REC_ROW_ALIGN = (\d+);", hpp),
+        re.search(r"constexpr size_t HEAD_BYTES = (\d+) \* sizeof\(int64_t\);", cpp),
+        re.search(r"sizeof\(RecRow\) == (\d+) \* sizeof\(int64_t\)", cpp),
+        re.search(
+            r"return HEAD_BYTES \+ n \* \(sizeof\(RecRow\) \+ sizeof\(int64_t\)\);", cpp
+        ),
+    ]
+    bad = [i for i, m in enumerate(found) if m is None]
+    if not bad:
+        align, head, entry = (int(m.group(1)) for m in found[:3])
+        for row_bytes in ([4], [100, 8, 64], [1] * 17):
+            want, at = [], 8 * head + len(row_bytes) * 8 * (entry + 1)
+            for b in row_bytes:
+                at = -(-at // align) * align
+                want.append(at)
+                at += b
+            if g.rec_offsets(row_bytes) != (want, at):
+                bad.append(row_bytes)
+    check(
+        not bad,
+        "rec_offsets tiles a frame as gnss::RecDir does (patterns not found or rows "
+        "differing: %s)" % bad,
+    )
+
+
+def test_half_rec_buf():
+    """--half-rec-buf, on top of --record-host --combine-host --telem-pack-host, puts each half's
+    records in gnss<g>_rec_buf and changes nothing else: each chain's rec_row holds what its
+    record buffer held without the flag, and the hosts are those without it but for the buffer
+    keys. Without the three host flags it is refused."""
+    if kotekan_src.SRC is None:
+        print("  [SKIP] node config: no kotekan tree to render the base from")
+        return
+    hosts = [
+        "--fold-epl",
+        "--gpu-rows",
+        "--inject-host",
+        "--record-host",
+        "--combine-host",
+        "--telem-pack-host",
+    ]
+    exc, plain = _lane_transfer_node(flags=hosts)
+    exc_h, half = _lane_transfer_node(flags=hosts + ["--half-rec-buf"])
+    check(
+        exc is None and exc_h is None,
+        "the node configs generate (%s, %s)" % (exc, exc_h),
+    )
+    if None in (plain, half):
+        return
+    bad = []
+    for gpu in (0, 1):
+        name = "gnss%d_rec_buf" % gpu
+        rec, cmb, tel = (
+            plain["gnss%d_%s" % (gpu, h)] for h in ("records", "combine", "telem")
+        )
+        rec_h, cmb_h, tel_h = (
+            half["gnss%d_%s" % (gpu, h)] for h in ("records", "combine", "telem")
+        )
+        for k, row in rec["chains"].items():
+            old = plain[row["out_buf"]]
+            size = eval(old["frame_size"].replace("sizeof_float32", "4"))
+            rr = rec_h["chains"][k]["rec_row"]
+            if (
+                rr["bytes"] != size
+                or rr["n_prn"] != len(row["prns"])
+                or rr["n_chan"] != len(row["channel_ids"])
+                or rr["chain_id"] != row["gnss_row"]["chain_id"]
+                or cmb_h["chains"][k]["rec_row"] != rr
+                or tel_h["chains"][k]["rec_row"] != rr
+                or old.get("numa_node") != half[name].get("numa_node")
+            ):
+                bad.append("%s %s %s" % (name, k, rr))
+        for host, h_, key in (
+            (rec, rec_h, "out_buf"),
+            (cmb, cmb_h, "in_bufs"),
+            (tel, tel_h, "in_buf"),
+        ):
+            want = copy.deepcopy(host)
+            for row in want["chains"].values():
+                del row[key]
+            got = copy.deepcopy(h_)
+            del got[key]
+            for row in got["chains"].values():
+                del row["rec_row"]
+            if got != want:
+                bad.append("gnss%d host %s" % (gpu, key))
+        # In gnss_rows order, tiling the frame.
+        by_row = sorted(rec_h["chains"].values(), key=lambda r: r["gnss_row"]["row"])
+        offs, frame = g.rec_offsets([r["rec_row"]["bytes"] for r in by_row])
+        if (
+            [r["rec_row"]["offset"] for r in by_row] != offs
+            or half[name]["frame_size"] != frame
+            or half[name]["num_frames"] != g.HALF_REC_DEPTH
+            or not half[name].get("peek_hold")
+            or "metadata_pool" in half[name]
+        ):
+            bad.append("%s %s" % (name, half[name]))
+    others = {
+        k: v
+        for k, v in plain.items()
+        if not re.fullmatch(r"gnss\d(_\w+_n2rec_buf|_records|_combine|_telem)", k)
+    }
+    if {
+        k: v
+        for k, v in half.items()
+        if not re.fullmatch(r"gnss\d(_rec_buf|_records|_combine|_telem)", k)
+    } != others:
+        bad.append("blocks outside the records' buffers and hosts")
+    check(
+        not bad,
+        "one record buffer per half, each row's rec_row its old buffer, nothing else (%s)"
+        % bad[:4],
+    )
+    for missing in ("--record-host", "--combine-host", "--telem-pack-host"):
+        exc, _ = _lane_transfer_node(
+            flags=[f for f in hosts if f != missing] + ["--half-rec-buf"]
+        )
+        check(
+            exc is not None and "--half-rec-buf requires" in exc,
+            "--half-rec-buf without %s is refused (%r)" % (missing, exc),
+        )
 
 
 def test_paths_in_the_kotekan_tree():
@@ -1036,7 +1604,7 @@ def test_manual_mask_reaches_the_node_config():
             "--track-beam-freq-ids",
             "6144-6164",
             "--extra-signal",
-            "GW_1202:894,1101,1214",
+            spec("GW_1202"),
             "--dtv-subtract-freq-ids",
             "2720-2735",
             "--lane-dump-period-s",
@@ -1250,13 +1818,11 @@ def test_manual_mask_reaches_the_node_config():
 
 
 def _lane_transfer_node(
-    *transfers,
-    signals=("SBAS_L5_I_MC:131,133,135", "GAL_E6_C_CS:2,3,4"),
-    exempt="5940-6076",
+    *transfers, signals=None, exempt="5940-6076", flags=(),
 ):
     """One node config (cx51) with these chains beside GPS L5 (default SBAS L5 and Galileo E6),
-    lanes published, and the given --lane-transfer specs: (SystemExit message or None, parsed
-    config)."""
+    lanes published, the given --lane-transfer specs and any other flags: (SystemExit message or
+    None, parsed config)."""
     argv = [
         "--base",
         kotekan_src.src("config", "chord/pathfinder.j2"),
@@ -1277,10 +1843,11 @@ def _lane_transfer_node(
         "--elem-dir-publish",
         "all",
     ]
-    for e in signals:
+    for e in signals or (spec("SBAS_L5_I_MC"), spec("GAL_E6_C_CS")):
         argv += ["--extra-signal", e]
     for t in transfers:
         argv += ["--lane-transfer", t]
+    argv += list(flags)
     with stubbed(set()):
         exc, out, _ = run_main(argv)
     return exc, (yaml.safe_load(out) if exc is None else None)
@@ -1334,6 +1901,151 @@ def test_chain_names_and_lane_transfer():
         )
 
 
+def test_combiner_out_buf():
+    """--no-combiner-out-buf drops each chain's n2cmb_buf and n2sink and the combiner's out_buf,
+    and changes nothing else; --combiner-out-buf is the default."""
+    if kotekan_src.SRC is None:
+        print("  [SKIP] node config: no kotekan tree to render the base from")
+        return
+    exc, on = _lane_transfer_node()
+    exc_on, on2 = _lane_transfer_node(flags=["--combiner-out-buf"])
+    exc_off, off = _lane_transfer_node(flags=["--no-combiner-out-buf"])
+    check(
+        exc is None and exc_on is None and exc_off is None,
+        "the node configs generate (%s, %s, %s)" % (exc, exc_on, exc_off),
+    )
+    if None in (on, on2, off):
+        return
+    check(on == on2, "--combiner-out-buf is the default")
+    pres = [k[: -len("n2combine")] for k in on if k.endswith("_n2combine")]
+    check(len(pres) == 6, "6 combiners (%d)" % len(pres))
+    check(
+        all(
+            on[p + "n2combine"]["out_buf"] == p + "n2cmb_buf"
+            and on[p + "n2sink"]
+            == {"kotekan_stage": "dropAllFrames", "in_buf": p + "n2cmb_buf"}
+            for p in pres
+        ),
+        "default: every combiner writes <chain>n2cmb_buf, which <chain>n2sink drains",
+    )
+    trimmed = copy.deepcopy(on)
+    for p in pres:
+        del trimmed[p + "n2cmb_buf"], trimmed[p + "n2sink"]
+        del trimmed[p + "n2combine"]["out_buf"]
+    check(
+        off == trimmed,
+        "--no-combiner-out-buf: the default less every n2cmb_buf, n2sink and combiner out_buf",
+    )
+
+
+def test_combine_host():
+    """--combine-host, alone or with --no-combiner-out-buf, moves each half's combiners into
+    gnss<g>_combine and changes nothing else: read by gnss_fleet.combiner_rows, the host's rows
+    are the combiners without the flag, cores included."""
+    if kotekan_src.SRC is None:
+        print("  [SKIP] node config: no kotekan tree to render the base from")
+        return
+    for extra in ([], ["--no-combiner-out-buf"]):
+        exc, plain = _lane_transfer_node(flags=extra)
+        exc_h, hosted = _lane_transfer_node(flags=extra + ["--combine-host"])
+        check(
+            exc is None and exc_h is None,
+            "%s: the node configs generate (%s, %s)" % (extra, exc, exc_h),
+        )
+        if None in (plain, hosted):
+            continue
+        cmb = {
+            k: v
+            for k, v in plain.items()
+            if isinstance(v, dict) and v.get("kotekan_stage") == "GnssCoherentCombiner"
+        }
+        rows = dict(gnss_fleet.combiner_rows(hosted))
+        chains = {k: r.pop("chain", None) for k, r in rows.items()}
+        check(
+            len(cmb) == 6 and rows == cmb,
+            "%s: the hosts' rows are the combiners without the flag (%d, %d)"
+            % (extra, len(cmb), len(rows)),
+        )
+        check(
+            all(c == gnss_fleet.stage_chain(k, "n2combine") for k, c in chains.items()),
+            "%s: each row's chain is its broker chain (%s)" % (extra, chains),
+        )
+        others = {k: v for k, v in plain.items() if k not in cmb}
+        check(
+            {k: v for k, v in hosted.items() if not re.fullmatch(r"gnss\d_combine", k)}
+            == others
+            and sorted(k for k in hosted if re.fullmatch(r"gnss\d_combine", k))
+            == ["gnss0_combine", "gnss1_combine"],
+            "%s: one host per half, and nothing else changes" % extra,
+        )
+
+
+def test_telem_pack_host():
+    """--telem-pack-host, alone or with --combine-host, moves each half's telemetry packs into
+    gnss<g>_telem, writing gnss<g>_telem_buf for gnss<g>_telem_send, and changes nothing else:
+    read by gnss_fleet.telem_rows, the host's rows are the packs without the flag, less their
+    out_buf, and each sends the chain and inst it did."""
+    if kotekan_src.SRC is None:
+        print("  [SKIP] node config: no kotekan tree to render the base from")
+        return
+    for extra in ([], ["--combine-host"]):
+        exc, plain = _lane_transfer_node(flags=extra)
+        exc_h, hosted = _lane_transfer_node(flags=extra + ["--telem-pack-host"])
+        check(
+            exc is None and exc_h is None,
+            "%s: the node configs generate (%s, %s)" % (extra, exc, exc_h),
+        )
+        if None in (plain, hosted):
+            continue
+        packs = {
+            k: v
+            for k, v in plain.items()
+            if isinstance(v, dict) and v.get("kotekan_stage") == "GnssTelemPack"
+        }
+        rows = dict(gnss_fleet.telem_rows(hosted))
+        bufs = {g_: [] for g_ in (0, 1)}
+        for k, v in packs.items():
+            bufs[int(k[4])].append(plain[v.pop("out_buf")])
+        check(
+            len(packs) == 6
+            and {k: dict(r, out_buf=None) for k, r in rows.items()}
+            == {k: dict(v, out_buf=None) for k, v in packs.items()},
+            "%s: the hosts' rows are the packs without the flag (%d, %d)"
+            % (extra, len(packs), len(rows)),
+        )
+        bad = []
+        for g_ in (0, 1):
+            buf = hosted.get("gnss%d_telem_buf" % g_) or {}
+            if buf.get("num_frames") != g.TELEM_HOST_DEPTH * sum(
+                b["num_frames"] for b in bufs[g_]
+            ) or buf.get("frame_size") != max(b["frame_size"] for b in bufs[g_]):
+                bad.append("gnss%d_telem_buf %s" % (g_, buf))
+            send = hosted.get("gnss%d_telem_send" % g_) or {}
+            if (
+                send.get("kotekan_stage") != "GnssTelemSend"
+                or send.get("buf") != "gnss%d_telem_buf" % g_
+                or send.get("server_port") != g.TELEM_PORT
+            ):
+                bad.append("gnss%d_telem_send %s" % (g_, send))
+
+        def others(c):
+            return {
+                k: v
+                for k, v in c.items()
+                if not re.match(r"gnss\d(_\w+)?_telem_(pack|buf|send)$", k)
+                and not re.match(r"gnss\d_telem$", k)
+            }
+
+        if others(plain) != others(hosted):
+            bad.append("blocks outside the telemetry legs")
+        check(
+            not bad,
+            "%s: one buffer TELEM_HOST_DEPTH times as deep as the rows' and as wide as the "
+            "widest, one GnssTelemSend "
+            "per half, and nothing else changes (%s)" % (extra, bad),
+        )
+
+
 def test_upper_l_band_node():
     """On the node table's 150-1600 MHz band cx51 (combs 7 and 13) builds bds_b1i and gps_l1ca
     on both GPUs with the taps 0.5 chip out, and gps_l1ca's lanes transfer to the other live
@@ -1343,7 +2055,7 @@ def test_upper_l_band_node():
         return
     exc, cfg = _lane_transfer_node(
         "gps_l1ca:1560.1-1590.8",
-        signals=("BDS_B1I_NH:6,7,8", "GPS_L1CA_BIT:1,2,3"),
+        signals=(spec("BDS_B1I_NH"), spec("GPS_L1CA_BIT")),
         exempt="5940-6076,7982-8144",
     )
     check(exc is None, "the node config generates (%s)" % exc)
@@ -1369,6 +2081,64 @@ def test_upper_l_band_node():
         check(
             got == want, "gpu%d: L1 C/A's lanes transfer to %s (%s)" % (g_, want, got)
         )
+
+
+def _inject_dll_spacing(cfg):
+    """{chain key: dll_spacing} of every cudaGnssInject in a node config, per GPU."""
+    return {
+        gpu: {
+            g.broker_chain_name(c["signal"]): c["dll_spacing"]
+            for c in cfg["gnss%d_n2dual" % gpu]["commands"]
+            if c["name"] == "cudaGnssInject"
+        }
+        for gpu in (0, 1)
+    }
+
+
+def test_taps_take_the_tables_dll_spacing():
+    """Every chain's taps on a node carry its row's DLL spacing, the value the broker's trim law
+    takes from the same row; a row changed under the generator moves the taps, and
+    dll_spacing_drift names the chain."""
+    if kotekan_src.SRC is None:
+        print("  [SKIP] node config: no kotekan tree to render the base from")
+        return
+    rows = gnss_chain_table.load()
+    signals = ["%s:%s" % (r.descriptor, r.prns) for r in rows[1:]]
+    # The fleet's two lanes per slot: at four, every chain does not fit the synth axis.
+    kw = dict(
+        signals=signals, exempt="5940-6626,7982-8144", flags=["--epl-from-prompt"]
+    )
+    exc, cfg = _lane_transfer_node(**kw)
+    check(exc is None, "cx51 generates with every chain of the table (%s)" % exc)
+    if exc is not None:
+        return
+    taps = _inject_dll_spacing(cfg)
+    check(
+        set(taps[0]) | set(taps[1]) == {r.key for r in rows},
+        "both GPUs together build every chain (%s)"
+        % sorted(set(taps[0]) | set(taps[1])),
+    )
+    drift = [
+        ln
+        for gpu in (0, 1)
+        for ln in gnss_chain_table.dll_spacing_drift(rows, taps[gpu], "gpu%d" % gpu)
+    ]
+    check(drift == [], "every tap is its row's (%s)" % drift)
+    i = next(k for k, r in enumerate(rows) if r.key == "glo_l2oc")
+    g._CHAIN_ROWS[:] = (
+        rows[:i] + [rows[i]._replace(dll_spacing_chips=0.45)] + rows[i + 1 :]
+    )
+    try:
+        exc, cfg = _lane_transfer_node(**kw)
+    finally:
+        g._CHAIN_ROWS[:] = []
+    drift = gnss_chain_table.dll_spacing_drift(
+        rows, _inject_dll_spacing(cfg)[0], "gpu0"
+    )
+    check(
+        drift == ["gpu0: glo_l2oc dll spacing 0.45, the chains table says 0.4"],
+        "a changed row moves the taps, and the drift is named (%s)" % drift,
+    )
 
 
 _ARR4 = {"live_element_ranges": [[0, 1], [64, 65]]}
@@ -1650,7 +2420,7 @@ def test_fdma_slots():
         chain_covering_channels(chans, s, 5e3) == one,
         "no channels list = the k = 0 carrier",
     )
-    check(g.dll_spacing_chips("GLO_L2OF_MC") == 0.33, "L2OF takes L2C's DLL spacing")
+    check(row("GLO_L2OF_MC").dll_spacing_chips == 0.33, "L2OF takes L2C's DLL spacing")
 
 
 def _upper_band():
@@ -1671,9 +2441,11 @@ def test_bds_b1i_lobe():
         min(per) == 1 and per.count(2) == 6,
         "every comb holds one or two, six hold two (%s)" % per,
     )
-    check(g.dll_spacing_chips("BDS_B1I_NH") == 0.5, "B1I closes on the chip triangle")
+    check(row("BDS_B1I_NH").dll_spacing_chips == 0.5, "B1I closes on the chip triangle")
     check(
-        g.telem_rows("bds_b1i") == g.telem_rows("bds_b3i") <= g.telem_rows_max(),
+        row("BDS_B1I_NH").telem_rows
+        == row("BDS_B3I_NH").telem_rows
+        <= g.telem_rows_max(),
         "B1I ships B3I's wire rows, within the gather's buffer",
     )
 
@@ -1690,9 +2462,9 @@ def test_gps_l1ca_lobe():
         combs == [0, 1, 2, 3, 4, 5, 6, 7, 13, 14, 15],
         "one channel on each of eleven combs, none on 8-12 (%s)" % combs,
     )
-    check(g.dll_spacing_chips("GPS_L1CA_BIT") == 0.5, "L1 C/A takes 0.5, as B1I")
+    check(row("GPS_L1CA_BIT").dll_spacing_chips == 0.5, "L1 C/A takes 0.5, as B1I")
     check(
-        g.telem_rows("gps_l1ca") <= g.telem_rows_max(),
+        row("GPS_L1CA_BIT").telem_rows <= g.telem_rows_max(),
         "L1 C/A's wire rows fit the gather's buffer",
     )
 
@@ -1709,11 +2481,11 @@ def test_gal_e1c_lobe():
         "every comb holds a channel (%s)" % sorted(f % 16 for f in cov),
     )
     check(
-        g.dll_spacing_chips("GAL_E1C_CS") == 0.2,
+        row("GAL_E1C_CS").dll_spacing_chips == 0.2,
         "E1-C takes 0.2, L2OC's 0.4 in its chips",
     )
     check(
-        g.telem_rows("gal_e1c") <= g.telem_rows_max(),
+        row("GAL_E1C_CS").telem_rows <= g.telem_rows_max(),
         "E1-C's wire rows fit the gather's buffer",
     )
 
@@ -1724,7 +2496,7 @@ def test_sbas_l1_lobe():
 
     cov = chain_covering_channels(_upper_band(), signal_table()["SBAS_L1_SYM"], 5e3)
     check(cov == list(range(8061, 8072)), "the lobe is 8061-8071 (%s)" % cov)
-    check(g.dll_spacing_chips("SBAS_L1_SYM") == 0.5, "SBAS L1 takes L1 C/A's 0.5")
+    check(row("SBAS_L1_SYM").dll_spacing_chips == 0.5, "SBAS L1 takes L1 C/A's 0.5")
 
 
 def main():

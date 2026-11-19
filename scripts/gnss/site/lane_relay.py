@@ -38,7 +38,9 @@ K = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..")
 )
 sys.path.insert(0, os.path.join(K, "config"))
+sys.path.insert(0, os.path.join(K, "python", "scripts", "gnss"))
 import gnss_fleet  # noqa: E402
+from gnss_broker import node_api  # noqa: E402
 
 FLEET = "config/gnss_fleet_chord.yaml"
 NODES = "config/chord_gnss_node.yaml"
@@ -128,7 +130,7 @@ class Gpu:
     """One projecting GPU: a source when its stage publishes lanes, a receiver with
     fleet_lanes."""
 
-    def __init__(self, node, gpu, stage, offset, inst):
+    def __init__(self, node, gpu, stage, offset, inst, hosts=()):
         self.node, self.gpu = node, gpu
         self.name = "%s/%d" % (node, gpu)
         self.source = stage.get("source", "eigen") != "eigen"
@@ -136,7 +138,10 @@ class Gpu:
         live = stage.get("live_freq_ids", []) or []
         self.live = sorted(int(f) for f in live if int(f) % 16 == offset)
         self.base = "http://%s:%d/gnss_n2_project/proj_%d" % (node, PORT, gpu)
-        self.inst_url = inst and "http://%s:%d/%s/get_lane_inst" % (node, PORT, inst)
+        # By chain where the node's config hosts its assemblers (gnss_broker/node_api.py).
+        self.inst_url = inst and node_api.url(
+            "http://%s:%d/%s" % (node, PORT, inst), "get_lane_inst", hosts=hosts
+        )
 
     def wants(self, ranges):
         for lo, hi in ranges:
@@ -148,14 +153,15 @@ class Gpu:
 
 def inst_stage(cfg, gpu):
     """The assembler on this GPU that serves get_lane_inst, or None: one with lane transfers
-    and at least two lane channels (GnssGpuRecordAssemble's _inst_on). The GPS L5 one first,
-    then SBAS L5, then the one with the most channels."""
+    and at least two lane channels (GnssGpuRecordAssemble's _inst_on), a stage of its own or a
+    row of gnss<g>_records (gnss_fleet.assembler_rows). The GPS L5 one first, then SBAS L5,
+    then the one with the most channels."""
     names = []
-    for k, v in cfg.items():
+    for k, v in gnss_fleet.assembler_rows(cfg):
         if not re.match(r"^gnss%d_" % gpu, k):
             continue
         chain = gnss_fleet.stage_chain(k, "n2assemble")
-        if not chain or not isinstance(v, dict) or not v.get("lane_transfer_freq_ids"):
+        if not chain or not v.get("lane_transfer_freq_ids"):
             continue
         if (
             len(v.get("channel_ids") or []) < 2
@@ -176,11 +182,12 @@ def gpus(root, offsets, only_from=None, only_to=None):
             continue
         cfg = yaml.safe_load(open(path)) or {}
         proj = cfg.get("gnss_n2_project", {}) or {}
+        hosts = gnss_fleet.config_host_bases(cfg, "http://%s:%d" % (node, PORT))
         for g in (0, 1):
             stage = proj.get("proj_%d" % g)
             if not isinstance(stage, dict):
                 continue
-            u = Gpu(node, g, stage, offsets[node][g], inst_stage(cfg, g))
+            u = Gpu(node, g, stage, offsets[node][g], inst_stage(cfg, g), hosts)
             if only_from is not None and node not in only_from:
                 u.source = False
             if only_to is not None and node not in only_to:
@@ -362,12 +369,17 @@ class Relay:
         inst = None
         if time.monotonic() - self.inst_t >= self.a.inst_period:
             self.inst_t = time.monotonic()
-            replies = [
-                r
-                for _, r in self.pool.map(
-                    self.get_inst, [u for u in self.units if u.source and u.inst_url]
-                )
-            ]
+            replies = []
+            for u, r in self.pool.map(
+                self.get_inst, [u for u in self.units if u.source and u.inst_url]
+            ):
+                if isinstance(r, dict) and "error" in r:
+                    self.rl(
+                        ("inst", u.name),
+                        "get_lane_inst %s: %s" % (u.inst_url, r["error"]),
+                        ERR_EVERY_S,
+                    )
+                replies.append(r)
             self.inst, self.inst_n = pool_inst(replies)
             inst = self.inst
         rx_status = {}

@@ -194,7 +194,7 @@ static void usage() {
         "                     records, which hides the (delta f)*t_abs family of phase errors\n"
         "  --dll-spacing D    Early/Late tap offset from prompt, component chips (default 0.5).\n"
         "                     To match a live chain, pass its dll_spacing, which comes from\n"
-        "                     dll_spacing_chips() in config/gen_chord_gnss_config.py. With --trim\n"
+        "                     its row in config/gnss_fleet_chord.yaml chains:. With --trim\n"
         "                     sweeps this measures q on the peak and the discriminator slope for\n"
         "                     a spacing choice.\n"
         "  --s-stride N       search comb stride (default 4; 1 = contiguous)\n"

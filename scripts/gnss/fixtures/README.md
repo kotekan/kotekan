@@ -11,6 +11,8 @@ legitimately differ. The point of the fixture is that the *input* is frozen.
 | fixture | source | covers |
 |---|---|---|
 | `broker_fake_l5.jsonl` | `broker_fakefleet.py` | detections → seeding → cp currency → status → DLL → seed POST, 60 cycles / 59 posts, GPS L5 geometry. The seeding spine and the DLL only: no almanac/BRDC predictor, dead-reckon seeder or nav-bit path. Moved by `carrier_hz`, `hops_per_sec`, `dll_gain` |
+| `broker_fake_rows.jsonl` | `broker_fakefleet.py --chains gps_l5 --halves 2` | one chain's rows on two GPU halves, each at its own paths (`/gnss<g>_gps_l5_{inject,n2combine,n2assemble}`): seeds to both trackers, the status source and the fleet DLL's `get_status` and `get_records` on both combiners, both of the fleet spectrum fit's `get_spectrum` reads, one `get_prns`. 39 cycles / 76 posts. Moved by `carrier_hz`, `hops_per_sec` |
+| `broker_fake_rows_hosted.jsonl` | `broker_fakefleet.py --chains gps_l5 --halves 2 --hosted inject,n2assemble,n2combine` | the same chain against the halves' hosts, every request by chain (`--node-hosts`): 40 cycles / 78 posts. Its `legacy` variant replays it at the rows' own paths (`--node-hosts ''`), and `broker_fake_rows.jsonl`'s `hosted` variant replays that one by chain; each variant's golden is its transcript's own. Moved by `carrier_hz`, `hops_per_sec` |
 | `broker_onsky_l5.jsonl.gz.digest` | live GPS L5, 2026-08-08 18:05 UTC | the real thing: 56 cycles, 1213 gets, **934 posts across 17 endpoints** including `set_doppler_hints` / `set_nh_hint`, the almanac predictor, the dead-reckon seeder and the code-bias pool. Moved by `carrier_hz`, `hops_per_sec`, `code_bias_alpha`, `bias_alpha` |
 | `broker_onsky_e5a.jsonl.gz.digest` | live Galileo E5a, 2026-08-08 18:2x UTC | model-primary: 41 cycles, **468 posts**, no detections at all — the dead-reckon seeder. Moved by `carrier_hz`, `hops_per_sec` (no detections, so no DLL and no code-bias pool) |
 | `broker_onsky_l5_holds.jsonl.gz.digest` | live GPS L5, 2026-08-16 23:15 UTC | 30 cycles, 434 posts, with `--telem-dll`. Moved by `carrier_hz`, `hops_per_sec`, `dll_gain`, `code_bias_alpha`, `bias_alpha`. Also has the `cprate` and `jwarm0` variant goldens (below) |
@@ -58,6 +60,10 @@ the gate.
   re-fetches weekly.
 * The CAS DCB product (`--dcb-bias`) is read from `~/.cache/kotekan_gps` and is not pinned;
   no current fixture's replay reaches the fetch.
+* The boresight. A recording that set no `--boresight` and read no `/config` before its first
+  cycle was made when the default was a fixed az 180, el 81.41, and replays under that
+  (`--boresight 180,81.41`, `NOMINAL_BORESIGHT`). Without it the replay's own start-up
+  pointing read takes the recording's first GET and every GET after it diverges.
 
 `bless` stamps the commit it ran at, says when the tree was dirty and records the BRDC pin's
 fingerprint, and `check` prints them back:
@@ -67,6 +73,21 @@ fingerprint, and `check` prints them back:
 A digest is a claim about code. If you cannot name the commit it describes, it is decoration,
 so **bless from a clean tree, then commit the `.digest` in the same commit as the change
 that moved it.**
+
+**Requests are compared canonically.** A chain instance's request to its row's own path
+(`/gnss<g>_<chain>_<stage>/<verb>`) and the same request to its GPU half's host by chain
+(`/gnss<g>_<host>/<verb>`, the chain in the query or the body) are one request: the replay
+matches them, and the digest hashes them, as `node:<origin>/gnss<g>/<stage>/<chain>/<verb>`
+with the row's own body (`gnss_broker/node_api.py` canonical). Names from before the chain
+tags are read through `gnss_fleet.stage_chain`'s allowlists, and any other request is
+compared as sent. A recording names each row request canonically in `"c"`, and a replay that
+asks for a request the recording did not make marks the POST stream, so its digest cannot
+match. A transcript whose `"c"` does not name the url it was sent to is refused. A golden whose
+provenance does not start with `canonical` hashed the POSTs as sent: `check` compares it with
+the replay's raw digest and reports it STALE when that moved, and `broker_equiv.py canon
+<transcript>` rewrites each of a transcript's goldens only after a replay at the current tree
+reproduces it, and reports it STALE otherwise. `check` reports every golden of a transcript and
+fails if any did not pass.
 
 `broker_equiv.py` and the broker both read `.gz` transparently, so it is used exactly like
 any other fixture:

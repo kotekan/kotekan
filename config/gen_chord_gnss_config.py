@@ -56,6 +56,7 @@ from chord_band_plan import (
 from gnss_record_layout import (
     cube_frame_bytes,  # noqa: E402
     record_stride,
+    rec_offsets,
     telem_frame_bytes,
     telem_max_chan,
     chan_floats,
@@ -63,6 +64,7 @@ from gnss_record_layout import (
 )
 import kotekan_src  # noqa: E402  (python/scripts/gnss, on sys.path through chord_band_plan)
 import gnss_arraymap  # noqa: E402
+import gnss_chain_table  # noqa: E402
 from gnss_fleet import broker_chain_name, signal_tag  # noqa: E402
 from gnss_broker import iface  # noqa: E402
 
@@ -109,8 +111,15 @@ def lanes_per_slot_for(args):
 
 # Frames per GNSS chain buffer.
 BUFFER_DEPTH = 4
-# The primary chain's PRN slots (each extra chain carries its own list).
-PRIMARY_PRNS = list(range(1, 33))
+# Frames of a chain's tiles and control-block buffers with --fold-epl. Its record assembler
+# releases each pair before its records, so these frames are the chain's slack ahead of the
+# frame it works on before cudaOutputData blocks the GPU. Without --fold-epl that slack is 7
+# (4 tiles + 4 epl, less the epl frame the assembler works on): 7 keeps it, 8 adds a frame.
+FOLD_EPL_DEPTH = 8
+# Frames of a GPU half's record buffer with --half-rec-buf, each a record of every chain on the
+# half: one stays full for /buffer_frame, so the half's slowest reader may lag its record workers
+# by 15 records (3.75 correlator frames) before they stop taking the tiles and control blocks.
+HALF_REC_DEPTH = 16
 # PRN slots an extra search (--aggregator-extra-search) scans when the spec names none, by
 # the signal name's constellation prefix: the broadcast PRN ranges, not a lane budget.
 EXTRA_SEARCH_PRNS = {
@@ -162,6 +171,10 @@ DESPREAD_MAX_CHIPS = 80
 # changing it means regenerating the gather too and restarting both ends.
 TELEM_PORT = 11060
 TELEM_RECORDS_PER_FRAME = 4
+# --telem-pack-host: a half's one connection has far less kernel socket buffer than its rows'
+# own connections had, so its shared telem_buf is this many times the rows' buffers together.
+# 96 frames a row ride out a 2.5 s gather stall, as the rows' own sends did.
+TELEM_HOST_DEPTH = 3
 # The gather's local stream to the Python broker.
 GATHER_SERVE_HOST = "127.0.0.1"
 GATHER_SERVE_PORT = 11061
@@ -295,118 +308,42 @@ def gpu_pairs_for(cfg, node, gpu, chans):
     return sorted(out)
 
 
-def dll_spacing_chips(name):
-    """Early/Late tap offset from prompt, in the signal's own (component) chips.
-
-    The offset is set by the width of the correlation the loop closes on, not by the chip: E
-    and L must straddle that correlation's mainlobe, inside its first null, or the
-    discriminator reverses sign off-peak and the loop has stable false locks.
-
-    Every chain but GPS L2C despreads a multi-freq_id comb inside one instance, so its
-    correlation is chip-narrow and 0.5 chip sits on the slope. L2C's covering set is six
-    freq_ids, fewer than the comb stride, so each instance despreads one 195 kHz channel, whose
-    |sinc|^2 nulls at 2.6 CM chips. But the fleet loop sums the senders' complex taps
-    coherently, and on L2C the senders are the fleet's contiguous L2C channels, so the loop sees
-    an N-channel Dirichlet whose first null is 1/(NB): 0.52 CM chips for the six-node fleet's
-    five (6284-6288), 0.44 for the eight-node fleet's six (6283 on cx47). The offset must sit
-    inside that combined width, where the discriminator is monotonic (a q far higher than ~6
-    means the taps have landed in a null, not that the lock improved). 0.33 puts the six-channel
-    taps at the level 0.4 gave five (|R| 0.28 of the peak), and five at 0.46: it holds whether
-    or not cx47 reports. At 0.4 six channels put the taps at 0.09, beside the null.
-
-    GLONASS L2OC is BOC(1,1) under a data/pilot TDM: its autocorrelation in 2.046 Mcps chips
-    crosses zero at +-0.67 and bottoms at -0.5 at +-1, and its spectrum has a null at the
-    carrier. Each instance holds one or two of the lobe's 22 channels; six nodes hold 17 of
-    them (~60% of the power), eight all 22 (at 0.4: q 3.8, the sign kept to +-0.82 chip, so
-    0.4 serves both). On the 17-channel sum, at 0.4 spacing, q on peak is 4.4 (a
-    BPSK chain's is 4 at 0.5, so the fixed 2.2 lock bars read alike), the S-curve is linear to
-    +-0.23 chip and keeps its sign to +-0.91, outside which the BOC side peaks (+-1.05 chips)
-    are stable false locks. Its slope is 1.8x what the trim law assumes (dll_tau scales a
-    triangle's), so the chain runs the fast loop at fleet-trim-bandwidth 1.4 rather than 2.5:
-    the same closed loop as the other chains. 0.33 would match the law but cap q at 2.5, under
-    the lock bars; 0.5 would put the taps by the zero (q 15, slope 4.2x). Re-derive if the
-    node set changes.
-
-    GLONASS L2OF is L2C's geometry per satellite: 511 kcps BPSK, each satellite's lobe about six
-    freq_ids, one per instance, summed coherently by the fleet loop, so it takes L2C's 0.33
-    (first sky to confirm; FDMA puts each satellite on its own six of the comb's ~29).
-
-    BeiDou B1I and GPS L1 C/A also hold one or two channels per instance, but their covering
-    sets are the whole main lobe, nulls included (22 freq_ids at 2.046 Mcps, 11 at 1.023), so
-    the fleet's coherent sum is the band-limited chip triangle every comb chain closes on, not
-    L2C's flat Dirichlet: |R| 0.56 of the peak at 0.5 chip, the first null at 1.17 chips. They
-    take 0.5, listed so the broker side's dll-spacing has an entry to match. SBAS L1 is L1 C/A's
-    geometry on the same eleven channels and takes the same.
-
-    Galileo E1-C is BOC(1,1) at 1.023 Mcps, GLONASS L2OC's correlation without the TDM: on its
-    22-channel lobe, every node's, the sum crosses zero at +-0.33 chip and bottoms at -0.5 at
-    +-0.5, and code phases stay in the 1.023 Mcps component chips (the bank expands the BOC). It
-    takes 0.2, L2OC's 0.4 in that chain's 2.046 Mcps chips, and L2OC's slower fast loop.
-
-    Must match the broker chain's dll-spacing (config/gnss_chains_chord.yaml): the C++ fleet
-    loop takes its law's spacing from the arming payload while the taps come from here, so
-    cycle the nodes before the broker and the taps lead the law.
-    """
-    return {
-        "GPS_L2C_CM": 0.33,
-        "GLO_L2OC_P_OC": 0.4,
-        "GLO_L2OF_MC": 0.33,
-        "BDS_B1I_NH": 0.5,
-        "GPS_L1CA_BIT": 0.5,
-        "SBAS_L1_SYM": 0.5,
-        "GAL_E1C_CS": 0.2,
-    }.get(name, 0.5)
+_CHAIN_ROWS = []
+_PRIMARY_PRNS = []
 
 
-# Record slot 2's modulus per tracker code (GnssGpuRecordAssemble record_cp_mod_chips): the
-# primary code length, for a baked code long enough that a float32 phase over it loses
-# precision. GLO_L2OC_P_OC is 2,046,000 chips (a 0.125-chip ulp); its primary is 40920. The
-# broker wraps slot 2 mod the primary anyway (gnss_broker/trkresid.py), so nothing is lost.
-RECORD_CP_MOD_CHIPS = {"GLO_L2OC_P_OC": 40920}
+def chain_rows():
+    """The fleet's chains table (config/gnss_chain_table.py), read once: each chain's PRN slots,
+    DLL spacing, record cp modulus, telemetry rows, projection letter and shared-reference
+    band. The first row is the primary's."""
+    if not _CHAIN_ROWS:
+        _CHAIN_ROWS.extend(gnss_chain_table.load())
+    return _CHAIN_ROWS
 
 
-# PRN rows per chain on the telemetry wire; every other chain gets _TELEM_ROWS_DEFAULT. See
-# telem_rows(). The gather's buffer follows the widest chain (telem_rows_max), so changing a
-# row count means regenerating the gather config too.
-_TELEM_ROWS = {
-    "gal_e5a": 20,
-    "gal_e5b": 20,
-    "gal_e6": 20,
-    "gal_e1c": 20,
-    "bds_b2a": 24,
-    "bds_b2b": 24,
-    "bds_b3i": 24,
-    "bds_b1i": 24,
-    "gps_l2c": 18,
-    "gps_l1ca": 20,
-}
-_TELEM_ROWS_DEFAULT = 14
+def chain_row(chain):
+    """A parse_extra_signals() chain's table row, or the primary's for None."""
+    return chain["row"] if chain else chain_rows()[0]
 
 
-def telem_rows(chain_name):
-    """PRN rows this chain's senders put on the wire.
-
-    A wire capacity, not a PRN list: GnssTelemPack compacts rows onto the PRNs actually
-    despread in the window, so this is how many satellites a sender may carry at once. Over it,
-    the packer ships the lowest-numbered and drops the rest, and downstream a dropped PRN is
-    indistinguishable from one that set.
-
-    It is per chain because the constellations do not seed alike: one number for the fleet
-    either truncates the busiest chain or pads every other, and the padding rides a 1 GbE link
-    the whole fleet shares. Size each chain to its own live count with a few rows of headroom,
-    and watch the packer's overflow WARN, which names the first PRN it dropped.
-    """
-    return _TELEM_ROWS.get(chain_name, _TELEM_ROWS_DEFAULT)
+def primary_prns():
+    """The primary chain's PRN slots, one list for the run: the blocks that name them share it,
+    and yaml.safe_dump writes a shared list once, under an anchor, so the sharing is part of
+    the generated text."""
+    if not _PRIMARY_PRNS:
+        _PRIMARY_PRNS.extend(parse_slots(chain_rows()[0].prns)[0])
+    return _PRIMARY_PRNS
 
 
 def telem_rows_max():
-    """The most rows any chain can put on the wire: what the gather's buffer must hold.
+    """The most PRN rows any chain can put on the wire (its row's telem-rows): what the gather's
+    buffer must hold.
 
-    Read off the same table rather than off the chains in this run: the gather serves the whole
+    Read off the whole table rather than off the chains in this run: the gather serves the whole
     fleet, including chains a later node config adds, and bufferRecv closes the connection of a
     sender whose frame exceeds the buffer, so that sender delivers nothing at all.
     """
-    return max([_TELEM_ROWS_DEFAULT] + list(_TELEM_ROWS.values()))
+    return max(r.telem_rows for r in chain_rows())
 
 
 def vis_capture_chain(args, chain, sig):
@@ -458,6 +395,7 @@ def parse_extra_signals(cfg, args, node, primary_chans):
     if not args.extra_signal:
         return []
     table = signal_table()
+    rows = {r.descriptor: r for r in chain_rows()}
     tags = {signal_tag(cfg["signals"]["primary"])}
     chains = []
     for spec in args.extra_signal:
@@ -465,6 +403,12 @@ def parse_extra_signals(cfg, args, node, primary_chans):
         if name not in table:
             raise SystemExit(
                 f"--extra-signal {name}: unknown signal (not in gnssSignal.hpp)"
+            )
+        if name not in rows:
+            raise SystemExit(
+                f"--extra-signal {name}: no row in the chains table "
+                "(config/gnss_fleet_chord.yaml chains:), which holds its DLL spacing, "
+                "telemetry rows and projection letter; add one"
             )
         if not prn_s.strip():
             raise SystemExit(
@@ -479,6 +423,11 @@ def parse_extra_signals(cfg, args, node, primary_chans):
             prns, ks = parse_slots(prn_s)
         except ValueError as e:
             raise SystemExit(f"--extra-signal {name}: {e}")
+        if (prns, ks) != parse_slots(rows[name].prns):
+            raise SystemExit(
+                f"--extra-signal {name}: PRNs {prn_s} are not its chains-table row's "
+                f"({rows[name].prns})"
+            )
         s = table[name]
         tag = signal_tag(name)
         if tag in tags:
@@ -509,6 +458,7 @@ def parse_extra_signals(cfg, args, node, primary_chans):
             {
                 "signal": name,
                 "tracker": name,
+                "row": rows[name],
                 "prns": prns,
                 # per-slot FDMA carrier offsets, Hz; None for CDMA
                 "prn_df": [k * L2OF_CHANNEL_SPACING_HZ for k in ks] if ks else None,
@@ -657,7 +607,7 @@ def gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
     nc = len(cores)
     tag = chain["tag"] if chain else signal_tag(sig["primary"])
     n_chan = len(chan_idx)
-    prns = chain["prns"] if chain else PRIMARY_PRNS
+    prns = chain["prns"] if chain else primary_prns()
     n_prn = len(prns)
     ordv = chain["ord"] if chain else 0
     _aslots = [
@@ -665,7 +615,7 @@ def gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
         for x in str(getattr(args, "assembler_core_slots", "2") or "2").split(",")
     ]
     n_live = live_element_count(arr)
-    track_signal = chain["tracker"] if chain else sig.get("tracker", sig["primary"])
+    track_signal = chain_row(chain).descriptor
     lanes_per_slot = lanes_per_slot_for(args)
     num_synth = lanes_per_slot * SYNTH_SLOTS
 
@@ -695,7 +645,7 @@ def gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
         "chain": broker_chain_name(chain["signal"] if chain else sig["primary"]),
         # The tracked signal descriptor (GPS_L5_Q_NH, GAL_E5A_Q_CS, ...): the label names the
         # chain, this names the code being despread.
-        "signal": chain["tracker"] if chain else sig.get("tracker", sig["primary"]),
+        "signal": track_signal,
         "channel_ids": list(freq_ids),
         "local_channels": list(chan_idx),
         "prns": list(prns),
@@ -733,9 +683,7 @@ def gnss_chain_vars(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=None):
             ),
             "cmb": f"{n_prn} * {record_floats} * sizeof_float32",
             "telem": telem_frame_bytes(
-                TELEM_RECORDS_PER_FRAME,
-                telem_rows(broker_chain_name(sig["primary"])),
-                n_chan,
+                TELEM_RECORDS_PER_FRAME, chain_rows()[0].telem_rows, n_chan,
             ),
         },
     }
@@ -756,8 +704,10 @@ def load_summary(out, cfg, gpus):
     load = {}
     for k, v in out.items():
         if k.startswith("gnss") and isinstance(v, dict) and "cpu_affinity" in v:
-            for c in v["cpu_affinity"]:
-                load.setdefault(c, []).append(v.get("kotekan_stage", "?"))
+            # A host's work runs on its workers' cores.
+            for w in v.get("workers") or [v]:
+                for c in w["cpu_affinity"]:
+                    load.setdefault(c, []).append(v.get("kotekan_stage", "?"))
     busiest = sorted(load.items(), key=lambda kv: -len(kv[1]))[:3]
     pool = {c for g in gpus for c in gnss_cores(cfg["runtime"], g)}
     return (
@@ -1165,11 +1115,6 @@ def lane_transfer_keys(cfg, node, gpu, chain, freq_ids, args):
     return {"lane_transfer_freq_ids": sorted(out)} if out else {}
 
 
-# GnssGpuRecordAssemble elem_proj_sys per system (the first part of the broker chain key): the
-# constellation letter that names the chain's satellites in the bright-satellite projection.
-PROJ_SYS = {"gps": "G", "sbas": "G", "gw": "G", "gal": "E", "bds": "C", "glo": "R"}
-
-
 def elem_proj_keys(args):
     """Assembler keys for the bright-satellite projection (gnssProjSubspace.hpp); nothing unless
     --elem-proj-mode is shadow or live, so a fleet without it is byte-identical. The mode is
@@ -1385,20 +1330,21 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
 
     Consumes the GPU voltage ring that production's run_send_voltage feeds. The extended
     triangle stays on the GPU (production's run_n2k computes the science N^2); the gathered
-    GNSS tiles come to the host for the assemblers, and the combined records end in a
-    dropAllFrames.
+    GNSS tiles come to the host for the assemblers, and the combined records, with
+    --combiner-out-buf, end in a dropAllFrames.
     """
     sig = cfg["signals"]
     arr = cfg["array"]
     tag = chain["tag"] if chain else signal_tag(sig["primary"])
     pre = f"gnss{gpu}{tag}_"
     n_chan = len(chan_idx)
-    prns = chain["prns"] if chain else PRIMARY_PRNS
+    row = chain_row(chain)
+    prns = chain["prns"] if chain else primary_prns()
     n_prn = len(prns)
     # The replica's sky carrier, from the chain, never the primary: a wrong f_offset builds
     # every replica in the wrong part of the band and every mixed tile reads noise.
     carrier_hz = float(chain["carrier_hz"]) if chain else float(sig["carrier_hz"])
-    track_signal = chain["tracker"] if chain else sig.get("tracker", sig["primary"])
+    track_signal = row.descriptor
     n_live = live_element_count(arr)
 
     # Tile count per channel: see n2_tiles_per_chan (one contract, three sites). The lane
@@ -1437,11 +1383,13 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
     record_floats = record_stride(n_live)
     steer = elem_steer_keys(args, arr, n_live)
 
+    # With --fold-epl the record assembler reads the tiles and the control block itself.
+    io_depth = FOLD_EPL_DEPTH if args.fold_epl else BUFFER_DEPTH
     blocks = {
         tiles_buf: {
             "kotekan_buffer": "standard",
             "metadata_pool": "gnss_pool",
-            "num_frames": BUFFER_DEPTH,
+            "num_frames": io_depth,
             "frame_size": tiles_frame_bytes,
         },
         # The chain's injector and correlator, as a process block that merge_n2dual_gpu folds
@@ -1474,16 +1422,16 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                     "lanes_per_slot": lanes_per_slot,
                     # Local frame indices of the comb (the tap's chan_ids), never freq_ids.
                     "gnss_local_channels": chan_idx,
-                    # The state class, cudaGnssChordTrackState: seeds, trims and slot
+                    # The chain's gnss::TrackChain: seeds, trims and slot
                     # membership, on this chain's own endpoints.
                     "prns": prns,
                     "n_channels": n_chan,
                     "n_elements": 1,  # unused by the injector; the state class requires it
                     "channel_ids": freq_ids,  # global bins, local order (replica sky freq)
                     "signal": track_signal,
-                    # E/L tap offset in the signal's chips, set by the channel geometry: see
-                    # dll_spacing_chips. Must match the broker chain's dll-spacing.
-                    "dll_spacing": dll_spacing_chips(track_signal),
+                    # E/L tap offset in the signal's chips, from the chain's row, which the
+                    # broker's trim law reads too (config/gnss_fleet_chord.yaml chains:).
+                    "dll_spacing": row.dll_spacing_chips,
                     # The E/L lanes as rotations of the prompt, one chip walk per hop
                     # (lanes_per_slot_for).
                     **({"epl_from_prompt": True} if args.epl_from_prompt else {}),
@@ -1561,7 +1509,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
         ctl_buf: {
             "kotekan_buffer": "standard",
             "metadata_pool": "gnss_pool",
-            "num_frames": BUFFER_DEPTH,
+            "num_frames": io_depth,
             "frame_size": ctl_bytes,
         },
         epl_buf: {
@@ -1607,8 +1555,8 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             "prns": prns,
             "n_elements": n_live,
             **(
-                {"record_cp_mod_chips": float(RECORD_CP_MOD_CHIPS[track_signal])}
-                if track_signal in RECORD_CP_MOD_CHIPS
+                {"record_cp_mod_chips": float(row.record_cp_mod_chips)}
+                if row.record_cp_mod_chips
                 else {}
             ),
             # The global freq_ids the injector despreads, in local order. They label each
@@ -1655,13 +1603,13 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             **elem_shared_ref_keys(
                 args,
                 # The snapshot's band key (l5, e5a, ...): GPS and SBAS L5 share one.
-                V["chain"].partition("_")[2],
+                row.shared_ref_band,
                 steer,
                 n_live,
                 bad_input_set(cfg, args),
             ),
             **elem_proj_keys(args),
-            "elem_proj_sys": PROJ_SYS[V["chain"].partition("_")[0]],
+            "elem_proj_sys": row.proj_sys,
             **lane_transfer_keys(cfg, node, gpu, V["chain"], freq_ids, args),
             **cube_assembler_keys(args, cfg, gpu, pre),
             "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
@@ -1669,19 +1617,12 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
         },
         # The chain's combiner: integrates the records into amplitudes and loop observables and
         # serves them over REST (/<pre>n2combine/get_status, /get_records).
-        f"{pre}n2cmb_buf": {
-            "kotekan_buffer": "standard",
-            "metadata_pool": "gnss_pool",
-            "num_frames": BUFFER_DEPTH,
-            "frame_size": f"{n_prn} * {record_floats} * sizeof_float32",
-        },
         f"{pre}n2combine": {
             "kotekan_stage": "GnssCoherentCombiner",
             # One record stream per combiner (the stage accepts exactly one): the broker
             # combines across GPUs and nodes, and merging the two GPUs here would only reduce
             # the instance count its fleet combine works with.
             "in_bufs": [n2rec_buf],
-            "out_buf": f"{pre}n2cmb_buf",
             "n_prn": n_prn,
             "n_elements": n_live,
             # EMA time constant and deep window, records
@@ -1703,8 +1644,39 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             "record_export": FLEET_TRIM_TAPS_WINDOWS * TELEM_RECORDS_PER_FRAME,
             "cpu_affinity": [V["cores"]["combine"]],
         },
-        f"{pre}n2sink": {"kotekan_stage": "dropAllFrames", "in_buf": f"{pre}n2cmb_buf"},
     }
+    # --fold-epl: the record assembler takes GnssN2RecordAssemble's inputs and keys, and builds
+    # each epl frame itself; the adapter and its epl buffer go.
+    if args.fold_epl:
+        adapter = blocks.pop(f"{pre}n2assemble_tiles")
+        del blocks[epl_buf]
+        asm = blocks[f"{pre}n2assemble"]
+        del asm["in_buf"]
+        for k in (
+            "ctl_buf",
+            "tiles_buf",
+            "num_elements",
+            "num_synth",
+            "lanes_per_slot",
+            "hops_per_record",
+        ):
+            asm[k] = adapter[k]
+        asm["fft_len"] = cfg["fengine"]["fft_length"]
+
+    # The combined records in a buffer, for an n2dump: nothing else reads them, so a
+    # dropAllFrames drains it. Without one the combiner keeps each emit for its REST replies.
+    if args.combiner_out_buf:
+        blocks[f"{pre}n2cmb_buf"] = {
+            "kotekan_buffer": "standard",
+            "metadata_pool": "gnss_pool",
+            "num_frames": BUFFER_DEPTH,
+            "frame_size": f"{n_prn} * {record_floats} * sizeof_float32",
+        }
+        blocks[f"{pre}n2combine"]["out_buf"] = f"{pre}n2cmb_buf"
+        blocks[f"{pre}n2sink"] = {
+            "kotekan_stage": "dropAllFrames",
+            "in_buf": f"{pre}n2cmb_buf",
+        }
 
     # -- The telemetry leg to the gather ------------------------------------------------------
     #
@@ -1719,9 +1691,9 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
     # the widest sender, with allow_short_frames), and an unfilled row or column would be bytes
     # on a link the whole fleet shares.
     chain_name = broker_chain_name(chain["signal"] if chain else sig["primary"])
-    # May be fewer than n_prn: the wire rows are compacted onto the PRNs despread (see
-    # telem_rows).
-    telem_max_prn = telem_rows(chain_name)
+    # May be fewer than n_prn: the wire rows are compacted onto the PRNs despread (the row's
+    # telem-rows, config/gnss_fleet_chord.yaml chains:).
+    telem_max_prn = row.telem_rows
     telem_bytes = telem_frame_bytes(TELEM_RECORDS_PER_FRAME, telem_max_prn, n_chan)
     blocks.update(
         {
@@ -1834,6 +1806,296 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
         }
     )
     return blocks
+
+
+def gpu_rows_form(blocks, merged, injects, corr, outputs, out_buffers, pres, gpu):
+    """--gpu-rows: one tiles array and one control-block array for the GPU half, from the
+    gnss_rows list on the merged cudaProcess (lib/stages/gnss/gnssGpuRows.hpp), in place of each
+    chain's. Row i is pres[i]: its tiles are channels [fg_offset, fg_offset + its channels) of
+    the half's [Tc][Fg_total][Tile] tiles, its control block ctl_bytes at ctl_offset. The
+    injectors and the correlator read their lanes and channels from the rows, and each record
+    assembler reads its row of the two buffers, refusing a control block without its row's
+    tag. Every row must gather the same tiles per channel (the same lanes)."""
+    pre_g = f"gnss{gpu}_"
+    rows, fg, ctl = [], 0, 0
+    for i, p in enumerate(pres):
+        pre = p["pre"]
+        ctl_bytes = blocks[f"{pre}n2ctl_buf"]["frame_size"]
+        rows.append(
+            {
+                "name": pre[:-1],
+                "chain": p["name"],
+                "chain_id": chain_row(p["chain"]).id,
+                "row": i,
+                "channels": p["chan_idx"],
+                "lane_base": p["base"],
+                "lanes": p["lanes"],
+                "fg_offset": fg,
+                "ctl_offset": ctl,
+                "ctl_bytes": ctl_bytes,
+                "n_prn": len(injects[i]["prns"]),
+            }
+        )
+        fg += len(p["chan_idx"])
+        ctl += ctl_bytes
+    lanes = {r["lanes"] for r in rows}
+    if len(lanes) != 1:
+        raise SystemExit(
+            f"gnss{gpu}: --gpu-rows needs every chain on {len(lanes)} lane counts {sorted(lanes)} "
+            "to be one: the half's one gather has one tile count per channel"
+        )
+    tiles_frame = blocks[f"{pres[0]['pre']}n2tiles_buf"]["frame_size"]
+    tiles_bytes = tiles_frame // len(pres[0]["chan_idx"]) * fg
+    tiles_buf, ctl_buf = f"{pre_g}rows_tiles_buf", f"{pre_g}rows_ctl_buf"
+    for p, r, inj in zip(pres, rows, injects):
+        pre = p["pre"]
+        for k in (
+            "num_synth",
+            "synth_lane_base",
+            "gnss_local_channels",
+            "gnss_ctl_name",
+        ):
+            del inj[k]
+        inj["gnss_row"] = r["name"]
+        del blocks[f"{pre}n2tiles_buf"], blocks[f"{pre}n2ctl_buf"]
+        del out_buffers[f"host_{pre}tiles"], out_buffers[f"host_{pre}n2ctl"]
+        asm = blocks[f"{pre}n2assemble"]
+        asm["tiles_buf"], asm["ctl_buf"] = tiles_buf, ctl_buf
+        asm["gnss_row"] = r
+        asm["fg_total"] = fg
+    for k in [k for k in corr if k.startswith("gather_")]:
+        del corr[k]
+    del corr["gnss_gathers"]
+    # The rows' names must not read as a chain's to gnss_fleet.stage_chain: gnss<g>_n2ctl would
+    # read as the primary's.
+    merged["gnss_rows"] = rows
+    merged["gnss_rows_tiles_name"] = f"{pre_g}rows_tiles"
+    merged["gnss_rows_ctl_name"] = f"{pre_g}rows_ctl"
+    outputs[:] = [o for o in outputs if o["out_buf"] in out_buffers]
+    outputs[:0] = [
+        {
+            "name": "cudaOutputData",
+            "gpu_mem": f"{pre_g}rows_tiles_buffer",
+            "out_buf": f"host_{pre_g}rows_tiles",
+        },
+        {
+            "name": "cudaOutputData",
+            "gpu_mem": f"{pre_g}rows_ctl",
+            "out_buf": f"host_{pre_g}rows_ctl",
+        },
+    ]
+    out_buffers[f"host_{pre_g}rows_tiles"] = tiles_buf
+    out_buffers[f"host_{pre_g}rows_ctl"] = ctl_buf
+    for name, size in ((tiles_buf, tiles_bytes), (ctl_buf, ctl)):
+        blocks[name] = {
+            "kotekan_buffer": "standard",
+            "metadata_pool": "gnss_pool",
+            "num_frames": FOLD_EPL_DEPTH,
+            "frame_size": size,
+        }
+
+
+# The keys a chain's injector keeps in its row of a hosted cudaGnssInject (--inject-host): those
+# cudaGnssChordTrackState requires in every row, then those a row may set. Every other key is
+# the same on every chain of a half and sits once on the host.
+INJECT_ROW_KEYS = (
+    "gnss_row",
+    "prns",
+    "signal",
+    "n_channels",
+    "channel_ids",
+    "f_offset_hz",
+    "dll_spacing",
+    "lanes_per_slot",
+    "seed_endpoint",
+    "set_trim_endpoint",
+    "get_prns_endpoint",
+    "set_prns_endpoint",
+)
+INJECT_ROW_OPTIONAL_KEYS = ("prn_freq_offset_hz", "trim_endpoint")
+
+
+def inject_host_form(injects, gpu):
+    """--inject-host: the half's injectors as rows of one cudaGnssInject, each in its chains
+    block under its gnss_row with INJECT_ROW_KEYS and those of INJECT_ROW_OPTIONAL_KEYS it has,
+    every other key once on the host. The rows keep their own REST endpoints."""
+    row_keys = INJECT_ROW_KEYS + INJECT_ROW_OPTIONAL_KEYS
+    host = {}
+    for k in injects[0]:
+        if k in row_keys:
+            continue
+        if any(k not in inj or inj[k] != injects[0][k] for inj in injects):
+            raise SystemExit(
+                f"gnss{gpu}: --inject-host needs {k} the same on every chain's injector"
+            )
+        host[k] = injects[0][k]
+    host["chains"] = {}
+    for inj in injects:
+        extra = set(inj) - set(host) - set(row_keys)
+        if extra:
+            raise SystemExit(
+                f"gnss{gpu}: --inject-host: {inj['gnss_row']} has keys {sorted(extra)} that "
+                "are neither row keys nor on every chain"
+            )
+        host["chains"][inj["gnss_row"]] = {k: inj[k] for k in row_keys if k in inj}
+    injects[:] = [host]
+
+
+# The keys a chain's record assembler keeps in its row of gnss<g>_records (--record-host):
+# GnssGpuRecordAssemble's ROW_KEYS, which every row sets itself, and its ROW_ONLY_KEYS, which
+# no host block may set. Any other key sits once on the host when every chain of the half has
+# it at one value, and stays in the rows otherwise.
+RECORD_ROW_KEYS = (
+    "out_buf",
+    "prns",
+    "channel_ids",
+    "beam_cube_chain",
+    "chain",
+    "cube_buf",
+    "ctl_buf",
+    "elem_sum_shared_ref",
+    "fg_total",
+    "gnss_row",
+    "in_buf",
+    "lane_transfer_freq_ids",
+    "rec_row",
+    "record_cp_mod_chips",
+    "tiles_buf",
+)
+
+
+# The keys a chain's combiner keeps in its row of gnss<g>_combine (--combine-host):
+# GnssCoherentCombiner's ROW_KEYS and ROW_ONLY_KEYS, as RECORD_ROW_KEYS. chain, the broker chain
+# that labels the row's metrics, is set by combine_host_form.
+COMBINE_ROW_KEYS = ("in_bufs", "n_prn", "chain", "out_buf", "rec_row")
+
+
+# The keys a chain's telemetry pack keeps in its row of gnss<g>_telem (--telem-pack-host):
+# GnssTelemPack's ROW_KEYS and ROW_ONLY_KEYS, as RECORD_ROW_KEYS. The rows' out_buf is the host's.
+TELEM_ROW_KEYS = (
+    "in_buf",
+    "chain",
+    "n_prn",
+    "max_prn",
+    "n_chan",
+    "channel_ids",
+    "rec_row",
+)
+
+
+def host_form(blocks, pres, stage, row_keys, name):
+    """The half's per-chain stages <pre><stage> as rows of one stage, `name`, each keyed by the
+    chain's prefix less its trailing underscore, so the host names it as the stage it replaces.
+    Each row runs on a worker of its own, in gnss_rows order, on that stage's core; the host's
+    cpu_affinity is the union of its workers'."""
+    stages = [blocks.pop(p["pre"] + stage) for p in pres]
+    host = {
+        k: v
+        for k, v in stages[0].items()
+        if k not in row_keys + ("cpu_affinity",)
+        and all(k in a and a[k] == v for a in stages)
+    }
+    host["cpu_affinity"] = sorted({c for a in stages for c in a["cpu_affinity"]})
+    host["chains"], host["workers"] = {}, []
+    for p, a in zip(pres, stages):
+        key = p["pre"][:-1]
+        host["chains"][key] = {k: v for k, v in a.items() if k not in host}
+        host["workers"].append({"rows": [key], "cpu_affinity": a["cpu_affinity"]})
+    blocks[name] = host
+
+
+def record_host_form(blocks, pres, gpu):
+    """--record-host: the half's record assemblers as rows of one GnssGpuRecordAssemble,
+    gnss<g>_records (host_form), so each row's REST paths, buffer client names, lane owners and
+    cube sender stay its stage's. The rows keep their record buffers and cube streams."""
+    host_form(blocks, pres, "n2assemble", RECORD_ROW_KEYS, f"gnss{gpu}_records")
+
+
+def combine_host_form(blocks, pres, gpu):
+    """--combine-host: the half's combiners as rows of one GnssCoherentCombiner, gnss<g>_combine
+    (host_form), so each row's REST paths and metric stage_name stay its stage's. The rows keep
+    their record buffers, and their out_buf with --combiner-out-buf. Each row's chain is its
+    broker chain."""
+    host_form(blocks, pres, "n2combine", COMBINE_ROW_KEYS, f"gnss{gpu}_combine")
+    for p in pres:
+        blocks[f"gnss{gpu}_combine"]["chains"][p["pre"][:-1]]["chain"] = p["name"]
+
+
+def telem_host_form(blocks, pres, gpu):
+    """--telem-pack-host: the half's telemetry packs as rows of one GnssTelemPack, gnss<g>_telem
+    (host_form), writing one telem_buf, gnss<g>_telem_buf, which one GnssTelemSend,
+    gnss<g>_telem_send, ships to the gather, each frame at its own length. The buffer holds the
+    widest row's frames, TELEM_HOST_DEPTH times as many as the rows' own buffers together. The
+    send is paced at the sum of the rows' rates. Each row keeps its chain, inst, window state and
+    seq, so the frames on the wire are the rows' own."""
+    bufs = [blocks.pop(p["pre"] + "telem_buf") for p in pres]
+    sends = [blocks.pop(p["pre"] + "telem_send") for p in pres]
+    host_form(blocks, pres, "telem_pack", TELEM_ROW_KEYS, f"gnss{gpu}_telem")
+    host = blocks[f"gnss{gpu}_telem"]
+    for row in host["chains"].values():
+        del row["out_buf"]
+    host["out_buf"] = f"gnss{gpu}_telem_buf"
+    blocks[f"gnss{gpu}_telem_buf"] = dict(
+        bufs[0],
+        num_frames=TELEM_HOST_DEPTH * sum(b["num_frames"] for b in bufs),
+        frame_size=max(b["frame_size"] for b in bufs),
+    )
+    per_row = ("buf", "max_pacing_rate_mbps")
+    for k in set().union(*sends) - set(per_row):
+        if any(k not in a or a[k] != sends[0][k] for a in sends):
+            raise SystemExit(
+                f"gnss{gpu}: --telem-pack-host needs {k} the same on every chain's telem_send"
+            )
+    blocks[f"gnss{gpu}_telem_send"] = dict(
+        sends[0],
+        kotekan_stage="GnssTelemSend",
+        buf=f"gnss{gpu}_telem_buf",
+        max_pacing_rate_mbps=round(sum(a["max_pacing_rate_mbps"] for a in sends), 3),
+    )
+
+
+def half_rec_buf_form(blocks, pres, gpu):
+    """--half-rec-buf: one record buffer per GPU half, gnss<g>_rec_buf, HALF_REC_DEPTH frames,
+    in place of the chains' own: each frame holds one record of every chain, after a directory of
+    the rows (gnss::RecDir), each chain's at its rec_row, {chain_id, n_prn, n_chan, offset,
+    bytes}, in gnss_rows order. The record host's rows write it and the combine and telemetry
+    hosts' rows read it; each host names it once on its block, and each row sets its rec_row.
+    The frames carry no metadata: the directory carries each record's wstart."""
+    name = f"gnss{gpu}_rec_buf"
+    hosts = (
+        (blocks[f"gnss{gpu}_records"], "out_buf", name),
+        (blocks[f"gnss{gpu}_combine"], "in_bufs", [name]),
+        (blocks[f"gnss{gpu}_telem"], "in_buf", name),
+    )
+    rec = hosts[0][0]
+    rows, row_bytes = [], []
+    for p in pres:
+        blocks.pop(p["pre"] + "n2rec_buf")
+        a = dict(rec, **rec["chains"][p["pre"][:-1]])
+        n_prn = len(a["prns"])
+        n_chan = len(a["channel_ids"]) if a.get("chan_export") else 0
+        rows.append(
+            {"chain_id": a["gnss_row"]["chain_id"], "n_prn": n_prn, "n_chan": n_chan}
+        )
+        row_bytes.append(
+            4 * n_prn * (record_stride(a["n_elements"]) + n_chan * chan_floats())
+        )
+    offsets, frame = rec_offsets(row_bytes)
+    for row, off, b in zip(rows, offsets, row_bytes):
+        row.update(offset=off, bytes=b)
+    for host, key, value in hosts:
+        for p, row in zip(pres, rows):
+            r = host["chains"][p["pre"][:-1]]
+            del r[key]
+            r["rec_row"] = dict(row)
+        host[key] = value
+    blocks[name] = {
+        "kotekan_buffer": "standard",
+        "num_frames": HALF_REC_DEPTH,
+        "frame_size": frame,
+        # The newest frame, every chain's record, stays readable over /buffer_frame.
+        "peek_hold": True,
+    }
 
 
 def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
@@ -2225,6 +2487,18 @@ def merge_n2dual_gpu(blocks, cfg, args, node, gpu, chains, spds):
         )
 
     corr["gnss_gathers"] = names
+    if args.gpu_rows:
+        gpu_rows_form(blocks, merged, injects, corr, outputs, out_buffers, pres, gpu)
+    if args.inject_host:
+        inject_host_form(injects, gpu)
+    if args.record_host:
+        record_host_form(blocks, pres, gpu)
+    if args.combine_host:
+        combine_host_form(blocks, pres, gpu)
+    if args.telem_pack_host:
+        telem_host_form(blocks, pres, gpu)
+    if args.half_rec_buf:
+        half_rec_buf_form(blocks, pres, gpu)
     merged["in_buffers"] = primary["in_buffers"]
     merged["out_buffers"] = out_buffers
     merged["commands"] = (
@@ -2270,7 +2544,7 @@ def search_stage(cfg, args, in_buf, chan_ids, core, signal=None, prns=None):
         "kotekan_stage": "GnssChannelizedSearch",
         "in_buf": in_buf,
         "signal": signal or sig["primary"],
-        "prns": list(prns) if prns else PRIMARY_PRNS,
+        "prns": list(prns) if prns else primary_prns(),
         "sample_rate": float(fe["sampling_rate_MHz"]) * 1e6,
         # The sky carrier, not an IF: covering_bins() places the signal at f_offset, so 0.0
         # puts it at DC, where no covering channel overlaps this subband.
@@ -3105,7 +3379,7 @@ def live_frame0_utc(cfg, args, timeout=3.0):
 def check_frame0(cfg, args, live_t0):
     """Check the record epoch this config pins against the frame 0 the running fleet serves.
 
-    cudaGnssChordTrackState takes frame0_utc (the UTC of the F-engine's absolute sample 0;
+    gnss::TrackChain takes frame0_utc (the UTC of the F-engine's absolute sample 0;
     records are stamped frame0_utc + wstart/rate) from Telescope::to_time_ns(0) unless the config
     carries one, so by default none is emitted and nothing can go stale. A pinned value
     (--frame0-nano, else the node file's fengine.frame0_utc) goes stale silently at the next
@@ -3290,10 +3564,7 @@ def check_descriptors(cfg, args):
     from the kotekan the golden pins would not resolve it, and the node would stop at stage
     construction."""
     g = iface.golden()
-    names = [
-        ("signals.primary", cfg["signals"]["primary"]),
-        ("signals.tracker", cfg["signals"].get("tracker")),
-    ]
+    names = [("signals.primary", cfg["signals"]["primary"])]
     names += [("--extra-signal", s.partition(":")[0]) for s in args.extra_signal or []]
     names += [
         ("--aggregator-extra-search", s.partition(":")[0])
@@ -3307,6 +3578,18 @@ def check_descriptors(cfg, args):
                 f"{g.commit[:12]}). Sync the golden from a kotekan that defines it, or fix "
                 "the name."
             )
+    bad = gnss_chain_table.validate(chain_rows(), set(g.sections["signals"]))
+    prim = broker_chain_name(cfg["signals"]["primary"])
+    if chain_rows() and chain_rows()[0].key != prim:
+        bad.append(
+            f"the first row is {chain_rows()[0].key}, but signals.primary "
+            f"({cfg['signals']['primary']}) is chain {prim}"
+        )
+    if bad:
+        raise SystemExit(
+            "the chains table (config/gnss_fleet_chord.yaml chains:) is invalid:\n  "
+            + "\n  ".join(bad)
+        )
 
 
 def main():
@@ -3624,10 +3907,10 @@ def main():
         action="append",
         default=[],
         metavar="NAME:PRNS",
-        help="add a tracker chain for another signal (NAME from gnssSignal.hpp), e.g. "
-        "--extra-signal GAL_E5A_Q_CS:1,2,3. Repeatable. PRNs are required "
-        "(constellations number their PRNs differently, and a chain has "
-        f"{SYNTH_SLOTS} PRN slots). A chain whose covering "
+        help="add the tracker chain of a row of the chains table "
+        "(config/gnss_fleet_chord.yaml chains:): NAME is the row's descriptor and PRNS "
+        "its prns, which must match, e.g. --extra-signal GAL_E5A_Q_CS:2,3,4. Repeatable; "
+        "gen_fleet passes every row but the primary, in row order. A chain whose covering "
         "channels match the primary's shares its voltage tap (E5a and B2a are on "
         "L5's carrier); a different carrier gets its own tap. Buffer and endpoint "
         "names carry the chain's broker key (GAL_E5A_Q_CS -> gnss0_gal_e5a_n2assemble). "
@@ -3703,6 +3986,67 @@ def main():
         "chain.",
     )
     ap.add_argument(
+        "--fold-epl",
+        action="store_true",
+        help="every chain's GnssGpuRecordAssemble reads its tiles and control block itself "
+        "(tiles_buf, ctl_buf) and builds each epl frame in its own memory: no "
+        "GnssN2RecordAssemble stage and no n2epl buffer, and the n2tiles and n2ctl buffers "
+        "hold FOLD_EPL_DEPTH frames instead of BUFFER_DEPTH. The transform moves onto the "
+        "assembler cores (--assembler-core-slots).",
+    )
+    ap.add_argument(
+        "--gpu-rows",
+        action="store_true",
+        help="with --fold-epl: one tiles and one control-block buffer per GPU half "
+        "(gnss<g>_rows_tiles_buf, gnss<g>_rows_ctl_buf), from a gnss_rows list on the "
+        "gnss<g>_n2dual process, instead of one of each per chain. The correlator gathers every "
+        "chain in one launch, each injector writes its row of the control array with its row "
+        "tag, and each record assembler reads its row of the two. Refuses --vis-capture.",
+    )
+    ap.add_argument(
+        "--inject-host",
+        action="store_true",
+        help="with --gpu-rows: one cudaGnssInject per GPU half, hosting every chain's "
+        "injector as a row of its chains block (keyed by its gnss_row, on the chain's own "
+        "REST endpoints), instead of one injector per chain: one voltage-ring claim and one "
+        "control-block upload per frame for the half.",
+    )
+    ap.add_argument(
+        "--record-host",
+        action="store_true",
+        help="with --gpu-rows: one GnssGpuRecordAssemble per GPU half (gnss<g>_records), "
+        "hosting every chain's record assembler as a row of its chains block (keyed by its "
+        "gnss_row, on the chain's own REST paths, record buffer and cube stream), each row on a "
+        "worker thread of its own pinned to the chain's assembler core, instead of one stage "
+        "per chain.",
+    )
+    ap.add_argument(
+        "--combine-host",
+        action="store_true",
+        help="one GnssCoherentCombiner per GPU half (gnss<g>_combine), hosting every chain's "
+        "combiner as a row of its chains block (keyed by its gnss_row, on the chain's own REST "
+        "paths and record buffer), each row on a worker thread of its own pinned to the chain's "
+        "combiner core, instead of one stage per chain.",
+    )
+    ap.add_argument(
+        "--telem-pack-host",
+        action="store_true",
+        help="one GnssTelemPack per GPU half (gnss<g>_telem), hosting every chain's telemetry "
+        "pack as a row of its chains block (keyed by its gnss_row, with the chain's own chain "
+        "and inst tags, window state and seq), each row on a worker thread of its own on the "
+        "telemetry core, writing one buffer that one GnssTelemSend (gnss<g>_telem_send) ships "
+        "to the gather, each frame at its own length, instead of a pack, buffer and bufferSend "
+        "per chain. The frames are the chains' own; the half sends one TCP stream.",
+    )
+    ap.add_argument(
+        "--half-rec-buf",
+        action="store_true",
+        help="with --record-host, --combine-host and --telem-pack-host: one record buffer per "
+        "GPU half (gnss<g>_rec_buf), each frame one record of every chain after a directory of "
+        "the chains' rows, which the record host's workers write and the combine and telemetry "
+        "hosts' workers read, each row at its rec_row, instead of one record buffer per chain.",
+    )
+    ap.add_argument(
         "--psi-synth",
         action="store_true",
         help="cudaGnssChordTrack psi_synth on every chain: replica synthesis from per-PRN "
@@ -3710,6 +4054,17 @@ def main():
         "record instead of gnss_waveform + gnss_pack44; lib/cuda/cudaGnssPsiSynth.hpp). "
         "Requires --epl-from-prompt. The replica carries +1.1%% more energy than the "
         "80-chip gather, so every absolute SNR gate steps at the cutover.",
+    )
+    ap.add_argument(
+        "--combiner-out-buf",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="give each chain's GnssCoherentCombiner an out_buf (<chain>n2cmb_buf, drained by "
+        "a dropAllFrames, <chain>n2sink) holding its combined records, for an n2dump "
+        "(default %(default)s). Nothing else reads them: the broker reads the combiner's "
+        "REST replies. --no-combiner-out-buf needs a kotekan whose combiner takes no "
+        "out_buf; in a gen_fleet manifest it is `no-combiner-out-buf: true` (gen_fleet "
+        "refuses `combiner-out-buf: false`, which would be omitted).",
     )
     ap.add_argument(
         "--n2-project",
@@ -4108,6 +4463,32 @@ def main():
             "--psi-synth requires --epl-from-prompt: the fused synthesis packs two lanes per "
             "slot (P, P_HEAD) with the E/L rows rotated from the prompt"
         )
+    if args.gpu_rows and not args.fold_epl:
+        raise SystemExit(
+            "--gpu-rows requires --fold-epl: the record assemblers read the half's tiles and "
+            "control blocks themselves"
+        )
+    if args.inject_host and not args.gpu_rows:
+        raise SystemExit(
+            "--inject-host requires --gpu-rows: its rows are the half's gnss_rows"
+        )
+    if args.record_host and not args.gpu_rows:
+        raise SystemExit(
+            "--record-host requires --gpu-rows: its rows read the half's tiles and control "
+            "blocks"
+        )
+    if args.half_rec_buf and not (
+        args.record_host and args.combine_host and args.telem_pack_host
+    ):
+        raise SystemExit(
+            "--half-rec-buf requires --record-host, --combine-host and --telem-pack-host: the "
+            "record buffer's writers and readers are the rows of those hosts"
+        )
+    if args.gpu_rows and args.vis_capture:
+        raise SystemExit(
+            "--gpu-rows refuses --vis-capture: its gate and reader take a chain's own control "
+            "blocks"
+        )
     args.base = _kotekan_input(args.base)
 
     with open(NODE_FILE) as fh:
@@ -4123,7 +4504,7 @@ def main():
     check_frame0(cfg, args, live_frame0_utc(cfg, args) if pinned else None)
 
     # --frame0-nano sets the record epoch as well as the telescope's startup GPS time (below):
-    # cudaGnssChordTrackState prefers a configured frame0_utc over the telescope's, so setting
+    # gnss::TrackChain prefers a configured frame0_utc over the telescope's, so setting
     # only the telescope's would leave a node-file value stamping the records.
     if args.frame0_nano:
         cfg["fengine"]["frame0_utc"] = args.frame0_nano * 1e-9

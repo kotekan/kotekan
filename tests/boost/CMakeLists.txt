@@ -63,6 +63,12 @@ target_include_directories(test_guowang_1202_nav PRIVATE ../../lib/stages ../../
 add_executable(test_gnss_band_plan test_gnss_band_plan.cpp ../../lib/stages/gnss/gnssBandPlan.cpp)
 target_include_directories(test_gnss_band_plan PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
+# assemble_epl with the tiles inside a wider gather: compile the source directly.
+add_executable(test_gnss_epl_assemble test_gnss_epl_assemble.cpp
+                                      ../../lib/stages/gnss/gnssEplAssemble.cpp)
+target_include_directories(test_gnss_epl_assemble PRIVATE ../../lib/stages ../../lib/stages/gnss)
+target_link_libraries(test_gnss_epl_assemble PRIVATE libexternal kotekan_core kotekan_utils)
+
 # The gnss interface document against its golden and the GNSS headers; no FFTW or CUDA.
 add_executable(test_gnss_interface test_gnss_interface.cpp ../../lib/stages/gnss/gnssInterface.cpp
                                    ../../lib/stages/gnss/gnssBandPlan.cpp)
@@ -98,11 +104,17 @@ target_link_libraries(test_gnss_cube_write PRIVATE libexternal kotekan_stages ko
                                                    kotekan_utils kotekan_core kotekan_metadata)
 target_include_directories(test_gnss_cube_write PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
-# The GnssFleetTrim stage driven over its REST endpoints, with no frames flowing.
+# The GnssFleetTrim stage driven over its REST endpoints, and fed hand-built wire frames.
 add_executable(test_gnss_fleet_trim test_gnss_fleet_trim.cpp)
 target_link_libraries(test_gnss_fleet_trim PRIVATE libexternal kotekan_stages kotekan_libs
                                                    kotekan_utils kotekan_core kotekan_metadata)
 target_include_directories(test_gnss_fleet_trim PRIVATE ../../lib/stages ../../lib/stages/gnss)
+
+# One chain's telemetry packing (gnss::TelemChain) across windows, without buffers.
+add_executable(test_gnss_telem_chain test_gnss_telem_chain.cpp)
+target_link_libraries(test_gnss_telem_chain PRIVATE libexternal kotekan_stages kotekan_libs
+                                                    kotekan_utils kotekan_core kotekan_metadata)
+target_include_directories(test_gnss_telem_chain PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
 # Channelized despread: sim signal -> PFB analysis (reference DFT) -> per-channel correlate-and-sum,
 # checked against the full-band matched filter. No FFTW.
@@ -188,6 +200,30 @@ if(FFTW_FOUND)
                                                                      ../../lib/stages/gnss)
     target_include_directories(test_gnss_channelized_replica SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(test_gnss_channelized_replica PRIVATE ${FFTW_LIBRARY} ${FFTWF_LIBRARY})
+
+    # The host stages of three GNSS chains replayed from synthetic control blocks and tiles,
+    # digested for determinism, liveness and mutation controls. GnssN2RecordAssemble and
+    # GnssGpuRecordAssemble build under FFTW_FOUND. Not named test_*, so run_boost_tests.sh (and
+    # with it CI) skips it: in a Test build it runs past CI's 30 s limit. Run it by hand as
+    # tests/boost/gnss_chain_replay.
+    add_executable(gnss_chain_replay test_gnss_chain_replay.cpp)
+    target_link_libraries(gnss_chain_replay PRIVATE libexternal kotekan_stages kotekan_libs
+                                                    kotekan_utils kotekan_core kotekan_metadata)
+    target_include_directories(gnss_chain_replay PRIVATE ../../lib/stages ../../lib/stages/gnss)
+    target_compile_definitions(gnss_chain_replay PRIVATE REPLAY_BUILD_TYPE="${CMAKE_BUILD_TYPE}")
+
+    # The row contract of the GNSS host stages and their REST registration.
+    add_executable(test_gnss_host_rows test_gnss_host_rows.cpp)
+    target_link_libraries(test_gnss_host_rows PRIVATE libexternal kotekan_stages kotekan_libs
+                                                      kotekan_utils kotekan_core kotekan_metadata)
+    target_include_directories(test_gnss_host_rows PRIVATE ../../lib/stages ../../lib/stages/gnss)
+    # kotekanMode needs the telescopes that kotekan_utils registers.
+    if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+        target_link_libraries(test_gnss_host_rows PRIVATE -Wl,-all_load kotekan_utils)
+    else()
+        target_link_libraries(test_gnss_host_rows PRIVATE -Wl,--whole-archive kotekan_utils
+                                                          -Wl,--no-whole-archive)
+    endif()
 endif()
 
 # frameID / modulo<int>: reduce-on-write, the 2^32 wrap that skips buffer slots
@@ -207,6 +243,13 @@ target_include_directories(test_cuda_stream_assignment PRIVATE ${KOTEKAN_SOURCE_
                                                                ${KOTEKAN_SOURCE_DIR}/lib/gpu)
 target_link_libraries(test_cuda_stream_assignment PRIVATE pthread libexternal kotekan_libs
                                                           kotekan_utils kotekan_core)
+
+# cudaCorrelatorDual's tile-selection lists against a per-half row table. gnssTileSelection.hpp is
+# header-only and needs no CUDA, so this runs in the CPU-only builds.
+add_executable(test_gnss_tile_selection test_gnss_tile_selection.cpp)
+target_include_directories(test_gnss_tile_selection PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/cuda)
+target_link_libraries(test_gnss_tile_selection PRIVATE libexternal kotekan_libs kotekan_utils
+                                                       kotekan_core)
 
 # test_gpu_memory_claims - the one-owner-per-region rule for named GPU memory: the policy function
 # AND its wiring in gpuDeviceInterface (owner scopes, thread attribution, arrays, views, the
@@ -325,8 +368,28 @@ endif()
 
 # test_bufferSend - tests for bufferSend stage
 add_executable(test_bufferSend test_bufferSend.cpp)
-target_link_libraries(test_bufferSend PRIVATE libexternal kotekan_stages kotekan_libs kotekan_utils
-                                              kotekan_core)
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    target_link_libraries(
+        test_bufferSend
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,-all_load
+                kotekan_metadata)
+else()
+    target_link_libraries(
+        test_bufferSend
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,--whole-archive
+                kotekan_metadata
+                -Wl,--no-whole-archive)
+endif()
 target_include_directories(test_bufferSend PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
 
 # test_prometheus_metrics needs fmt and prometheusMetrics

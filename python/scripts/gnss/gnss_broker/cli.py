@@ -738,6 +738,16 @@ def build_parser(description):
         "(--fleet-trim-url) and the --prn-reconfig map go to them too.",
     )
     ap.add_argument(
+        "--node-hosts",
+        default="",
+        help="comma list of the GPU halves' hosts that serve their rows' verbs by chain, "
+        "http://<node>:<port>/gnss<g>_<host> for the hosts inject, records and combine "
+        "(the chains yaml's `node-hosts: fleet`, from the manifest's --inject-host, "
+        "--record-host and --combine-host). A tracker, combiner or record assembler on a "
+        "listed half is asked there by its chain (gnss_broker/node_api.py), any other at its "
+        "row's own path.",
+    )
+    ap.add_argument(
         "--combiner",
         default="combiner",
         help="combiner endpoint (name or URL) whose /get_status is this chain's "
@@ -1702,16 +1712,17 @@ def build_parser(description):
         "chips. The taps are on the node; this value enters the trim law here (tau = "
         "-disc/4 x (spacing/0.5)), the C++ fast loop's copy, posted with its policy, "
         "and the --presence-admit-displaced fit, so it must match the node's "
-        "dll_spacing for this chain (config/gen_chord_gnss_config.py "
-        "dll_spacing_chips): in the loops a mismatch is a pure gain error, in the fit "
-        "a misread offset. When changing both, cycle the nodes before the broker. The "
+        "dll_spacing for this chain: in the loops a mismatch is a pure gain error, in "
+        "the fit a misread offset. broker_multi.py takes it from the chain's row in the "
+        "chains table (config/gnss_fleet_chord.yaml chains:), which the node generator "
+        "puts on the taps; when changing it, cycle the nodes before the broker. The "
         "offset is set by the width of the correlation the loop closes on, not by the "
         "chip: E and L must sit inside its first null, where the discriminator is "
         "monotonic, or the loop false-locks off peak. 0.5 (the default) suits the "
         "chip-narrow correlation of a chain whose instances each despread a "
         "multi-channel comb; GPS L2C (a fleet sum of single-channel instances) and "
-        "GLONASS L2OC (BOC side peaks) run the narrower offsets dll_spacing_chips "
-        "gives them and says why.",
+        "GLONASS L2OC (BOC side peaks) run the narrower offsets their rows give and "
+        "explain.",
     )
     ap.add_argument(
         "--dll-deep-gate",
@@ -1885,6 +1896,17 @@ def build_parser(description):
         "arming decision cross only as their result (fleet_trim_hold_s and "
         "fleet_trim_leak_per_s are constants in cli.py _FROZEN). Also the base for "
         "--comb-taps-cpp and --fleet-trim-readback.",
+    )
+    ap.add_argument(
+        "--fleet-trim-half-targets",
+        action="store_true",
+        help="hand --fleet-trim-url a tracker on a GPU half whose inject host serves by "
+        'chain (--node-hosts) as that half\'s target, {"url": "<host>/set_trim", '
+        '"chain": <chain>}, which the gather posts once per round for every chain that '
+        'names it ({"chains": {...}}), instead of the tracker\'s own /set_trim. Off by '
+        "default. The chain refuses to start when the gather's interface lacks "
+        "rest/fleet_trim_batch; while the gather cannot be read, the trackers' own "
+        "/set_trim are the targets, and it is read again every 60 s (trimarm.half_targets).",
     )
     ap.add_argument(
         "--fleet-trim-bandwidth",

@@ -149,17 +149,16 @@ void bufferSend::main_thread() {
             if (!meta) {
                 // FATAL_ERROR throws out of this function, so end the connect thread first.
                 stop();
-                close_connection();
-                connect_thread.join();
+                end_connect_thread(connect_thread);
                 FATAL_ERROR("Frame {:s}[{:d}] has no metadata object: its producer did not "
                             "allocate one",
                             buf->buffer_name, frame_id);
             }
             auto metadata_size = meta->get_serialized_size();
-            auto frame_size = buf->frame_size;
+            const size_t frame_size = frame_send_bytes(frame_id);
             bufferFrameHeader header;
             header.metadata_size = static_cast<uint32_t>(meta->get_serialized_size());
-            header.frame_size = static_cast<uint32_t>(buf->frame_size);
+            header.frame_size = static_cast<uint32_t>(frame_size);
             // Flag a tracker update on the first frame of every connection, not
             // only when this side's tracker hash changes: a receiver that
             // (re)started after us holds no upstream configs and has no way to
@@ -284,8 +283,20 @@ void bufferSend::main_thread() {
         frame_id = (frame_id + 1) % buf->num_frames;
     }
 
-    close_connection();
+    end_connect_thread(connect_thread);
+}
+
+void bufferSend::end_connect_thread(std::thread& connect_thread) {
+    // Taking the lock first means a wait that has just seen stop_thread unset is asleep when
+    // notified.
+    { std::lock_guard<std::mutex> connection_lock(connection_state_mutex); }
+    connection_state_cv.notify_all();
     connect_thread.join();
+    close_connection();
+}
+
+size_t bufferSend::frame_send_bytes(int) {
+    return buf->frame_size;
 }
 
 void bufferSend::close_connection() {
@@ -320,8 +331,7 @@ void bufferSend::connect_to_server() {
                  server_ip, server_port, strerror(errno), errno, reconnect_time);
             close(socket_fd);
             socket_fd = -1;
-            // A stop ends this wait early: main_thread() calls close_connection(), which
-            // notifies, before it joins this thread.
+            // A stop ends this wait early: main_thread() notifies before it joins this thread.
             {
                 std::unique_lock<std::mutex> connection_lock(connection_state_mutex);
                 connection_state_cv.wait_for(connection_lock, std::chrono::seconds(reconnect_time),

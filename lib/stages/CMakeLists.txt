@@ -64,9 +64,14 @@ add_library(
     gnss/gnssOverlay.cpp
     gnss/gnssChannelizedDespread.cpp
     gnss/GnssCoherentCombiner.cpp
+    gnss/gnssCombinerChain.cpp
     # The tracker -> broker telemetry transport, outside the FFTW block: the gather half runs on
     # the broker host, which has no F-engine, GPU or FFTW.
     gnss/GnssTelemPack.cpp
+    gnss/GnssTelemSend.cpp
+    gnss/gnssTelemChain.cpp
+    gnss/gnssHostRows.cpp
+    gnss/gnssRecRows.cpp
     gnss/GnssTelemGather.cpp
     # The fleet code loop runs in the gather instance beside GnssTelemGather (the only place
     # with the whole fleet at frame rate), so it is in the same no-FFTW block.
@@ -185,6 +190,9 @@ if(FFTW_FOUND)
                 gnss/GnssChannelizedSearch.cpp
                 gnss/GnssChordVoltageTap.cpp
                 gnss/GnssN2RecordAssemble.cpp
+                gnss/gnssEplAssemble.cpp
+                gnss/GnssGpuRecordAssemble.cpp
+                gnss/gnssRecordChain.cpp
                 gnss/GnssChordDequantize.cpp
                 gnss/GnssChanAlignMerge.cpp
                 gnss/GnssN2Project.cpp
@@ -193,7 +201,7 @@ if(FFTW_FOUND)
         # gnssPsiTable.cpp builds the Psi tables for cudaGnssPsiSynth's kernels (it includes their
         # CUDA header), so it is compiled with its CUDA users.
         target_sources(kotekan_stages PRIVATE gnss/cudaGnssChordTrack.cpp gnss/cudaGnssInject.cpp
-                                              gnss/gnssPsiTable.cpp)
+                                              gnss/gnssPsiTable.cpp gnss/gnssTrackChain.cpp)
     endif()
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(kotekan_stages PRIVATE ${FFTW_LIBRARIES})
@@ -287,8 +295,6 @@ endif()
 # -> kotekan_cuda (kernel only).
 if(USE_CUDA)
     target_sources(kotekan_stages PRIVATE gnss/GnssCudaDespread.cpp)
-    # Host record assembler for the GPU tracking commands.
-    target_sources(kotekan_stages PRIVATE gnss/GnssGpuRecordAssemble.cpp)
     # The device-resident acquisition search; it needs cuFFT.
     target_sources(kotekan_stages PRIVATE gnss/GnssCudaAcquire.cpp)
     target_link_libraries(kotekan_stages PRIVATE kotekan_cuda CUDA::cufft)

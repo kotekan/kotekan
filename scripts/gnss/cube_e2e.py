@@ -57,6 +57,7 @@ sys.path.insert(0, os.path.join(K, "config"))
 
 import gnss_cube_read as cr  # noqa: E402
 from gnss_record_layout import record_stride, cube_frame_bytes  # noqa: E402
+from gnss_record_layout import prnctl_bytes  # noqa: E402
 from telem_e2e import kotekan_binary  # noqa: E402
 
 # Ports clear of the site's live kotekan and broker ports (11025-11070, 12048-12060) and of
@@ -93,16 +94,19 @@ CUBE_GPU = 1
 CHAIN = "cube_e2e/gate"
 
 # gnss_gpu layout (gnssGpuChain.hpp), restated only to write frames; the assembler is the reader.
-HDR_FMT = "<iiiiqdiiq"  # n_rec n_prn n_chan n_jobs seq0 utc0 n_rows_spec _pad0 _pad1
+HDR_FMT = (
+    "<iiiiqdiiq"  # n_rec n_prn n_chan n_jobs seq0 utc0 n_rows_spec lanes_per_slot _pad1
+)
 assert struct.calcsize(HDR_FMT) == 48
 PRNCTL_FMT = (
-    "<BBHiffddQddddd"  # run reanchored prn job0 fcar_report n_owned cp_seed f_nco
+    "<BBHiffddQddddd8f"  # run reanchored prn job0 fcar_report n_owned cp_seed f_nco
 )
-# chan_mask ctrim_hz ang0 phi_ddop fcar dcyc
-assert struct.calcsize(PRNCTL_FMT) == 80
+# chan_mask ctrim_hz ang0 phi_ddop fcar dcyc rot[MAX_ROT_CHAN]
+PRNCTL_BYTES = prnctl_bytes()
+assert struct.calcsize(PRNCTL_FMT) == PRNCTL_BYTES == 112
 OFF_WINSTART = 48
 OFF_PRNCTL = OFF_WINSTART + 8 * MAX_REC
-OFF_CORR = OFF_PRNCTL + 80 * MAX_REC * N_PRN
+OFF_CORR = OFF_PRNCTL + PRNCTL_BYTES * MAX_REC * N_PRN
 MAX_JOBS = ROWS_SPEC * N_PRN * MAX_REC
 OFF_ENERGY = OFF_CORR + 16 * MAX_JOBS * N_CHAN * N_ELEM
 GPU_FRAME_BYTES = OFF_ENERGY + 8 * MAX_JOBS * N_CHAN
@@ -153,7 +157,7 @@ def write_gpu_file(dirpath):
                     struct.pack_into(
                         PRNCTL_FMT,
                         frame,
-                        OFF_PRNCTL + 80 * (r * N_PRN + p),
+                        OFF_PRNCTL + PRNCTL_BYTES * (r * N_PRN + p),
                         1 if run else 0,
                         rean,
                         PRNS[p],
@@ -168,7 +172,8 @@ def write_gpu_file(dirpath):
                         0.0,
                         0.0,
                         0.0,
-                    )  # ctrim ang0 phi_ddop fcar dcyc
+                        *([0.0] * 8),
+                    )  # ctrim ang0 phi_ddop fcar dcyc rot
                     if not run:
                         continue
                     for t in range(ROWS_SPEC):

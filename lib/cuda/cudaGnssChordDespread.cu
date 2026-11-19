@@ -335,12 +335,15 @@ namespace {
 /// axis, so a time-gated replica needs its own lane.
 ///
 /// Scale: s = 7 / (3 * rms) per (lane, channel), rms = sqrt(energy row / n_hops), with row 3
-/// (the head energy) over the job's m_head hops instead. The path-B consumer recomputes s from
-/// the energy rows and divides it out; it matches this s for E/P/L but not for P_HEAD (see
+/// (the head energy) over the job's m_head hops instead. The row is the slot's energy_scale row
+/// when that is set, else this record's energy row, which hop 0's thread then sets it to (a
+/// thread reading it meanwhile gets that value either way). The path-B consumer recomputes s
+/// from the energy rows and divides it out; it matches this s for E/P/L but not for P_HEAD (see
 /// launch_pack44). Values clamp to [-7,7]: -8 corrupts the whole N^2 launch (n2k's
 /// negate_4bit).
 __global__ void gnss_pack44_kernel(const float2* __restrict__ wave,
                                    const double* __restrict__ energy,
+                                   double* __restrict__ energy_scale,
                                    const gnss_cuda::DespreadJob* __restrict__ jobs,
                                    const int* __restrict__ slot2spec, int n_slot,
                                    int lanes_per_slot, int n_chan, int n_hops,
@@ -361,6 +364,14 @@ __global__ void gnss_pack44_kernel(const float2* __restrict__ wave,
     const int t = (lanes_per_slot == 4) ? tl : (tl == 0 ? 1 : 3);
     const int spec = (slot < n_slot) ? slot2spec[slot] : -1;
     if (spec >= 0) {
+        double E = energy[(size_t)(4 * spec + t) * n_chan + c];
+        if (energy_scale) {
+            double* srow = energy_scale + (size_t)(4 * slot + t) * n_chan + c;
+            if (!isnan(*srow))
+                E = *srow;
+            else if (m == 0)
+                *srow = E;
+        }
         const gnss_cuda::DespreadJob j = jobs[spec];
         const bool covered = (j.chan_mask >> c) & 1ULL;
         const bool live = (t != 3) || (m < j.m_head);
@@ -368,7 +379,7 @@ __global__ void gnss_pack44_kernel(const float2* __restrict__ wave,
             const int wrow = (t == 3) ? 1 : t; // P_HEAD packs the prompt
             const float2 w = wave[((size_t)(3 * spec + wrow) * n_chan + c) * n_hops + m];
             const int nh = (t == 3) ? (j.m_head > 0 ? j.m_head : 1) : n_hops;
-            const float rms = sqrtf((float)(energy[(size_t)(4 * spec + t) * n_chan + c] / nh));
+            const float rms = sqrtf((float)(E / nh));
             if (rms > 0.0f) {
                 const float s = 7.0f / (3.0f * rms);
                 int qr = __float2int_rn(s * w.x);
@@ -386,19 +397,19 @@ __global__ void gnss_pack44_kernel(const float2* __restrict__ wave,
 
 } // namespace
 
-cudaError_t launch_pack44(const float2* wave, const double* energy, const DespreadJob* jobs,
-                          const int* slot2spec, int n_slot, int lanes_per_slot, int n_chan,
-                          int n_hops, const int* chan_map, int frame_chan_stride, int n_lanes,
-                          int lane_base, int lane_pitch, unsigned char* synth,
-                          cudaStream_t stream) {
+cudaError_t launch_pack44(const float2* wave, const double* energy, double* energy_scale,
+                          const DespreadJob* jobs, const int* slot2spec, int n_slot,
+                          int lanes_per_slot, int n_chan, int n_hops, const int* chan_map,
+                          int frame_chan_stride, int n_lanes, int lane_base, int lane_pitch,
+                          unsigned char* synth, cudaStream_t stream) {
     if (lanes_per_slot != 4 && lanes_per_slot != 2)
         return cudaErrorInvalidValue;
     const long total = (long)n_hops * n_chan * n_lanes;
     const int threads = 256;
     const long blocks = (total + threads - 1) / threads;
     gnss_pack44_kernel<<<(unsigned)blocks, threads, 0, stream>>>(
-        wave, energy, jobs, slot2spec, n_slot, lanes_per_slot, n_chan, n_hops, chan_map,
-        frame_chan_stride, n_lanes, lane_base, lane_pitch, synth);
+        wave, energy, energy_scale, jobs, slot2spec, n_slot, lanes_per_slot, n_chan, n_hops,
+        chan_map, frame_chan_stride, n_lanes, lane_base, lane_pitch, synth);
     return cudaGetLastError();
 }
 

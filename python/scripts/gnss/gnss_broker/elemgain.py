@@ -30,6 +30,7 @@ import cmath
 import math
 import re
 
+from . import node_api
 from .transport import _get, _log_rl
 
 
@@ -48,7 +49,7 @@ def poll_elements(endpoints):
     out, served = {}, 0
     for url in endpoints:
         try:
-            rows = _get("%s/get_elements" % url)
+            rows = _get(node_api.url(url, "get_elements"))
         except Exception as e:
             _log_rl(
                 "elemgain-%s" % url,

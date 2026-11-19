@@ -263,8 +263,9 @@ int main(int argc, char** argv) {
         CK(cudaMemcpy(d_slot2spec, slot2spec.data(), N_SPEC * sizeof(int), cudaMemcpyHostToDevice));
         CK(cudaMemcpy(d_chan_map, h_chan_idx.data(), n_chan * sizeof(int), cudaMemcpyHostToDevice));
         CK(cudaMemset(d_synth, 0x88, h_synth.size())); // the spare channel and the unused lanes
-        CK(gnss_cuda::launch_pack44(d_wave, d_energy, d_jobs, d_slot2spec, N_SPEC, 4, n_chan,
-                                    N_HOPS, d_chan_map, NFRAME, 4 * N_SPEC, 0, NSB, d_synth, 0));
+        CK(gnss_cuda::launch_pack44(d_wave, d_energy, nullptr, d_jobs, d_slot2spec, N_SPEC, 4,
+                                    n_chan, N_HOPS, d_chan_map, NFRAME, 4 * N_SPEC, 0, NSB, d_synth,
+                                    0));
         CK(cudaDeviceSynchronize());
     }
     auto sc = [&](int lane, int c) { return lane_scale[(size_t)lane * n_chan + c]; };

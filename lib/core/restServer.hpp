@@ -289,6 +289,13 @@ public:
                                 std::function<void(connectionInstance&, nlohmann::json&)> callback);
 
     /**
+     * @brief Whether a GET or POST callback is registered at @c endpoint
+     *
+     * @param endpoint The endpoint to look up.
+     */
+    bool has_callback(std::string endpoint);
+
+    /**
      * @brief Removes the GET endpoint referenced by @c endpoint
      *
      * @param endpoint The endpoint to remove.

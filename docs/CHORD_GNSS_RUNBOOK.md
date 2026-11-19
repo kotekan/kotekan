@@ -316,6 +316,40 @@ document it speaks, pinned to a kotekan commit (`python/scripts/gnss/gnss_broker
   config as DIFFERS, and `eop_cron.sh` then stops regenerating them. The EOP table baked into
   them runs out within days, and `node_up.sh` refuses a start with less than 12 h of it left.
 
+### Rows asked by chain
+
+A node generated with `--inject-host`, `--record-host` or `--combine-host` serves each GPU half's
+rows of that stage at one path by chain, `/gnss<g>_<host>/<verb>?chain=<chain>` (`rest/host_rows`),
+beside the rows' own paths. The broker asks a row by chain only on the halves the manifest hosts
+(the chains yaml's `node-hosts: fleet`); every other request goes to the row's own path. A host
+that answers 404 by chain runs an older form or binary than the manifest says: the broker logs
+`WARN ... answered 404` with the URL and asks that host's rows at their own paths for 60 s. With
+`fleet-trim-half-targets: true` in the chains yaml's `common:`, the gather posts each hosted half's
+set_trim once per window for all its chains (`rest/fleet_trim_batch`, docs/CHORD_FAST_TRIM.md).
+`kotekan_gnss_rest_legacy_hits_total{stage_name,path}` on each node counts what still reaches the
+rows' own paths; judge it with `increase()`, since it restarts with the node.
+
+The broker's golden lists `rest/host_rows` for a node and `rest/fleet_trim_batch` for the gather,
+so a broker checkout with them refuses older node and gather binaries at their next start,
+whatever `fleet-trim-half-targets` says. The deploy order is therefore:
+
+1. Node cycle onto a binary that serves `rest/host_rows`, from the current gnss-broker checkout.
+2. Rebuild the gather's binary (`GNSS_BIN`, which the aggregator also runs) and restart the
+   gather alone. An aggregator restarted here puts the broker restart 10 min later (#211).
+3. Fast-forward gnss-broker and restart the broker. Its watcher must read the gather MATCH.
+4. Put the generator flags the node configs were rendered with in the manifest's `common:`.
+   Without them `node-hosts: fleet` resolves to none, so the broker asks every row at its own
+   path, and a config regenerated from the manifest is the unhosted form. Regenerate (`--check`
+   must pass), restart the broker, then gnss-lanerelay, which reads the hosts from the on-disk
+   configs at its start.
+5. `fleet-trim-half-targets: true`, and restart the broker.
+
+Roll back in the reverse order: the previous gnss-broker checkout first (it asks every row at its
+own path, which every binary serves), then the gather, then the nodes. `GNSS_SKIP_IFACE=1` lets one
+start through out of order.
+
+On-demand tests of the 404 fallback and the start checks (not CI): `python3 scripts/gnss/rows_by_chain_tests.py`.
+
 ## 6. ⚠️ cf06: what is still there, and what will hurt you
 
 **Still on cf06, legitimately:** the cube archiver, the cube compactor, the static cube viewer

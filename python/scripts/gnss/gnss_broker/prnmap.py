@@ -41,7 +41,7 @@ import os
 import re
 import time
 
-from gnss_broker import sky
+from gnss_broker import node_api, sky
 from gnss_broker.transport import _get, _post, _log, _log_rl, axis_now_utc, log_tag
 
 
@@ -122,7 +122,7 @@ def _poll(ctx, st, eps):
     st.cursor = (st.cursor + 1) % len(eps)
     st.tried[ep] = ctx.t0
     try:
-        r = _get("%s/get_prns" % ep, timeout=ctx.args.prn_reconfig_timeout_s)
+        r = _get(node_api.url(ep, "get_prns"), timeout=ctx.args.prn_reconfig_timeout_s)
         m = r.get("prns")
         if isinstance(m, list) and m:
             st.maps[ep] = [int(x) for x in m]
@@ -232,7 +232,10 @@ def _resync_split(ctx, st, eps, now):
         st.resync_t[ep] = now
         n_moved = sum(1 for x, y in zip(st.maps[ep], ref) if x != y)
         try:
-            _post("%s/set_prns" % ep, {"prns": ref}, timeout=a.prn_reconfig_timeout_s)
+            _post(
+                *node_api.post_request(ep, "set_prns", {"prns": ref}),
+                timeout=a.prn_reconfig_timeout_s,
+            )
             _log(
                 "PRN MAP %s: %s held a different map in %d slot(s) (a restart reverts a node "
                 "to its config list) -- put back on the fleet's map. Those slots acquire COLD."
@@ -960,7 +963,10 @@ def _apply_map(ctx, st, cur, want_map, moved, why, new, now):
     ok, bad = 0, ""
     for ep in _endpoints(ctx):
         try:
-            _post("%s/set_prns" % ep, body, timeout=a.prn_reconfig_timeout_s)
+            _post(
+                *node_api.post_request(ep, "set_prns", body),
+                timeout=a.prn_reconfig_timeout_s,
+            )
             ok += 1
         except Exception as e:
             bad = "%s: %s" % (ep, e)

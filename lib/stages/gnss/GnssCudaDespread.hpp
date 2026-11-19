@@ -59,7 +59,7 @@ public:
     ///
     /// This is only the GPU half of the swap. Seeds, trims, power averages, element cal and
     /// anything else the caller keys by slot still describe the old satellite; see
-    /// cudaGnssChordTrackState::apply_prn_swaps.
+    /// gnss::TrackChain::apply_prn_swaps.
     ///
     /// Returns false, having changed nothing, if the slot is out of range, the PRN has no code
     /// for this signal, or the bank is FDMA (see ChannelizedReplicaBank::set_prn).
@@ -153,6 +153,12 @@ public:
     /// Independent of @ref set_phi_fp16: the Psi path never reads Phi.
     void set_psi_fp16();
 
+    /// For tests: @ref psi_ready waits on the caller's thread for each build it queues, and for
+    /// a staging slot to upload through, so which tables a record uses depends on the calls
+    /// alone, not on the builder's or the GPU's progress. Every build then stalls the caller,
+    /// which a node cannot afford. Off until called; no way back.
+    void set_psi_sync_build();
+
     /// Largest @c specs.size() for @ref despread_batch, @ref build_jobs and the Spec-taking
     /// enqueue_* calls: the host job staging, and despread_batch's device job arena, hold n_prn
     /// jobs (one per PRN slot). Nothing checks the bound. It is not gnss_gpu::max_specs(n_prn),
@@ -227,8 +233,8 @@ public:
     /// ([specs][n_chan] float) are this record's device slices, allocated by the caller like
     /// @c d_jobs_slot. @c slot2spec_dev, @c n_slot, @c lanes_per_slot, @c chan_map_dev,
     /// @c frame_chan_stride, @c n_lanes, @c lane_base, @c lane_pitch and @c d_synth_rec are
-    /// launch_pack44's; @c energy_scale is nullptr for a frame's record 0 (the pack scales from
-    /// its own energy reduction) and the record-0 energy rows for the others. The E and L
+    /// launch_pack44's; @c energy_scale is launch_psi_pack's (cudaGnssInject's per-slot
+    /// quantizer scale rows, set by each slot's first record of the frame). The E and L
     /// lanes are the rotated prompt under @ref set_epl_from_prompt (the ROT contract of
     /// launch_waveform). The launch is unconditional, as launch_pack44's is: with no spec the
     /// record's lanes are still refreshed (0x88). Returns specs.size().
@@ -236,7 +242,7 @@ public:
                          void* d_jobs_slot, void* d_pjobs_slot, void* d_theta_slot,
                          const int* slot2spec_dev, int n_slot, int lanes_per_slot,
                          const int* chan_map_dev, int frame_chan_stride, int n_lanes, int lane_base,
-                         int lane_pitch, const double* energy_scale,
+                         int lane_pitch, double* energy_scale,
                          void* d_energy_out /*double [4*specs][n_chan]*/,
                          unsigned char* d_synth_rec, void* stream);
 

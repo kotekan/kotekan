@@ -5,9 +5,16 @@
 #include "Stage.hpp"
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
-#include "gnssTelem.hpp"
-#include "visUtil.hpp" // for frameID
+#include "gnssHostRows.hpp"
+#include "gnssRecRows.hpp"
+#include "gnssTelemChain.hpp"
+#include "prometheusMetrics.hpp" // for Counter
+#include "visUtil.hpp"           // for frameID
 
+#include <cstddef>
+#include <deque>
+#include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -37,10 +44,28 @@
  * take each row's PRN from the first filled record slot and apply it to every slot: only the
  * slots whose record arrived carry rows.
  *
+ * The packing itself is a gnss::TelemChain; this stage moves its frames. With a @c chains block
+ * it hosts one chain per row (see gnss::host_rows), each with its own in_buf and thread, under
+ * the buffer client names of the one-row stage `<key>_telem_pack` it replaces, and serves the
+ * rows at `<unique_name>/chains`. With @c workers its rows run on pinned threads instead, each
+ * taking one record of each of its rows in turn and reading their in_bufs as one consumer, named
+ * for its row when it runs one, else `<unique_name>/w<k>`.
+ *
+ * With an in_buf on the host block every row reads that one buffer, a GPU half's record buffer
+ * (GnssGpuRecordAssemble): each frame holds one record of every row, each at its @c rec_row,
+ * after a directory that each worker checks against its rows' before it reads a frame. A
+ * worker then takes each frame whole, packing each of its rows' records in turn.
+ *
+ * Each row writes its own out_buf, or with an out_buf on the host block every row writes that
+ * one, a frame at a time, and GnssTelemSend ships each frame at its own length. Rows that share
+ * an out_buf never wait for it: a window that finds the next frame still full is dropped and
+ * counted, and its seq is skipped, so the receiver reads the gap.
+ *
  * @par buffers
  * @buffer in_buf  tracker record frames (one per record; GnssChanMetadata::sample_seq = wstart)
- * @buffer out_buf telemetry frames of exactly
- *                  gnss::telem_frame_bytes(records_per_frame, max_prn, n_chan)
+ * @buffer out_buf telemetry frames, of exactly
+ *                  gnss::telem_frame_bytes(records_per_frame, max_prn, n_chan) for a row's own,
+ *                  of at least that for every row of a shared one
  *
  * @conf chain             String. Chain tag carried on every frame ("gps_l5", "gal_e5a", ...).
  *                           Shorter than gnss::TELEM_NAME.
@@ -62,54 +87,97 @@
  * @conf chan_export       Bool, must be true (default true).
  * @conf channel_ids       Int list. freq_id of each comb column, sent in every frame header;
  *                           n_chan entries.
+ * @conf chains            Map (optional). One row per entry; each sets ROW_KEYS itself, and
+ *                           out_buf unless this block sets it, and reads every other key from
+ *                           this block. No two rows may carry one chain and inst.
+ * @conf rec_row           With an in_buf on the host block, each row's, and only a row's: its
+ *                           block in each frame, {chain_id, n_prn, n_chan, offset, bytes}
+ *                           (gnss::RecRow), which the frame's directory must list.
+ * @conf workers           List (optional, with chains). Worker k, `{rows: [row keys],
+ *                           cpu_affinity: [cores]}`, runs its rows in that order on one thread
+ *                           bound to its cores. Every row is in exactly one worker, and the rows
+ *                           of a worker read distinct in_bufs. A row whose record has not come
+ *                           holds the others of its worker; the rows reading a GPU half's record
+ *                           buffer get their records together.
+ *
+ * @par Metrics
+ * @metric kotekan_gnss_telem_dropped_frames_total
+ *         Per row of a shared out_buf (stage_name its one-row stage, chain its chain): windows
+ *         dropped because the out_buf was full. Frames the send drops itself are counted once
+ *         for all rows, in its kotekan_buffer_send_dropped_frame_count; a row's seq gaps count
+ *         both.
  */
 class GnssTelemPack : public kotekan::Stage {
 public:
     GnssTelemPack(kotekan::Config& config, const std::string& unique_name,
                   kotekan::bufferContainer& buffer_container);
-    ~GnssTelemPack() override = default;
+    ~GnssTelemPack() override;
     void main_thread() override;
 
+    /// Keys each row of a @c chains block must set itself.
+    static const std::vector<std::string> ROW_KEYS;
+    /// Keys only a row of a @c chains block may set.
+    static const std::vector<std::string> ROW_ONLY_KEYS;
+
 private:
-    Buffer* in_buf;
-    Buffer* out_buf;
+    /// An out_buf and its writer; the rows that share it take turns.
+    struct Out {
+        Out(Buffer* buf, const std::string& producer);
+        Buffer* buf;
+        const std::string producer;
+        frameID id;
+        std::mutex lock;
+    };
+    struct Row {
+        Row(kotekan::Config& config, const gnss::HostRow& row, Buffer* in, Out* out);
+        Buffer* in_buf;
+        frameID in_id;
+        Out* out;
+        /// Windows dropped on a full shared out_buf; nullptr for a row's own out_buf.
+        kotekan::prometheus::Counter* dropped = nullptr;
+        /// With a GPU half's record buffer: its block's offset and its row of the directory.
+        size_t rec_offset = 0, dir_row = 0;
+        gnss::TelemChain chain;
+    };
+    const std::vector<gnss::HostRow> _host_rows;
+    /// The out_bufs: one per row, or one the rows share.
+    std::deque<Out> _outs;
+    std::deque<Row> _rows;
+    /// Its threads: each takes a record of each of its rows in turn (gnss::host_workers).
+    const std::vector<gnss::HostWorker> _workers;
+    /// The REST paths this host registered.
+    std::vector<std::string> _rest_paths;
+    /// With an in_buf on the host block: that buffer and its directory.
+    Buffer* _rec_buf = nullptr;
+    std::unique_ptr<gnss::RecDir> _rec_dir;
 
-    std::string _chain, _inst;
-    int _n_prn = 0;
-    int _n_elem = 0;
-    int _max_prn = 0;
-    int _rec_per_frame = 4;
-    int64_t _hops_per_record = 0;
-    int64_t _fft_len = 0;
-    /// Comb columns this sender ships (the header's max_chan): the unsummed comb (gnssRecord.hpp
-    /// chan block) goes after each row's record header, with the column freq_ids in the frame
-    /// header, so the broker can fit a delay across channels.
-    int _n_chan = 0;
-    std::vector<int> _chan_ids; ///< [n_chan] freq_id per comb column; rides on every frame
-
-    /// records_per_frame * hops_per_record * fft_len: the window length in samples.
-    int64_t _win_samples = 0;
-    /// hops_per_record * fft_len: one record in samples, the slot quantum.
-    int64_t _rec_samples = 0;
-
-    // The frame being accumulated. -1 = none open.
-    int64_t _cur_win = -1;
-    uint32_t _cur_present = 0;
-    double _cur_utc0 = 0.0;
-    std::vector<float> _rows; ///< [rec_per_frame][max_prn][telem_row_floats(_n_chan)]
-
-    /// Wire row of input PRN slot p in the open window, or -1 if it is not carried. Fixed for
-    /// the window; see the class note on row compaction.
-    std::vector<int> _row_of;
-    bool _map_built = false;
-
-    uint64_t _seq = 0;          ///< frames emitted; the receiver reads gaps as loss
-    uint64_t _dropped = 0;      ///< records that could not be placed (no metadata / bad wstart)
-    uint64_t _prn_overflow = 0; ///< windows where more PRNs were live than the wire can carry
-
-    /// Write the accumulated window out and reset. No-op if nothing is open.
-    /// Returns false if the output buffer shut down (the caller must exit).
-    bool flush(frameID& out_id);
+    /// The keys each row sets itself: ROW_KEYS, with rec_row for in_buf when the host block of
+    /// @p unique_name sets it, and out_buf unless it sets that.
+    static std::vector<std::string> row_keys(kotekan::Config& config,
+                                             const std::string& unique_name);
+    /// Register worker @p w as the consumer of its rows' in_bufs.
+    void register_inputs(const gnss::HostWorker& w);
+    /// Worker @p w's consumer and thread name: its row's name when it runs one, else its own.
+    const std::string& consumer_name(const gnss::HostWorker& w) const;
+    void run_worker(size_t w);
+    /// As worker @p w, take each frame of the GPU half's record buffer and pack its rows'
+    /// records. Returns when shutting down.
+    void run_frames(const gnss::HostWorker& w);
+    /// run_worker on a thread of its own, counted among the stage's threads.
+    void run_pinned(size_t w);
+    /// Pack row @p row's next record, reading it as consumer @p consumer, and write its window
+    /// out once complete. Returns false when shutting down.
+    bool take_record(size_t row, const std::string& consumer);
+    /// Place record @p in of row @p row, at @p wstart (-1 if unknown), in its open window,
+    /// first writing that window out if the record closes it. A record off the record grid is
+    /// counted dropped. Returns false when shutting down.
+    bool add_record(size_t row, const float* in, int64_t wstart);
+    /// Write row @p row's window out if it is complete. Returns false when shutting down.
+    bool flush_full(size_t row);
+    /// Write row @p row's accumulated window out, or drop it on a full shared out_buf, and
+    /// reset. No-op if nothing is open. Returns false if the output buffer shut down (the
+    /// caller must exit).
+    bool flush(size_t row);
 };
 
 #endif // GNSS_TELEM_PACK_HPP

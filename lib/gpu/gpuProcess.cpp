@@ -143,22 +143,22 @@ void gpuProcess::profile_callback(connectionInstance& conn) {
     for (auto& cmd : commands) {
         // The multiple gpuCommand instances share a StatsTracker object, so we only need
         // ask the first one for its stats.
-        double time = cmd[0]->excute_time->get_avg(); //->get_last_gpu_execution_time();
-        double utilization = time / frame_arrival_period;
-        if (cmd[0]->get_command_type() == gpuCommandType::KERNEL) {
-            reply["kernel"].push_back(
-                {{"name", cmd[0]->get_name()}, {"time", time}, {"utilization", utilization}});
-            total_kernel_time += isnan(time) ? 0. : time;
-        } else if (cmd[0]->get_command_type() == gpuCommandType::COPY_IN) {
-            reply["copy_in"].push_back(
-                {{"name", cmd[0]->get_name()}, {"time", time}, {"utilization", utilization}});
-            total_copy_in_time += isnan(time) ? 0. : time;
-        } else if (cmd[0]->get_command_type() == gpuCommandType::COPY_OUT) {
-            reply["copy_out"].push_back(
-                {{"name", cmd[0]->get_name()}, {"time", time}, {"utilization", utilization}});
-            total_copy_out_time += isnan(time) ? 0. : time;
-        } else {
-            continue;
+        for (auto& row : cmd[0]->profile_rows()) {
+            double time = row.second->get_avg(); //->get_last_gpu_execution_time();
+            double utilization = time / frame_arrival_period;
+            if (cmd[0]->get_command_type() == gpuCommandType::KERNEL) {
+                reply["kernel"].push_back(
+                    {{"name", row.first}, {"time", time}, {"utilization", utilization}});
+                total_kernel_time += isnan(time) ? 0. : time;
+            } else if (cmd[0]->get_command_type() == gpuCommandType::COPY_IN) {
+                reply["copy_in"].push_back(
+                    {{"name", row.first}, {"time", time}, {"utilization", utilization}});
+                total_copy_in_time += isnan(time) ? 0. : time;
+            } else if (cmd[0]->get_command_type() == gpuCommandType::COPY_OUT) {
+                reply["copy_out"].push_back(
+                    {{"name", row.first}, {"time", time}, {"utilization", utilization}});
+                total_copy_out_time += isnan(time) ? 0. : time;
+            }
         }
     }
 

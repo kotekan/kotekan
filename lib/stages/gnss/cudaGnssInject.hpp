@@ -12,9 +12,12 @@
 #include "NDArrayRingBuffer.hpp" // for NDArrayRingBuffer
 #include "cudaCommand.hpp"
 #include "cudaGnssChordTrack.hpp" // for cudaGnssChordTrackState
+#include "gnssGpuRows.hpp"        // for GpuRow
 
-#include <string>
-#include <vector>
+#include <memory>  // for shared_ptr
+#include <string>  // for string
+#include <utility> // for pair
+#include <vector>  // for vector
 
 /**
  * @class cudaGnssInject
@@ -26,14 +29,20 @@
  * 0x88 (0+0j) once by cudaCorrelatorDual's constructor, and each injector overwrites only its
  * own lanes and channels.
  *
- * Seeds, fleet trims and slot membership live in the command's @ref cudaGnssChordTrackState.
+ * Seeds, fleet trims and slot membership live in the command's gnss::TrackChain.
  * Several injectors (one per chain) can run in one kotekan instance, each with its own state
  * but one REST server between them, so each needs its own seed_endpoint, set_trim_endpoint,
  * get_prns_endpoint and set_prns_endpoint.
  *
+ * One injector can also host every chain of a GPU half, as the rows of a @c chains block
+ * (cudaGnssChordTrackState), each with its own gnss::TrackChain, endpoints and gnss_row. It
+ * claims the voltage ring once, packs the rows in gnss_rows order, and uploads every row's
+ * control block in one copy per frame. Each row has its own GPU arrays, named for the row, and
+ * its own line in /gpu_profile.
+ *
  * Replicas are synthesized per record (hops_per_record; 4 records per 8192-hop frame at CHORD),
  * from gnss::propagate_seed at each record's window start with the fleet code trim from
- * cudaGnssChordTrackState::snapshot_trims, through GnssCudaDespread::build_jobs like every
+ * gnss::TrackChain::snapshot_trims, through GnssCudaDespread::build_jobs like every
  * other Spec-taking despread. Under the state's psi_synth the synthesis and the pack are one
  * launch (GnssCudaDespread::enqueue_psi_pack); the control block, energies and lanes are the
  * same. The Psi tables are built on the despread's builder thread, never here: a seeded slot
@@ -53,7 +62,7 @@
  * is intended: it must produce a synth window for every window the correlator consumes.
  *
  * @conf As the ring consumers (buffer_depth, num_times, num_elements, num_local_freq,
- *       voltage_name), plus the @ref cudaGnssChordTrackState keys (set `n_elements: 1`; it is
+ *       voltage_name), plus the gnss::TrackChain keys (set `n_elements: 1`; it is
  *       unused here), and:
  * @conf  num_synth            Int. Lanes this chain writes (lanes_per_slot per PRN slot).
  * @conf  lanes_per_slot       Int, default 4. Synth lanes per PRN slot: 4 packs E, P, L and
@@ -73,53 +82,89 @@
  *                             channels (the correlator's comb, for gnss_synth_compact); must
  *                             contain every gnss_local_channels entry.
  * @conf  gnss_ctl_name        String. Named GPU array for the control block.
+ * @conf  gnss_row             String, instead of num_synth, synth_lane_base,
+ *                             gnss_local_channels and gnss_ctl_name: this chain's row name in
+ *                             the half's gnss_rows (gnssGpuRows.hpp), which gives its lanes and
+ *                             channels. The control block goes at the row's ctl_offset in the
+ *                             half's shared array @c gnss_rows_ctl_name, with the row tag in
+ *                             FrameHdr::_pad1.
+ * @conf  chains               Map, optional. The rows this command hosts, each with its chain's
+ *                             keys (cudaGnssChordTrackState); gnss_row is required in each.
  */
 class cudaGnssInject : public cudaCommand {
 public:
     cudaGnssInject(kotekan::Config& config, const std::string& unique_name,
                    kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
                    int instance_num, std::shared_ptr<cudaCommandState> state);
-    ~cudaGnssInject() override = default;
+    ~cudaGnssInject() override;
 
     int wait_on_precondition() override;
     cudaEvent_t execute(cudaPipelineState& pipestate,
                         const std::vector<cudaEvent_t>& pre_events) override;
     void finalize_frame() override;
+    /// With a chains block, one /gpu_profile row per chain.
+    std::vector<std::pair<std::string, std::shared_ptr<StatTracker>>> profile_rows() override;
 
 private:
     cudaGnssChordTrackState* st();
 
+    /// One chain: its place in the synth and control arrays, and this instance's state for it.
+    struct Row {
+        gnss::TrackChain* chain;
+        /// Its gnss_rows entry, or a row with no name.
+        gnss_gpu::GpuRow gpu;
+        /// Prefix of its GPU array names: the command's unique_name, or its row's name.
+        std::string name;
+        /// Prefix of its log lines: empty, or its row's key.
+        std::string label;
+        std::int32_t num_synth;      ///< lanes this chain writes (lanes_per_slot per slot)
+        std::int32_t lanes_per_slot; ///< gnss_gpu::LANES_FULL or LANES_PROMPT
+        std::int32_t lane_base;      ///< first lane of this chain in the synth array
+        std::vector<std::int32_t> local_channels;
+        std::vector<int> chan_map; ///< covering channel -> index on the synth channel axis
+        /// The control block (see _stage), and the byte offset of its energy array.
+        size_t ctl_offset, ctl_bytes, ctl_off_energy;
+        int* slot2spec; ///< in _stage, [n_rec][n_prn]
+        bool uploaded_static = false;
+        uint64_t frames = 0;
+        /// This frame's jobs and the device energy rows they wrote, [n_jobs * ROWS_PLAIN][n_chan].
+        int n_jobs = 0;
+        double* d_energy = nullptr;
+        /// Hosting only: the row's trackers and, when profiling, this frame's events around its
+        /// work (the last row's also take in the shared copies).
+        cudaEvent_t start_event = nullptr, end_event = nullptr;
+        std::shared_ptr<StatTracker> execute_time, utilization;
+    };
+    /// Enqueue @p row's frame: its slot swaps, synthesis and pack, and its control block in
+    /// _stage.
+    void enqueue_row(Row& row, const cudaPipelineState& pipestate, long long hop0_frame,
+                     unsigned char* d_synth, cudaStream_t stream);
+
+    std::vector<Row> _rows;
+    const bool _hosted;
     const std::int32_t _buffer_depth;
     const std::int32_t _num_times;
     const std::int32_t _num_elements; // voltage ring station axis (for the ring declaration)
     const std::int32_t _num_local_freq;
-    const std::int32_t _num_synth;      ///< lanes this chain writes (lanes_per_slot per slot)
-    const std::int32_t _lanes_per_slot; ///< gnss_gpu::LANES_FULL or LANES_PROMPT
     const std::string _voltage_name;
     const std::string _gnss_synth_name;
-    std::vector<std::int32_t> _gnss_local_channels;
     /// Synth array layout (see the @conf list).
-    const std::int32_t _synth_lane_base;
     const std::int32_t _synth_lane_pitch;
     std::vector<std::int32_t> _gnss_synth_channels;
-    std::int32_t _synth_n_chan;   ///< the synth array's channel axis
-    std::vector<int> _h_chan_map; ///< covering channel -> index on that axis
+    std::int32_t _synth_n_chan; ///< the synth array's channel axis
 
     NDArrayRingBuffer<kotekan::int4x2_swapped_withoffset_t, 4> voltage;
 
-    std::vector<int> _h_slot2spec; ///< staging, [n_rec][n_prn]
-    bool _uploaded_static = false;
-    uint64_t _frames = 0;
-
-    /// The control block this command publishes for GnssN2RecordAssemble: the gnssGpuChain.hpp
-    /// layout without corr, [FrameHdr][window_start x MAX_REC][PrnCtl x MAX_REC x n_prn]
-    /// [energy x max_jobs x n_chan]. The consumer fills corr from the N^2 tiles and needs the
-    /// replica energies to undo the pack's per-lane scale.
+    /// The control blocks this command publishes for GnssN2RecordAssemble, one per row: the
+    /// gnssGpuChain.hpp layout without corr, [FrameHdr][window_start x MAX_REC]
+    /// [PrnCtl x MAX_REC x n_prn][energy x max_jobs x n_chan]. The consumer fills corr from the
+    /// N^2 tiles and needs the replica energies to undo the pack's per-lane scale.
     std::string _mem_ctl;
-    std::vector<char> _ctl_stage;
-    size_t _ctl_bytes = 0;
-    /// Byte offset of the energy array within the control block.
-    size_t _ctl_off_energy = 0;
+    size_t _ctl_array_bytes = 0; ///< the _mem_ctl array's size
+    /// Pinned staging, this instance's: the rows' control blocks as they sit in the _mem_ctl
+    /// array, [_ctl_begin, _ctl_begin + _ctl_span), then each row's slot2spec.
+    char* _stage = nullptr;
+    size_t _ctl_begin = 0, _ctl_span = 0;
 };
 
 #endif // CUDA_GNSS_INJECT_HPP

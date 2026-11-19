@@ -26,9 +26,10 @@ systemctl --user restart gnss-<unit>.service   # to pick up a changed unit
 The service logs go to `/var/tmp/gnss-logs/` and are rotated by `../logrotate.conf` from the gnss
 crontab.
 
-`gnss-obs@.service` is templated on the chain name; `gnss-stack.target` pulls in the fifteen
-instances the chain manifest lists. Keep that list and
-`config/gnss_chains_chord.yaml` in step — the manifest is the armed authority, this is a mirror.
+`gnss-obs@.service` is templated on the chain name; `gnss-stack.target` pulls in one instance
+per chain. The chains are the rows of the chains table (`config/gnss_fleet_chord.yaml`
+`chains:`), the armed authority; this is a mirror, and `python3 config/gnss_chain_table.py
+obs-units` lists what it lacks or has extra (`--strict` exits 1 on either).
 
 ## The cf06 cube leg: `gnss-cube.target`
 

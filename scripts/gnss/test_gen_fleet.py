@@ -20,6 +20,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import gen_fleet  # noqa: E402
 
+# A manifest's one required chains row, the primary's (config/gnss_chain_table.py).
+PRIMARY_ROW = (
+    "chains:\n  - {id: 1, key: gps_l5, descriptor: GPS_L5_Q_NH, prns: '1,2', primary: true,"
+    " dll-spacing-chips: 0.5, telem-rows: 14, proj-sys: G, shared-ref-band: l5}\n"
+)
 NOTE = (
     "  note: GPS_L2C_CM has no covering channel on cx44 (carrier 1227.60 MHz, mainlobe "
     "1.023 MHz) -- chain SKIPPED on this node\n"
@@ -37,7 +42,7 @@ def check(ok, what):
 def manifest(d, base):
     path = os.path.join(d, "m.yaml")
     with open(path, "w") as fh:
-        fh.write("base: %s\nnodes:\n  cx44: {}\n" % base)
+        fh.write("base: %s\nnodes:\n  cx44: {}\n" % base + PRIMARY_ROW)
     return path
 
 
@@ -74,6 +79,110 @@ def test_common_flags_leave_out_site_keys():
     check(
         gen_fleet.common_flags(man) == ["--fleet-lanes"],
         "a site-only common key (the relay's transfer table) is not a generator flag",
+    )
+
+
+def test_chains_follow_common():
+    """Every chains-table row but the primary reaches the generator as --extra-signal
+    DESCRIPTOR:PRNS, in row order, after common's flags."""
+    man = {
+        "common": {"fleet-lanes": True},
+        "chains": [
+            {"key": "gps_l5", "descriptor": "GPS_L5_Q_NH", "prns": "1,2"},
+            {"key": "glo_l2of", "descriptor": "GLO_L2OF_MC", "prns": "1@1,2@-4"},
+            {"key": "gal_e5a", "descriptor": "GAL_E5A_Q_CS", "prns": "2,3"},
+        ],
+    }
+    for row in man["chains"]:
+        row.update(
+            {
+                "id": 1 + man["chains"].index(row),
+                "dll-spacing-chips": 0.5,
+                "telem-rows": 14,
+                "proj-sys": "G",
+                "shared-ref-band": "x",
+            }
+        )
+    got = gen_fleet.common_flags(man)
+    check(
+        got
+        == [
+            "--fleet-lanes",
+            "--extra-signal",
+            "GLO_L2OF_MC:1@1,2@-4",
+            "--extra-signal",
+            "GAL_E5A_Q_CS:2,3",
+        ],
+        "the rows after the primary follow common, in order (%s)" % got,
+    )
+
+
+def test_negatable_flags():
+    """The generator's flags with a --no- form, read from its source."""
+    neg = gen_fleet.negatable_flags()
+    check(
+        {"combiner-out-buf", "elem-sum-shared"} <= neg and "n2-send" not in neg,
+        "the BooleanOptionalAction flags, not a store_true one (%s)" % sorted(neg),
+    )
+
+
+def test_false_with_an_off_form_is_refused():
+    """`key: false` for a flag with a --no- form would be omitted and leave the generator's
+    default, so it is refused; `no-key: true` turns it off, and false on a flag without a --no-
+    form is still omitted."""
+    neg = {"combiner-out-buf"}
+    msg = None
+    try:
+        gen_fleet.flags_from({"combiner-out-buf": False}, neg)
+    except SystemExit as e:
+        msg = str(e.code)
+    check(
+        msg is not None and "write no-combiner-out-buf: true" in msg,
+        "combiner-out-buf: false is refused (%s)" % msg,
+    )
+    check(
+        gen_fleet.flags_from({"no-combiner-out-buf": True}, neg)
+        == ["--no-combiner-out-buf"],
+        "no-combiner-out-buf: true -> --no-combiner-out-buf",
+    )
+    check(
+        gen_fleet.flags_from({"n2-send": False, "combiner-out-buf": None}, neg) == [],
+        "false on a flag without a --no- form, and null, are omitted",
+    )
+
+
+def test_node_false_off_form_stops_the_run():
+    """A node's `combiner-out-buf: false` stops gen_fleet before any generator runs."""
+    with tempfile.TemporaryDirectory() as d:
+        base = os.path.join(d, "base.j2")
+        with open(base, "w") as fh:
+            fh.write("a: 1\n")
+        man = os.path.join(d, "m.yaml")
+        with open(man, "w") as fh:
+            fh.write(
+                "base: %s\nnodes:\n  cx44: {combiner-out-buf: false}\n" % base
+                + PRIMARY_ROW
+            )
+        argv = ["gen_fleet.py", man, "--check", "--preview-dir", d]
+        calls = []
+
+        def fake_run(cmd, **kw):
+            calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, stdout="a: 1\n", stderr="")
+
+        real_run, real_argv = subprocess.run, sys.argv
+        subprocess.run, sys.argv = fake_run, argv
+        exc = None
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                gen_fleet.main()
+        except SystemExit as e:
+            exc = str(e.code)
+        finally:
+            subprocess.run, sys.argv = real_run, real_argv
+    check(
+        exc is not None and "no-combiner-out-buf: true" in exc and not calls,
+        "refused before the generator runs (%s, %d generator runs)" % (exc, len(calls)),
     )
 
 
@@ -117,7 +226,10 @@ def test_check_names_a_role_off_config():
                 fh.write("a: 1\n")
         man = os.path.join(d, "m.yaml")
         with open(man, "w") as fh:
-            fh.write("base: %s\nnodes:\n  cx19: {role: 'off'}\n  cx44: {}\n" % base)
+            fh.write(
+                "base: %s\nnodes:\n  cx19: {role: 'off'}\n  cx44: {}\n" % base
+                + PRIMARY_ROW
+            )
         argv = ["gen_fleet.py", man, "--check", "--preview-dir", d]
 
         def fake_run(cmd, **kw):
@@ -299,6 +411,7 @@ def test_no_kotekan_tree():
             "scripts/gnss/stock_parity.py",
             "python/scripts/gnss/kotekan_src.py",
             "config/gnss_fleet.py",
+            "config/gnss_chain_table.py",
             "config/chord_gnss_node.yaml",
         ):
             os.makedirs(os.path.dirname(os.path.join(c, rel)), exist_ok=True)

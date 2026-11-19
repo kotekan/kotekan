@@ -58,7 +58,7 @@ A row is `{t, chain, prn, inst, probe, keff, hop, u[32], p2[32], q[32]}`.
 
 ## 2. ⚠️⚠️ WHICH FIELD IS THE BEAM
 
-`GnssCoherentCombiner::get_elements_callback` defines all four parts, and only one is a beam:
+`gnss::CombinerChain::get_elements` defines all four parts, and only one is a beam:
 
 | field | meaning |
 |---|---|

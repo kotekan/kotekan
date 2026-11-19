@@ -15,14 +15,17 @@ it test the renamed path. A path is kept when any filter line matches it.
 
 The names checked are the repo-relative paths (config/..., python/..., scripts/...) in the
 string values of config/gnss_fleet_chord.yaml and config/gnss_chains_chord.yaml that are
-tracked files, and the fixed paths gnss_arraymap.py reads. Comments are not values, and a
-generated or untracked file is not in the history the split rewrites.
+tracked files, the fixed paths gnss_arraymap.py reads, and the config/ modules that a kept
+Python file imports (the scripts put config/ on sys.path and import its modules by name).
+Comments are not values, and a generated or untracked file is not in the history the split
+rewrites.
 
 The list is append-only from the commit that says so: filter-repo filters every commit with
 the list as it is now, so a removed or reordered line changes the extraction of earlier
 commits and the next push of gnss-broker stops fast-forwarding (10-25, 211a18037). Every
 filter line of that commit must still be here, in the same order.
 """
+import ast
 import fnmatch
 import os
 import re
@@ -162,6 +165,35 @@ def referenced(files):
     return out
 
 
+def config_imports(rules, files):
+    """{config/X.py: the first kept file importing it} for every tracked config/ module that a
+    tracked Python file the list keeps imports by name."""
+    mods = {
+        os.path.basename(p)[:-3]: p
+        for p in files
+        if os.path.dirname(p) == "config" and p.endswith(".py")
+    }
+    out = {}
+    for p in sorted(files):
+        path = os.path.join(REPO, p)
+        if not (p.endswith(".py") and kept(rules, p) and os.path.isfile(path)):
+            continue
+        with open(path, "rb") as fh:
+            tree = ast.parse(fh.read(), p)
+        for n in ast.walk(tree):
+            if isinstance(n, ast.Import):
+                names = [a.name for a in n.names]
+            elif isinstance(n, ast.ImportFrom) and n.level == 0 and n.module:
+                names = [n.module]
+            else:
+                continue
+            for name in names:
+                m = mods.get(name.partition(".")[0])
+                if m:
+                    out.setdefault(m, p)
+    return out
+
+
 def main():
     with open(PATHS) as fh:
         rules = parse(fh.read())
@@ -214,10 +246,20 @@ def main():
         check(kept(rules, rel), rel)
 
     print("\nevery file the manifest and the chains config name is kept")
-    refs = referenced(tracked())
+    files = tracked()
+    refs = referenced(files)
     check(bool(refs), "the configs name at least one tracked file (%d)" % len(refs))
     for p, cfg in sorted(refs.items()):
         check(kept(rules, p), "%s (named in %s)" % (p, cfg))
+
+    print("\nevery config module a kept Python file imports is kept")
+    if files is None:
+        print("  [SKIP] not a git checkout: no file list")
+    else:
+        imports = config_imports(rules, files)
+        check(bool(imports), "kept files import config modules (%d)" % len(imports))
+        for p, by in sorted(imports.items()):
+            check(kept(rules, p), "%s (imported by %s)" % (p, by))
 
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
     return 1 if _fails else 0

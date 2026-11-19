@@ -133,23 +133,24 @@ cudaError_t launch_psi_waveform(const DespreadJob* jobs, const PsiJob* pjobs, co
  * Grid: one block per (slot, channel) with the hop lanes of launch_psi_waveform (so the energy
  * rows are reduced in the same order and are bit-identical to that kernel's), plus sweeper
  * blocks that write the lanes beyond the last slot; blocks of inactive slots only write 0x88.
- * Record 0 synthesises its hops into registers (<= 4 hops per thread: more is refused with
- * cudaErrorInvalidValue), reduces the energy, broadcasts the scale through shared memory and
- * quantises; with energy_scale the scale is known up front and each hop is quantised inside
- * the synthesis loop. A hop's lanes_per_slot bytes go out as one 16- or 32-bit store when
- * synth, lane_base and lane_pitch are multiples of lanes_per_slot (byte stores otherwise).
- * Under lanes_per_slot 2 the 512-thread variant runs (PSI_PACK_T512, two blocks per SM; the
- * bytes and energy rows are the same), under 4 the 1024-thread one; see
+ * A block without a set scale row synthesises its hops into registers (<= 4 hops per thread:
+ * more is refused with cudaErrorInvalidValue), reduces the energy, broadcasts the scale
+ * through shared memory and quantises; with the row set the scale is known up front and each
+ * hop is quantised inside the synthesis loop. A hop's lanes_per_slot bytes go out as one 16- or
+ * 32-bit store when synth, lane_base and lane_pitch are multiples of lanes_per_slot (byte stores
+ * otherwise). Under lanes_per_slot 2 the 512-thread variant runs (PSI_PACK_T512, two blocks per SM;
+ * the bytes and energy rows are the same), under 4 the 1024-thread one; see
  * @ref launch_psi_pack_opts. At 12 slots x 7 channels x 2048 hops on an A40: 28.7 us (lanes 2,
- * fp16 tables, fixed phases; 26.6 us for records with energy_scale) against 47.1 us for
+ * fp16 tables, fixed phases; 26.6 us for records whose scale rows are set) against 47.1 us for
  * launch_psi_waveform + launch_pack44 and 122.9 us for launch_waveform + launch_pack44
  * (fixtures/gpu_budget/psi_fused_cx52_20261021.txt).
  *
- * @param energy_scale nullptr: the scale comes from this launch's own energy reduction (record
- *                     0 of a frame). Else [4*n_spec][n_chan] double, the frame's record-0
- *                     energy rows (cudaGnssInject's d_energy0), used for the scale exactly as
- *                     launch_pack44 uses its energy argument, with THIS record's job.m_head
- *                     for the head lane.
+ * @param energy_scale nullptr: the scale comes from this launch's own energy reduction. Else
+ *                     in/out [n_slot][4][n_chan] double, rows E/P/L/P_HEAD per slot
+ *                     (cudaGnssInject's d_energy0): a slot's set rows give its scale, as
+ *                     launch_pack44's energy_scale, with THIS record's job.m_head for the
+ *                     head lane; rows still NaN (unset) are scaled from this launch's own
+ *                     energy and set to it (an uncovered channel's to 0).
  * @param energy       out [4*n_spec][n_chan] double rows E/P/L/P_HEAD as launch_psi_waveform
  *                     writes them (an uncovered channel's rows are 0), for every spec an
  *                     active slot maps to. rot != nullptr: E/L rows = P's (the ROT contract).
@@ -165,7 +166,7 @@ cudaError_t launch_psi_pack(const DespreadJob* jobs, const PsiJob* pjobs, const 
                             const float* rot, int fixed, const int* slot2spec, int n_slot,
                             int lanes_per_slot, int n_chan, const DespreadParams& p,
                             const int* chan_map, int frame_chan_stride, int n_lanes, int lane_base,
-                            int lane_pitch, const double* energy_scale, double* energy,
+                            int lane_pitch, double* energy_scale, double* energy,
                             unsigned char* synth, cudaStream_t stream);
 
 /// Kernel variants of @ref launch_psi_pack_opts (cudaGnssPsiBench's fused bench measures them).
@@ -184,7 +185,7 @@ cudaError_t launch_psi_pack_opts(const DespreadJob* jobs, const PsiJob* pjobs, c
                                  const float* rot, int fixed, const int* slot2spec, int n_slot,
                                  int lanes_per_slot, int n_chan, const DespreadParams& p,
                                  const int* chan_map, int frame_chan_stride, int n_lanes,
-                                 int lane_base, int lane_pitch, const double* energy_scale,
+                                 int lane_base, int lane_pitch, double* energy_scale,
                                  double* energy, unsigned char* synth, int opts,
                                  cudaStream_t stream);
 

@@ -357,10 +357,11 @@ the band set five things apart from L3OC.
   runs the fast loop at 1.4 rather than the chains' 2.5, the same closed loop; at 2.5 it
   would run ~4.5/s, past the round-trip stability bound. Beyond +-0.91 the BOC side peaks
   (+-1.05) are stable false locks, so a seed must land within about +-0.9 chip (130 m).
-  Node (`dll_spacing_chips`) and broker (`dll-spacing`) match; re-derive if the node set
-  changes. No phase-slope fit: only the five two-channel instances would inform it, ambiguous
-  by 0.65 chip, and its taus would feed b_sat once a sixth such instance existed, so the
-  chain sets `spectrum-endpoints` to null (it would otherwise inherit gps_l5's).
+  Node and broker both take it from the chain's row (`dll-spacing-chips` in
+  config/gnss_fleet_chord.yaml `chains:`); re-derive if the node set changes. No phase-slope
+  fit: only the five two-channel instances would inform it, ambiguous by 0.65 chip, and its
+  taus would feed b_sat once a sixth such instance existed, so the chain sets
+  `spectrum-endpoints` to null (it would otherwise inherit gps_l5's).
 
 - **The noise probes are dark satellites.** Presence needs 3 probes. Slots 20 and 22 have no
   broadcast record, so six K satellites are live, and in a 24 h sweep (days 289-291) fewer
