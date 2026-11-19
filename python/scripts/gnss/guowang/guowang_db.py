@@ -75,6 +75,7 @@ CODE_FIELDS = (
     "range_rate_m_s",
     "replica",
     "replica_corr_ns",
+    "orbit",
     "carrier_minus_tle_ppb",
     "measured_utc",
     "source",
@@ -111,7 +112,9 @@ ABOUT_V3 = (
     " range rate (guowang_1202_floor_replica.json lists the rate of every such theta;"
     " guowang_paper review/REPLY_GUOWANG_20261117c.md). A theta from the fixed reducer carries"
     ' replica "stretched" and no correction. theta_unknown_us is a search centre good to'
-    " microseconds and is unchanged."
+    " microseconds and is unchanged. From 2026-11-19 gw_reduce.py subtracts the light time on the"
+    ' satellite\'s own broadcast orbit when the window\'s pages give one: such a theta carries orbit'
+    ' "broadcast"; one without the field, or orbit "tle", is on the TLE, which was 100-1400 m off.'
 )
 C_M_S = 299792458.0
 HALF_SAMPLE_NS = 0.5e9 / 16.368e6  # gw_reduce tracks at 8 samples per 2.046 Mcps chip
