@@ -5,8 +5,8 @@
  * This reference models packed complex int4 samples and natural matched-filter
  * weights. It computes the same x * conj(w) row sums as the CUDA kernel, the
  * frozen fxfft256 v1 fine power spectra over them, and the frame powers
- * P_r = sum_f S_r[f] that define the kernel's d_power_out (kernel core 3.0.0),
- * without modeling CUDA timing or launch behavior.
+ * P_r = sum_f S_r[f] that define the kernel's d_power_out (kernel core 3.0.0).
+ * CUDA timing and launch behavior are not modeled.
  */
 
 #pragma once
@@ -33,7 +33,7 @@ void pilotproxy_ref_complex_mul_conj(
     int* yi);
 
 /**
- * Exact complex per-row dot products (v2 front-end reference).
+ * Exact complex dot product of each detector row with each weight term.
  * Output layout matches PilotProxy_Compute_RowSums_I32 for one block:
  * row_sums_out[(n * detector_rows + m) * 2 + {0,1}] = {Re, Im} z[n, m].
  */
@@ -46,17 +46,17 @@ void pilotproxy_ref_row_sums_i32(
 /**
  * Exact fine power spectra over a row-sum buffer in the
  * PilotProxy_Compute_RowSums_I32 layout for one block (term-major, stream-major
- * rows, interleaved re/im; detector_rows = num_streams *
+ * rows, interleaved re/im, with detector_rows = num_streams *
  * PILOTPROXY_FINE_WINDOWS_PER_STREAM):
  *
  *   out[n][f] = sum over streams s of |fxfft256(z[n, s, 0..127])[f]|^2
  *
  * with the frozen fxfft256 v1 reference transform (cuda/fxfft256_ref.c,
  * compiled into the reference translation unit with internal linkage, so a
- * harness may include that file itself). Bit-identical to
- * PilotProxy_Compute_FinePowers_U64 and to the fused kernel's d_fine_power_out.
- * out is zeroed first; a null row_sums or a non-positive stream count leaves
- * it zero.
+ * harness may include that file itself). The result is bit-identical to
+ * PilotProxy_Compute_FinePowers_U64 and to the fused kernel's
+ * d_fine_power_out. out is zeroed first, and a null row_sums or a
+ * non-positive stream count leaves it zero.
  */
 void pilotproxy_ref_fine_powers_u64(
     const int* row_sums,
@@ -64,9 +64,9 @@ void pilotproxy_ref_fine_powers_u64(
     unsigned long long out[PILOTPROXY_NUM_WEIGHT_TERMS][PILOTPROXY_FINE_NUM_BINS]);
 
 /**
- * Frame powers from fine power spectra: P[n] = sum_f fine[n][f], the exact
- * uint64 all-bin sum. This is the kernel core 3.0.0 definition of the
- * d_power_out of the fused entries; F = 2 P[0] / (P[1] + P[2]).
+ * Frame powers from fine power spectra, P[n] = sum_f fine[n][f], the exact
+ * uint64 sum over all bins. This sum defines d_power_out of the fused
+ * entries, and F = 2 P[0] / (P[1] + P[2]).
  */
 void pilotproxy_ref_powers_from_fine_u64(
     const unsigned long long fine[PILOTPROXY_NUM_WEIGHT_TERMS][PILOTPROXY_FINE_NUM_BINS],
