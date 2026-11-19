@@ -105,19 +105,29 @@ def signal_tag(name):
 
 _STAGE_CHAINS = {}  # tag -> broker chain, filled by stage_chain's first call
 
+#: The per-chain stages whose untagged name, gnss<g>_<stage>, was the primary's before every
+#: chain was tagged. No host takes one of these names; a host's (gnss<g>_inject, _records,
+#: _combine, _telem, _telem_send, _cube_send) names no chain.
+UNTAGGED_STAGES = ("n2assemble", "n2combine", "n2ctl", "telem_pack")
+
 
 def stage_chain(name, stage):
     """The broker chain of a per-chain stage `gnss<g><tag>_<stage>`, from its name alone or
-    as it sits in a lane owner or a cube sender (after `/`, `<host>/` or `<host>_`):
-    gnss0_gal_e5a_n2assemble -> gal_e5a. None when the name is not that stage's or names no
-    chain.
+    as it sits in a REST prefix or lane owner (`/<name>`), a cube sender (`<host>//<name>`) or
+    a cube file (`<host>_<name>`): gnss0_gal_e5a_n2assemble -> gal_e5a. None when the name is
+    not that stage's or names no chain.
 
-    Names generated before the tag was the chain key are read by the rule that made them: no
-    tag is the primary (the node table's signals.primary), and a band tag is the other chain
-    on that band (gnss0_e5a_n2assemble -> gal_e5a, gnss0_l5_n2assemble -> sbas_l5).
+    The tag is a broker chain key. Names generated before it was are read through two
+    allowlists: a band tag is the other chain on that band (gnss0_e5a_n2assemble -> gal_e5a,
+    gnss0_l5_n2assemble -> sbas_l5), and no tag is the primary (the node table's
+    signals.primary), for the stages in UNTAGGED_STAGES only.
     """
-    m = re.search(r"(?:^|[/_])gnss\d+(?:_([a-z0-9_]+))?_%s$" % re.escape(stage), name)
-    if not m:
+    m = re.match(
+        r"(?:/|[a-z][a-z0-9.-]*//?|[a-z][a-z0-9.-]*_)?gnss\d+(?:_([a-z0-9_]+))?_%s$"
+        % re.escape(stage),
+        name,
+    )
+    if not m or (m.group(1) is None and stage not in UNTAGGED_STAGES):
         return None
     if not _STAGE_CHAINS:
         # Lazy: chord_band_plan imports the interface golden (gnss_broker.iface).

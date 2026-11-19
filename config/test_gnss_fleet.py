@@ -400,7 +400,8 @@ def test_broker_dll_spacing_is_the_tables():
 
 def test_stage_chain():
     """stage_chain reads the chain from a stage name of either generation: the broker key, or
-    the band tag that came before it (no tag = the primary, l5 = SBAS L5)."""
+    the band tag that came before it (no tag = the primary, l5 = SBAS L5), and no chain from a
+    host's name."""
     cases = [
         ("gnss0_gal_e5a_n2assemble", "n2assemble", "gal_e5a"),
         ("gnss0_e5a_n2assemble", "n2assemble", "gal_e5a"),
@@ -418,6 +419,21 @@ def test_stage_chain():
         ("gnss0_gal_e5a_n2combine", "n2assemble", None),
         ("gnss0_gps_l9_n2assemble", "n2assemble", None),
         ("gnss0_x_n2assemble", "n2assemble", None),
+        ("cx19/gnss1_gal_e5b_n2combine", "n2combine", "gal_e5b"),
+        ("gnss0_n2combine", "n2combine", "gps_l5"),
+        ("gnss1_n2ctl", "n2ctl", "gps_l5"),
+        ("/gnss0_telem_pack", "telem_pack", "gps_l5"),
+        ("gnss0_gps_l5_inject", "inject", "gps_l5"),
+        ("gnss0_e5a_inject", "inject", "gal_e5a"),
+        # A host's name is no chain's, though the untagged primary once had it.
+        ("gnss0_inject", "inject", None),
+        ("/gnss1_inject", "inject", None),
+        ("gnss0_records", "records", None),
+        ("gnss0_combine", "combine", None),
+        ("gnss1_telem", "telem", None),
+        ("gnss0_telem_send", "telem_send", None),
+        ("cx19//gnss1_cube_send", "cube_send", None),
+        ("gnss0_gps_l5_telem_send", "telem_send", "gps_l5"),
     ]
     for name, stage, want in cases:
         got = gf.stage_chain(name, stage)
