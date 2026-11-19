@@ -410,7 +410,8 @@ json enums() {
 // (GnssGpuRecordAssemble), tap (GnssChordVoltageTap), host_rows, the host stages' paths that
 // serve their rows' endpoints by chain (gnss::rest_register_rows), whose replies are the rows'
 // own, and fleet_trim_batch, GnssFleetTrim's /set_policy targets of a GPU half ({"url",
-// "chain"}), whose chains' trims it posts in one request. Bump a family's version when one of its
+// "chain"}), whose chains' trims it posts in one request, with get_stats' post_halves,
+// post_half_chains, post_refused and refused_chains. Bump a family's version when one of its
 // endpoints adds, removes or renames a key, or changes a unit or meaning.
 json rest() {
     return {{"tracker", 2},   {"combiner", 1}, {"search", 1},    {"fleet_trim", 1},
