@@ -645,11 +645,13 @@ void GnssFleetTrim::post_trims() {
             }
         }
         _close_gen++;
-        // Replace, never queue: the trim is absolute, so the newest payload supersedes any not
-        // yet sent. _pending then holds only the chains posted by this call.
+        // Per chain, never queued: the trim is absolute, so a chain's newest payload supersedes
+        // its own older one, and a chain posted by an earlier call keeps its payload until a
+        // poster takes it.
         if (!pend.empty()) {
-            _pending = std::move(pend);
             _pend_gen++;
+            for (auto& p : pend)
+                _pending[p.first] = {std::move(p.second), _pend_gen};
         }
     }
     _pend_cv.notify_all();
@@ -676,8 +678,11 @@ void GnssFleetTrim::post_loop(int slot) {
                 break;
             if (_pend_gen == last && _close_gen == last_close)
                 continue;
-            if (_pend_gen != last)
-                work = _pending; // a copy: the fold thread may replace it while we send
+            // A copy of each chain posted since this thread last looked: the fold thread may
+            // replace them while we send.
+            for (const auto& p : _pending)
+                if (p.second.gen > last)
+                    work.emplace(p.first, p.second.rows);
             last = _pend_gen;
             last_close = _close_gen;
             // A copy of this thread's share -- /set_policy can replace the list mid-round. The
@@ -813,9 +818,9 @@ int GnssFleetTrim::post(Conn& c, const Target& t, const std::string& body, std::
 /// the url for good. A chain two or more windows behind (its senders silent) holds nothing, and
 /// one that has closed no window for _close_stale no longer sets the newest window, which its
 /// last close, perhaps from before an F-engine restart, could hold far ahead.
-/// `chains` maps each chain that names the url to its Target::seq: as for a tracker's own
-/// target, only trims formed after the policy named the url are due. A chain the url refused
-/// is due alone, after its backoff. Called with _pend_mtx held.
+/// `chains` maps each chain that names the url to its Target::seq: only trims formed after the
+/// policy named the url are due. A chain the url refused is due alone, after its backoff.
+/// Called with _pend_mtx held.
 std::vector<GnssFleetTrim::Due>
 GnssFleetTrim::due_trims(const std::string& url, const std::map<std::string, uint64_t>& chains) {
     Half& half = _halves[url];

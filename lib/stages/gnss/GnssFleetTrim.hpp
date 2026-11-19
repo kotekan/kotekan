@@ -212,8 +212,8 @@ private:
     // which also runs the gather.
     //
     // The fold thread never sends: post_trims publishes the newest payloads and the poster
-    // threads do the I/O. The trim is absolute, so a poster that falls behind sends whatever
-    // _pending holds when it next looks and skips the rest; nothing is queued.
+    // threads do the I/O. The trim is absolute, so a poster that falls behind sends each chain's
+    // newest payload when it next looks and skips the older ones; nothing is queued.
     std::vector<Target> _targets; ///< one per tracker instance, sorted by url; guarded by _pend_mtx
     std::vector<std::thread> _post_threads;
     /// Poster stride: thread i serves the targets of the list's distinct urls i, i + n, ... Set
@@ -224,8 +224,13 @@ private:
     /// is held.
     std::mutex _pend_mtx;
     std::condition_variable _pend_cv;
-    std::map<std::string, nlohmann::json> _pending; ///< chain -> payload, from the last post_trims
-    uint64_t _pend_gen = 0;                         ///< bumped when _pending is replaced
+    /// One chain's newest payload.
+    struct Pending {
+        nlohmann::json rows;
+        uint64_t gen = 0; ///< the _pend_gen of the post_trims that formed it
+    };
+    std::map<std::string, Pending> _pending; ///< chain -> its newest payload
+    uint64_t _pend_gen = 0;                  ///< bumped by each post_trims that posts a chain
     /// chain -> its newest trims and window, for the GPU halves' targets. Merged, never queued:
     /// a poster that falls behind sends each chain's newest and skips the rest.
     std::map<std::string, ChainTrims> _trims;
