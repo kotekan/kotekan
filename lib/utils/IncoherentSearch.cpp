@@ -40,6 +40,11 @@ const double block_clip = 6.0;
 // A sample merges into a candidate within this many samples of it, plus the sweep between the
 // two DMs
 const int merge_slack = 20;
+// A candidate is undispersed when far_candidates others, each of at least far_fraction of its
+// S/N, lie more than far_dm from it in DM and fit the same arrival without dispersion
+const double far_dm = 50.0;
+const double far_fraction = 0.5;
+const int far_candidates = 2;
 // A running statistic is used after this many seconds of updates
 const double settle_s = 1.0;
 // A candidate is reported this many seconds after its first sample above threshold
@@ -109,7 +114,7 @@ IncoherentSearch::IncoherentSearch(const IncoherentSearchParams& params) :
         pass_sums.assign((size_t)D * chunk, 0.0f);
 
     // A candidate's samples are still in the buffer when it is closed: band_occupancy relies on it.
-    keep = max_delay_all + lookahead + wmax + 2 * chunk + close_after;
+    keep = max_delay_all + lookahead + wmax + 4 * chunk + close_after;
     buffer_len = keep + std::max<int64_t>(4096, keep / 4);
     w.assign((size_t)F * buffer_len, 0);
 }
@@ -415,7 +420,10 @@ void IncoherentSearch::merge_hits(const std::vector<Hit>& hits) {
 
 void IncoherentSearch::close_events() {
     for (Event& e : events) {
-        if (e.reported || ns - e.created < close_after)
+        // An arrival without dispersion is found at the higher DMs up to the difference of the
+        // sweeps later: wait for those candidates.
+        const int64_t wait = close_after + max_delay_all - max_delay[e.best.dm_index] + 2 * chunk;
+        if (e.reported || ns - e.created < wait)
             continue;
         IncoherentCandidate cand;
         cand.snr = e.best.snr;
@@ -423,15 +431,35 @@ void IncoherentSearch::close_events() {
         cand.width = widths[e.best.width_index];
         cand.sample = e.best.sample;
         cand.num_hits = e.num_hits;
+        cand.undispersed = undispersed(e);
         band_occupancy(cand, e.best);
         candidates.push_back(cand);
         e.reported = true;
     }
-    // A reported event stays until its residue at the highest DM has been searched.
-    const int64_t lifetime = max_delay_all + lookahead + 2 * chunk + close_after;
+    // A reported event stays until its residue at the highest DM has been searched, and until
+    // the candidates at higher DMs that it may mark undispersed are reported.
+    const int64_t lifetime = max_delay_all + lookahead + 6 * chunk + close_after;
     events.erase(std::remove_if(events.begin(), events.end(),
                                 [&](const Event& e) { return ns - e.created > lifetime; }),
                  events.end());
+}
+
+// Whether enough other events far away in DM fit the same arrival without dispersion. The search
+// places such an arrival earlier at the top channel the higher the DM: by nothing when it is at
+// the top of the band, by the whole sweep between the two DMs when it is at the bottom.
+bool IncoherentSearch::undispersed(const Event& e) const {
+    const double dm = p.dms[e.best.dm_index];
+    int n = 0;
+    for (const Event& other : events) {
+        const double ddm = p.dms[other.best.dm_index] - dm;
+        if (std::abs(ddm) <= far_dm || other.best.snr < far_fraction * e.best.snr)
+            continue;
+        const int64_t earlier =
+            ddm > 0 ? e.best.sample - other.best.sample : other.best.sample - e.best.sample;
+        if (earlier >= -merge_slack && earlier <= merge_slack + sweep_per_dm * std::abs(ddm))
+            ++n;
+    }
+    return n >= far_candidates;
 }
 
 // S/N of the candidate's window in each block of channels: the sum of the stored samples along

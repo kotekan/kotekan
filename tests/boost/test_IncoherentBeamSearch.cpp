@@ -221,6 +221,7 @@ BOOST_AUTO_TEST_CASE(finds_a_pulse_and_restarts_after_a_jump) {
                                - (seq0 + int64_t(8000) * SearchPipeline::period)),
                       3.0 * SearchPipeline::period);
     BOOST_CHECK_EQUAL(cands[0]["block_snr"].size(), 16);
+    BOOST_CHECK_EQUAL(cands[0]["undispersed"].get<bool>(), false);
     // GPS time is on: the arrival time follows from the sequence number at 5.12 us per sample.
     BOOST_CHECK_SMALL(cands[0]["unix_time"].get<double>()
                           - (1767225600 + cands[0]["fpga_seq"].get<int64_t>() * 5.12e-6),

@@ -53,6 +53,9 @@ struct IncoherentCandidate {
     /// S/N of each block of channels along the dispersion curve. A pulse fills most blocks;
     /// narrow-band interference fills one or two.
     std::array<float, num_blocks> block_snr{};
+    /// The candidate is one of several far apart in DM that fit one arrival without dispersion:
+    /// interference, not a pulse.
+    bool undispersed = false;
 };
 
 /**
@@ -73,6 +76,13 @@ struct IncoherentCandidate {
  * candidate when they lie within the dispersion sweep between the two DMs and are either close in
  * DM or much weaker (the residue of a bright pulse at another DM, which falls as one over the
  * difference of DM).
+ *
+ * Interference in part of the band has no dispersion, and is found at every DM: at a higher DM
+ * earlier at the top channel, by the sweep from its own frequency to the top. A pulse is found
+ * at its own DM. A candidate is marked undispersed when two or more others, of at least half
+ * its S/N, lie more than 50 DM units away at such times. For that a candidate is reported only
+ * when the same arrival has been searched at the highest DM: the sweep of the highest DM after
+ * it reached the top channel.
  *
  * Widths of 1 to 16 samples are tried, in passes of `chunk` samples; the widths and the mask
  * thresholds are constants in the source.
@@ -152,6 +162,7 @@ private:
                    std::vector<Hit>& hits, double& max_snr);
     void merge_hits(const std::vector<Hit>& hits);
     void close_events();
+    bool undispersed(const Event& e) const;
     void band_occupancy(IncoherentCandidate& cand, const Hit& hit) const;
     const int8_t* row(int channel, int64_t sample) const {
         return &w[(size_t)channel * buffer_len + (size_t)(sample - base)];
@@ -214,7 +225,8 @@ private:
     std::vector<float> pass_sums;    // [D][chunk] when p.keep_sums: see last_sums()
     std::vector<float> pass_max;     // [D]: see last_max_snr()
 
-    std::vector<Event> events; // open candidates, and reported ones that still absorb residue
+    // Open candidates, and reported ones that still absorb residue and mark others undispersed
+    std::vector<Event> events;
     std::vector<IncoherentCandidate> candidates;
     double max_snr_seen = 0;
 };

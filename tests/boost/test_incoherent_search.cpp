@@ -2,6 +2,7 @@
 
 #include "IncoherentSearch.hpp"
 
+#include <algorithm>
 #include <boost/test/included/unit_test.hpp>
 #include <cmath>
 #include <random>
@@ -78,6 +79,7 @@ BOOST_AUTO_TEST_CASE(pulse_is_found_at_its_dm_and_time) {
     BOOST_CHECK_EQUAL(c.dm, 100);
     BOOST_CHECK_EQUAL(c.sample, 6000);
     BOOST_CHECK_EQUAL(c.width, 1);
+    BOOST_CHECK(!c.undispersed);
     int filled = 0;
     for (float b : c.block_snr)
         filled += b > 3;
@@ -125,6 +127,39 @@ BOOST_AUTO_TEST_CASE(burst_in_part_of_the_band_is_cut) {
         num_candidates += search.take_candidates().size();
     }
     BOOST_CHECK_EQUAL(num_candidates, 0);
+}
+
+BOOST_AUTO_TEST_CASE(burst_without_dispersion_is_marked_at_every_dm) {
+    // Interference at DM 0 that the limit per block lets through: 14 channels across the edge
+    // of two blocks, for 96 samples. Their delays differ by less than the burst lasts, so every
+    // DM from 50 to 250 adds them up, to about 9 sigma at the widest window.
+    IncoherentSearchParams p = test_params();
+    p.threshold = 6;
+    p.dms.clear();
+    for (double dm = 50; dm <= 250; dm += 2)
+        p.dms.push_back(dm);
+    IncoherentSearch search(p);
+    std::mt19937 rng(1);
+    std::normal_distribution<float> gauss(0, 1);
+    std::vector<float> power(p.num_freq);
+    std::vector<IncoherentCandidate> cands;
+    for (int t = 0; t < 13000; ++t) {
+        for (int c = 0; c < p.num_freq; ++c) {
+            const bool on = c >= 233 && c < 247 && t >= 5000 && t < 5096;
+            power[c] = (float)(1000 * (1 + p.thermal * (gauss(rng) + (on ? 8 : 0))));
+        }
+        search.add_sample(power.data());
+        for (const IncoherentCandidate& c : search.take_candidates())
+            cands.push_back(c);
+    }
+    BOOST_REQUIRE_GE(cands.size(), 10);
+    double dm_low = cands[0].dm, dm_high = cands[0].dm;
+    for (const IncoherentCandidate& c : cands) {
+        BOOST_CHECK(c.undispersed);
+        dm_low = std::min(dm_low, c.dm);
+        dm_high = std::max(dm_high, c.dm);
+    }
+    BOOST_CHECK_GT(dm_high - dm_low, 150);
 }
 
 BOOST_AUTO_TEST_CASE(channels_back_from_no_data_start_again) {
