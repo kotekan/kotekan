@@ -24,6 +24,9 @@ after which the loop starts again from the seed.
 @author Keith Vanderlinde
 """
 
+import urllib.parse
+
+from gnss_broker import iface, node_api
 from gnss_broker.transport import _get, _log, _post, _log_rl, iface_unfenced, log_tag
 
 # One GPU's channels lie on a stride-16 comb of 0.1953125-MHz channels, 3.125 MHz apart, so one
@@ -53,6 +56,41 @@ LOBE_TRIM_FRAC = 0.25
 LOBE_RELEASED_CHIPS = 0.02
 LOBE_RELEASE_MAX_S = 60.0
 LOBE_HOLDOFF_S = 120.0
+
+
+# The gather's REST family that says it takes a GPU half's target ({url, chain}) in /set_policy,
+# posts one set_trim of every chain that names it per round ({"chains": {...}}), and re-posts a
+# refused round without the chains the refusal names (--fleet-trim-half-targets).
+GATHER_BATCH = "fleet_trim_batch"
+
+
+def trim_targets(trackers, by_half=False):
+    """The set_trim targets of a chain's policy: each tracker's own /set_trim; with by_half, a
+    tracker on a GPU half whose inject host serves by chain (node_api.hosts()) as that half's
+    {"url": "<host>/set_trim", "chain": <chain>}, which the gather batches with the other chains
+    that name the same url."""
+    out = []
+    for t in trackers:
+        r = node_api.row(t) if by_half else None
+        base = r and node_api.host_base(r[0], r[1], r[3])
+        if base and base in node_api.hosts():
+            out.append({"url": base + "/set_trim", "chain": r[2]})
+        else:
+            out.append("%s/set_trim" % t)
+    return out
+
+
+def gather_batches(url, timeout=3.0):
+    """None when the gather at url (--fleet-trim-url) lists rest/GATHER_BATCH in its interface
+    document, else why not."""
+    u = urllib.parse.urlsplit(url)
+    try:
+        doc = iface.read_source("%s://%s" % (u.scheme, u.netloc), timeout=timeout).doc
+    except iface.SourceError as e:
+        return "its interface could not be read (%s)" % e
+    if GATHER_BATCH not in (doc["sections"].get("rest") or {}):
+        return "its interface has no rest/%s" % GATHER_BATCH
+    return None
 
 
 def lobe_chips(chip_rate_hz):
@@ -214,9 +252,9 @@ def stage_fleet_trim_arming(ctx):
                     "clamp": trim_clamp(ctx.args.chip_rate_hz),
                     "spacing": ctx.args.dll_spacing,
                     # Less any tracker the interface watcher fences (enforce mode only).
-                    "targets": [
-                        "%s/set_trim" % t for t in iface_unfenced(ctx.trackers)
-                    ],
+                    "targets": trim_targets(
+                        iface_unfenced(ctx.trackers), ctx.args.fleet_trim_half_targets,
+                    ),
                 }
             }
         }

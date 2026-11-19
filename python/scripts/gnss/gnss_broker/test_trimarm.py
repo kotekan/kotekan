@@ -13,7 +13,7 @@ the probe-anchored floor.
 import sys
 import time
 
-from gnss_broker import combdll, transport, trimarm
+from gnss_broker import combdll, iface, node_api, transport, trimarm
 
 
 _fails = []
@@ -54,6 +54,7 @@ def run(
     dr_state=None,
     chip_rate_hz=10.23e6,
     trackers=("http://cx19:12048/gnss0_inject",),
+    half=False,
 ):
     """Drive the stage once at cycle clock t0 (default: now); return (policy dict the gather
     would receive, ctx). Pass `dls` to carry the loop state across cycles."""
@@ -80,6 +81,7 @@ def run(
                 fleet_trim_readback=0,
                 signal="gps_l5",
                 chip_rate_hz=chip_rate_hz,
+                fleet_trim_half_targets=half,
             ),
             dllp=_Obj(
                 fleet=fleet
@@ -130,6 +132,75 @@ def main():
     check(
         pol.get("targets") == ["http://cx27:12048/gnss0_inject/set_trim"],
         "a fenced tracker is left out of the targets (%r)" % pol.get("targets"),
+    )
+
+    # 1c. With --fleet-trim-half-targets, a tracker on a GPU half whose inject host serves by
+    #     chain is that half's target, {url, chain}; any other tracker stays its own /set_trim,
+    #     as every tracker does without the switch.
+    trk = (
+        "http://cx52:12048/gnss1_gps_l5_inject",
+        "http://cx52:12048/gnss0_gps_l5_inject",
+        "http://cx19:12048/gnss0_inject",
+    )
+    node_api.set_hosts(["http://cx52:12048/gnss1_inject"])
+    try:
+        half, _ = run(trackers=trk, half=True)
+        own, _ = run(trackers=trk)
+    finally:
+        node_api.set_hosts([])
+    check(
+        half.get("targets")
+        == [
+            {"url": "http://cx52:12048/gnss1_inject/set_trim", "chain": "gps_l5"},
+            "http://cx52:12048/gnss0_gps_l5_inject/set_trim",
+            "http://cx19:12048/gnss0_inject/set_trim",
+        ],
+        "half targets: the hosted half by chain, the rest at their own paths (%r)"
+        % half.get("targets"),
+    )
+    check(
+        own.get("targets") == [t + "/set_trim" for t in trk],
+        "without the switch every tracker is its own target, hosted or not",
+    )
+
+    # 1d. The switch needs a gather whose interface lists rest/fleet_trim_batch.
+    real_read = trimarm.iface.read_source
+    with_leaf = iface.golden().doc
+    with_leaf = dict(with_leaf, sections=dict(with_leaf["sections"]))
+    with_leaf["sections"]["rest"] = dict(
+        with_leaf["sections"]["rest"], **{trimarm.GATHER_BATCH: 1}
+    )
+
+    def read(doc):
+        def f(src, timeout=None):
+            if doc is None:
+                raise iface.SourceError("refused")
+            read.asked = src
+            return iface.Source(doc, None, src)
+
+        return f
+
+    try:
+        trimarm.iface.read_source = read(with_leaf)
+        ok = trimarm.gather_batches("http://127.0.0.1:12051/fleet_trim")
+        asked = read.asked
+        trimarm.iface.read_source = read(iface.golden().doc)
+        no_leaf = trimarm.gather_batches("http://127.0.0.1:12051/fleet_trim")
+        trimarm.iface.read_source = read(None)
+        unread = trimarm.gather_batches("http://127.0.0.1:12051/fleet_trim")
+    finally:
+        trimarm.iface.read_source = real_read
+    check(
+        ok is None and asked == "http://127.0.0.1:12051",
+        "a gather with the leaf batches, read at its origin",
+    )
+    check(
+        "no rest/fleet_trim_batch" in (no_leaf or ""),
+        "a gather without the leaf is named (%s)" % no_leaf,
+    )
+    check(
+        "could not be read" in (unread or ""),
+        "an unreadable gather is named (%s)" % unread,
     )
 
     # 2. Presence with a hold: a PRN absent this cycle stays armed inside the hold and is
@@ -366,7 +437,10 @@ def main():
         "below floor and slewing: PRN 4 held off and not armed, PRN 1 armed (%r)"
         % sorted(pol.get("armed") or []),
     )
-    check(4 not in ctx.dls.trim and ctx.dls.trim.get(1) == 0.1, "PRN 4's Python trim is dropped")
+    check(
+        4 not in ctx.dls.trim and ctx.dls.trim.get(1) == 0.1,
+        "PRN 4's Python trim is dropped",
+    )
     check(4 not in ctx.dls.hold, "and the floor row does not stamp its hold")
 
     print("-" * 70)

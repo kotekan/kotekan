@@ -1898,6 +1898,16 @@ def build_parser(description):
         "--comb-taps-cpp and --fleet-trim-readback.",
     )
     ap.add_argument(
+        "--fleet-trim-half-targets",
+        action="store_true",
+        help="hand --fleet-trim-url a tracker on a GPU half whose inject host serves by "
+        'chain (--node-hosts) as that half\'s target, {"url": "<host>/set_trim", '
+        '"chain": <chain>}, which the gather posts once per round for every chain that '
+        'names it ({"chains": {...}}), instead of the tracker\'s own /set_trim. Off by '
+        "default. The chain refuses to start unless the gather's interface lists "
+        "rest/fleet_trim_batch (trimarm.gather_batches).",
+    )
+    ap.add_argument(
         "--fleet-trim-bandwidth",
         type=float,
         default=1.4,
