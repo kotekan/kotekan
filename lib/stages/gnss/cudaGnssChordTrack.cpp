@@ -52,6 +52,62 @@ static gnss_gpu::GpuRow inject_row(Config& config, const std::string& path) {
     return {};
 }
 
+// The engines of a hosted inject by broker chain, in row order.
+using ChainEngines = std::vector<std::pair<std::string, gnss::TrackChain*>>;
+
+// POST set_trim of several chains at once (see cudaGnssChordTrackState) at @p path.
+static void set_trim_rows(connectionInstance& conn, json& request, const std::string& path,
+                          const ChainEngines& engines) {
+    const json& by_chain = request.at("chains");
+    std::string have;
+    for (const auto& e : engines)
+        have += (have.empty() ? "" : ", ") + e.first;
+    if (!by_chain.is_object()) {
+        conn.send_error(fmt::format(fmt("{:s} takes {{\"chains\": {{<chain>: <request>, ...}}}}; "
+                                        "its chains are {:s}"),
+                                    path, have),
+                        HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    std::string unknown;
+    for (const auto& item : by_chain.items()) {
+        bool found = false;
+        for (const auto& e : engines)
+            found = found || e.first == item.key();
+        if (!found)
+            unknown += (unknown.empty() ? "" : ", ") + item.key();
+    }
+    if (!unknown.empty()) {
+        conn.send_error(
+            fmt::format(fmt("{:s} has no chain {:s}; its chains are {:s}"), path, unknown, have),
+            HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    std::vector<size_t> todo;
+    for (size_t i = 0; i < engines.size(); ++i)
+        if (by_chain.contains(engines[i].first))
+            todo.push_back(i);
+    std::vector<std::unique_lock<std::mutex>> locks;
+    for (size_t i : todo)
+        locks.emplace_back(engines[i].second->prn_mtx);
+    std::vector<std::vector<std::pair<int, double>>> upd(engines.size());
+    std::string refused;
+    for (size_t i : todo) {
+        const std::string err =
+            engines[i].second->parse_trims(by_chain.at(engines[i].first), upd[i]);
+        if (!err.empty())
+            refused +=
+                (refused.empty() ? "" : "; ") + engines[i].first + ": bad trim payload: " + err;
+    }
+    if (!refused.empty()) {
+        conn.send_error(refused, HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    for (size_t i : todo)
+        engines[i].second->apply_trims(upd[i]);
+    conn.send_empty_reply(HTTP_RESPONSE::OK);
+}
+
 cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::string& unique_name,
                                                  bufferContainer& host_buffers,
                                                  cudaDeviceInterface& device) :
@@ -87,11 +143,17 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
     std::vector<gnss::HostRow> row_hosts;
     std::vector<std::string> chains;
     std::vector<std::vector<gnss::RestVerb>> verbs;
+    // The batch is bound to the engines, not to this state: the state is deleted through
+    // cudaCommandState, whose destructor is not virtual, so its paths outlive it.
+    ChainEngines engines;
     for (Row& r : rows) {
         row_hosts.push_back(r.host);
         chains.push_back(r.gpu.chain);
         verbs.push_back(r.chain->rest_verbs());
+        engines.emplace_back(r.gpu.chain, r.chain.get());
     }
+    // The path its rows' verbs are served at by chain: `/<half>_inject`.
+    std::string host_path;
     if (hosted()) {
         // The rows of one GPU half: gnss<g>_<chain>, as the generator names them.
         for (const Row& r : rows) {
@@ -102,50 +164,16 @@ cudaGnssChordTrackState::cudaGnssChordTrackState(Config& config, const std::stri
                                    "<half>_{:s}",
                                    unique_name, n, r.gpu.chain);
             const std::string h = "/" + n.substr(0, at) + "_inject";
-            if (!_host.empty() && h != _host)
+            if (!host_path.empty() && h != host_path)
                 FATAL_ERROR_NON_OO("cudaGnssInject {:s}: rows of two halves, {:s} and {:s}",
-                                   unique_name, _host, h);
-            _host = h;
+                                   unique_name, host_path, h);
+            host_path = h;
         }
     }
     using namespace std::placeholders;
     gnss::rest_register_rows(
-        _host.empty() ? unique_name : _host, row_hosts, chains, verbs, _rest_paths,
-        {{"set_trim", std::bind(&cudaGnssChordTrackState::set_trim_rows, this, _1, _2)}});
-}
-
-void cudaGnssChordTrackState::set_trim_rows(connectionInstance& conn, json& request) {
-    const json& by_chain = request.at("chains");
-    std::vector<Row*> todo;
-    for (Row& r : rows)
-        if (by_chain.is_object() && by_chain.contains(r.gpu.chain))
-            todo.push_back(&r);
-    if (!by_chain.is_object() || todo.size() != by_chain.size()) {
-        std::string have;
-        for (const Row& r : rows)
-            have += (have.empty() ? "" : ", ") + r.gpu.chain;
-        conn.send_error(fmt::format(fmt("{:s}/set_trim: chains must map chains of {:s} to their "
-                                        "set_trim requests"),
-                                    _host, have),
-                        HTTP_RESPONSE::BAD_REQUEST);
-        return;
-    }
-    std::vector<std::unique_lock<std::mutex>> locks;
-    for (Row* r : todo)
-        locks.emplace_back(r->chain->prn_mtx);
-    std::vector<std::vector<std::pair<int, double>>> upd(todo.size());
-    for (size_t i = 0; i < todo.size(); ++i) {
-        const std::string err =
-            todo[i]->chain->parse_trims(by_chain.at(todo[i]->gpu.chain), upd[i]);
-        if (!err.empty()) {
-            conn.send_error(todo[i]->gpu.chain + ": bad trim payload: " + err,
-                            HTTP_RESPONSE::BAD_REQUEST);
-            return;
-        }
-    }
-    for (size_t i = 0; i < todo.size(); ++i)
-        todo[i]->chain->apply_trims(upd[i]);
-    conn.send_empty_reply(HTTP_RESPONSE::OK);
+        host_path.empty() ? unique_name : host_path, row_hosts, chains, verbs, _rest_paths,
+        {{"set_trim", std::bind(set_trim_rows, _1, _2, host_path + "/set_trim", engines)}});
 }
 
 cudaGnssChordTrackState::~cudaGnssChordTrackState() {

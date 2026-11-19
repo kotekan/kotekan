@@ -660,23 +660,35 @@ class ByChain:
 
     def check_refusals(self, port, rows, maps):
         """Requests the host must refuse, each of which would move every row's trims to 0.9 if
-        any part of it applied: a batch with one bad entry, a batch with a chain no row has, and a
-        POST without chain."""
+        any part of it applied: batches with one and two bad entries, each refused chain named;
+        a batch with chains no row has, each named; a batch that is no object; and POSTs without
+        chain."""
         far = {
             r.name: [{"prn": p, "trim_chips": 0.9} for p in maps[r.name]] for r in rows
         }
         bad = dict(far)
         bad[rows[-1].name] = [{"prn": maps[rows[-1].name][0], "trim_chips": "x"}]
-        unknown = dict(far, nochain=[])
+        bad2 = dict(bad)
+        bad2[rows[0].name] = [{"prn": maps[rows[0].name][0], "trim_chips": None}]
+        unknown = dict(far, nochain=[], other=[])
         for body, want in (
-            ({"chains": bad}, f"{rows[-1].name}: bad trim payload"),
-            ({"chains": unknown}, "chains must map chains of"),
-            ({"chains": far, "chain": rows[0].name}, "takes {"),
-            (far[rows[0].name], "takes {"),
-            ({"chain": "nochain", "body": far[rows[0].name]}, "has no chain nochain"),
+            ({"chains": bad}, [f"{rows[-1].name}: bad trim payload"]),
+            (
+                {"chains": bad2},
+                [f"{r.name}: bad trim payload" for r in (rows[0], rows[-1])],
+            ),
+            ({"chains": unknown}, ["has no chain nochain, other"]),
+            ({"chains": []}, ['takes {"chains"']),
+            ({"chains": far, "chain": rows[0].name}, ["takes {"]),
+            (far[rows[0].name], ["takes {"]),
+            ({"chain": "nochain", "body": far[rows[0].name]}, ["has no chain nochain"]),
         ):
             status, txt = rest_raw(port, f"{self.base}/set_trim", body)
-            if status != 400 or want not in txt.decode(errors="replace"):
+            try:
+                reply = json.loads(txt)["message"]
+            except (ValueError, KeyError, TypeError):
+                reply = txt.decode(errors="replace")
+            if status != 400 or not all(w in reply for w in want):
                 self.problems.append(f"set_trim {str(body)[:80]}: {status} {txt[:200]}")
 
 

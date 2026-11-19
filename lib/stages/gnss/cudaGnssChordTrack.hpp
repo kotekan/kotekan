@@ -40,8 +40,8 @@
  * entries share before their chain. There, set_trim also takes
  * `{"chains": {"<chain>": <a set_trim request>, ...}}`: every named chain's prn_mtx is held, in
  * row order, while each request is checked as its own path checks it and, if none is refused,
- * applied; otherwise nothing is applied. The reply is its own path's, or the first refusal,
- * naming its chain.
+ * applied; otherwise nothing is applied. The reply is its own path's, or a refusal naming each
+ * chain refused, or each chain no row has.
  */
 class cudaGnssChordTrackState : public cudaCommandState {
 public:
@@ -65,11 +65,6 @@ public:
     }
 
 private:
-    /// POST set_trim of several chains at once (see the class).
-    void set_trim_rows(kotekan::connectionInstance& conn, nlohmann::json& request);
-
-    /// The path its rows' verbs are served at by chain: `/<half>_inject`.
-    std::string _host;
     std::vector<std::string> _rest_paths;
 };
 
