@@ -43,8 +43,12 @@ using kotekan::prometheus::Metrics;
  *
  * Each candidate is logged, and appended to candidate_file as a line of JSON: the FPGA sequence
  * number of its arrival at the top channel (and its UNIX time, with GPS time), its S/N, DM,
- * width in samples, the number of samples above threshold merged into it, and the S/N in each
- * of 16 blocks of channels along its dispersion curve.
+ * width in samples, the number of samples above threshold merged into it, the S/N in each
+ * of 16 blocks of channels along its dispersion curve, and whether it is undispersed: one of
+ * several far apart in DM that fit one arrival without dispersion, which is interference in
+ * part of the band. Such a candidate is in the file but is not counted or logged as one. A
+ * candidate is written once the highest DM has been searched for its arrival: the sweep of
+ * dm_max after it reached the top channel.
  *
  * With out_buf, every search pass also writes its dedispersed sums (IncoherentSearch::last_sums)
  * as one frame, for tests: 13 MB/s with the default DMs. Row k of a frame holds, for each trial
@@ -97,6 +101,7 @@ using kotekan::prometheus::Metrics;
  * @conf candidate_file    String. File the candidates are appended to. Default none.
  *
  * @metric kotekan_incoherent_beam_search_candidates_total   Candidates reported.
+ * @metric kotekan_incoherent_beam_search_undispersed_total   Candidates left out as undispersed.
  * @metric kotekan_incoherent_beam_search_max_snr   Highest S/N in the last 32 search passes.
  * @metric kotekan_incoherent_beam_search_channels_used   Channels used in the newest sample.
  * @metric kotekan_incoherent_beam_search_dropped_frames_total   Frames late, far or off the grid.
@@ -113,6 +118,8 @@ public:
         freq_id_base(config.get<int>(unique_name, "freq_id_base")),
         candidates_counter(Metrics::instance().add_counter(
             "kotekan_incoherent_beam_search_candidates_total", unique_name)),
+        undispersed_counter(Metrics::instance().add_counter(
+            "kotekan_incoherent_beam_search_undispersed_total", unique_name)),
         max_snr_gauge(
             Metrics::instance().add_gauge("kotekan_incoherent_beam_search_max_snr", unique_name)),
         channels_used_gauge(Metrics::instance().add_gauge(
@@ -388,10 +395,14 @@ private:
         const Telescope& tel = Telescope::instance();
         for (const IncoherentCandidate& c : search->take_candidates()) {
             const int64_t seq = (origin + c.sample) * period + phase;
-            candidates_counter.inc();
-            INFO("IncoherentBeamSearch: candidate S/N {:.1f}, DM {:.1f}, width {:d} samples, "
-                 "FPGA seq {:d}",
-                 c.snr, c.dm, c.width, seq);
+            if (c.undispersed) {
+                undispersed_counter.inc();
+            } else {
+                candidates_counter.inc();
+                INFO("IncoherentBeamSearch: candidate S/N {:.1f}, DM {:.1f}, width {:d} samples, "
+                     "FPGA seq {:d}",
+                     c.snr, c.dm, c.width, seq);
+            }
             if (!candidate_file.is_open())
                 continue;
             nlohmann::json line = {{"fpga_seq", seq},
@@ -400,6 +411,7 @@ private:
                                    {"width", c.width},
                                    {"num_hits", c.num_hits},
                                    {"block_snr", c.block_snr},
+                                   {"undispersed", c.undispersed},
                                    {"reported_unix", current_time()}};
             if (tel.gps_time_enabled())
                 line["unix_time"] = ts_to_double(tel.to_time(seq));
@@ -439,6 +451,7 @@ private:
 
     std::ofstream candidate_file;
     kotekan::prometheus::Counter& candidates_counter;
+    kotekan::prometheus::Counter& undispersed_counter;
     kotekan::prometheus::Gauge& max_snr_gauge;
     kotekan::prometheus::Gauge& channels_used_gauge;
     kotekan::prometheus::Counter& dropped_frames_counter;
