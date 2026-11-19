@@ -152,6 +152,23 @@ def test_inst_stage():
         is None,
         "one lane channel serves no estimate",
     )
+    stage = {"source": "lanes"}
+    own = lane_relay.Gpu("cx19", 0, stage, 3, "gnss0_gps_l5_n2assemble")
+    by_chain = lane_relay.Gpu(
+        "cx19",
+        0,
+        stage,
+        3,
+        "gnss0_gps_l5_n2assemble",
+        lane_relay.gnss_fleet.config_host_bases(hosted, "http://cx19:12048"),
+    )
+    check(
+        own.inst_url == "http://cx19:12048/gnss0_gps_l5_n2assemble/get_lane_inst"
+        and by_chain.inst_url
+        == "http://cx19:12048/gnss0_records/get_lane_inst?chain=gps_l5",
+        "get_lane_inst at the row's own path, or by chain from its record host (%s)"
+        % by_chain.inst_url,
+    )
 
 
 class _Unit:

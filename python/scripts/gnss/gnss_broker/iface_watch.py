@@ -86,6 +86,7 @@ SINGLETONS = ("gather", "aggregator")
 # program behind each. A bare name hangs off rest-url, as in the broker.
 URL_ROLES = {
     "rest-url": "node",
+    "node-hosts": "node",
     "trackers": "node",
     "combiner": "node",
     "dll-combiners": "node",

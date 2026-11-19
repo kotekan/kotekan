@@ -65,6 +65,7 @@ K = os.path.normpath(
 sys.path.insert(0, os.path.join(K, "config"))
 import gnss_chain_table  # noqa: E402
 import gnss_fleet  # noqa: E402
+from gnss_broker import node_api  # noqa: E402
 
 GEN = os.path.join(K, "config", "generated", "chord_gnss_%s_multi.yaml")
 PORT = 12048
@@ -87,13 +88,13 @@ def nodes():
     return [n for n in have if n in fleet]
 
 
-_REFS = {}  # config path -> (digest of its bytes, {assembler: elem_sum_shared_ref})
+# config path -> (digest of its bytes, {assembler: elem_sum_shared_ref}, the node's hosts that
+# serve their rows by chain)
+_REFS = {}
 
 
-def assemblers(node):
-    """{assembler: its elem_sum_shared_ref ([] without one)} of the record assemblers in the
-    node's generated config, whether stages of their own or rows of gnss<g>_records
-    (gnss_fleet.assembler_rows), parsed again whenever the file's bytes change."""
+def _config(node):
+    """The node's generated config, as _REFS holds it, parsed again whenever its bytes change."""
     path = GEN % node
     with open(path, "rb") as f:
         text = f.read()
@@ -107,8 +108,25 @@ def assemblers(node):
                 for name, b in gnss_fleet.assembler_rows(cfg)
                 if re.match(r"gnss[01][a-z0-9_]*n2assemble$", name)
             },
+            gnss_fleet.config_host_bases(cfg, "http://%s:%d" % (node, PORT)),
         )
-    return _REFS[path][1]
+    return _REFS[path]
+
+
+def assemblers(node):
+    """{assembler: its elem_sum_shared_ref ([] without one)} of the record assemblers in the
+    node's generated config, whether stages of their own or rows of gnss<g>_records
+    (gnss_fleet.assembler_rows)."""
+    return _config(node)[1]
+
+
+def request(node, stage, verb, body=None):
+    """(url, body) of an assembler's GET (body None) or POST, by chain where its node's config
+    hosts the assemblers (gnss_broker/node_api.py)."""
+    prefix, hosts = "http://%s:%d/%s" % (node, PORT, stage), _config(node)[2]
+    if body is None:
+        return node_api.url(prefix, verb, hosts=hosts), None
+    return node_api.post_request(prefix, verb, body, hosts=hosts)
 
 
 def endpoints():
@@ -159,7 +177,7 @@ def get(ep):
     node, stage = ep
     try:
         with urllib.request.urlopen(
-            "http://%s:%d/%s/get_elem_cal" % (node, PORT, stage), timeout=5
+            request(node, stage, "get_elem_cal")[0], timeout=5
         ) as r:
             return ep, json.loads(r.read())
     except Exception as e:  # noqa: BLE001 -- a dead node is a row in the report, not a crash
@@ -354,9 +372,9 @@ def post_one(node, stage, body):
     inputs it took out back at full weight); returns its reply."""
     zeros = config_zeros(node, stage)
     ref = [[0.0, 0.0] if e in zeros else x for e, x in enumerate(body["ref"])]
-    body = dict(body, ref=ref)
+    url, body = request(node, stage, "set_elem_sum_shared_ref", dict(body, ref=ref))
     req = urllib.request.Request(
-        "http://%s:%d/%s/set_elem_sum_shared_ref" % (node, PORT, stage),
+        url,
         data=json.dumps(body).encode(),
         method="POST",
         headers={"Content-Type": "application/json"},

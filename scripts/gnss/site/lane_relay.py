@@ -38,7 +38,9 @@ K = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..")
 )
 sys.path.insert(0, os.path.join(K, "config"))
+sys.path.insert(0, os.path.join(K, "python", "scripts", "gnss"))
 import gnss_fleet  # noqa: E402
+from gnss_broker import node_api  # noqa: E402
 
 FLEET = "config/gnss_fleet_chord.yaml"
 NODES = "config/chord_gnss_node.yaml"
@@ -128,7 +130,7 @@ class Gpu:
     """One projecting GPU: a source when its stage publishes lanes, a receiver with
     fleet_lanes."""
 
-    def __init__(self, node, gpu, stage, offset, inst):
+    def __init__(self, node, gpu, stage, offset, inst, hosts=()):
         self.node, self.gpu = node, gpu
         self.name = "%s/%d" % (node, gpu)
         self.source = stage.get("source", "eigen") != "eigen"
@@ -136,7 +138,10 @@ class Gpu:
         live = stage.get("live_freq_ids", []) or []
         self.live = sorted(int(f) for f in live if int(f) % 16 == offset)
         self.base = "http://%s:%d/gnss_n2_project/proj_%d" % (node, PORT, gpu)
-        self.inst_url = inst and "http://%s:%d/%s/get_lane_inst" % (node, PORT, inst)
+        # By chain where the node's config hosts its assemblers (gnss_broker/node_api.py).
+        self.inst_url = inst and node_api.url(
+            "http://%s:%d/%s" % (node, PORT, inst), "get_lane_inst", hosts=hosts
+        )
 
     def wants(self, ranges):
         for lo, hi in ranges:
@@ -177,11 +182,12 @@ def gpus(root, offsets, only_from=None, only_to=None):
             continue
         cfg = yaml.safe_load(open(path)) or {}
         proj = cfg.get("gnss_n2_project", {}) or {}
+        hosts = gnss_fleet.config_host_bases(cfg, "http://%s:%d" % (node, PORT))
         for g in (0, 1):
             stage = proj.get("proj_%d" % g)
             if not isinstance(stage, dict):
                 continue
-            u = Gpu(node, g, stage, offsets[node][g], inst_stage(cfg, g))
+            u = Gpu(node, g, stage, offsets[node][g], inst_stage(cfg, g), hosts)
             if only_from is not None and node not in only_from:
                 u.source = False
             if only_to is not None and node not in only_to:

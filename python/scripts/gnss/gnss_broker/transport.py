@@ -855,7 +855,7 @@ class Failover(object):
         for k in range(n):
             j = (self.i + k) % n
             try:
-                r = getter("%s/%s" % (self.candidates[j], verb))
+                r = getter(node_api.url(self.candidates[j], verb))
             except Exception as e:
                 err = e
                 continue

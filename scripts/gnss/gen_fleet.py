@@ -431,6 +431,7 @@ def check_chains(fleet, path=CHAINS):
     with open(path) as f:
         raw = yaml.safe_load(f) or {}
     keys = set(gnss_fleet.URL_KEYS) | set(gnss_fleet.SINGLE_KEYS)
+    keys.add(gnss_fleet.HOSTS_KEY)
     bad = []
     common = raw.get("common") or {}
     for where, block in [("common", common)] + [

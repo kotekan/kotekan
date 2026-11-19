@@ -265,6 +265,103 @@ def test_repo_chains_follow_the_fleet():
         any("cx47, which is not in the fleet list" in p for p in probs),
         "--check names a host outside the fleet",
     )
+    with tempfile.TemporaryDirectory() as d:
+        cfg = chains_cfg()
+        cfg["common"]["node-hosts"] = "http://cx19:12048/gnss0_records"
+        path = os.path.join(d, "chains.yaml")
+        with open(path, "w") as fh:
+            yaml.safe_dump(cfg, fh)
+        probs = gen_fleet.check_chains(fl, path)
+    check(
+        any("node-hosts is written by hand" in p for p in probs),
+        "--check refuses hand-written node hosts (%s)" % probs,
+    )
+
+
+def test_host_bases():
+    """The manifest's host flags, as the generator resolves them (true in common or on the node,
+    never unset by the other), give each node's hosted stages and its halves' host bases; no
+    flag, no host, and the chains yaml's node-hosts expands to null."""
+    cfg = dict(chains_cfg(), common={"rest-url": "fleet", "node-hosts": "fleet"})
+    plain = gf.Fleet(manifest({"cx19": {}, "cx44": {}}), site())
+    check(
+        plain.hosted("cx19") == [] and plain.host_bases() == [],
+        "no host flag: no host",
+    )
+    check(
+        gf.expand_chains(cfg, plain)["common"]["node-hosts"] is None,
+        "no host: node-hosts null, so the broker gets no --node-hosts",
+    )
+    m = manifest(
+        {
+            "cx19": {"inject-host": True, "combine-host": True},
+            "cx44": {"record-host": False},
+            "cx51": {},
+        }
+    )
+    m["common"] = dict(m["common"], **{"record-host": True})
+    fl = gf.Fleet(m, site())
+    check(
+        fl.hosted("cx19") == ["inject", "n2assemble", "n2combine"]
+        and fl.hosted("cx44") == ["n2assemble"]
+        and fl.hosted("cx51") == ["n2assemble"],
+        "common and node flags together; a node's false does not unset common's true",
+    )
+    want = {
+        "http://cx19:12048/gnss%d_%s" % (g, h)
+        for g in (0, 1)
+        for h in ("inject", "records", "combine")
+    } | {
+        "http://%s:12048/gnss%d_records" % (n, g)
+        for n in ("cx44", "cx51")
+        for g in (0, 1)
+    }
+    got = fl.host_bases()
+    check(
+        set(got) == want and len(got) == len(want),
+        "every node's halves, each hosted stage (%s)" % got,
+    )
+    check(
+        gf.expand_chains(cfg, fl)["common"]["node-hosts"].split(",") == got,
+        "node-hosts: fleet expands to them",
+    )
+    sys.path.insert(0, os.path.join(ROOT, "python", "scripts", "gnss"))
+    from gnss_broker import node_api
+
+    check(
+        {stage: name for stage, name in gf.HOST_FLAGS.values()} == node_api.HOSTS,
+        "the host names are the broker's (node_api.HOSTS)",
+    )
+
+
+def test_config_host_bases():
+    """A generated config's hosts that serve their rows by chain: the record and combine hosts
+    by their names, an inject host by its rows' half."""
+    asm = {"kotekan_stage": "GnssGpuRecordAssemble"}
+    cfg = {
+        "gnss0_records": dict(asm, chains={"gnss0_gps_l5": {}}),
+        "gnss1_gps_l5_n2assemble": asm,
+        "gnss1_combine": {"kotekan_stage": "GnssCoherentCombiner", "chains": {}},
+        "gnss0_gps_l5_n2combine": {"kotekan_stage": "GnssCoherentCombiner"},
+        "gnss0_n2dual": {
+            "commands": [
+                {"name": "cudaGnssInject", "chains": {"gnss0_gps_l5": {}}},
+                {"name": "cudaCorrelatorDual"},
+            ]
+        },
+        "gnss1_n2dual": {"commands": [{"name": "cudaGnssInject"}]},
+        "gnss0_telem": {"kotekan_stage": "GnssTelemPack", "chains": {}},
+    }
+    got = gf.config_host_bases(cfg, "http://cx19:12048")
+    check(
+        got
+        == [
+            "http://cx19:12048/gnss0_inject",
+            "http://cx19:12048/gnss0_records",
+            "http://cx19:12048/gnss1_combine",
+        ],
+        "the hosted inject, records and combine, no other (%s)" % got,
+    )
 
 
 def test_built_instances_matches_derived():

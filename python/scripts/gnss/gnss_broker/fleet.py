@@ -17,6 +17,7 @@ import numpy as _np
 import random
 import re
 
+from . import node_api
 from .transport import NodeDown, _get, _log_rl, _now
 
 
@@ -432,7 +433,7 @@ def fleet_dll(
     polled = {}
     for url in endpoints:
         try:
-            polled[url] = _get("%s/get_status" % url) or []
+            polled[url] = _get(node_api.url(url, "get_status")) or []
         except Exception as e:
             if not isinstance(e, NodeDown):  # a DOWN node is logged once, by nodehealth
                 _log_rl(
@@ -1108,7 +1109,7 @@ def fleet_coherent(
         return {}
     for url in endpoints:
         try:
-            recs = _get("%s/get_records" % url)
+            recs = _get(node_api.url(url, "get_records"))
         except Exception as e:
             if not isinstance(e, NodeDown):
                 _log_rl(
@@ -1478,7 +1479,7 @@ def fleet_spectrum_aligned(endpoints, prns=None, log=None, stale_margin=0):
     avail, served, dropped, reanchored = {}, {}, [], []
     for url in endpoints:
         try:
-            r = _get("%s/get_spectrum" % url)
+            r = _get(node_api.url(url, "get_spectrum"))
         except Exception as e:
             if not isinstance(e, NodeDown):
                 _log_rl(
@@ -1519,7 +1520,7 @@ def fleet_spectrum_aligned(endpoints, prns=None, log=None, stale_margin=0):
             dropped.append((url, "window %d outside [%d,%d]" % (idx, lo, hi)))
             continue
         try:
-            r = _get("%s/get_spectrum?window=%d" % (url, idx))
+            r = _get(node_api.url(url, "get_spectrum", "window=%d" % idx))
         except Exception as e:
             dropped.append((url, "unreachable on second poll (%s)" % e))
             continue

@@ -738,6 +738,16 @@ def build_parser(description):
         "(--fleet-trim-url) and the --prn-reconfig map go to them too.",
     )
     ap.add_argument(
+        "--node-hosts",
+        default="",
+        help="comma list of the GPU halves' hosts that serve their rows' verbs by chain, "
+        "http://<node>:<port>/gnss<g>_<host> for the hosts inject, records and combine "
+        "(the chains yaml's `node-hosts: fleet`, from the manifest's --inject-host, "
+        "--record-host and --combine-host). A tracker, combiner or record assembler on a "
+        "listed half is asked there by its chain (gnss_broker/node_api.py), any other at its "
+        "row's own path.",
+    )
+    ap.add_argument(
         "--combiner",
         default="combiner",
         help="combiner endpoint (name or URL) whose /get_status is this chain's "

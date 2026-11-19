@@ -8,6 +8,12 @@ gnss<g>_combine, which serves every row's verbs by chain: a GET at /gnss<g>_<hos
 <chain>, a POST there of {"chain": <chain>, "body": <the row's own request>}, each answered with
 the row's own reply. The rows' own paths stay registered beside them until they are removed.
 
+url() (a GET) and post_request() put a request in the form its node serves: by chain where the
+half's host is listed (set_hosts(), the broker's --node-hosts, or a tool's own list from the
+node's generated config), and at the row's own path otherwise. A prefix that is not a row of
+those stages named by its broker chain (a search, a tap, a name generated before the tags) is
+used as given.
+
 canonical() names a request alike in either form, for the transcript gate (broker_equiv.py).
 """
 import json
@@ -30,12 +36,70 @@ _ROW_PATH = re.compile(
 )
 
 
+_HOST_BASE = re.compile(r"^https?://[^/?#]+/gnss\d+_(inject|records|combine)$")
+_hosts = frozenset()
+
+
+def set_hosts(bases):
+    """Ask by chain on the GPU halves whose hosts are listed, as their bases
+    http://<node>:<port>/gnss<g>_<host> (gnss_fleet.Fleet.host_bases), and at the rows' own
+    paths everywhere else. Process-wide, as the hosts are the fleet's for every chain. A
+    ValueError names any base that is not a half's host."""
+    global _hosts
+    want = frozenset(b.strip().rstrip("/") for b in bases if b.strip())
+    bad = sorted(b for b in want if not _HOST_BASE.match(b))
+    if bad:
+        raise ValueError("not a GPU half's host: %s" % ", ".join(bad))
+    _hosts = want
+
+
+def hosts():
+    return _hosts
+
+
 def row(prefix):
     """(origin, half, chain, stage) of a row's REST prefix named by its broker chain, else None."""
     m = _ROW.match(prefix)
     if not m or m.group(3) not in signals._CHAINS:
         return None
     return m.group(1), int(m.group(2)), m.group(3), m.group(4)
+
+
+def host_base(origin, half, stage):
+    """The base of the host that serves `stage` by chain on a GPU half."""
+    return "%s/gnss%d_%s" % (origin, half, HOSTS[stage])
+
+
+def _hosted(prefix, hosts):
+    hosts = _hosts if hosts is None else hosts
+    r = row(prefix) if hosts else None
+    return r if r and host_base(r[0], r[1], r[3]) in hosts else None
+
+
+def url(prefix, verb, query="", hosts=None):
+    """The URL of a GET of `verb` of the instance at `prefix`, `query` ("window=3") appended.
+    `hosts`, the bases of the hosts that serve by chain, defaults to set_hosts()'."""
+    r = _hosted(prefix, hosts)
+    if r is None:
+        return "%s/%s%s" % (prefix, verb, "?" + query if query else "")
+    return "%s/%s?chain=%s%s" % (
+        host_base(r[0], r[1], r[3]),
+        verb,
+        r[2],
+        "&" + query if query else "",
+    )
+
+
+def post_request(prefix, verb, payload, hosts=None):
+    """(url, body) of a POST of `payload` to `verb` of the instance at `prefix` (`hosts` as for
+    url())."""
+    r = _hosted(prefix, hosts)
+    if r is None:
+        return "%s/%s" % (prefix, verb), payload
+    return (
+        "%s/%s" % (host_base(r[0], r[1], r[3]), verb),
+        {"chain": r[2], "body": payload},
+    )
 
 
 _legacy = []  # gnss_fleet.stage_chain, imported on first use

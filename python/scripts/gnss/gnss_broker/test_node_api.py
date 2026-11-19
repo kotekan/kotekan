@@ -1,4 +1,4 @@
-"""node_api: a chain instance's rows and the one name of a request in either form.
+"""node_api: a chain instance's requests at its row's own path or by chain, and their one name.
 
     python3 -m gnss_broker.test_node_api
 """
@@ -37,6 +37,76 @@ def test_row():
         "http://localhost:12050/gps_search",
     ):
         check(node_api.row(p) is None, "not a row named by its broker chain: %s" % p)
+
+
+def test_url_and_post_request():
+    node_api.set_hosts([])
+    check(
+        node_api.url(ASM, "get_spectrum", "window=3") == ASM + "/get_spectrum?window=3"
+        and node_api.post_request(INJ, "set_seeds", [1]) == (INJ + "/set_seeds", [1]),
+        "no hosts: the row's own path and body",
+    )
+    node_api.set_hosts([N + "/gnss1_inject", N + "/gnss0_records ", ""])
+    check(
+        node_api.post_request(INJ, "set_seeds", [1])
+        == (N + "/gnss1_inject/set_seeds", {"chain": "gal_e5a", "body": [1]}),
+        "a POST to a hosted inject: its host's path, the chain in the body",
+    )
+    check(
+        node_api.url(INJ, "get_prns") == N + "/gnss1_inject/get_prns?chain=gal_e5a",
+        "a GET from a hosted inject: the chain in the query",
+    )
+    check(
+        node_api.url(ASM, "get_spectrum", "window=3")
+        == N + "/gnss0_records/get_spectrum?chain=gps_l5&window=3",
+        "a hosted record assembler: the chain, then the query",
+    )
+    check(
+        node_api.url(CMB, "get_status") == CMB + "/get_status"
+        and node_api.post_request(CMB, "x", {}) == (CMB + "/x", {}),
+        "a stage not hosted on that half keeps the row's own path",
+    )
+    for p in (
+        N + "/gnss0_gal_e5a_inject",
+        "http://cx19:12048/gnss1_gal_e5a_inject",
+        N + "/gnss1_e5a_inject",
+        "http://localhost:12050/gps_search",
+    ):
+        check(
+            node_api.url(p, "get_prns") == p + "/get_prns"
+            and node_api.post_request(p, "set_prns", [2]) == (p + "/set_prns", [2]),
+            "not a hosted row, used as given: %s" % p,
+        )
+    try:
+        node_api.set_hosts([N + "/gnss0_telem"])
+        check(False, "a base that is not a half's host is refused")
+    except ValueError as e:
+        check("gnss0_telem" in str(e), "a base that is not a half's host is refused")
+    node_api.set_hosts([])
+    mine = [N + "/gnss1_inject"]
+    check(
+        node_api.url(INJ, "get_prns", hosts=mine)
+        == N + "/gnss1_inject/get_prns?chain=gal_e5a"
+        and node_api.url(INJ, "get_prns") == INJ + "/get_prns"
+        and node_api.post_request(INJ, "set_trim", [1], hosts=mine)
+        == (N + "/gnss1_inject/set_trim", {"chain": "gal_e5a", "body": [1]}),
+        "a caller's own hosts, without set_hosts",
+    )
+    node_api.set_hosts([N + "/gnss1_inject", N + "/gnss0_records"])
+    for u, p in (
+        (node_api.url(ASM, "get_spectrum", "window=3"), None),
+        node_api.post_request(INJ, "set_seeds", [{"prn": 3}]),
+    ):
+        k = node_api.canonical(u, p)
+        check(k[0].startswith("node:"), "a request in either form has a row's name")
+    node_api.set_hosts([])
+    check(
+        node_api.canonical(*node_api.post_request(INJ, "set_seeds", [1]))
+        == node_api.canonical(
+            *node_api.post_request(INJ, "set_seeds", [1], hosts=mine)
+        ),
+        "the two forms of one POST have one canonical name and body",
+    )
 
 
 def test_canonical():
@@ -85,13 +155,14 @@ def test_canonical():
 
 def main():
     test_row()
+    test_url_and_post_request()
     test_canonical()
     print("-" * 70)
     if _fails:
         for f in _fails:
             print("FAIL: %s" % f)
         return 1
-    print("GATE GOOD: node_api rows and canonical names")
+    print("GATE GOOD: node_api rows, forms and canonical names")
     return 0
 
 

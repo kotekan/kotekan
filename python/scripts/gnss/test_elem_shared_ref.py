@@ -311,6 +311,32 @@ class TestPostZeros(unittest.TestCase):
         self.assertEqual(esr.config_zeros("cx51", "gnss0_n2assemble"), {1, 3})
         self.assertEqual(esr.config_zeros("cx51", "gnss1_e5a_n2assemble"), set())
 
+    def test_a_record_host_is_asked_by_chain(self):
+        """A row of gnss<g>_records named by its chain is asked at its host, by chain; the body
+        it posts is the row's own."""
+        with open(esr.GEN % "cx51", "w") as fh:
+            yaml.safe_dump(
+                {
+                    "gnss0_records": {
+                        "kotekan_stage": "GnssGpuRecordAssemble",
+                        "elem_positions_epoch": "E",
+                        "chains": {"gnss0_gps_l5": {"elem_sum_shared_ref": [0.0] * 8}},
+                    }
+                },
+                fh,
+            )
+        self.assertEqual(
+            esr.request("cx51", "gnss0_gps_l5_n2assemble", "get_elem_cal")[0],
+            "http://cx51:12048/gnss0_records/get_elem_cal?chain=gps_l5",
+        )
+        ok, _ = esr.post_note(
+            "cx51", "gnss0_gps_l5_n2assemble", self.REF, "live", "test"
+        )
+        url, body = self.node.posts[0]
+        self.assertEqual(url, "http://cx51:12048/gnss0_records/set_elem_sum_shared_ref")
+        self.assertEqual(body["chain"], "gps_l5")
+        self.assertEqual(body["body"]["ref"], [[0.0, 0.0]] * 4)
+
     def test_post_applies_the_configs_zeros(self):
         with contextlib.redirect_stdout(io.StringIO()):
             esr.post(argparse.Namespace(file=self.snap, mode="live"))

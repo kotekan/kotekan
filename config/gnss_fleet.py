@@ -20,7 +20,9 @@ Derived from the list and nothing else:
     node GPU that holds a covering channel of the chain's signal: the same covering rule the
     generator builds the chain with (chord_band_plan.covering_channels), so a GPU without the
     chain is never listed (L2C, L2OC) and gen_fleet.py --check compares the two;
-  * the site scripts' host lists (`gnss_fleet.py hosts`, or hosts() from Python).
+  * the site scripts' host lists (`gnss_fleet.py hosts`, or hosts() from Python);
+  * with the manifest's host flags, the GPU halves' hosts that serve their rows by chain
+    (host_bases), the chains yaml's `node-hosts: fleet`.
 
     python3 config/gnss_fleet.py hosts            # the fleet's hosts, space-separated
     python3 config/gnss_fleet.py hosts --stock    # the stock reference hosts
@@ -70,6 +72,18 @@ URL_KEYS = {
     "rf-stats-endpoints": "srch_tap",
 }
 SINGLE_KEYS = ("rest-url", "combiner")
+#: The chains-yaml key that may be `fleet` in `common:`, expanded to the bases of every GPU half's
+#: hosts that serve their rows' verbs by chain (Fleet.host_bases), for the broker's --node-hosts.
+HOSTS_KEY = "node-hosts"
+#: The generator flags that host a per-chain stage's rows in one stage per GPU half, the stage,
+#: and the host's name, gnss<g>_<host> (gen_chord_gnss_config.py inject_host_form,
+#: record_host_form, combine_host_form). A host serves its rows' verbs by chain at
+#: /gnss<g>_<host>/<verb>.
+HOST_FLAGS = {
+    "inject-host": ("inject", "inject"),
+    "record-host": ("n2assemble", "records"),
+    "combine-host": ("n2combine", "combine"),
+}
 
 
 class FleetError(ValueError):
@@ -174,6 +188,31 @@ def assembler_rows(cfg):
     (gen_chord_gnss_config.py --record-host) named `<row key>_n2assemble`, its REST prefix, lane
     owner and cube sender."""
     return host_rows(cfg, "GnssGpuRecordAssemble", "_n2assemble")
+
+
+def config_host_bases(cfg, origin):
+    """<origin>/<host> of the hosts in a parsed node config that serve their rows' verbs by
+    chain: gnss<g>_records and gnss<g>_combine, and the gnss<g>_inject of each GPU half whose
+    cudaGnssInject hosts the half's injectors (--inject-host), as the manifest's host flags
+    give them (Fleet.host_bases)."""
+    out = set()
+    for k, v in (cfg or {}).items():
+        if not isinstance(v, dict):
+            continue
+        if "chains" in v and v.get("kotekan_stage") in (
+            "GnssGpuRecordAssemble",
+            "GnssCoherentCombiner",
+        ):
+            out.add("%s/%s" % (origin, k))
+        for c in v.get("commands") or []:
+            if (
+                isinstance(c, dict)
+                and c.get("name") == "cudaGnssInject"
+                and "chains" in c
+            ):
+                for r in c["chains"]:
+                    out.add("%s/%s_inject" % (origin, r.split("_", 1)[0]))
+    return sorted(out)
 
 
 def combiner_rows(cfg):
@@ -285,6 +324,42 @@ class Fleet:
     def offsets(self, host):
         return list(self.site["nodes"][host]["gpu_offsets_mod16"])
 
+    def hosted(self, host):
+        """The stages whose rows one stage per GPU half hosts on this node, as the generator
+        resolves the manifest: a host flag set true in `common:` or the node's own entry (a
+        store_true flag, so neither can unset the other)."""
+        common = self.man.get("common") or {}
+        node = self.gen_flags(host)
+        return sorted(
+            stage
+            for flag, (stage, _) in HOST_FLAGS.items()
+            if common.get(flag) is True or node.get(flag) is True
+        )
+
+    def host_bases(self):
+        """http://<node>:<port>/gnss<g>_<host> of every host the fleet's nodes run: per node, each
+        GPU half that builds a chain and each stage hosted() names."""
+        names = {stage: name for stage, name in HOST_FLAGS.values()}
+        out = []
+        for host in self.hosts:
+            stages = self.hosted(host)
+            if not stages:
+                continue
+            gpus = sorted(
+                {
+                    g
+                    for c in self.tracker_signals()
+                    for h, g in self.instances(c)
+                    if h == host
+                }
+            )
+            out += [
+                "%s/gnss%d_%s" % (self.rest_url(host), g, names[s])
+                for g in gpus
+                for s in stages
+            ]
+        return out
+
     # ---- chains ----------------------------------------------------------------------------
     def tracker_signals(self):
         """{broker chain: (descriptor, tag)} for every chain the nodes build: the rows of the
@@ -392,7 +467,11 @@ def expand_chains(cfg, fleet=None):
     def wants(d):
         return any(d.get(k) == FLEET for k in keys)
 
-    if not (wants(common) or any(wants(c) for c in chains.values())):
+    if not (
+        wants(common)
+        or common.get(HOSTS_KEY) == FLEET
+        or any(wants(c) for c in chains.values())
+    ):
         return cfg
     if fleet is None:
         fleet = Fleet()
@@ -400,6 +479,9 @@ def expand_chains(cfg, fleet=None):
         fleet = fleet()
     if common.get("rest-url") == FLEET:
         common["rest-url"] = fleet.rest_url(fleet.hosts[0])
+    if common.get(HOSTS_KEY) == FLEET:
+        # None, so the broker gets no --node-hosts, when no node hosts a stage.
+        common[HOSTS_KEY] = ",".join(fleet.host_bases()) or None
     for name, spec in chains.items():
         merged = dict(common)
         merged.update(spec)

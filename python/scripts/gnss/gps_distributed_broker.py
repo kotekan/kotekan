@@ -75,6 +75,7 @@ from gnss_broker.transport import (  # noqa: E402
     record_cycle,
     NodeDown,
 )
+from gnss_broker import node_api  # noqa: E402
 from gnss_broker import nodehealth  # noqa: E402
 from gnss_broker import sky as _sky  # noqa: E402
 from gnss_broker import telem as _telem  # noqa: E402
@@ -316,6 +317,15 @@ def main(argv=None, rx=None, publisher=None):
         # only the feed can bring that below infinity
 
     base = args.rest_url.rstrip("/")
+    # The GPU halves whose hosts serve their rows by chain: the fleet's, so every chain of one
+    # process names the same ones.
+    _hosts = frozenset(parse_endpoints(args.node_hosts, base))
+    if node_api.hosts() and node_api.hosts() != _hosts:
+        ap.error("--node-hosts differs from another chain's in this process")
+    try:
+        node_api.set_hosts(_hosts)
+    except ValueError as e:
+        ap.error("--node-hosts: %s" % e)
     detectors = parse_endpoints(args.detectors, base)
     trackers = parse_endpoints(args.trackers, base)
     combiner = resolve_prefix(args.combiner, base)
@@ -2431,7 +2441,7 @@ def main(argv=None, rx=None, publisher=None):
         ok, down = 0, 0
         for t_ep in trackers:
             try:
-                _post("%s/set_seeds" % t_ep, _ctx.payload)
+                _post(*node_api.post_request(t_ep, "set_seeds", _ctx.payload))
                 ok += 1
             except NodeDown:
                 down += 1  # logged once, by the tracker
