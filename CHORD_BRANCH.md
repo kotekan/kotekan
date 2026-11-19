@@ -18,6 +18,7 @@ Base: `develop` at `b9a2b1c3d` (#1823).
 | #1851 | `jbm/async-start` | `944510918` | 2026-11-05 | 2026-11-06 | kotekan: start the pipeline on its own thread, report it in /status |
 | #1903 | `jbm/incoherent-search` | `bb5275223` | 2026-11-17 | 2026-11-18 | Incoherent-beam pulse search: IncoherentBeamPower and IncoherentBeamSearch |
 | (to open) | `jbm/crs-wide-band` | `b584c2b8a` | 2026-11-11 | 2026-11-11 | CRS capture for a wider science band: frequencies per stream from the band, n2k kernel sizes, worker ring fill gauge |
+| (to open) | `jbm/rfi-frame-mask-exempt` | `668493edf` | 2026-11-19 | 2026-11-19 | RfiFrameMask: leave first-stage exempt channels unmasked |
 
 ## Chord-only commits
 

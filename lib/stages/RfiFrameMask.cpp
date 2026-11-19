@@ -16,7 +16,7 @@
 #include "fmt.hpp"          // for compile_string_to_view, format, format_string
 #include "jsonMetadata.hpp" // for MAX_NUM_RFI_THRESHOLDS
 
-#include <algorithm>        // for copy, max, fill
+#include <algorithm>        // for copy, max, fill, find
 #include <array>            // for array
 #include <exception>        // for exception
 #include <functional>       // for bind, function, _1
@@ -69,6 +69,11 @@ using N2::frameID;
  *                                          in n2k.
  * @conf    rfi_downsampling_factor     int64_t Number of time samples integrated into each SK
  entry.
+ * @conf    rfi_first_stage_excision_exempt_freq_ids  vector of int  Default empty. Coarse
+ *                                          frequency IDs that are never masked here. This is
+ *                                          the list cudaRFISKtilde exempts from first-stage
+ *                                          excision. They are matched against the coarse
+ *                                          frequencies in the metadata of the first frame.
  *
  * @par Updatable Config
  * @conf    enabled_updatable_config    Set whether RFI excision is enabled. If false, the generated
@@ -141,6 +146,7 @@ private:
     const int64_t _num_rfi_per_int;
     const std::string _enabled_config_path;
     const std::string _thresholds_config_path;
+    const std::vector<int> _exempt_freq_ids;
 
     std::mutex _update_mutex;
     int64_t _enabled_valid_at_seq;
@@ -170,7 +176,9 @@ RfiFrameMask::RfiFrameMask(Config& config, const std::string& unique_name,
     _num_integrations(div_noremainder(_samples_per_data_set, _sub_integration_ntime)),
     _num_rfi_per_int(div_noremainder(_sub_integration_ntime, _rfi_downsampling_factor)),
     _enabled_config_path(config.get<std::string>(unique_name, "enabled_updatable_config")),
-    _thresholds_config_path(config.get<std::string>(unique_name, "thresholds_updatable_config")) {
+    _thresholds_config_path(config.get<std::string>(unique_name, "thresholds_updatable_config")),
+    _exempt_freq_ids(config.get_default<std::vector<int>>(
+        unique_name, "rfi_first_stage_excision_exempt_freq_ids", {})) {
 
     in_buf = get_buffer("in_buf");
     in_buf->register_consumer(unique_name);
@@ -265,6 +273,10 @@ void RfiFrameMask::main_thread() {
 
     std::vector<int64_t> num_sk_exceeds(MAX_NUM_RFI_THRESHOLDS);
 
+    // Local channels that are never masked, set from the first frame's coarse frequencies.
+    std::vector<bool> exempt(_num_local_freq, false);
+    bool exempt_resolved = _exempt_freq_ids.empty();
+
     while (!stop_thread) {
 
         // Fetch a new frame and get its sequence id
@@ -294,6 +306,27 @@ void RfiFrameMask::main_thread() {
                         _threshold.size(), _fraction.size(), MAX_NUM_RFI_THRESHOLDS);
         }
 
+        if (!exempt_resolved) {
+            exempt_resolved = true;
+            if (!in_meta->has_coarse_freq())
+                FATAL_ERROR("rfi_first_stage_excision_exempt_freq_ids needs the coarse "
+                            "frequencies in {:s}'s metadata, and it has none",
+                            in_buf->buffer_name);
+            const std::vector<int> coarse_freq = in_meta->get_coarse_freq();
+            if (coarse_freq.size() != size_t(_num_local_freq))
+                FATAL_ERROR("{:s} has {:d} coarse frequencies for {:d} channels",
+                            in_buf->buffer_name, coarse_freq.size(), _num_local_freq);
+            int64_t num_exempt = 0;
+            for (int64_t f = 0; f < _num_local_freq; f++) {
+                exempt[f] =
+                    std::find(_exempt_freq_ids.begin(), _exempt_freq_ids.end(), coarse_freq[f])
+                    != _exempt_freq_ids.end();
+                num_exempt += exempt[f];
+            }
+            INFO("Second-stage RFI excision exempts {:d} of {:d} local channels", num_exempt,
+                 _num_local_freq);
+        }
+
         DEBUG("Computing RFI frame mask");
         for (int64_t t_int = 0; t_int < _num_integrations; t_int++) {
 
@@ -305,7 +338,7 @@ void RfiFrameMask::main_thread() {
                 frame_mask[idx] = 1;
 
                 // Only bother if we're enabled!
-                if (_enabled) {
+                if (_enabled && !exempt[f]) {
                     // Reset the counter array to 0
                     std::fill(num_sk_exceeds.begin(), num_sk_exceeds.end(), 0);
 

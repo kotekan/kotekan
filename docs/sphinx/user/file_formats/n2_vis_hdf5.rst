@@ -637,7 +637,8 @@ the datasets with a frequency axis, which hold one value per stream.
      - bool (:math:`N_f`, :math:`N_t`)
      - Whether second-stage (frame-level) RFI excision was active for this
        frequency and bin. Each frequency comes from one stream, and the
-       streams switch independently.
+       streams switch independently. Channels listed in RfiFrameMask's
+       ``rfi_first_stage_excision_exempt_freq_ids`` are not excised.
    * - ``rfi_frame_excision_num``
      - int32 (:math:`N_f`, :math:`N_t`)
      - Number of active excision thresholds (<= :math:`N_k`); only the
