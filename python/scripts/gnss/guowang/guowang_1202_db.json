@@ -2093,14 +2093,15 @@
    "catnum": 66917,
    "g2_phase": null,
    "last_observed_utc": null,
-   "last_checked_utc": "2026-11-10T11:33:42Z",
-   "last_checked_sep_deg": 2.81,
+   "last_checked_utc": "2026-11-19T04:38:22Z",
+   "last_checked_sep_deg": 3.18,
    "passes_found": 0,
-   "passes_silent": 3,
+   "passes_silent": 4,
    "passes": [
     ["2026-11-05T08:38:16Z", 2.31, false],
     ["2026-11-09T12:07:06Z", 3.7, false],
-    ["2026-11-10T11:33:42Z", 2.81, false]
+    ["2026-11-10T11:33:42Z", 2.81, false],
+    ["2026-11-19T04:38:22Z", 3.18, false]
    ]
   },
   "DIGUI-108": {
