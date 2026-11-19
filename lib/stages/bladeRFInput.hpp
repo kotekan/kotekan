@@ -81,6 +81,9 @@
  *                         @c num_buffers.
  * @conf   timeout_ms      Int (default 1000). How long a read may wait for samples.
  * @conf   max_gap_fill_ms Float (default 1000). Longest dropout filled with zeros.
+ * @conf   startup_discard_ms Float (default 100). Samples discarded after enabling RX. The
+ *                         first reads can hold stale samples from the previous session,
+ *                         followed by a jump in the timestamps.
  * @conf   adcstat_timeout_ms Int (default 250). How long a GET @c /adcstat waits for the
  *                         next frame before failing.
  *
@@ -162,6 +165,8 @@ private:
     int _timeout_ms;
     /// Longest gap filled with zeros, in samples.
     uint64_t _max_gap_fill;
+    /// Samples discarded at startup.
+    uint64_t _startup_discard;
     /// Longest wait in @c adcstat_callback for the producer, in ms.
     int _adcstat_timeout_ms;
 

@@ -80,6 +80,8 @@ bladeRFInput::bladeRFInput(Config& config, const std::string& unique_name,
     _timeout_ms = config.get_default<int>(unique_name, "timeout_ms", 1000);
     _max_gap_fill =
         config.get_default<double>(unique_name, "max_gap_fill_ms", 1000) * 1e-3 * _sample_rate;
+    _startup_discard =
+        config.get_default<double>(unique_name, "startup_discard_ms", 100) * 1e-3 * _sample_rate;
     _adcstat_timeout_ms = config.get_default<int>(unique_name, "adcstat_timeout_ms", 250);
 
     _gain_mode_name = config.get_default<std::string>(unique_name, "gain_mode", "manual");
@@ -234,6 +236,16 @@ bool bladeRFInput::configure_device() {
     if (status != 0) {
         FATAL_ERROR("bladerf_set_sample_rate({:d}) failed: {:s}", _sample_rate,
                     bladerf_strerror(status));
+        return false;
+    }
+    // With OVERSAMPLE, libbladeRF can report success after the rate change failed, so read
+    // the rate back.
+    bladerf_sample_rate readback_rate = 0;
+    status = bladerf_get_sample_rate(dev, RX_CH, &readback_rate);
+    if (status != 0 || readback_rate != actual_rate || actual_rate == 0) {
+        FATAL_ERROR("The sample rate did not take: bladerf_set_sample_rate reported {:d}, and it "
+                    "reads back as {:d}.",
+                    actual_rate, readback_rate);
         return false;
     }
     _actual_sample_rate = actual_rate;
@@ -460,6 +472,9 @@ void bladeRFInput::stream() {
     std::vector<int8_t> chunk(BYTES_PER_SAMPLE * _buffer_size);
     bool have_timestamp = false;
     uint64_t next_timestamp = 0;
+    // The first reads after enabling RX can hold stale samples from the previous session,
+    // followed by a jump in the timestamps, so they are discarded.
+    uint64_t to_discard = _startup_discard;
 
     while (!stop_thread) {
         struct bladerf_metadata meta;
@@ -473,6 +488,10 @@ void bladeRFInput::stream() {
             return;
         }
 
+        if (to_discard > 0) {
+            to_discard -= std::min<uint64_t>(to_discard, meta.actual_count);
+            continue;
+        }
         if (!have_timestamp) {
             have_timestamp = true;
             next_timestamp = meta.timestamp;
