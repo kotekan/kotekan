@@ -172,6 +172,9 @@ void BeamformingPhaseUpdate::main_thread() {
         if (out_frame == nullptr)
             break;
 
+        // FIXME: production chime appends the "scaling" values after the beam
+        // phases. No idea what they do, but the baseband beam former won't like
+        // this.
         float* scaling_frame = (float*)out_frame + _num_elements * _num_beams * 2;
 
         // If we have a gains buffer we check for new gains
