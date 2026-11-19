@@ -67,3 +67,15 @@ Sources: chord-fengine-conjugation.md, chord-record-geometry.md, chord-boresight
 **OPEN: the per-record carrier phase jumps at every frame boundary (2026-08-15).** The lag-m autocorrelation `r_m = <A_{k+m} conj(A_k)>` is rate-blind and must be non-increasing for a stationary process; gps_l5 at m = 1, 2, 4, 8, 16, 32, 64 (normalised at m = 4, 4 records/frame) gave 0.682, 0.423, 1.000, 0.963, 0.835, 0.575, 0.322: |r_1| < |r_4| is a monotonicity violation. Intra-frame steps ~0.42 rad (PRN 26) vs +1.856 at the boundary; the intra-frame ramp is the bogus 2-13 Hz "residual rate" of cross-frame searches. `ang0 = 2π frac(f·n0/fs)` at absolute n0 (2.7e-7 Hz rotates it one radian, re-rolled per record) explains the fake rates, not the period-4 dip. Fix shape (not built): accumulate `phi += omega × dn`, or anchor ang0 per track; gate on |r_1|/|r_4| → 1.0.
 
 Sources: chord-cube-bins-are-not-a-unit.md, chord-one-dof-record-gate.md, gnss-phase-from-a-reference-not-an-argument.md, chord-coherent-span-limit.md, chord-no-combination-rule.md, chord-deep-rate-alias.md, chord-frame-boundary-phase-jump.md
+
+## 6. Stock N² visibilities (N2Accumulate)
+
+**From 2026-11-19 the N² visibilities are fringestopped within each bin, and bins are 21.04 s: check `/fringestop_enabled` in every file before combining data across that date.** Jim's 116fc8984 (release 3462b60f4) set `n2_accumulate.num_bins_per_rotation` 8640 → 4096 (9.97 s → 21.04 s; live from the 03:14-03:18Z cycle) and `fringestop_enabled` on by default. The GNSS nodes run in choco development mode, where choco's stored updatable value wins after every start, so fringestopping actually began when Jim flipped it in choco, most likely 03:21-04:21Z.
+
+The phase centre is the dishes' fixed pointing (boresight on the meridian, el 62.70), fixed to the ground. For each bin, `N2Accumulate::accum_corr_and_var` takes the sky point at boresight at the bin-centre time and, for every sub-integration, rotates each ArrayDish feed by −k·rᵢ·(n(t) − n₀) (`Telescope::fill_fringestop_phases_1d`), so that point's fringe does not rotate within the bin; the next bin re-references to a new point. Each bin is then close to an instantaneous snapshot at its centre: still the drift-scan phase frame, no common phase centre across bins, exact at boresight and near-exact across the primary beam. Without it a 21 s bin loses ~17% of amplitude on the 44 m east-west baselines at 1600 MHz.
+
+What this means for analyses:
+- Phase convention and bin length differ before and after the switch; do not stack or difference across it unchecked.
+- The within-bin correction is sidereal, so it is wrong (slightly, at 21 s) for satellites and other non-sidereal sources.
+- The per-(frequency, time) `/fringestop_enabled` dataset (hdf5N2Write, from `N2Metadata.fringestop_enabled`) is the node-side truth. A file's `config_json` is recv1's config and does not record it.
+- The GNSS pipeline (trackers, element sums, beams, cube) does not pass through N2Accumulate and is unaffected.
