@@ -3266,14 +3266,15 @@
    "sep_deg": 1.0,
    "ref_input": 116,
    "drift_ns_s": 1.49,
-   "last_observed_utc": "2026-11-10T05:50:23Z",
-   "last_checked_utc": "2026-11-10T05:50:23Z",
-   "last_checked_sep_deg": 1.87,
-   "passes_found": 2,
+   "last_observed_utc": "2026-11-19T22:21:42Z",
+   "last_checked_utc": "2026-11-19T22:21:42Z",
+   "last_checked_sep_deg": 1.4,
+   "passes_found": 3,
    "passes_silent": 0,
    "passes": [
     ["2026-11-03T07:50:19Z", 0.92, true],
-    ["2026-11-10T05:50:23Z", 1.87, true]
+    ["2026-11-10T05:50:23Z", 1.87, true],
+    ["2026-11-19T22:21:42Z", 1.4, true]
    ]
   },
   "DIGUI-157": {
