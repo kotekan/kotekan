@@ -106,25 +106,24 @@ RETIRED_FLAGS = {
 
 
 # The boresight of a recording whose broker took it from --boresight's default, az 180 el 81.41,
-# before it read the pointing from the nodes' /config. Such a recording holds no /config read, and
-# its replay runs under that boresight; one that read it replays the read.
+# before it read the pointing from the nodes' /config, its first GET since. Such a recording
+# starts with another GET, and its replay runs under that boresight; one that read it replays
+# the read.
 NOMINAL_BORESIGHT = "180,81.41"
 
 
 def _boresight_pin(path, argv):
-    """--boresight NOMINAL_BORESIGHT for a recording that neither set --boresight nor read the
-    pointing from a node before its first cycle, else nothing."""
+    """--boresight NOMINAL_BORESIGHT for a recording that set no --boresight and whose first GET
+    is not a node's /config, else nothing."""
     if _last_value(argv, "--boresight") is not None:
         return []
     with _open(path) as f:
         for line in f:
-            if not line.strip():
-                continue
-            r = json.loads(line)
-            if r.get("k") == "now":
+            r = json.loads(line) if line.strip() else {}
+            if r.get("k") == "get":
+                if urllib.parse.urlsplit(r["u"]).path == "/config":
+                    return []
                 break
-            if r.get("k") == "get" and urllib.parse.urlsplit(r["u"]).path == "/config":
-                return []
     return ["--boresight", NOMINAL_BORESIGHT]
 
 

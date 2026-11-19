@@ -148,9 +148,9 @@ def test_replay_pins_the_igs_registry_snapshot():
 
 
 def test_replay_pins_the_boresight_a_recording_ran_under():
-    """A recording that neither set --boresight nor read the pointing from a node ran under the
-    default az 180 el 81.41 and replays under it; one that read /config, or set the flag,
-    replays as recorded, and a golden's flags still come last."""
+    """A recording that neither set --boresight nor read the pointing from a node as its first
+    GET ran under the default az 180 el 81.41 and replays under it; one that did, or set the
+    flag, replays as recorded, and a golden's flags still come last."""
     with tempfile.TemporaryDirectory() as tmp:
         path = os.path.join(tmp, "t.jsonl")
 
@@ -163,16 +163,19 @@ def test_replay_pins_the_boresight_a_recording_ran_under():
 
         base = ["--signal", "gps_l5"]
         now = {"k": "now", "v": 1.0}
-        get = {"k": "get", "u": "http://n:12048/config", "r": {}}
-        late = {"k": "get", "u": "http://n:12048/config", "r": {}}
+        cfg = {"k": "get", "u": "http://n:12048/config", "r": {}}
+        det = {"k": "get", "u": "http://n:12050/gps_search/get_detections", "r": []}
         check(
-            cmd_of(base, [now]) == [be.NOMINAL_BORESIGHT],
+            cmd_of(base, [now, det]) == [be.NOMINAL_BORESIGHT],
             "no --boresight and no /config read: the nominal boresight",
         )
-        check(cmd_of(base, [get, now]) == [], "a /config read: replayed as recorded")
         check(
-            cmd_of(base, [now, late]) == [be.NOMINAL_BORESIGHT],
-            "a /config read after the first cycle is not the start-up read",
+            cmd_of(base, [now, cfg, now, det]) == [],
+            "a /config read first: replayed as recorded",
+        )
+        check(
+            cmd_of(base, [now, det, cfg]) == [be.NOMINAL_BORESIGHT],
+            "a /config read after another GET is not the start-up read",
         )
         check(
             cmd_of(base + ["--boresight", "none"], [now]) == ["none"],
