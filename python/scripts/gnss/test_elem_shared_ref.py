@@ -314,7 +314,7 @@ class TestPostZeros(unittest.TestCase):
     def test_a_record_host_is_asked_by_chain(self):
         """A row of gnss<g>_records named by its chain is asked at its host, by chain; the body
         it posts is the row's own."""
-        with open(esr.GEN % "cx51", "w") as fh:
+        with open(esr.GEN % "node-a", "w") as fh:
             yaml.safe_dump(
                 {
                     "gnss0_records": {
@@ -326,14 +326,16 @@ class TestPostZeros(unittest.TestCase):
                 fh,
             )
         self.assertEqual(
-            esr.request("cx51", "gnss0_gps_l5_n2assemble", "get_elem_cal")[0],
-            "http://cx51:12048/gnss0_records/get_elem_cal?chain=gps_l5",
+            esr.request("node-a", "gnss0_gps_l5_n2assemble", "get_elem_cal")[0],
+            "http://node-a:12048/gnss0_records/get_elem_cal?chain=gps_l5",
         )
         ok, _ = esr.post_note(
-            "cx51", "gnss0_gps_l5_n2assemble", self.REF, "live", "test"
+            "node-a", "gnss0_gps_l5_n2assemble", self.REF, "live", "test"
         )
         url, body = self.node.posts[0]
-        self.assertEqual(url, "http://cx51:12048/gnss0_records/set_elem_sum_shared_ref")
+        self.assertEqual(
+            url, "http://node-a:12048/gnss0_records/set_elem_sum_shared_ref"
+        )
         self.assertEqual(body["chain"], "gps_l5")
         self.assertEqual(body["body"]["ref"], [[0.0, 0.0]] * 4)
 

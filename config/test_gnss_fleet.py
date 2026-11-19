@@ -267,7 +267,7 @@ def test_repo_chains_follow_the_fleet():
     )
     with tempfile.TemporaryDirectory() as d:
         cfg = chains_cfg()
-        cfg["common"]["node-hosts"] = "http://cx19:12048/gnss0_records"
+        cfg["common"]["node-hosts"] = "http://node-a:12048/gnss0_records"
         path = os.path.join(d, "chains.yaml")
         with open(path, "w") as fh:
             yaml.safe_dump(cfg, fh)
@@ -283,10 +283,10 @@ def test_host_bases():
     never unset by the other), give each node's hosted stages and its halves' host bases; no
     flag, no host, and the chains yaml's node-hosts expands to null."""
     cfg = dict(chains_cfg(), common={"rest-url": "fleet", "node-hosts": "fleet"})
-    plain = gf.Fleet(manifest({"cx19": {}, "cx44": {}}), site())
+    a, b, c = SIX[0], SIX[4], SIX[5]  # nodes of the site table
+    plain = gf.Fleet(manifest({a: {}, b: {}}), site())
     check(
-        plain.hosted("cx19") == [] and plain.host_bases() == [],
-        "no host flag: no host",
+        plain.hosted(a) == [] and plain.host_bases() == [], "no host flag: no host",
     )
     check(
         gf.expand_chains(cfg, plain)["common"]["node-hosts"] is None,
@@ -294,28 +294,24 @@ def test_host_bases():
     )
     m = manifest(
         {
-            "cx19": {"inject-host": True, "combine-host": True},
-            "cx44": {"record-host": False},
-            "cx51": {},
+            a: {"inject-host": True, "combine-host": True},
+            b: {"record-host": False},
+            c: {},
         }
     )
     m["common"] = dict(m["common"], **{"record-host": True})
     fl = gf.Fleet(m, site())
     check(
-        fl.hosted("cx19") == ["inject", "n2assemble", "n2combine"]
-        and fl.hosted("cx44") == ["n2assemble"]
-        and fl.hosted("cx51") == ["n2assemble"],
+        fl.hosted(a) == ["inject", "n2assemble", "n2combine"]
+        and fl.hosted(b) == ["n2assemble"]
+        and fl.hosted(c) == ["n2assemble"],
         "common and node flags together; a node's false does not unset common's true",
     )
     want = {
-        "http://cx19:12048/gnss%d_%s" % (g, h)
+        "http://%s:12048/gnss%d_%s" % (a, g, h)
         for g in (0, 1)
         for h in ("inject", "records", "combine")
-    } | {
-        "http://%s:12048/gnss%d_records" % (n, g)
-        for n in ("cx44", "cx51")
-        for g in (0, 1)
-    }
+    } | {"http://%s:12048/gnss%d_records" % (n, g) for n in (b, c) for g in (0, 1)}
     got = fl.host_bases()
     check(
         set(got) == want and len(got) == len(want),
@@ -352,13 +348,13 @@ def test_config_host_bases():
         "gnss1_n2dual": {"commands": [{"name": "cudaGnssInject"}]},
         "gnss0_telem": {"kotekan_stage": "GnssTelemPack", "chains": {}},
     }
-    got = gf.config_host_bases(cfg, "http://cx19:12048")
+    got = gf.config_host_bases(cfg, "http://node-a:12048")
     check(
         got
         == [
-            "http://cx19:12048/gnss0_inject",
-            "http://cx19:12048/gnss0_records",
-            "http://cx19:12048/gnss1_combine",
+            "http://node-a:12048/gnss0_inject",
+            "http://node-a:12048/gnss0_records",
+            "http://node-a:12048/gnss1_combine",
         ],
         "the hosted inject, records and combine, no other (%s)" % got,
     )
@@ -518,7 +514,7 @@ def test_stage_chain():
         ("gnss0_gal_e5a_n2combine", "n2assemble", None),
         ("gnss0_gps_l9_n2assemble", "n2assemble", None),
         ("gnss0_x_n2assemble", "n2assemble", None),
-        ("cx19/gnss1_gal_e5b_n2combine", "n2combine", "gal_e5b"),
+        ("node-a/gnss1_gal_e5b_n2combine", "n2combine", "gal_e5b"),
         ("gnss0_n2combine", "n2combine", "gps_l5"),
         ("gnss1_n2ctl", "n2ctl", "gps_l5"),
         ("/gnss0_telem_pack", "telem_pack", "gps_l5"),
@@ -531,7 +527,7 @@ def test_stage_chain():
         ("gnss0_combine", "combine", None),
         ("gnss1_telem", "telem", None),
         ("gnss0_telem_send", "telem_send", None),
-        ("cx19//gnss1_cube_send", "cube_send", None),
+        ("node-a//gnss1_cube_send", "cube_send", None),
         ("gnss0_gps_l5_telem_send", "telem_send", "gps_l5"),
     ]
     for name, stage, want in cases:

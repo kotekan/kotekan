@@ -142,12 +142,12 @@ def main():
     #     chain is that half's target, {url, chain}; any other tracker stays its own /set_trim,
     #     as every tracker does without the switch.
     trk = (
-        "http://cx52:12048/gnss1_gps_l5_inject",
-        "http://cx52:12048/gnss0_gps_l5_inject",
-        "http://cx19:12048/gnss0_inject",
+        "http://node-a:12048/gnss1_gps_l5_inject",
+        "http://node-a:12048/gnss0_gps_l5_inject",
+        "http://node-b:12048/gnss0_inject",
     )
     gather = "http://127.0.0.1:12051/fleet_trim"
-    node_api.set_hosts(["http://cx52:12048/gnss1_inject"])
+    node_api.set_hosts(["http://node-a:12048/gnss1_inject"])
     trimarm._gather[gather] = (True, time.monotonic())
     try:
         half, _ = run(trackers=trk, half=True)
@@ -158,9 +158,9 @@ def main():
     check(
         half.get("targets")
         == [
-            {"url": "http://cx52:12048/gnss1_inject/set_trim", "chain": "gps_l5"},
-            "http://cx52:12048/gnss0_gps_l5_inject/set_trim",
-            "http://cx19:12048/gnss0_inject/set_trim",
+            {"url": "http://node-a:12048/gnss1_inject/set_trim", "chain": "gps_l5"},
+            "http://node-a:12048/gnss0_gps_l5_inject/set_trim",
+            "http://node-b:12048/gnss0_inject/set_trim",
         ],
         "half targets: the hosted half by chain, the rest at their own paths (%r)"
         % half.get("targets"),
@@ -233,7 +233,7 @@ def main():
         return f
 
     real_batches = trimarm.gather_batches
-    node_api.set_hosts(["http://cx52:12048/gnss1_inject"])
+    node_api.set_hosts(["http://node-a:12048/gnss1_inject"])
     try:
         trimarm.gather_batches = batches((None, "refused"))
         first, _ = run(trackers=trk[:1], half=True)
@@ -251,8 +251,8 @@ def main():
         trimarm.gather_batches = real_batches
         node_api.set_hosts([])
         trimarm._gather.clear()
-    row = ["http://cx52:12048/gnss1_gps_l5_inject/set_trim"]
-    half_t = [{"url": "http://cx52:12048/gnss1_inject/set_trim", "chain": "gps_l5"}]
+    row = ["http://node-a:12048/gnss1_gps_l5_inject/set_trim"]
+    half_t = [{"url": "http://node-a:12048/gnss1_inject/set_trim", "chain": "gps_l5"}]
     check(
         first.get("targets") == row and held.get("targets") == row,
         "an unreadable gather takes the tracker's own set_trim, and is not read again "

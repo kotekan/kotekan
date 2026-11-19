@@ -18,7 +18,7 @@ def check(ok, what):
         _fails.append(what)
 
 
-N = "http://cx52:12048"
+N = "http://node-a:12048"
 INJ = N + "/gnss1_gal_e5a_inject"
 ASM = N + "/gnss0_gps_l5_n2assemble"
 CMB = N + "/gnss0_bds_b2a_n2combine"
@@ -78,7 +78,7 @@ def test_url_and_post_request():
     )
     for p in (
         N + "/gnss0_gal_e5a_inject",
-        "http://cx19:12048/gnss1_gal_e5a_inject",
+        "http://node-b:12048/gnss1_gal_e5a_inject",
         N + "/gnss1_e5a_inject",
         "http://localhost:12050/gps_search",
     ):
