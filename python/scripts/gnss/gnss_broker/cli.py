@@ -1904,8 +1904,9 @@ def build_parser(description):
         'chain (--node-hosts) as that half\'s target, {"url": "<host>/set_trim", '
         '"chain": <chain>}, which the gather posts once per round for every chain that '
         'names it ({"chains": {...}}), instead of the tracker\'s own /set_trim. Off by '
-        "default. The chain refuses to start unless the gather's interface lists "
-        "rest/fleet_trim_batch (trimarm.gather_batches).",
+        "default. The chain refuses to start when the gather's interface lacks "
+        "rest/fleet_trim_batch; while the gather cannot be read, the trackers' own "
+        "/set_trim are the targets, and it is read again every 60 s (trimarm.half_targets).",
     )
     ap.add_argument(
         "--fleet-trim-bandwidth",

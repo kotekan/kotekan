@@ -24,6 +24,7 @@ after which the loop starts again from the seed.
 @author Keith Vanderlinde
 """
 
+import time
 import urllib.parse
 
 from gnss_broker import iface, node_api
@@ -62,6 +63,11 @@ LOBE_HOLDOFF_S = 120.0
 # posts one set_trim of every chain that names it per round ({"chains": {...}}), and re-posts a
 # refused round chain by chain, backing off only the refused chain (--fleet-trim-half-targets).
 GATHER_BATCH = "fleet_trim_batch"
+# How often a gather not known to batch is read again (half_targets).
+GATHER_RECHECK_S = 60.0
+# --fleet-trim-url -> (gather_batches' answer, time.monotonic() of the read). Process-wide: every
+# chain of a broker_multi process posts to the same gather.
+_gather = {}
 
 
 def trim_targets(trackers, by_half=False):
@@ -81,16 +87,55 @@ def trim_targets(trackers, by_half=False):
 
 
 def gather_batches(url, timeout=3.0):
-    """None when the gather at url (--fleet-trim-url) lists rest/GATHER_BATCH in its interface
-    document, else why not."""
+    """(True, None) when the gather at url (--fleet-trim-url) lists rest/GATHER_BATCH in its
+    interface document; (False, why) when it serves a document without it, or none; (None, why)
+    when its document could not be read."""
     u = urllib.parse.urlsplit(url)
     try:
         doc = iface.read_source("%s://%s" % (u.scheme, u.netloc), timeout=timeout).doc
+    except iface.Legacy as e:
+        return False, "it serves no interface document (%s)" % e
     except iface.SourceError as e:
-        return "its interface could not be read (%s)" % e
+        return None, "its interface could not be read (%s)" % e
     if GATHER_BATCH not in (doc["sections"].get("rest") or {}):
-        return "its interface has no rest/%s" % GATHER_BATCH
-    return None
+        return False, "its interface has no rest/%s" % GATHER_BATCH
+    return True, None
+
+
+def read_gather(url):
+    """gather_batches(url), kept for half_targets, with an ERROR while the gather cannot batch."""
+    ok, why = gather_batches(url, timeout=2.0)
+    was = _gather.get(url)
+    _gather[url] = (ok, time.monotonic())
+    if not ok:
+        _log(
+            "ERROR --fleet-trim-half-targets: the gather at %s cannot batch a GPU half's "
+            "set_trim: %s -- its targets are the trackers' own set_trim until a read, every "
+            "%.0f s, finds rest/%s" % (url, why, GATHER_RECHECK_S, GATHER_BATCH)
+        )
+    elif was is not None and was[0] is not True:
+        _log(
+            "FLEET-TRIM: the gather at %s batches a GPU half's set_trim: the halves' targets "
+            "from now on" % url
+        )
+    return ok, why
+
+
+def half_targets(args):
+    """Whether this cycle's policy names the GPU halves' targets: --fleet-trim-half-targets, and
+    a gather known to batch them (read_gather; a replay takes the switch as given). A gather
+    that is not is read again every GATHER_RECHECK_S, and meanwhile takes the trackers' own
+    set_trim, as every gather does."""
+    if not args.fleet_trim_half_targets:
+        return False
+    if getattr(args, "transcript_read", None):
+        return True
+    got = _gather.get(args.fleet_trim_url)
+    if got is None or (
+        got[0] is not True and time.monotonic() - got[1] >= GATHER_RECHECK_S
+    ):
+        got = read_gather(args.fleet_trim_url)
+    return got[0] is True
 
 
 def lobe_chips(chip_rate_hz):
@@ -235,6 +280,7 @@ def stage_fleet_trim_arming(ctx):
         # (see the docstring).
         ctx.dls.armed_last.clear()
         ctx.dls.armed_last.update(_armed)
+        _by_half = half_targets(ctx.args)
         # p_floor_abs anchors the fast loop's window gate to the probes: it is the presence
         # gate's absolute prompt-power floor (margin applied), so both gates reference the
         # same noise. It rides every policy POST rather than being latched, since probes come
@@ -252,9 +298,7 @@ def stage_fleet_trim_arming(ctx):
                     "clamp": trim_clamp(ctx.args.chip_rate_hz),
                     "spacing": ctx.args.dll_spacing,
                     # Less any tracker the interface watcher fences (enforce mode only).
-                    "targets": trim_targets(
-                        iface_unfenced(ctx.trackers), ctx.args.fleet_trim_half_targets,
-                    ),
+                    "targets": trim_targets(iface_unfenced(ctx.trackers), _by_half),
                 }
             }
         }
@@ -284,6 +328,9 @@ def stage_fleet_trim_arming(ctx):
             # hold after trim_ttl_s.
             ctx.dls.stat["fail"] += 1
             ctx.dls.stat["last_err"] = str(_e)
+            # A gather that refuses the halves' targets is asked again whether it batches.
+            if _by_half and getattr(_e, "code", None) == 400:
+                _gather[ctx.args.fleet_trim_url] = (None, time.monotonic())
         _log_rl(
             "fleet-trim",
             "FLEET-TRIM %s: %d PRN(s) armed to %s, %d posts / %d failed%s"

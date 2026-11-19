@@ -326,14 +326,16 @@ def main(argv=None, rx=None, publisher=None):
         node_api.set_hosts(_hosts)
     except ValueError as e:
         ap.error("--node-hosts: %s" % e)
-    # A gather that cannot batch a half's set_trim would refuse every policy POST.
+    # A gather whose document lacks rest/fleet_trim_batch would refuse every policy POST that
+    # names a half. One that cannot be read yet is read again; until then its targets are the
+    # trackers' own (trimarm.half_targets).
     if (
         args.fleet_trim_half_targets
         and args.fleet_trim_url
         and not args.transcript_read
     ):
-        _why = trimarm.gather_batches(args.fleet_trim_url)
-        if _why:
+        _ok, _why = trimarm.read_gather(args.fleet_trim_url)
+        if _ok is False:
             ap.error(
                 "--fleet-trim-half-targets: the gather at %s cannot batch a GPU half's "
                 "set_trim: %s" % (args.fleet_trim_url, _why)
