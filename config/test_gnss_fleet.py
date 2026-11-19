@@ -284,7 +284,13 @@ def test_host_bases():
     flag, no host, and the chains yaml's node-hosts expands to null."""
     cfg = dict(chains_cfg(), common={"rest-url": "fleet", "node-hosts": "fleet"})
     a, b, c = SIX[0], SIX[4], SIX[5]  # nodes of the site table
-    plain = gf.Fleet(manifest({a: {}, b: {}}), site())
+
+    def unhosted(m):
+        """m with the repo's common block's host flags left out."""
+        m["common"] = {k: v for k, v in m["common"].items() if k not in gf.HOST_FLAGS}
+        return m
+
+    plain = gf.Fleet(unhosted(manifest({a: {}, b: {}})), site())
     check(
         plain.hosted(a) == [] and plain.host_bases() == [], "no host flag: no host",
     )
@@ -292,12 +298,14 @@ def test_host_bases():
         gf.expand_chains(cfg, plain)["common"]["node-hosts"] is None,
         "no host: node-hosts null, so the broker gets no --node-hosts",
     )
-    m = manifest(
-        {
-            a: {"inject-host": True, "combine-host": True},
-            b: {"record-host": False},
-            c: {},
-        }
+    m = unhosted(
+        manifest(
+            {
+                a: {"inject-host": True, "combine-host": True},
+                b: {"record-host": False},
+                c: {},
+            }
+        )
     )
     m["common"] = dict(m["common"], **{"record-host": True})
     fl = gf.Fleet(m, site())

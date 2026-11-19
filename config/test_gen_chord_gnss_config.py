@@ -492,9 +492,10 @@ def test_record_host_needs_gpu_rows():
 def test_record_row_keys_are_the_stages():
     """RECORD_ROW_KEYS is GnssGpuRecordAssemble's ROW_KEYS and ROW_ONLY_KEYS: a key it leaves
     out could land on the host, where the stage refuses it or a row would inherit it."""
-    with open(
-        os.path.join(ROOT, "lib", "stages", "gnss", "GnssGpuRecordAssemble.cpp")
-    ) as f:
+    if kotekan_src.SRC is None:
+        print("  [SKIP] record row keys: no kotekan tree")
+        return
+    with open(kotekan_src.gnss_cpp("GnssGpuRecordAssemble.cpp")) as f:
         src = f.read()
     keys = set()
     for name in ("ROW_KEYS", "ROW_ONLY_KEYS"):
@@ -573,9 +574,10 @@ def test_record_host_form():
 
 def test_combine_row_keys_are_the_stages():
     """COMBINE_ROW_KEYS is GnssCoherentCombiner's ROW_KEYS and ROW_ONLY_KEYS."""
-    with open(
-        os.path.join(ROOT, "lib", "stages", "gnss", "GnssCoherentCombiner.cpp")
-    ) as f:
+    if kotekan_src.SRC is None:
+        print("  [SKIP] combine row keys: no kotekan tree")
+        return
+    with open(kotekan_src.gnss_cpp("GnssCoherentCombiner.cpp")) as f:
         src = f.read()
     keys = set()
     for name in ("ROW_KEYS", "ROW_ONLY_KEYS"):
@@ -654,7 +656,10 @@ def test_combine_host_form():
 
 def test_telem_row_keys_are_the_stages():
     """TELEM_ROW_KEYS is GnssTelemPack's ROW_KEYS and ROW_ONLY_KEYS."""
-    with open(os.path.join(ROOT, "lib", "stages", "gnss", "GnssTelemPack.cpp")) as f:
+    if kotekan_src.SRC is None:
+        print("  [SKIP] telemetry row keys: no kotekan tree")
+        return
+    with open(kotekan_src.gnss_cpp("GnssTelemPack.cpp")) as f:
         src = f.read()
     keys = set()
     for name in ("ROW_KEYS", "ROW_ONLY_KEYS"):
@@ -859,10 +864,12 @@ def test_half_rec_buf_form():
 def test_rec_offsets_are_the_stages():
     """gnss_record_layout.rec_offsets tiles a frame as gnss::RecDir does: the directory's head,
     entry and wstart widths and REC_ROW_ALIGN are those of gnssRecRows.hpp and .cpp."""
-    d = os.path.join(ROOT, "lib", "stages", "gnss")
-    with open(os.path.join(d, "gnssRecRows.hpp")) as f:
+    if kotekan_src.SRC is None:
+        print("  [SKIP] record directory: no kotekan tree")
+        return
+    with open(kotekan_src.gnss_cpp("gnssRecRows.hpp")) as f:
         hpp = f.read()
-    with open(os.path.join(d, "gnssRecRows.cpp")) as f:
+    with open(kotekan_src.gnss_cpp("gnssRecRows.cpp")) as f:
         cpp = f.read()
     found = [
         re.search(r"constexpr size_t REC_ROW_ALIGN = (\d+);", hpp),
