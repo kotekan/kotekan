@@ -407,11 +407,13 @@ json enums() {
 
 // The JSON version of each family of REST endpoints: tracker (cudaGnssChordTrack), combiner
 // (GnssCoherentCombiner), search (GnssChannelizedSearch), fleet_trim (GnssFleetTrim), assembler
-// (GnssGpuRecordAssemble) and tap (GnssChordVoltageTap). Bump a family's version when one of its
-// endpoints adds, removes or renames a key, or changes a unit or meaning.
+// (GnssGpuRecordAssemble), tap (GnssChordVoltageTap) and host_rows, the host stages' paths that
+// serve their rows' endpoints by chain (gnss::rest_register_rows), whose replies are the rows'
+// own. Bump a family's version when one of its endpoints adds, removes or renames a key, or
+// changes a unit or meaning.
 json rest() {
-    return {{"tracker", 2},    {"combiner", 1},  {"search", 1},
-            {"fleet_trim", 1}, {"assembler", 1}, {"tap", 1}};
+    return {{"tracker", 2},   {"combiner", 1}, {"search", 1},   {"fleet_trim", 1},
+            {"assembler", 1}, {"tap", 1},      {"host_rows", 1}};
 }
 
 } // namespace

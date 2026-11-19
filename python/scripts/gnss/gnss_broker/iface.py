@@ -89,6 +89,7 @@ ROLES = {
         "rest/combiner",
         "rest/assembler",
         "rest/tap",
+        "rest/host_rows",
     ),
     "gather": ("telem", "record.row", "record.chan", "metadata", "rest/fleet_trim"),
     "aggregator": ("signals", "rest/search"),

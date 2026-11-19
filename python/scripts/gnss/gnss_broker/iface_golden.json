@@ -629,6 +629,7 @@
    "assembler": 1,
    "combiner": 1,
    "fleet_trim": 1,
+   "host_rows": 1,
    "search": 1,
    "tap": 1,
    "tracker": 2
