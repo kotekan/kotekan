@@ -721,17 +721,18 @@ int RecordChain::begin_frame(const uint8_t* in) {
     // the new reference element while the cals re-warm (~3 tau); downstream sees one phase
     // step, as on a fresh acquisition.
     {
+        const int oldref = _reference_element;
         int newref = -1;
         {
+            // set_reference_element_callback reads _reference_element under this lock.
             std::lock_guard<std::mutex> lk(_gain_mtx);
-            if (_pending_ref >= 0) {
+            if (_pending_ref >= 0 && _pending_ref != _reference_element) {
                 newref = _pending_ref;
-                _pending_ref = -1;
+                _reference_element = newref;
             }
+            _pending_ref = -1;
         }
-        if (newref >= 0 && newref != _reference_element) {
-            const int oldref = _reference_element;
-            _reference_element = newref;
+        if (newref >= 0) {
             if (_elem_sum) {
                 _cal.assign(_prns.size(), gnss::ElemCal(_n_elements, _reference_element,
                                                         _elem_sum_tau_s, _elem_sum_min_w));
