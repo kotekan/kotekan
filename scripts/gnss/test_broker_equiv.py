@@ -242,6 +242,28 @@ def test_a_request_to_another_chains_row_fails():
             )
 
 
+def test_each_form_replays_as_the_other():
+    """The fake rows recorded at the rows' own paths, replayed asking every request by chain
+    (--node-hosts), and the ones recorded by chain, replayed at the rows' own paths, keep their
+    goldens: each variant golden is its transcript's plain one, and check verifies both."""
+    for name, variant, hosts in (
+        ("broker_fake_rows.jsonl", "hosted", True),
+        ("broker_fake_rows_hosted.jsonl", "legacy", False),
+    ):
+        path = os.path.join(HERE, "fixtures", name)
+        plain = be._read_gold(be._gold_path(path))[0]
+        want, prov = be._read_gold(be._gold_path(path, variant))
+        argv = be._gold_argv(prov)
+        check(
+            want == plain
+            and argv[0] == "--node-hosts"
+            and bool(argv[1]) == hosts
+            and bool(be._last_value(be._header_argv(path), "--node-hosts")) != hosts,
+            "%s: the %s variant (%s) is the plain golden"
+            % (name, variant, " ".join(argv)[:40]),
+        )
+
+
 def test_selftest_replays_the_flags_after_the_separator():
     """selftest under flags after -- must replay under them every time, as digest does."""
     calls = []
@@ -329,6 +351,7 @@ def main():
     test_replay_pins_the_igs_registry_snapshot()
     test_replay_pins_the_boresight_a_recording_ran_under()
     test_a_request_to_another_chains_row_fails()
+    test_each_form_replays_as_the_other()
     test_selftest_replays_the_flags_after_the_separator()
     test_tree_state_covers_the_broker_imports()
     print("-" * 70)
