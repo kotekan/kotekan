@@ -63,6 +63,7 @@ add_library(
     gnss/guowang1202Nav.cpp
     gnss/gnssOverlay.cpp
     gnss/gnssChannelizedDespread.cpp
+    gnss/GnssQuantize44.cpp
     gnss/GnssCoherentCombiner.cpp
     gnss/gnssCombinerChain.cpp
     # The tracker -> broker telemetry transport, outside the FFTW block: the gather half runs on
