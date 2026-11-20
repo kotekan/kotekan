@@ -261,7 +261,11 @@ iceBoardShuffle::iceBoardShuffle(kotekan::Config& config, const std::string& uni
                                              link_group_subid, shuffle_size - 1));
     }
 
-    all_stream_ids[link_group][link_group_subid] = {255, 255, 255, 255};
+    // Mark the whole group unset, so a link with no handler (dpdk_handler: none) is skipped
+    // by check_stream_id() rather than read as crate 0. Handlers are all built before any
+    // packet arrives.
+    for (uint32_t i = 0; i < shuffle_size; ++i)
+        all_stream_ids[link_group][i] = {255, 255, 255, 255};
 
     // Read config
     fpga_dataset = config.get_default<dset_id_t>("/fpga_dataset", "id", dset_id_t::null);
