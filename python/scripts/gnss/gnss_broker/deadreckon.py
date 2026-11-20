@@ -1892,6 +1892,35 @@ def gw_nav_fields(ctx, v, prn, ref_hop, off_chips, shipped_phase_chips=None):
     return out
 
 
+def dr_clock_long_chips(ctx):
+    """--dr-clock-long: the whole code periods of the receiver clock beyond clk_now, for a
+    chain whose long code (lc_seg periods) is longer than the period its clock is solved over.
+
+    The clock is solved mod one code period, and the long code's segment otherwise rides the
+    capture-time anchor alone. That is right where sample 0 is PPS-timed (CHORD), but an
+    NTP-timed capture puts every segment off by the host clock's error: on the bladeRF, 27 ms
+    put E5a's CS100 28 chips off. The clock-mod-epoch record (the NH joint fit, mod 20 ms)
+    measures the clock within its epoch, and the anchor, trusted to half the epoch, picks
+    which epoch. 0 with the flag off, without a record, or on a code with no long
+    period."""
+    if not getattr(ctx.args, "dr_clock_long", False) or ctx.lc_seg <= 1:
+        return 0.0
+    rec = ctx.rx.clock_mod_epoch(min_epoch_s=0.0, t_now=ctx.t0)
+    if rec is None or ctx.drp.clk_now is None:
+        return 0.0
+    ep = float(rec.extra["epoch_s"])
+    t_s = ((float(rec.value) + ep / 2.0) % ep) - ep / 2.0
+    k = int(round((t_s * ctx.args.chip_rate_hz - ctx.drp.clk_now) / ctx.code_len))
+    _log_rl(
+        "clklong",
+        "dead-reckon: receiver clock %+.3f ms from '%s' (mod %.0f ms, nearest the anchor) -> "
+        "seeds carry %+d whole code period(s) beyond clk_now"
+        % (t_s * 1e3, rec.src, ep * 1e3, k),
+        every_s=300.0,
+    )
+    return k * ctx.code_len
+
+
 def dr_seed(ctx):
     """Birth, re-pin or slew the seed of every visible satellite this chain dead-reckons, and drop
     model-owned seeds that have set or whose satellite lacks the signal. Computes ctx.drp.clk_now.
@@ -2093,7 +2122,11 @@ def dr_seed(ctx):
             # joint state holds only satellites some chain detects.
             if ctx.drp.hold:
                 continue  # withheld: the clock is still the prime (stage_dead_reckon)
-            _leg_off = ctx.drp.clk_now + ctx.bsat.get(prn, ctx.drp.now_w)
+            _leg_off = (
+                ctx.drp.clk_now
+                + dr_clock_long_chips(ctx)
+                + ctx.bsat.get(prn, ctx.drp.now_w)
+            )
             _off = _leg_off
             _jr3, _w3, _tag3 = joint_read(ctx)
             # The joint is in reference chips (Receiver.joint_unit), converted into ours below as

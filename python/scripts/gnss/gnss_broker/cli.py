@@ -2182,6 +2182,16 @@ def build_parser(description):
         "capture range (~0.4 chips). Needs --almanac and --time0-endpoint.",
     )
     ap.add_argument(
+        "--dr-clock-long",
+        action="store_true",
+        help="dead-reckoned seeds on a code longer than the solved clock's period (E5a's "
+        "100 ms CS100 against gps_l5's 1 ms clock) also carry the receiver clock's whole "
+        "code periods, from the clock-mod-epoch record (--nh-joint on a sibling chain) "
+        "resolved with the capture-time anchor to half its epoch. For a capture timed by "
+        "NTP rather than PPS, where the anchor alone puts the long code's segment off by "
+        "the host clock's error. Default off: the segment rides the anchor.",
+    )
+    ap.add_argument(
         "--dr-drift-source",
         default="solve",
         choices=("solve", "bias"),
