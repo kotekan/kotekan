@@ -298,7 +298,7 @@ def dr_clock_quality(ctx):
             ctx.dr_state.pop("raw_prev", None)
         prev_raw = ctx.dr_state.get("raw_prev")
         if (
-            ctx.args.dr_drift_source == "solve"
+            getattr(ctx.args, "dr_drift_source", "solve") == "solve"
             and prev_raw is not None
             and 0.5 < ctx.drp.now_w - prev_raw[1] < 30.0
         ):
@@ -546,7 +546,15 @@ def dr_clock_hold(ctx):
     The contribution carries this cycle's stamp and held=True, so a consumer takes the value
     as valid at its own now rather than extrapolating it at its own rate (a cross-band
     consumer carries no drift and would use f_chip*(l-a)). raw_prev is dropped so no drift
-    pair straddles a held cycle."""
+    pair straddles a held cycle.
+
+    Under --dr-drift-source bias the drift is the measured oscillator offset, not solve noise,
+    and a free-running clock walks chips per second, so the hold propagates at it."""
+    if getattr(ctx.args, "dr_drift_source", "solve") == "bias":
+        ctx.dr_state["clk"] = (
+            ctx.dr_state["clk"]
+            + ctx.drp.drift * (ctx.drp.now_w - ctx.dr_state["clk_t"])
+        ) % ctx.code_len
     ctx.dr_state["clk_t"] = ctx.drp.now_w
     if ctx.dr_state.get("drift") is not None:
         ctx.dr_state["drift_t"] = ctx.drp.now_w
@@ -626,9 +634,22 @@ def _dr_clock_step_gate(ctx):
     _k = ctx.args.dr_clock_repin_solves
     _cand = ctx.dr_state.get("repin")
     _hop = _dr_clock_newest_hop(ctx)
+    # Solves agree after the candidate is carried to now at the drift.
     if (
         _cand is not None
-        and abs(((ctx.drp.raw_clk - _cand["v"] + L / 2) % L) - L / 2) <= _smax
+        and abs(
+            (
+                (
+                    ctx.drp.raw_clk
+                    - _cand["v"]
+                    - ctx.drp.drift * (ctx.drp.now_w - _cand["t"])
+                    + L / 2
+                )
+                % L
+            )
+            - L / 2
+        )
+        <= _smax
     ):
         if _hop is None or _cand.get("hop") is None or _hop > _cand["hop"]:
             _cand["n"] += 1
@@ -2918,7 +2939,8 @@ def stage_dead_reckon(ctx):
                 # an unstamped drift gets one full lifetime from now, not forever
                 ctx.dr_state["drift_t"] = ctx.drp.now_w
             ctx.drp.drift = ctx.dr_state.get("drift")
-            if ctx.args.dr_drift_source == "bias" and ctx.cb.ema is not None:
+            _bias_drift = getattr(ctx.args, "dr_drift_source", "solve") == "bias"
+            if _bias_drift and ctx.cb.ema is not None:
                 # A free-running oscillator: the carrier bias is its frequency error, and the
                 # code clock runs off by the same fraction.
                 ctx.drp.drift = ctx.cb.ema * ctx.args.chip_rate_hz / ctx.args.carrier_hz
