@@ -620,12 +620,29 @@ void bladeRFInput::stream() {
             first_timestamp = meta.timestamp;
             INFO("Streaming; the first sample has timestamp {:d}", meta.timestamp);
             if (_frame0_utc > 0) {
-                // This read's last sample arrived about now.
-                const double now = std::chrono::duration<double>(
-                                       std::chrono::system_clock::now().time_since_epoch())
-                                       .count();
-                const int64_t seq = std::llround((now - _frame0_utc) * _actual_sample_rate)
-                                    - (int64_t)meta.actual_count;
+                // A read returns samples the device took a pipeline of transfers earlier
+                // (~10-30 ms here), so its arrival is not their time. The device's sample
+                // counter, read between two host clock readings, places them.
+                const auto host_s = [] {
+                    return std::chrono::duration<double>(
+                               std::chrono::system_clock::now().time_since_epoch())
+                        .count();
+                };
+                uint64_t ts_now = 0;
+                const double t1 = host_s();
+                status = bladerf_get_timestamp(dev, BLADERF_RX, &ts_now);
+                const double t2 = host_s();
+                if (status != 0 || ts_now < meta.timestamp) {
+                    FATAL_ERROR("Reading the bladeRF's sample counter failed ({:s}, {:d} < {:d}).",
+                                bladerf_strerror(status), ts_now, meta.timestamp);
+                    return;
+                }
+                const double lag_s = (double)(ts_now - meta.timestamp) / _actual_sample_rate;
+                const double t_first = 0.5 * (t1 + t2) - lag_s;
+                INFO("The first sample was taken {:.3f} ms before the counter read, which took "
+                     "{:.3f} ms",
+                     lag_s * 1e3, (t2 - t1) * 1e3);
+                const int64_t seq = std::llround((t_first - _frame0_utc) * _actual_sample_rate);
                 if (seq < 0) {
                     FATAL_ERROR("frame0_utc {:.3f} is in the future.", _frame0_utc);
                     return;
