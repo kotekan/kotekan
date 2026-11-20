@@ -884,6 +884,9 @@ void dpdkCore::add_graph_details(kotekan::PipelineGraph& graph) const {
     stage_node.cluster = cluster.id;
 
     for (uint i = 0; i < num_ports; ++i) {
+        // a port configured with dpdk_handler: none has no handler
+        if (handlers[i] == nullptr)
+            continue;
         auto& handler = graph.add_node(handlers[i]->unique_name);
         handler.add_line(kotekan::leaf_name(handlers[i]->unique_name));
         handler.cluster = cluster.id;
