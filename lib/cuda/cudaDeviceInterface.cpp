@@ -107,11 +107,14 @@ std::recursive_mutex& cudaDeviceInterface::stream_mutex(int32_t stream_id) {
 
 void cudaDeviceInterface::prepareStreams(uint32_t num_streams) {
     // Create GPU command queues, each with its queuing mutex; the mutex first, so no stream
-    // ever exists without one.
+    // ever exists without one. They take the device's highest priority, so a stage's own stream
+    // (the GNSS search's, at the default lowest) runs in the time the pipelines leave.
+    int least = 0, greatest = 0;
+    CHECK_CUDA_ERROR(cudaDeviceGetStreamPriorityRange(&least, &greatest));
     for (uint32_t i = streams.size(); i < num_streams; ++i) {
         stream_mutexes.emplace_back();
         cudaStream_t stream = nullptr;
-        CHECK_CUDA_ERROR(cudaStreamCreate(&stream));
+        CHECK_CUDA_ERROR(cudaStreamCreateWithPriority(&stream, cudaStreamDefault, greatest));
         streams.push_back(stream);
     }
 }
