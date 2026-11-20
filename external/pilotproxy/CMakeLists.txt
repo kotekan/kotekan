@@ -25,6 +25,9 @@ set(PILOTPROXY_C_FUNCTIONS
     PilotProxy_Supports_FusedFineMask
     PilotProxy_Compute_FusedFineMaskWithSupport_U64
     PilotProxy_Supports_FusedFineMaskWithSupport
+    PilotProxy_Compute_FusedFineMaskV2_U64
+    PilotProxy_Compute_FusedFineMaskV2WithSupport_U64
+    PilotProxy_Supports_FusedFineMaskV2
     PilotProxy_GetFineSpecs
     pilotproxy_ref_sign_extend_i4
     pilotproxy_ref_unpack_complex_i4

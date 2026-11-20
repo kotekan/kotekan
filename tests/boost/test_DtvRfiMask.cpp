@@ -12,12 +12,34 @@
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <fstream>
 #include <limits>
 #include <memory>
+#include <string>
 #include <thread>
+#include <unistd.h>
 #include <vector>
 
 BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
+
+/// Write a pilot_profiles.json with one calibrated channel, qualified or not, beside a
+/// control and a pending channel, which never need the record.
+static std::string write_profiles(bool qualified) {
+    nlohmann::json provenance = {{"note", "test"}};
+    if (qualified)
+        provenance["mask_qualification"] = {{"test_report_sha256", std::string(64, 'a')},
+                                            {"reviewer", "test"}};
+    const nlohmann::json bundle = {
+        {"profiles",
+         {{{"physical_channel", 30},
+           {"fine_calibration", {{"status", "calibrated"}, {"provenance", provenance}}}},
+          {{"physical_channel", 31}, {"fine_calibration", {{"status", "pending_campaign"}}}},
+          {{"physical_channel", 37}, {"fine_calibration", {{"status", "control"}}}}}}};
+    const std::string path = "/tmp/test_DtvRfiMask_" + std::to_string(getpid())
+                             + (qualified ? "_qualified" : "_detect_only") + ".json";
+    std::ofstream(path) << bundle.dump();
+    return path;
+}
 
 struct MaskPipeline {
     static constexpr int F = 4;
@@ -30,7 +52,8 @@ struct MaskPipeline {
     kotekan::bufferContainer buffers;
     std::unique_ptr<kotekan::Stage> stage;
 
-    MaskPipeline(int samples, bool fine = true, bool time_axis = false, bool declared = true) :
+    MaskPipeline(int samples, bool fine = true, bool time_axis = false, bool declared = true,
+                 bool qualified = true) :
         samples(samples), has_fine(fine),
         pool(metadataPool::create(32, sizeof(chordMetadata), "pool", "chordMetadata")),
         rfi(2, samples / 8 * F, pool, "rfi", "standard", 0, false, false, std::vector<int>{}, true),
@@ -47,7 +70,8 @@ struct MaskPipeline {
             {"num_local_freq", F},
             {"num_times", samples},
             {"mask",
-             {{"rfi_buf", "rfi"},
+             {{"pilot_profiles_path", write_profiles(qualified)},
+              {"rfi_buf", "rfi"},
               {"dtv_buf", "dtv"},
               {"out_buf", "output"},
               {"permanent_mask_freq_ids", {12}},
@@ -237,4 +261,9 @@ BOOST_AUTO_TEST_CASE(accept_last_representable_frame) {
             BOOST_REQUIRE_EQUAL(p.output.get_num_full_frames(), 1);
             BOOST_CHECK_EQUAL(get_chord_metadata(&p.output, 0)->get_fpga_seq_num(), seq);
         }
+}
+
+BOOST_AUTO_TEST_CASE(refuse_detect_only_bundle_when_always_on) {
+    // without enabled_updatable_config the mask is always on
+    BOOST_CHECK_THROW(MaskPipeline(8192, true, false, true, false), FatalError);
 }
