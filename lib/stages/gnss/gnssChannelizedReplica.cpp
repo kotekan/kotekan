@@ -78,6 +78,17 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
                 tiled.push_back((int8_t)(a[(size_t)i] * gps::L5_NH20[(size_t)k]));
         return tiled;
     }
+    if (name == "GPS_L5_I_NH") {
+        // I5 primary tiled by the NH10 overlay, as GPS_L5_Q_NH tiles NH20: a code phase in this
+        // 102300-chip space is primary cp + 10230 * (period index mod 10).
+        auto a = gps::generate_l5i_code(prn);
+        std::vector<int8_t> tiled;
+        tiled.reserve((size_t)gps::L5_CODE_LENGTH * gps::L5_NH10_LENGTH);
+        for (int k = 0; k < gps::L5_NH10_LENGTH; ++k)
+            for (int i = 0; i < gps::L5_CODE_LENGTH; ++i)
+                tiled.push_back((int8_t)(a[(size_t)i] * gps::L5_NH10[(size_t)k]));
+        return tiled;
+    }
     if (name == "SBAS_L5_I") {
         auto a = gps::generate_l5i_code(prn); // PRN 120..158: the SBAS rows of the L5 table
         return std::vector<int8_t>(a.begin(), a.end());

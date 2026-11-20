@@ -7,7 +7,7 @@
 #include "gnssChannelizedDespread.hpp" // for channelized_despread
 #include "gnssChannelizedReplica.hpp"  // for ChannelizedReplicaBank
 #include "gnssSignal.hpp"              // for signal_by_name
-#include "gpsL5Code.hpp"               // for L5_NH20 (overlay reference)
+#include "gpsL5Code.hpp"               // for L5_NH20, L5_NH10 (overlay references)
 #include "pfbPrototype.hpp"            // for fftwEngine's pfb_prototype, pfb_push, pfb_fold
 
 #include <algorithm>
@@ -722,6 +722,25 @@ BOOST_AUTO_TEST_CASE(sbas_l1_sym_is_two_ca_periods) {
             for (int i = 0; i < 1023; i += 31)
                 BOOST_REQUIRE_EQUAL((int)bank_sym.code_chip(0, (double)k * 1023 + i),
                                     (int)bank_l1.code_chip(0, (double)i));
+    }
+}
+
+// GPS_L5_I_NH tiles NH10 into the I5 code, one 10 ms CNAV symbol: period k is the I5 primary
+// times NH10[k], which the plain GPS_L5_I bank applies as its secondary.
+BOOST_AUTO_TEST_CASE(l5i_nh_is_the_i5_code_under_the_nh10) {
+    const gnss::SignalDescriptor* nh = gnss::signal_by_name("GPS_L5_I_NH");
+    BOOST_REQUIRE(nh != nullptr);
+    BOOST_CHECK_EQUAL(nh->code_length, 102300L);
+    BOOST_CHECK_EQUAL(nh->secondary_length, 0);
+    for (int prn : {1, 30}) {
+        auto bank_nh = make_bank("GPS_L5_I_NH", {prn});
+        auto bank_i = make_bank("GPS_L5_I", {prn});
+        BOOST_CHECK_EQUAL(bank_i.secondary_length(), 10);
+        for (int k = 0; k < 10; ++k)
+            for (int i = 0; i < 10230; i += 331)
+                BOOST_REQUIRE_EQUAL((int)bank_nh.code_chip(0, (double)k * 10230 + i),
+                                    (int)bank_i.code_chip(0, (double)i)
+                                        * (int)gps::L5_NH10[(size_t)k]);
     }
 }
 

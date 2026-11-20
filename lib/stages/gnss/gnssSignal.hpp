@@ -217,6 +217,23 @@ inline constexpr SignalDescriptor GPS_L5_Q_NH = {
     /*tdm_phase=*/0,
 };
 
+/// GPS L5 I5 with NH10 tiled into the code: one 102300-chip, 10 ms code, one CNAV symbol. What
+/// remains in each record is the symbol's sign, which flips only at this code's period boundary.
+/// I5 and Q5 are code-synchronous, so a seed in GPS_L5_Q_NH's 204600-chip space places it.
+inline constexpr SignalDescriptor GPS_L5_I_NH = {
+    "GPS_L5_I_NH",
+    1176.45e6,
+    10.23e6,
+    102300,
+    10e-3,
+    Modulation::BPSK,
+    0,
+    0,
+    /*secondary_length=*/0,
+    /*time_multiplexed=*/false,
+    /*tdm_phase=*/0,
+};
+
 /// SBAS L5 (1176.45 MHz) of the WAAS/EGNOS/MSAS/GAGAN GEOs (PRNs 120..158): ONE in-phase BPSK(10)
 /// component, data only, with no pilot. ICAO Annex 10 (DFMC SBAS, 3.7.3.4.6): 250 bps through
 /// rate-1/2 FEC to 500 sps, each 2 ms symbol bi-binary (Manchester) encoded as two 1 ms halves
@@ -864,7 +881,7 @@ inline constexpr const SignalDescriptor* ALL_SIGNALS[] = {
     &BDS_B1I,      &BDS_B3I,     &BDS_B3I_NH,   &BDS_B2I,       &GLO_L3OC_P,    &GLO_L3OC_D,
     &GLO_L2OF,     &GLO_L2OC_P,  &GAL_E6_C_CS,  &GLO_L3OC_P_NH, &GLO_L2OC_P_OC, &SBAS_L5_I,
     &SBAS_L5_I_MC, &GLO_L2OF_MC, &GW_1202,      &BDS_B1I_NH,    &GPS_L1CA_BIT,  &SBAS_L1,
-    &SBAS_L1_SYM,  &GAL_E1C_CS};
+    &SBAS_L1_SYM,  &GAL_E1C_CS,  &GPS_L5_I_NH};
 
 /// Look up a descriptor by its @c name (the config string); nullptr if unknown.
 inline const SignalDescriptor* signal_by_name(const std::string& name) {
