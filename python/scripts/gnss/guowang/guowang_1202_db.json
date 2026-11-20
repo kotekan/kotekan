@@ -108,12 +108,13 @@
    "catnum": 62330,
    "g2_phase": null,
    "last_observed_utc": null,
-   "last_checked_utc": "2026-11-04T01:03:06Z",
-   "last_checked_sep_deg": 1.22,
+   "last_checked_utc": "2026-11-19T23:37:40Z",
+   "last_checked_sep_deg": 2.24,
    "passes_found": 0,
-   "passes_silent": 1,
+   "passes_silent": 2,
    "passes": [
-    ["2026-11-04T01:03:06Z", 1.22, false]
+    ["2026-11-04T01:03:06Z", 1.22, false],
+    ["2026-11-19T23:37:40Z", 2.24, false]
    ]
   },
   "DIGUI-09": {
