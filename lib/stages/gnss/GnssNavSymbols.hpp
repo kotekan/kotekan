@@ -20,22 +20,23 @@
 
 /**
  * @class GnssNavSymbols
- * @brief Each satellite's data symbols, from a pilot chain's records and those of its data
- *        component (cudaGnssTrack's data block), decided as the records arrive
- *        (gnss::NavSymbolTrack).
+ * @brief Each satellite's data symbols, decided as the records arrive (gnss::NavSymbolTrack):
+ *        from a data component's records against its pilot chain's (cudaGnssTrack's data
+ *        block), or, with no pilot_buf, from a data-modulated chain's own (GW_1202).
  *
- * The two record buffers come from GnssGpuRecordAssemble stages fed by one cudaGnssTrack, so
- * their frames pair up by sample_seq and their slots by PRN. A slot whose pilot or data record
- * has no job, or whose PRN changes, starts a new stream.
+ * With a pilot the two record buffers come from GnssGpuRecordAssemble stages fed by one
+ * cudaGnssTrack, so their frames pair up by sample_seq and their slots by PRN. A slot whose
+ * pilot or data record has no job, or whose PRN changes, starts a new stream.
  *
  * @par REST
  * GET `<unique_name>/get_status`: one row per slot with decisions, {prn, n_sym, n_restart,
- * snr_db, residual_deg, data_pilot_db, n_records, n_boundary, nav_obs}, nav_obs in the
+ * snr_db, residual_deg, carrier_hz, data_pilot_db, n_records, n_boundary, nav_obs}, nav_obs in the
  * combiner's form (bit_export) holding the newest @c symbol_export decisions: {utc_ref, rec_dt,
  * phase: 0, br, bits: [[index, sign]]}, symbol `index` starting at utc_ref + index * br * rec_dt
  * and utc_ref the oldest one's start. The broker's --cnav-combiner reads it.
  *
- * @buffer pilot_buf The pilot chain's records (gnssRecord.hpp), one record per frame.
+ * @buffer pilot_buf (optional) The pilot chain's records (gnssRecord.hpp), one record per
+ *     frame.
  *     @buffer_format n_prn * record_stride(n_elements) float32
  *     @buffer_metadata GnssChanMetadata
  * @buffer data_buf The data component's records, as pilot_buf's.
@@ -47,9 +48,11 @@
  * @conf hops_per_record Int. Hops per record.
  * @conf fft_length      Int. Samples per hop.
  * @conf sample_rate     Double. Sample rate, Hz.
- * @conf symbol_records  Int. Records per symbol: the data code's period over the record's.
- * @conf offset_deg      Double. The data carrier's phase offset from the pilot's, degrees
- *                       (90 for GPS L5's I5 and Q5).
+ * @conf symbol_records  Int. Records per symbol.
+ * @conf periods_per_symbol Int (default 1). Data code periods per symbol: 1 with a pilot, 1 or
+ *                       2 without (GW_1202's 4 ms symbols span two 2 ms frames).
+ * @conf offset_deg      Double, with a pilot. The data carrier's phase offset from the pilot's,
+ *                       degrees (90 for GPS L5's I5 and Q5).
  * @conf symbol_export   Int (default 1500). Decisions per slot in get_status.
  */
 class GnssNavSymbols : public kotekan::Stage {

@@ -85,7 +85,7 @@ int errors(const NavSymbolTrack& t, const std::vector<int>& sky, int first_k) {
 BOOST_AUTO_TEST_CASE(noiseless_symbols_in_order) {
     Sky sky;
     sky.symbols = random_symbols(200, 2);
-    NavSymbolTrack t(SYM_REC, REC_SAMP, REC_DT, OFFSET, 1000);
+    NavSymbolTrack t(SYM_REC, 1, REC_SAMP, REC_DT, true, OFFSET, 1000);
     const int n_rec = 1500;
     for (long long r = 0; r < n_rec; ++r)
         t.push(sky.record(r));
@@ -112,7 +112,7 @@ BOOST_AUTO_TEST_CASE(residual_carrier_and_boundary_positions) {
             sky.boundary0 = b0;
             sky.resid_hz = resid;
             sky.symbols = random_symbols(120, 3);
-            NavSymbolTrack t(SYM_REC, REC_SAMP, REC_DT, OFFSET, 1000);
+            NavSymbolTrack t(SYM_REC, 1, REC_SAMP, REC_DT, true, OFFSET, 1000);
             for (long long r = 0; r < 1000; ++r)
                 t.push(sky.record(r));
             BOOST_TEST_CONTEXT("boundary0 " << b0 << " resid " << resid) {
@@ -129,7 +129,7 @@ BOOST_AUTO_TEST_CASE(noisy_symbols) {
     Sky sky;
     sky.sigma = 1.0;
     sky.symbols = random_symbols(1100, 4);
-    NavSymbolTrack t(SYM_REC, REC_SAMP, REC_DT, OFFSET, 2000);
+    NavSymbolTrack t(SYM_REC, 1, REC_SAMP, REC_DT, true, OFFSET, 2000);
     for (long long r = 0; r < 10000; ++r)
         t.push(sky.record(r));
     BOOST_CHECK_GT(t.n_sym, 990);
@@ -142,7 +142,7 @@ BOOST_AUTO_TEST_CASE(noisy_symbols) {
 BOOST_AUTO_TEST_CASE(gap_restarts) {
     Sky sky;
     sky.symbols = random_symbols(200, 5);
-    NavSymbolTrack t(SYM_REC, REC_SAMP, REC_DT, OFFSET, 1000);
+    NavSymbolTrack t(SYM_REC, 1, REC_SAMP, REC_DT, true, OFFSET, 1000);
     for (long long r = 0; r < 500; ++r)
         t.push(sky.record(r));
     BOOST_CHECK_GT(t.n_sym, 40);
@@ -159,7 +159,7 @@ BOOST_AUTO_TEST_CASE(gap_restarts) {
 BOOST_AUTO_TEST_CASE(missed_boundary_restarts) {
     Sky sky;
     sky.symbols = random_symbols(200, 6);
-    NavSymbolTrack t(SYM_REC, REC_SAMP, REC_DT, OFFSET, 1000);
+    NavSymbolTrack t(SYM_REC, 1, REC_SAMP, REC_DT, true, OFFSET, 1000);
     for (long long r = 0; r < 1000; ++r) {
         NavSymbolTrack::Rec rec = sky.record(r);
         if (r == 403) // the boundary at 403.37
@@ -169,4 +169,93 @@ BOOST_AUTO_TEST_CASE(missed_boundary_restarts) {
     // Symbols 40 and 41 run together; the stream restarts with symbol 42, so 43 is its first.
     BOOST_CHECK_EQUAL(t.n_restart, 1);
     BOOST_CHECK_EQUAL(errors(t, sky.symbols, 43), 0);
+}
+
+namespace {
+
+// GW_1202-like records without a pilot: 2-record code periods whose first half (the ranging
+// code) carries the data sign and whose second (the CSK code, zero in the replica) carries
+// nothing, so a record holding a boundary has no head energy. A symbol is two periods, starting
+// at period pair0, and a residual carrier turns every record.
+struct GwSky {
+    double boundary0 = 0.37; // first period boundary, records; period j starts at boundary0 + 2j
+    int pair0 = 1;           // symbols start at periods pair0, pair0 + 2, ...
+    double resid_hz = 40.0;
+    double sigma = 0.0;
+    std::vector<int> symbols; // symbols[i + 1] covers periods pair0 + 2i and pair0 + 2i + 1
+    std::mt19937 rng{7};
+
+    cd noise(double var) {
+        std::normal_distribution<double> n(0.0, std::sqrt(var / 2));
+        return {n(rng), n(rng)};
+    }
+    int sign_of_period(int j) const {
+        return symbols[(size_t)((j - pair0 + 2) / 2)];
+    }
+    NavSymbolTrack::Rec record(long long r) {
+        NavSymbolTrack::Rec out;
+        out.seq = r * REC_SAMP;
+        out.utc = 1000.0 + r * REC_DT;
+        const cd carrier = std::polar(1.0, 0.4 + 2 * M_PI * resid_hz * (r + 0.5) * REC_DT);
+        // The ranging halves [b, b + 1) of the periods that can overlap record [r, r + 1).
+        out.head_frac = 1.0;
+        for (int j = (int)std::floor((r - boundary0) / 2) - 1; j <= (int)((r - boundary0) / 2) + 1;
+             ++j) {
+            const double b = boundary0 + 2.0 * j;
+            if (j < 0)
+                continue;
+            const double len = std::min(b + 1.0, r + 1.0) - std::max(b, (double)r);
+            if (len > 0.0)
+                out.data += carrier * (double)sign_of_period(j) * len + noise(sigma * sigma * len);
+            if (b >= r && b < r + 1)
+                out.head_frac = 0.0; // the head is the previous period's CSK half
+        }
+        return out;
+    }
+};
+
+// The sky symbol a stream's symbol 0 is, from t0: its first period starts in the record t0
+// labels, and that period's parity must be the symbols' own.
+int gw_first_symbol(const NavSymbolTrack& t, const GwSky& sky) {
+    const double r = std::round((t.t0 - 1000.0) / REC_DT);
+    const int j = (int)std::lround((r - sky.boundary0) / 2.0);
+    BOOST_CHECK_EQUAL((j - sky.pair0) % 2, 0);
+    return (j - sky.pair0) / 2 + 1;
+}
+
+} // namespace
+
+// Without a pilot: the pairing is found, the loop measures the carrier, and every symbol is
+// decided, up to the stream's overall sign.
+BOOST_AUTO_TEST_CASE(no_pilot_pairs_and_tracks_the_carrier) {
+    for (double b0 : {0.37, 0.0, 0.93}) {
+        for (int pair0 : {0, 1}) {
+            GwSky sky;
+            sky.boundary0 = b0;
+            sky.pair0 = pair0;
+            sky.symbols = random_symbols(1100, 8);
+            NavSymbolTrack t(4, 2, REC_SAMP, REC_DT, false, 0.0, 2000);
+            for (long long r = 0; r < 4000; ++r)
+                t.push(sky.record(r));
+            BOOST_TEST_CONTEXT("boundary0 " << b0 << " pair0 " << pair0) {
+                BOOST_CHECK_GT(t.n_sym, 900);
+                BOOST_CHECK_EQUAL(errors(t, sky.symbols, gw_first_symbol(t, sky)), 0);
+                BOOST_CHECK_CLOSE(t.carrier_hz, 40.0, 1.0);
+            }
+        }
+    }
+}
+
+// Without a pilot, ~12 dB per symbol and a carrier of -55 Hz: few errors.
+BOOST_AUTO_TEST_CASE(no_pilot_noisy) {
+    GwSky sky;
+    sky.sigma = 0.35;
+    sky.resid_hz = -55.0;
+    sky.symbols = random_symbols(3000, 9);
+    NavSymbolTrack t(4, 2, REC_SAMP, REC_DT, false, 0.0, 3000);
+    for (long long r = 0; r < 11000; ++r)
+        t.push(sky.record(r));
+    BOOST_CHECK_GT(t.n_sym, 2500);
+    BOOST_CHECK_LT(errors(t, sky.symbols, gw_first_symbol(t, sky)), 0.01 * t.n_sym);
+    BOOST_CHECK_CLOSE(t.carrier_hz, -55.0, 2.0);
 }
