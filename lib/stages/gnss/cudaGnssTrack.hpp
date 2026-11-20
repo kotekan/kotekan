@@ -1,0 +1,80 @@
+/**
+ * @file
+ * @brief GNSS tracking of one channelized input: despread it against the replicas on the GPU.
+ *  - cudaGnssTrack : public cudaCommand
+ */
+
+#ifndef CUDA_GNSS_TRACK_HPP
+#define CUDA_GNSS_TRACK_HPP
+
+#include "cudaCommand.hpp"
+#include "cudaGnssChordTrack.hpp" // for cudaGnssChordTrackState
+#include "gnssTrackChain.hpp"     // for TrackChain
+
+#include <memory> // for shared_ptr
+#include <string> // for string
+#include <vector> // for vector
+
+/// cudaGnssTrack's state: cudaGnssInject's, registered under its own name.
+class cudaGnssTrackState : public cudaGnssChordTrackState {
+public:
+    using cudaGnssChordTrackState::cudaGnssChordTrackState;
+};
+
+/**
+ * @class cudaGnssTrack
+ * @brief Despread one antenna's 4+4-bit channelized voltages against a chain's replicas,
+ *        writing a gnssGpuChain.hpp frame for GnssGpuRecordAssemble.
+ *
+ * Where @ref cudaGnssInject hands the replicas to the N^2 correlator, this command correlates
+ * them itself (GnssCudaDespread::enqueue_batch_nm), for a receiver with no correlator. The
+ * chain is the same gnss::TrackChain: seeds, fleet trims, slot membership and their REST
+ * endpoints, and the control block of each frame. A cudaInputData and a cudaSyncInput before it
+ * put the frame on the device with its GnssChanMetadata, and a cudaSyncOutput and a
+ * cudaOutputData after it copy its output to the host. Several commands, one per chain, can
+ * read one input.
+ *
+ * The data is conjugated before the correlation, as the replicas assume
+ * (gnss::Channelization).
+ *
+ * @par GPU Memory
+ * @gpu_mem gpu_mem_input   The channelized frame, [samples_per_data_set][num_local_freq].
+ *     @gpu_mem_type        staging
+ *     @gpu_mem_format      Array of @c uint8_t, 4+4 bits (gnss44.hpp)
+ *     @gpu_mem_metadata    GnssChanMetadata
+ * @gpu_mem gpu_mem_output  The gnssGpuChain.hpp frame, one element.
+ *     @gpu_mem_type        staging
+ *     @gpu_mem_format      gnss_gpu::frame_bytes(n_prn, n_channels, 4, 1) bytes
+ *
+ * @conf The gnss::TrackChain keys, with `n_elements: 1`, and:
+ * @conf  gpu_mem_input        String. The input frame's GPU memory name.
+ * @conf  gpu_mem_output       String. The output frame's GPU memory name.
+ * @conf  num_local_freq       Int. Channels in the input frame.
+ * @conf  gnss_local_channels  List of Int. Index in the input frame of each covering channel,
+ *                             in channel_ids order.
+ */
+class cudaGnssTrack : public cudaCommand {
+public:
+    cudaGnssTrack(kotekan::Config& config, const std::string& unique_name,
+                  kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device,
+                  int instance_num, std::shared_ptr<cudaCommandState> state);
+    ~cudaGnssTrack() override;
+
+    cudaEvent_t execute(cudaPipelineState& pipestate,
+                        const std::vector<cudaEvent_t>& pre_events) override;
+
+private:
+    gnss::TrackChain& chain();
+
+    const std::string _gpu_mem_input;
+    const std::string _gpu_mem_output;
+    const std::int32_t _num_local_freq;
+    const std::vector<std::int32_t> _local_channels;
+
+    /// Pinned staging for the frame's control block: the header, window starts and PrnCtl rows.
+    char* _stage = nullptr;
+    bool _uploaded_static = false;
+    uint64_t _frames = 0;
+};
+
+#endif // CUDA_GNSS_TRACK_HPP

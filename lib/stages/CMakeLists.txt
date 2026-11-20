@@ -207,8 +207,10 @@ if(FFTW_FOUND)
     if(USE_CUDA)
         # gnssPsiTable.cpp builds the Psi tables for cudaGnssPsiSynth's kernels (it includes their
         # CUDA header), so it is compiled with its CUDA users.
-        target_sources(kotekan_stages PRIVATE gnss/cudaGnssChordTrack.cpp gnss/cudaGnssInject.cpp
-                                              gnss/gnssPsiTable.cpp gnss/gnssTrackChain.cpp)
+        target_sources(
+            kotekan_stages PRIVATE gnss/cudaGnssChordTrack.cpp gnss/cudaGnssInject.cpp
+                                   gnss/cudaGnssTrack.cpp gnss/gnssPsiTable.cpp
+                                   gnss/gnssTrackChain.cpp)
     endif()
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(kotekan_stages PRIVATE ${FFTW_LIBRARIES})
