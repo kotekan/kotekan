@@ -75,9 +75,6 @@ _FROZEN = dict(
     # the floor is measured, not fixed; real detections sit far above the null's tail, and 3x falls
     # in that gap.
     coh_floor_margin=3.0,
-    # Fleet coherent: instances that must see a PRN before it is combined; below this the PRN keeps
-    # its single-instance coherent numbers.
-    coh_min_instances=3,
     # While no BRDC ephemeris is loaded (none fetched, cached or parseable), keep the dead-reckon
     # predict alive on this broker's own decoded ephemeris (decoded_eph.py, which reuses each
     # decoder's BRDC-validated propagator). sat_clk_s is the broadcast polynomial plus the
@@ -430,10 +427,6 @@ _FROZEN = dict(
     # (gain/leak x 0.25 = 1.25 chips at --dll-gain 0.25). A smaller leak lets it drive satellites
     # off peak.
     dll_leak_present=0.05,
-    # Fleet DLL: instances that must report the same window before their sum is used; below this the
-    # PRN falls back to the single --combiner discriminator, so a partly-down fleet degrades instead
-    # of stalling. Also the minimum sender count of the comb DLL and the telemetry C/N0 estimators.
-    dll_min_instances=2,
     # Hold the receiver-clock solve and its drift EMA while the newest telemetry hop has not
     # advanced for this many seconds, and drop raw_prev so no pair of solves is differenced across
     # the gap. With the F-engine stopped the detections freeze while the orbit model moves with the
@@ -1687,17 +1680,35 @@ def build_parser(description):
         "(docs/CHORD_GNSS_SHARED_DLL.md). An instance correlates only the channels "
         "its GPU holds, a small fraction of the band, so the broker sums the "
         "instances' raw Early/Prompt/Late powers per PRN over a common window "
-        "(pow_hop within dll_hop_window_s of the newest; this and dll_min_instances "
-        "are constants in cli.py _FROZEN) and forms one discriminator (E-L)/(E+L) "
-        "from the sums. The discriminator is non-coherent, so the sum needs no phase "
+        "(pow_hop within dll_hop_window_s of the newest, a constant in cli.py "
+        "_FROZEN; at least --dll-min-instances of them) and forms one discriminator "
+        "(E-L)/(E+L) from the sums. The discriminator is non-coherent, so the sum needs no phase "
         "alignment between instances, only the same window; it does need every "
         "instance despread at the same commanded phase, which one code loop (this "
         "broker's or the C++ fast loop's) provides. Presence (q and prompt power "
         "against the noise probes' floor) is judged on the sums. The list also feeds "
         "fleet_coherent and --element-poll, and names the record assemblers "
         "(n2combine -> n2assemble) that --post-sat-geometry posts to. A PRN seen by "
-        "fewer than dll_min_instances instances, or an empty list, falls back to "
+        "fewer than --dll-min-instances instances, or an empty list, falls back to "
         "--combiner's own discriminator, gated on lock_snr.",
+    )
+    ap.add_argument(
+        "--dll-min-instances",
+        type=int,
+        default=2,
+        help="fleet DLL: instances that must report the same window before their sum is "
+        "used; below this the PRN falls back to the single --combiner discriminator, so "
+        "a partly-down fleet degrades instead of stalling. Also the minimum sender count "
+        "of the comb DLL and the telemetry C/N0 estimators. 1 for a one-receiver "
+        "instrument, whose fleet is its one combiner. Default 2.",
+    )
+    ap.add_argument(
+        "--coh-min-instances",
+        type=int,
+        default=3,
+        help="fleet coherent: instances that must see a PRN before it is combined; below "
+        "this the PRN keeps its single-instance coherent numbers. 1 for a one-receiver "
+        "instrument. Default 3.",
     )
     ap.add_argument(
         "--dll-spacing",
