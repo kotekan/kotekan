@@ -60,7 +60,7 @@
  *         missing_source_ids.
  * @metric kotekan_processpacketmask_lost_samples_total
  *         Time samples flagged in the pl_mask, summed over frequencies. A lost packet flags
- *         time_short samples in each of the 4 x 48 frequencies of its 4-stream group.
+ *         time_short samples in each frequency of its 4-stream group.
  * @metric kotekan_processpacketmask_samples_total
  *         Time samples covered by the pl_mask, summed over frequencies.
  * @metric kotekan_processpacketmask_crs_board_lost_packets_total
@@ -107,8 +107,8 @@ private:
     /// Number of stream IDs (bits per source_id byte)
     static constexpr uint32_t num_stream_ids = 8;
 
-    /// Number of frequencies per stream
-    static constexpr uint32_t num_freq_per_stream = 48;
+    /// Number of frequencies per stream, num_frequency / num_stream_ids
+    uint32_t num_freq_per_stream;
 
     /// List of missing source IDs
     std::vector<uint32_t> missing_source_ids;
