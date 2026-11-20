@@ -41,10 +41,12 @@ const double block_clip = 6.0;
 // two DMs
 const int merge_slack = 20;
 // A candidate is undispersed when far_candidates others, each of at least far_fraction of its
-// S/N, lie more than far_dm from it in DM and fit the same arrival without dispersion
+// S/N, lie more than far_dm from it in DM, fit the same arrival without dispersion, and have
+// their strongest block of channels within far_blocks of its own
 const double far_dm = 50.0;
 const double far_fraction = 0.5;
 const int far_candidates = 2;
+const int far_blocks = 1;
 // A running statistic is used after this many seconds of updates
 const double settle_s = 1.0;
 // A candidate is reported this many seconds after its first sample above threshold
@@ -408,13 +410,15 @@ void IncoherentSearch::merge_hits(const std::vector<Hit>& hits) {
             if (sweep > same_sweep && hit.snr >= residue_fraction * e.best.snr * same_sweep / sweep)
                 continue;
             ++e.num_hits;
-            if (!e.reported && hit.snr > e.best.snr)
+            if (!e.reported && hit.snr > e.best.snr) {
                 e.best = hit;
+                e.block = strongest_block(hit);
+            }
             merged = true;
             break;
         }
         if (!merged)
-            events.push_back({hit, 1, ns, false});
+            events.push_back({hit, 1, ns, false, strongest_block(hit)});
     }
 }
 
@@ -446,13 +450,15 @@ void IncoherentSearch::close_events() {
 
 // Whether enough other events far away in DM fit the same arrival without dispersion. The search
 // places such an arrival earlier at the top channel the higher the DM: by nothing when it is at
-// the top of the band, by the whole sweep between the two DMs when it is at the bottom.
+// the top of the band, by the whole sweep between the two DMs when it is at the bottom. The
+// arrival is in one part of the band, so the others have their S/N where this event has it.
 bool IncoherentSearch::undispersed(const Event& e) const {
     const double dm = p.dms[e.best.dm_index];
     int n = 0;
     for (const Event& other : events) {
         const double ddm = p.dms[other.best.dm_index] - dm;
-        if (std::abs(ddm) <= far_dm || other.best.snr < far_fraction * e.best.snr)
+        if (std::abs(ddm) <= far_dm || other.best.snr < far_fraction * e.best.snr
+            || std::abs(other.block - e.block) > far_blocks)
             continue;
         const int64_t earlier =
             ddm > 0 ? e.best.sample - other.best.sample : other.best.sample - e.best.sample;
@@ -479,6 +485,13 @@ void IncoherentSearch::band_occupancy(IncoherentCandidate& cand, const Hit& hit)
         }
         cand.block_snr[b] = n ? (float)(sum / std::sqrt((double)n * wd)) : 0.0f;
     }
+}
+
+int IncoherentSearch::strongest_block(const Hit& hit) const {
+    IncoherentCandidate cand;
+    band_occupancy(cand, hit);
+    return (int)(std::max_element(cand.block_snr.begin(), cand.block_snr.end())
+                 - cand.block_snr.begin());
 }
 
 std::vector<IncoherentCandidate> IncoherentSearch::take_candidates() {

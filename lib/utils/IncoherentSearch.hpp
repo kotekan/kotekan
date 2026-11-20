@@ -80,9 +80,10 @@ struct IncoherentCandidate {
  * Interference in part of the band has no dispersion, and is found at every DM: at a higher DM
  * earlier at the top channel, by the sweep from its own frequency to the top. A pulse is found
  * at its own DM. A candidate is marked undispersed when two or more others, of at least half
- * its S/N, lie more than 50 DM units away at such times. For that a candidate is reported only
- * when the same arrival has been searched at the highest DM: the sweep of the highest DM after
- * it reached the top channel.
+ * its S/N, lie more than 50 DM units away at such times and have their highest S/N in the same
+ * block of the band as it or the next: a pulse that arrives during interference has it
+ * elsewhere. For that a candidate is reported only when the same arrival has been searched at
+ * the highest DM: the sweep of the highest DM after it reached the top channel.
  *
  * Widths of 1 to 16 samples are tried, in passes of `chunk` samples; the widths and the mask
  * thresholds are constants in the source.
@@ -154,6 +155,7 @@ private:
         int num_hits;
         int64_t created; // value of ns when the event was opened
         bool reported;
+        int block; // the block of channels with the highest S/N of `best`
     };
 
     void update_reference();
@@ -163,6 +165,7 @@ private:
     void merge_hits(const std::vector<Hit>& hits);
     void close_events();
     bool undispersed(const Event& e) const;
+    int strongest_block(const Hit& hit) const;
     void band_occupancy(IncoherentCandidate& cand, const Hit& hit) const;
     const int8_t* row(int channel, int64_t sample) const {
         return &w[(size_t)channel * buffer_len + (size_t)(sample - base)];

@@ -32,9 +32,12 @@ struct Pulse {
     int last_channel;
 };
 
-// Runs noise of unit mean with the pulses through the search.
+// Runs noise of unit mean with the pulses through the search. With `burst`, interference at DM 0
+// that the limit per block lets through is added: 8 sigma in 14 channels across the edge of the
+// top two blocks, for 96 samples from sample 4000. Their delays differ by less than the burst
+// lasts, so every DM up to 250 adds them up, to about 9 sigma at the widest window.
 static std::vector<IncoherentCandidate> run(const IncoherentSearchParams& p,
-                                            const std::vector<Pulse>& pulses) {
+                                            const std::vector<Pulse>& pulses, bool burst = false) {
     const double mean = 1000;
     const int num_samples = 12000;
     const double nu_top = (p.freq0_mhz + p.dfreq_mhz * (p.num_freq - 1)) / 1e3;
@@ -51,7 +54,7 @@ static std::vector<IncoherentCandidate> run(const IncoherentSearchParams& p,
     std::vector<IncoherentCandidate> out;
     for (int t = 0; t < num_samples; ++t) {
         for (int c = 0; c < p.num_freq; ++c) {
-            double amplitude = 0;
+            double amplitude = burst && c >= 233 && c < 247 && t >= 4000 && t < 4096 ? 8 : 0;
             for (const Pulse& pulse : pulses)
                 if (c < pulse.last_channel && t == pulse.sample + std::lround(pulse.dm * delay[c]))
                     amplitude += pulse.amplitude;
@@ -129,29 +132,18 @@ BOOST_AUTO_TEST_CASE(burst_in_part_of_the_band_is_cut) {
     BOOST_CHECK_EQUAL(num_candidates, 0);
 }
 
-BOOST_AUTO_TEST_CASE(burst_without_dispersion_is_marked_at_every_dm) {
-    // Interference at DM 0 that the limit per block lets through: 14 channels across the edge
-    // of two blocks, for 96 samples. Their delays differ by less than the burst lasts, so every
-    // DM from 50 to 250 adds them up, to about 9 sigma at the widest window.
+// Trial DMs 50 to 250, for the burst of run().
+static IncoherentSearchParams burst_params() {
     IncoherentSearchParams p = test_params();
     p.threshold = 6;
     p.dms.clear();
     for (double dm = 50; dm <= 250; dm += 2)
         p.dms.push_back(dm);
-    IncoherentSearch search(p);
-    std::mt19937 rng(1);
-    std::normal_distribution<float> gauss(0, 1);
-    std::vector<float> power(p.num_freq);
-    std::vector<IncoherentCandidate> cands;
-    for (int t = 0; t < 13000; ++t) {
-        for (int c = 0; c < p.num_freq; ++c) {
-            const bool on = c >= 233 && c < 247 && t >= 5000 && t < 5096;
-            power[c] = (float)(1000 * (1 + p.thermal * (gauss(rng) + (on ? 8 : 0))));
-        }
-        search.add_sample(power.data());
-        for (const IncoherentCandidate& c : search.take_candidates())
-            cands.push_back(c);
-    }
+    return p;
+}
+
+BOOST_AUTO_TEST_CASE(burst_without_dispersion_is_marked_at_every_dm) {
+    const std::vector<IncoherentCandidate> cands = run(burst_params(), {}, true);
     BOOST_REQUIRE_GE(cands.size(), 10);
     double dm_low = cands[0].dm, dm_high = cands[0].dm;
     for (const IncoherentCandidate& c : cands) {
@@ -160,6 +152,25 @@ BOOST_AUTO_TEST_CASE(burst_without_dispersion_is_marked_at_every_dm) {
         dm_high = std::max(dm_high, c.dm);
     }
     BOOST_CHECK_GT(dm_high - dm_low, 150);
+}
+
+BOOST_AUTO_TEST_CASE(pulse_beside_a_burst_is_not_marked) {
+    // A pulse of about 12 sigma in the lower half of the band, 200 samples after the burst
+    // began. The burst's candidates above DM 150 are placed before it, within the sweep
+    // between the DMs, but their S/N is in the top two blocks and the pulse's is not.
+    const std::vector<IncoherentCandidate> cands =
+        run(burst_params(), {{1.5, 100, 4200, 128}}, true);
+    int pulses = 0, marked = 0;
+    for (const IncoherentCandidate& c : cands) {
+        if (c.dm == 100 && c.sample == 4200) {
+            BOOST_CHECK(!c.undispersed);
+            ++pulses;
+        } else {
+            marked += c.undispersed;
+        }
+    }
+    BOOST_CHECK_EQUAL(pulses, 1);
+    BOOST_CHECK_GE(marked, 10);
 }
 
 BOOST_AUTO_TEST_CASE(channels_back_from_no_data_start_again) {
