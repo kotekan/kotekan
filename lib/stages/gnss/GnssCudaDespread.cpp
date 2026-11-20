@@ -987,6 +987,7 @@ GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
     par.n_hops = im.n_hops;
     par.Lf = im.Lf;
     par.data_stride = im.n_hops; // packed per-record staging buffer
+    par.complex_input = im.bank.channelization().complex_input ? 1 : 0;
     ck(gnss_cuda::launch_despread(im.d_data, im.d_code, im.d_jobs, n_spec, im.n_chan, par,
                                   im.d_corr, im.d_energy, im.stream),
        "launch");
@@ -1043,6 +1044,7 @@ int GnssCudaDespread::enqueue_batch_nm(const void* d_frame, const void* d_chan_s
     // frame_chan_stride and elem_stride; data_stride does not apply.
     par.data_stride = im.n_hops;
     par.conj_data = conjugate ? 1 : 0;
+    par.complex_input = im.bank.channelization().complex_input ? 1 : 0;
 
     // The replicas are generated once and reused for all n_elem antennas, which is why this
     // path splits the fused kernel. Both launches are on one stream, so the correlator starts
@@ -1076,6 +1078,7 @@ int GnssCudaDespread::enqueue_waveform(long long window_start_sample,
     par.n_hops = im.n_hops;
     par.Lf = im.Lf;
     par.data_stride = im.n_hops;
+    par.complex_input = im.bank.channelization().complex_input ? 1 : 0;
 
     ck(gnss_cuda::launch_waveform(im.d_code, (gnss_cuda::DespreadJob*)d_jobs_slot, n_spec,
                                   im.n_chan, par, im.epl_rot ? im.d_rot : nullptr, (float2*)d_wave,

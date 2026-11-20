@@ -105,6 +105,9 @@ struct DespreadParams {
     /// the waveform kernels honour it: launch_despread reads Phi as float2, so GnssCudaDespread
     /// refuses that path while fp16 tables are armed.
     int phi_half = 0;
+    /// I/Q input (gnss::Channelization::complex_input): the phiA tables are zero
+    /// (ChannelizedReplicaBank::image_weights), so the kernels skip that image's gather.
+    int complex_input = 0;
 };
 
 /// float2 wrapper over gnss44::unpack, which defines the CHORD 4+4b format (documented in

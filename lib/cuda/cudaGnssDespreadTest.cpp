@@ -206,6 +206,7 @@ int main(int argc, char** argv) {
     p.n_hops = n_hops;
     p.Lf = Lf;
     p.data_stride = n_hops;
+    p.complex_input = iq ? 1 : 0;
 
     float2* d_data;
     int8_t* d_code;

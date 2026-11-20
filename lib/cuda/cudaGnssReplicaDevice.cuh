@@ -53,8 +53,10 @@ __device__ inline float2 phi_ld(const __half2* p, int i) {
 ///
 /// @c PHI is the table type, float2 or __half2 (see phi_ld). @c C, @c sA and @c sB hold NT
 /// entries. Trial u's arithmetic does not depend on NT, so the prompt of a one-trial walk is
-/// bit-identical to the prompt of the three-trial walk.
-template<class PHI, int NT = 3>
+/// bit-identical to the prompt of the three-trial walk. With @c IMAGE_A false (I/Q input, whose
+/// phiA is zero; DespreadParams::complex_input) phiA is not read and sA is zero, as the walk
+/// over a zero table gives.
+template<class PHI, int NT = 3, bool IMAGE_A = true>
 __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int job_code_len,
                                     int job_n_chips, int job_d_first, int Lf,
                                     const int8_t* __restrict__ code,
@@ -98,7 +100,8 @@ __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int
         // (d) seed the carry with t(d0-1); the table has Lf+1 entries, indices 0..Lf.
         int t_prev = prev_khi + 1;
         t_prev = t_prev < 0 ? 0 : (t_prev > Lf ? Lf : t_prev);
-        pA[u] = phi_ld(phiA, t_prev);
+        if (IMAGE_A)
+            pA[u] = phi_ld(phiA, t_prev);
         pB[u] = phi_ld(phiB, t_prev);
     }
     for (int d = job_d_first; d < job_n_chips; ++d) {
@@ -108,19 +111,21 @@ __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int
             t = t < 0 ? 0 : (t > Lf ? Lf : t);
             f[u] += kf;
             khi_base[u] += ks;
-            const float2 cA = phi_ld(phiA, t);
-            const float2 cB = phi_ld(phiB, t);
             const float cv = (float)code[job_code_offset + idx[u]];
-            const float2 dA = make_float2(cA.x - pA[u].x, cA.y - pA[u].y);
-            const float2 dB = make_float2(cB.x - pB[u].x, cB.y - pB[u].y);
             // fmaf explicitly, not `s += cv * d`: whether ptxas contracts the plain expression
             // depends on the surrounding code, and the despread and waveform kernels, which both
             // call this, must produce the same bits.
-            sA[u].x = fmaf(cv, dA.x, sA[u].x);
-            sA[u].y = fmaf(cv, dA.y, sA[u].y);
+            if (IMAGE_A) {
+                const float2 cA = phi_ld(phiA, t);
+                const float2 dA = make_float2(cA.x - pA[u].x, cA.y - pA[u].y);
+                sA[u].x = fmaf(cv, dA.x, sA[u].x);
+                sA[u].y = fmaf(cv, dA.y, sA[u].y);
+                pA[u] = cA;
+            }
+            const float2 cB = phi_ld(phiB, t);
+            const float2 dB = make_float2(cB.x - pB[u].x, cB.y - pB[u].y);
             sB[u].x = fmaf(cv, dB.x, sB[u].x);
             sB[u].y = fmaf(cv, dB.y, sB[u].y);
-            pA[u] = cA;
             pB[u] = cB;
             if (--idx[u] < 0)
                 idx[u] += job_code_len;

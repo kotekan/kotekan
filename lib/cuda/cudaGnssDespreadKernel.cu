@@ -48,6 +48,8 @@ namespace {
 // waveform kernels use the same gather.
 using gnss_cuda::cmulf;
 
+/// IMAGE_A false skips the zero phiA of I/Q input (DespreadParams::complex_input).
+template<bool IMAGE_A>
 __global__ void gnss_despread_kernel(const float2* __restrict__ data, // [nchan][data_stride]
                                      const int8_t* __restrict__ code, // [batch-shared code table]
                                      const gnss_cuda::DespreadJob* __restrict__ jobs, // [n_spec]
@@ -98,8 +100,9 @@ __global__ void gnss_despread_kernel(const float2* __restrict__ data, // [nchan]
         // given chip are neighbours in the Phi slice, so they share L1 lines.
         float2 g3A[3], g3B[3];
         const double Cs[3] = {C_P, C_P - job.ds, C_P + job.ds};
-        gnss_cuda::chip_gather3(job.inv_cps, job.code_offset, job.code_len, job.n_chips,
-                                job.d_first, p.Lf, code, phiA, phiB, ks, kf, Cs, g3A, g3B);
+        gnss_cuda::chip_gather3<float2, 3, IMAGE_A>(job.inv_cps, job.code_offset, job.code_len,
+                                                    job.n_chips, job.d_first, p.Lf, code, phiA,
+                                                    phiB, ks, kf, Cs, g3A, g3B);
 #pragma unroll
         for (int tt = 0; tt < 3; ++tt) {
             const int t = (tt == 0) ? 1 : (tt == 1) ? 0 : 2; // -> P / E (C_P-ds) / L (C_P+ds)
@@ -166,8 +169,12 @@ cudaError_t launch_despread(const float2* data, const int8_t* code, const Despre
                             int n_spec, int n_chan, const DespreadParams& p, double2* corr,
                             double* energy, cudaStream_t stream) {
     dim3 grid(n_spec, n_chan); // one block per (PRN, channel), 4 output rows each
-    gnss_despread_kernel<<<grid, despread_block(p.n_hops), 0, stream>>>(data, code, jobs, p, corr,
-                                                                        energy);
+    if (p.complex_input)
+        gnss_despread_kernel<false>
+            <<<grid, despread_block(p.n_hops), 0, stream>>>(data, code, jobs, p, corr, energy);
+    else
+        gnss_despread_kernel<true>
+            <<<grid, despread_block(p.n_hops), 0, stream>>>(data, code, jobs, p, corr, energy);
     return cudaGetLastError();
 }
 
