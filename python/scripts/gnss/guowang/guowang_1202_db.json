@@ -4502,13 +4502,14 @@
    "catnum": null,
    "g2_phase": null,
    "last_observed_utc": null,
-   "last_checked_utc": "2026-11-19T18:45:55Z",
-   "last_checked_sep_deg": 2.02,
+   "last_checked_utc": "2026-11-20T14:05:05Z",
+   "last_checked_sep_deg": 3.11,
    "passes_found": 0,
-   "passes_silent": 2,
+   "passes_silent": 3,
    "passes": [
     ["2026-11-12T21:00:59Z", 0.2, false],
-    ["2026-11-19T18:45:55Z", 2.02, false]
+    ["2026-11-19T18:45:55Z", 2.02, false],
+    ["2026-11-20T14:05:05Z", 3.11, false]
    ]
   },
   "DIGUI-224": {
