@@ -106,6 +106,8 @@ host_dtv_RFImask_ringbuffer:
 
 run_combine_dtv_mask:
     kotekan_stage: DtvRfiMask
+    # the mask is refused unless every calibrated channel of the bundle is qualified
+    pilot_profiles_path: {{ dtv_runtime_bundle_dir|default("data/pilotproxy_bundle") }}/pilot_profiles.json
     num_local_freq: num_frequencies
     rfi_buf: host_rfi_RFImask_buffer
     dtv_buf: host_dtv_mask_buffer

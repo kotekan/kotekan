@@ -1,35 +1,36 @@
-/* fxfft256 v1 --- frozen deterministic fixed-point FFT reference.
+/* fxfft256 v1, the frozen deterministic fixed-point FFT reference.
  *
- * This file is the CUDA port template for the deployed fine-reduction
- * FFT: the per-stream code below is what one device thread (or one
- * thread-group stage schedule) must reproduce BIT-FOR-BIT. The Python
+ * This file is the CUDA port template for the deployed fine-reduction FFT.
+ * One device thread (or one thread-group stage schedule) must reproduce the
+ * per-stream code below bit for bit. The contract is defined by the Python
  * reference (src/pilot_proxy/fxfft.py) and the golden vectors
- * (tests/data/fxfft256_golden_v1.npz) define the contract; the test
- * suite compiles and bit-compares this file against both.
+ * (tests/data/fxfft256_golden_v1.npz), and the test suite compiles this file
+ * and compares its output bit for bit with both.
  *
- * Spec (fxfft256 v1) --- see fxfft.py docstring for the full statement:
+ * Specification (fxfft256 v1, stated in full in the fxfft.py docstring):
  *   N=256 forward DFT (e^{-2 pi i b m / N}), radix-2 DIT, bit-reversed
  *   load of the zero-padded 128-sample input, natural-order output.
- *   Q15 twiddles frozen below (nearest-integer, no ties; +-32768 stored
- *   in int32, exact under the rounding rule). Butterfly t = round15(W*b);
- *   round15(v) = floor((v + 16384) / 32768) via arithmetic shift.
- *   No stage scaling; inputs |re|,|im| <= 2^20 provably cannot overflow
- *   int32 (working values stay below 2^30.2).
+ *   Q15 twiddles frozen below (nearest integer, no ties, +-32768 stored
+ *   in int32, exact under the rounding rule). Butterfly t = round15(W*b),
+ *   with round15(v) = floor((v + 16384) / 32768) by arithmetic shift.
+ *   No stage scaling. Inputs with |re|,|im| <= 2^20 provably cannot
+ *   overflow int32 (working values stay below 2^30.2).
  *
  * Build (plain C, no CUDA needed):  cc -O2 -o fxfft256_ref fxfft256_ref.c
  * Harness protocol: ./fxfft256_ref in.bin out.bin
  *   in.bin  = uint32 LE count n, then n * 128 * 2 int32 LE (re, im)
  *   out.bin = n * 256 * 2 int32 LE (re, im)
  *
- * Determinism notes for the CUDA port:
- *   - use only int32/int64 arithmetic; no float, no FMA concerns;
- *   - (v >> 15) on negative int64 must be an arithmetic shift; this is
- *     the behavior of gcc, clang, and nvcc on all supported targets, and
- *     the self-check in main() aborts if the toolchain disagrees;
- *   - the twiddle table must be these literal constants, never libm;
- *   - any butterfly-order optimization is allowed only if the produced
- *     bits are identical (t is exactly 0 when b is 0, so skipping
- *     known-zero legs of stage 1 is safe).
+ * Determinism rules for the CUDA port:
+ *   - only int32/int64 arithmetic may be used, so there is no float and no
+ *     FMA concern
+ *   - (v >> 15) on a negative int64 must be an arithmetic shift, as it is in
+ *     gcc, clang, and nvcc on all supported targets, and the self-check in
+ *     main() exits with status 2 if the toolchain disagrees
+ *   - the twiddle table must be these literal constants, never libm
+ *   - a change to the butterfly order is allowed only if the produced bits
+ *     are identical (t is exactly 0 when b is 0, so skipping the known-zero
+ *     legs of stage 1 is safe)
  */
 #include <stdint.h>
 #include <stdio.h>
@@ -114,10 +115,10 @@ void fxfft256(const int32_t in[FX_NIN][2], int32_t out[FX_N][2])
     }
 }
 
-/* Define FXFFT256_REF_NO_MAIN to compile only the fxfft256() transform,
- * e.g. when this file is included/linked into a host test harness that
- * has its own entry point (such as the Kotekan testPilotProxyDetector
- * stage). The default standalone-harness behavior is unchanged. */
+/* FXFFT256_REF_NO_MAIN compiles only the fxfft256() transform. It is defined
+ * when this file is included in or linked into a host test harness with its
+ * own entry point, such as the kotekan testPilotProxyDetector stage. Without
+ * it, the file builds the standalone harness. */
 #ifndef FXFFT256_REF_NO_MAIN
 int main(int argc, char **argv)
 {

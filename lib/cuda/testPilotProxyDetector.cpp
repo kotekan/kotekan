@@ -1,8 +1,8 @@
 // The GPU packer and PilotProxy kernels are compared with CPU references for the
 // packed samples, row sums, fine powers, frame powers, and fine mask. The fine
 // powers are checked against the vendored fixed-point FFT reference, and the fine
-// decisions against a C++ port of fine_decision.py from pilot-proxy with
-// wide-integer comparisons. The pipeline and metadata tests are in
+// decisions of both versions against C++ ports of fine_decision.py from pilot-proxy
+// with wide-integer comparisons. The pipeline and metadata tests are in
 // tests/test_pilotproxy_integration.py.
 
 #include "Config.hpp"                     // for Config
@@ -22,6 +22,7 @@
 #define FXFFT256_REF_NO_MAIN
 #include "pilotproxy/fxfft256_ref.c"
 
+#include <algorithm>  // for sort
 #include <array>      // for array
 #include <cstddef>    // for ptrdiff_t
 #include <cstdint>    // for uint64_t, int32_t, int8_t, uint8_t
@@ -175,6 +176,49 @@ FineDecisionRef cpu_fine_decision(const std::vector<std::uint64_t>& S /* [3][256
     return {fired_bin >= 0 ? 1 : 0, true, n_bulk, rank_bin, fired_bin};
 }
 
+// Bit-exact C++ port of the pilot-proxy fine decision v2 (fine_mask_decision_v2).
+// The reference is the reference power den of the rank, and a designated bin
+// fires when num[b] * 2^16 > multiplier_q16 * den_r.
+FineDecisionRef cpu_fine_decision_v2(const std::vector<std::uint64_t>& S /* [3][256] */,
+                                     const int anchor_bin, const int designated_half_width,
+                                     const std::array<unsigned long long, 4>& bulk_mask_words,
+                                     const int cfar_rank, const std::uint64_t multiplier_q16) {
+    std::array<u128, FINE_BINS> num;
+    std::array<u128, FINE_BINS> den;
+    for (int b = 0; b < FINE_BINS; ++b) {
+        num[b] = u128(2) * S[std::size_t(0) * FINE_BINS + b];
+        den[b] = u128(S[std::size_t(1) * FINE_BINS + b]) + S[std::size_t(2) * FINE_BINS + b];
+    }
+    std::vector<int> bulk;
+    std::vector<u128> bulk_den;
+    for (int b = 0; b < FINE_BINS; ++b)
+        if (((bulk_mask_words[b >> 6] >> (b & 63)) & 1) && den[b] > 0) {
+            bulk.push_back(b);
+            bulk_den.push_back(den[b]);
+        }
+    const int n_bulk = int(bulk.size());
+    if (cfar_rank >= n_bulk)
+        return {0, false, n_bulk, -1, -1};
+    std::sort(bulk_den.begin(), bulk_den.end());
+    const u128 den_r = bulk_den[cfar_rank];
+    int rank_bin = -1;
+    for (const int b : bulk)
+        if (den[b] == den_r) {
+            rank_bin = b;
+            break;
+        }
+
+    int fired_bin = -1;
+    for (int k = -designated_half_width; k <= designated_half_width; ++k) {
+        const int b = ((anchor_bin + k) % FINE_BINS + FINE_BINS) % FINE_BINS;
+        if (less_u256(mul_u128(u128(multiplier_q16), den_r), mul_u128(num[b], u128(1) << 16))) {
+            fired_bin = b;
+            break;
+        }
+    }
+    return {fired_bin >= 0 ? 1 : 0, true, n_bulk, rank_bin, fired_bin};
+}
+
 } // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -270,6 +314,14 @@ public:
             FATAL_ERROR("PilotProxy_Create failed: {:s}", core.LastError());
 
         std::vector<std::int8_t> packed_gpu(packed_count), packed_cpu(packed_count);
+        std::vector<std::int8_t> packed_masked(packed_count);
+        std::vector<std::int8_t> stream_good(std::size_t(num_polarizations) * num_dishes);
+        for (std::size_t s = 0; s < stream_good.size(); ++s)
+            stream_good[s] = s % 3 != 0;
+        std::int8_t* d_stream_good = nullptr;
+        CHECK_CUDA_ERROR(cudaMalloc(&d_stream_good, stream_good.size()));
+        CHECK_CUDA_ERROR(cudaMemcpy(d_stream_good, stream_good.data(), stream_good.size(),
+                                    cudaMemcpyHostToDevice));
         std::vector<std::int32_t> row_sums_gpu(std::size_t(NUM_TERMS) * detector_rows * 2);
         std::vector<std::int32_t> row_sums_cpu(row_sums_gpu.size());
         std::vector<uint64_t> fine_gpu(std::size_t(NUM_TERMS) * FINE_BINS);
@@ -279,16 +331,35 @@ public:
         for (const bool reverse : {false, true}) {
             for (int freq_index = 0; freq_index < num_frequencies; ++freq_index) {
                 for (const ptrdiff_t pos : ring_positions) {
+                    // A bad input packs as zero and the good inputs are unchanged.
+                    launch_pilotproxy_pack(d_packed, d_ring, num_dishes, num_polarizations,
+                                           num_frequencies, freq_index, num_time_samples, ring_size,
+                                           pos, K, reverse, d_stream_good, /*stream=*/nullptr);
+                    CHECK_CUDA_ERROR(cudaDeviceSynchronize());
+                    CHECK_CUDA_ERROR(cudaMemcpy(packed_masked.data(), d_packed, packed_count,
+                                                cudaMemcpyDeviceToHost));
+                    cpu_pilotproxy_pack(packed_cpu.data(), ring.data(), num_dishes,
+                                        num_polarizations, num_frequencies, freq_index,
+                                        num_time_samples, ring_size, pos, K, reverse,
+                                        stream_good.data());
+                    for (ptrdiff_t i = 0; i < packed_count; ++i) {
+                        const bool good = stream_good[i / num_time_samples] != 0;
+                        if (packed_masked[i] != packed_cpu[i] || (!good && packed_cpu[i] != 0))
+                            FATAL_ERROR("masked packer mismatch at index {:d}", i);
+                    }
+
                     // The GPU and CPU packer outputs are compared bit for bit.
                     launch_pilotproxy_pack(d_packed, d_ring, num_dishes, num_polarizations,
                                            num_frequencies, freq_index, num_time_samples, ring_size,
-                                           pos, K, reverse, /*stream=*/nullptr);
+                                           pos, K, reverse, /*stream_good=*/nullptr,
+                                           /*stream=*/nullptr);
                     CHECK_CUDA_ERROR(cudaDeviceSynchronize());
                     CHECK_CUDA_ERROR(cudaMemcpy(packed_gpu.data(), d_packed, packed_count,
                                                 cudaMemcpyDeviceToHost));
                     cpu_pilotproxy_pack(packed_cpu.data(), ring.data(), num_dishes,
                                         num_polarizations, num_frequencies, freq_index,
-                                        num_time_samples, ring_size, pos, K, reverse);
+                                        num_time_samples, ring_size, pos, K, reverse,
+                                        /*stream_good=*/nullptr);
                     for (ptrdiff_t i = 0; i < packed_count; ++i)
                         if (packed_gpu[i] != packed_cpu[i])
                             FATAL_ERROR("packer mismatch: case(rev={:d},f={:d},pos={:d}) "
@@ -344,7 +415,7 @@ public:
                     check_powers("fused");
 
                     // The designated-set CFAR mask of the GPU epilogue is
-                    // compared with the fine decision v1 port for several
+                    // compared with the fine decision v1 and v2 ports for several
                     // calibrations. These have an independent-bin bulk, a
                     // designated set excluded by guard bins, and a degenerate
                     // bulk that must force mask 0 and invalid support.
@@ -377,44 +448,54 @@ public:
                                 words[b >> 6] |= 1ULL << (b & 63);
                             }
                         }
-                        int mask_gpu_i32 = -1;
-                        CHECK_CUDA_ERROR(cudaMemset(d_powers, 0, NUM_TERMS * sizeof(uint64_t)));
-                        core.Compute_FusedFineMask_U64(
-                            handle, weights.data(), calibration.anchor, calibration.half_width,
-                            words.data(), calibration.rank, calibration.mult_q16, d_fine_powers,
-                            d_mask_i32, d_powers, nullptr);
-                        CHECK_CUDA_ERROR(cudaDeviceSynchronize());
-                        check_powers("mask");
-                        CHECK_CUDA_ERROR(cudaMemcpy(&mask_gpu_i32, d_mask_i32, sizeof(int),
-                                                    cudaMemcpyDeviceToHost));
-                        const FineDecisionRef ref =
-                            cpu_fine_decision(fine_cpu, calibration.anchor, calibration.half_width,
-                                              words, calibration.rank, calibration.mult_q16);
-                        if (mask_gpu_i32 != ref.mask)
-                            FATAL_ERROR("fine mask mismatch: anchor={:d} w={:d} rank={:d} "
-                                        "mult={:d}: gpu={:d} cpu={:d} (n_bulk={:d} valid={:d})",
-                                        calibration.anchor, calibration.half_width,
-                                        calibration.rank, calibration.mult_q16, mask_gpu_i32,
-                                        ref.mask, ref.n_bulk, int(ref.valid));
-                        const int mask_without_support = mask_gpu_i32;
-                        CHECK_CUDA_ERROR(cudaMemset(d_powers, 0, NUM_TERMS * sizeof(uint64_t)));
-                        core.Compute_FusedFineMaskWithSupport_U64(
-                            handle, weights.data(), calibration.anchor, calibration.half_width,
-                            words.data(), calibration.rank, calibration.mult_q16, d_fine_powers,
-                            d_mask_i32, d_support, d_support + 1, d_powers, nullptr);
-                        CHECK_CUDA_ERROR(cudaDeviceSynchronize());
-                        check_powers("support");
-                        std::array<int, 2> support;
-                        CHECK_CUDA_ERROR(cudaMemcpy(support.data(), d_support, 2 * sizeof(int),
-                                                    cudaMemcpyDeviceToHost));
-                        CHECK_CUDA_ERROR(cudaMemcpy(&mask_gpu_i32, d_mask_i32, sizeof(int),
-                                                    cudaMemcpyDeviceToHost));
-                        if (mask_gpu_i32 != mask_without_support || support[0] != int(ref.valid)
-                            || support[1] != ref.n_bulk)
-                            FATAL_ERROR("fine support mismatch: gpu=({:d},{:d}) cpu=({:d},{:d}) "
-                                        "mask={:d} without support={:d}",
-                                        support[0], support[1], int(ref.valid), ref.n_bulk,
-                                        mask_gpu_i32, mask_without_support);
+                        for (const bool v2 : {false, true}) {
+                            const auto mask_entry = v2 ? core.Compute_FusedFineMaskV2_U64
+                                                       : core.Compute_FusedFineMask_U64;
+                            const auto support_entry =
+                                v2 ? core.Compute_FusedFineMaskV2WithSupport_U64
+                                   : core.Compute_FusedFineMaskWithSupport_U64;
+                            int mask_gpu_i32 = -1;
+                            CHECK_CUDA_ERROR(cudaMemset(d_powers, 0, NUM_TERMS * sizeof(uint64_t)));
+                            mask_entry(handle, weights.data(), calibration.anchor,
+                                       calibration.half_width, words.data(), calibration.rank,
+                                       calibration.mult_q16, d_fine_powers, d_mask_i32, d_powers,
+                                       nullptr);
+                            CHECK_CUDA_ERROR(cudaDeviceSynchronize());
+                            check_powers("mask");
+                            CHECK_CUDA_ERROR(cudaMemcpy(&mask_gpu_i32, d_mask_i32, sizeof(int),
+                                                        cudaMemcpyDeviceToHost));
+                            const FineDecisionRef ref =
+                                (v2 ? cpu_fine_decision_v2 : cpu_fine_decision)(
+                                    fine_cpu, calibration.anchor, calibration.half_width, words,
+                                    calibration.rank, calibration.mult_q16);
+                            if (mask_gpu_i32 != ref.mask)
+                                FATAL_ERROR(
+                                    "fine mask mismatch: v2={:d} anchor={:d} w={:d} rank={:d} "
+                                    "mult={:d}: gpu={:d} cpu={:d} (n_bulk={:d} valid={:d})",
+                                    int(v2), calibration.anchor, calibration.half_width,
+                                    calibration.rank, calibration.mult_q16, mask_gpu_i32, ref.mask,
+                                    ref.n_bulk, int(ref.valid));
+                            const int mask_without_support = mask_gpu_i32;
+                            CHECK_CUDA_ERROR(cudaMemset(d_powers, 0, NUM_TERMS * sizeof(uint64_t)));
+                            support_entry(handle, weights.data(), calibration.anchor,
+                                          calibration.half_width, words.data(), calibration.rank,
+                                          calibration.mult_q16, d_fine_powers, d_mask_i32,
+                                          d_support, d_support + 1, d_powers, nullptr);
+                            CHECK_CUDA_ERROR(cudaDeviceSynchronize());
+                            check_powers("support");
+                            std::array<int, 2> support;
+                            CHECK_CUDA_ERROR(cudaMemcpy(support.data(), d_support, 2 * sizeof(int),
+                                                        cudaMemcpyDeviceToHost));
+                            CHECK_CUDA_ERROR(cudaMemcpy(&mask_gpu_i32, d_mask_i32, sizeof(int),
+                                                        cudaMemcpyDeviceToHost));
+                            if (mask_gpu_i32 != mask_without_support || support[0] != int(ref.valid)
+                                || support[1] != ref.n_bulk)
+                                FATAL_ERROR("fine support mismatch: v2={:d} gpu=({:d},{:d}) "
+                                            "cpu=({:d},{:d}) "
+                                            "mask={:d} without support={:d}",
+                                            int(v2), support[0], support[1], int(ref.valid),
+                                            ref.n_bulk, mask_gpu_i32, mask_without_support);
+                        }
                     }
 
                     ++cases;
@@ -423,6 +504,7 @@ public:
         }
 
         core.Destroy(handle);
+        CHECK_CUDA_ERROR(cudaFree(d_stream_good));
         CHECK_CUDA_ERROR(cudaFree(d_ring));
         CHECK_CUDA_ERROR(cudaFree(d_packed));
         CHECK_CUDA_ERROR(cudaFree(d_powers));

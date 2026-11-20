@@ -1,0 +1,1070 @@
+{
+  "detector_contract_sha256": "db5badcee0207a698b0ce1dc659f2cdb1f68d2e47a2bfe8ccfcd284460fd5124",
+  "input_coordinate_system": "post_nyquist_zone_normalized",
+  "input_preprocessing": {
+    "time_reverse_detector_windows_before_kernel": true
+  },
+  "profiles": [
+    {
+      "chime_channel_id": 844,
+      "chord_channel_id": null,
+      "coarse_channel_center_hz": 470312500.0,
+      "coarse_channel_index": 843,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 72260,
+        "anchor_bin": 1,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x5555555400000000",
+          "0x5555555555555555",
+          "0x5555555555555555",
+          "0x0000000155555555"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-11 CHIME upgrade first bundle, parameters only"
+          ],
+          "source_product_sha256": [
+            "9278bd0262cbeb590be1b798222486f7801f95687ed0b9cc43f6a553973fbcd0"
+          ],
+          "null_quantile": 0.99,
+          "note": "Word from the floor, no captures, floor from white noise, 2048 inputs. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 1.0020553359683795,
+      "physical_channel": 14,
+      "pilot_frequency_hz": 470309441.0,
+      "placement_warnings": "lower reference wrapped across the baseband-frame origin nu = 0 (the coarse-channel center / DC under this profile, not the channel edge)",
+      "positive_excess_half_threshold_den": 12650,
+      "positive_excess_half_threshold_num": 6338,
+      "receiver_channel_id": 844,
+      "receiver_channel_id_namespace": "chime_freq_id",
+      "reference_norm_sum_sq": 12650,
+      "reference_placement_status": "edge_wrapped",
+      "target_norm_sq": 6338,
+      "weight_bank_index": 0,
+      "weight_bank_nbytes": 384,
+      "weight_bank_offset_bytes": 0
+    },
+    {
+      "chime_channel_id": 829,
+      "chord_channel_id": null,
+      "coarse_channel_center_hz": 476171875.0,
+      "coarse_channel_index": 828,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 72260,
+        "anchor_bin": 236,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x5555555555554000",
+          "0x5555555555555555",
+          "0x5555555555555555",
+          "0x0000000000000555"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-11 CHIME upgrade first bundle, parameters only"
+          ],
+          "source_product_sha256": [
+            "9278bd0262cbeb590be1b798222486f7801f95687ed0b9cc43f6a553973fbcd0"
+          ],
+          "null_quantile": 0.99,
+          "note": "Word from the floor, no captures, floor from white noise, 2048 inputs. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 0.9944561567892559,
+      "physical_channel": 15,
+      "pilot_frequency_hz": 476309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 12807,
+      "positive_excess_half_threshold_num": 6368,
+      "receiver_channel_id": 829,
+      "receiver_channel_id_namespace": "chime_freq_id",
+      "reference_norm_sum_sq": 12807,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 6368,
+      "weight_bank_index": 1,
+      "weight_bank_nbytes": 384,
+      "weight_bank_offset_bytes": 384
+    },
+    {
+      "chime_channel_id": 813,
+      "chord_channel_id": null,
+      "coarse_channel_center_hz": 482421875.0,
+      "coarse_channel_index": 812,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 72260,
+        "anchor_bin": 216,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x5555555555555555",
+          "0x5555555555555555",
+          "0x0055555555555555",
+          "0x5400000000000000"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-11 CHIME upgrade first bundle, parameters only"
+          ],
+          "source_product_sha256": [
+            "9278bd0262cbeb590be1b798222486f7801f95687ed0b9cc43f6a553973fbcd0"
+          ],
+          "null_quantile": 0.99,
+          "note": "Word from the floor, no captures, floor from white noise, 2048 inputs. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 0.9998429154885329,
+      "physical_channel": 16,
+      "pilot_frequency_hz": 482309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 12732,
+      "positive_excess_half_threshold_num": 6365,
+      "receiver_channel_id": 813,
+      "receiver_channel_id_namespace": "chime_freq_id",
+      "reference_norm_sum_sq": 12732,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 6365,
+      "weight_bank_index": 2,
+      "weight_bank_nbytes": 384,
+      "weight_bank_offset_bytes": 768
+    },
+    {
+      "chime_channel_id": 798,
+      "chord_channel_id": null,
+      "coarse_channel_center_hz": 488281250.0,
+      "coarse_channel_index": 797,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 72260,
+        "anchor_bin": 195,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x5555555555555555",
+          "0x5555555555555555",
+          "0x0000000555555555",
+          "0x5555555000000000"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-11 CHIME upgrade first bundle, parameters only"
+          ],
+          "source_product_sha256": [
+            "9278bd0262cbeb590be1b798222486f7801f95687ed0b9cc43f6a553973fbcd0"
+          ],
+          "null_quantile": 0.99,
+          "note": "Word from the floor, no captures, floor from white noise, 2048 inputs. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 1.0014924200769775,
+      "physical_channel": 17,
+      "pilot_frequency_hz": 488309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 12731,
+      "positive_excess_half_threshold_num": 6375,
+      "receiver_channel_id": 798,
+      "receiver_channel_id_namespace": "chime_freq_id",
+      "reference_norm_sum_sq": 12731,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 6375,
+      "weight_bank_index": 3,
+      "weight_bank_nbytes": 384,
+      "weight_bank_offset_bytes": 1152
+    },
+    {
+      "chime_channel_id": 783,
+      "chord_channel_id": null,
+      "coarse_channel_center_hz": 494140625.0,
+      "coarse_channel_index": 782,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 72260,
+        "anchor_bin": 175,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x5555555555555555",
+          "0x5555555555555555",
+          "0x0000000000005555",
+          "0x5555555555550000"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-11 CHIME upgrade first bundle, parameters only"
+          ],
+          "source_product_sha256": [
+            "9278bd0262cbeb590be1b798222486f7801f95687ed0b9cc43f6a553973fbcd0"
+          ],
+          "null_quantile": 0.99,
+          "note": "Word from the floor, no captures, floor from white noise, 2048 inputs. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 1.011111111111111,
+      "physical_channel": 18,
+      "pilot_frequency_hz": 494309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 12600,
+      "positive_excess_half_threshold_num": 6370,
+      "receiver_channel_id": 783,
+      "receiver_channel_id_namespace": "chime_freq_id",
+      "reference_norm_sum_sq": 12600,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 6370,
+      "weight_bank_index": 4,
+      "weight_bank_nbytes": 384,
+      "weight_bank_offset_bytes": 1536
+    },
+    {
+      "chime_channel_id": 767,
+      "chord_channel_id": null,
+      "coarse_channel_center_hz": 500390625.0,
+      "coarse_channel_index": 766,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 72260,
+        "anchor_bin": 154,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x5555555555555555",
+          "0x0155555555555555",
+          "0x5000000000000000",
+          "0x5555555555555555"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-11 CHIME upgrade first bundle, parameters only"
+          ],
+          "source_product_sha256": [
+            "9278bd0262cbeb590be1b798222486f7801f95687ed0b9cc43f6a553973fbcd0"
+          ],
+          "null_quantile": 0.99,
+          "note": "Word from the floor, no captures, floor from white noise, 2048 inputs. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 1.0064495831366997,
+      "physical_channel": 19,
+      "pilot_frequency_hz": 500309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 12714,
+      "positive_excess_half_threshold_num": 6398,
+      "receiver_channel_id": 767,
+      "receiver_channel_id_namespace": "chime_freq_id",
+      "reference_norm_sum_sq": 12714,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 6398,
+      "weight_bank_index": 5,
+      "weight_bank_nbytes": 384,
+      "weight_bank_offset_bytes": 1920
+    },
+    {
+      "chime_channel_id": 752,
+      "chord_channel_id": null,
+      "coarse_channel_center_hz": 506250000.0,
+      "coarse_channel_index": 751,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 72260,
+        "anchor_bin": 134,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x5555555555555555",
+          "0x0000001555555555",
+          "0x5555550000000000",
+          "0x5555555555555555"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-11 CHIME upgrade first bundle, parameters only"
+          ],
+          "source_product_sha256": [
+            "9278bd0262cbeb590be1b798222486f7801f95687ed0b9cc43f6a553973fbcd0"
+          ],
+          "null_quantile": 0.99,
+          "note": "Word from the floor, no captures, floor from white noise, 2048 inputs. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 0.9853298815407547,
+      "physical_channel": 20,
+      "pilot_frequency_hz": 506309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 12747,
+      "positive_excess_half_threshold_num": 6280,
+      "receiver_channel_id": 752,
+      "receiver_channel_id_namespace": "chime_freq_id",
+      "reference_norm_sum_sq": 12747,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 6280,
+      "weight_bank_index": 6,
+      "weight_bank_nbytes": 384,
+      "weight_bank_offset_bytes": 2304
+    },
+    {
+      "chime_channel_id": 736,
+      "chord_channel_id": null,
+      "coarse_channel_center_hz": 512500000.0,
+      "coarse_channel_index": 735,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 72260,
+        "anchor_bin": 113,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x5555555555555555",
+          "0x0000000000015555",
+          "0x5555555555540000",
+          "0x5555555555555555"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-11 CHIME upgrade first bundle, parameters only"
+          ],
+          "source_product_sha256": [
+            "9278bd0262cbeb590be1b798222486f7801f95687ed0b9cc43f6a553973fbcd0"
+          ],
+          "null_quantile": 0.99,
+          "note": "Word from the floor, no captures, floor from white noise, 2048 inputs. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 1.0075925340082252,
+      "physical_channel": 21,
+      "pilot_frequency_hz": 512309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 12644,
+      "positive_excess_half_threshold_num": 6370,
+      "receiver_channel_id": 736,
+      "receiver_channel_id_namespace": "chime_freq_id",
+      "reference_norm_sum_sq": 12644,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 6370,
+      "weight_bank_index": 7,
+      "weight_bank_nbytes": 384,
+      "weight_bank_offset_bytes": 2688
+    },
+    {
+      "chime_channel_id": 721,
+      "chord_channel_id": null,
+      "coarse_channel_center_hz": 518359375.0,
+      "coarse_channel_index": 720,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 72260,
+        "anchor_bin": 93,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x1555555555555555",
+          "0x4000000000000000",
+          "0x5555555555555555",
+          "0x5555555555555555"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-11 CHIME upgrade first bundle, parameters only"
+          ],
+          "source_product_sha256": [
+            "9278bd0262cbeb590be1b798222486f7801f95687ed0b9cc43f6a553973fbcd0"
+          ],
+          "null_quantile": 0.99,
+          "note": "Word from the floor, no captures, floor from white noise, 2048 inputs. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 1.0033892961298967,
+      "physical_channel": 22,
+      "pilot_frequency_hz": 518309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 12687,
+      "positive_excess_half_threshold_num": 6365,
+      "receiver_channel_id": 721,
+      "receiver_channel_id_namespace": "chime_freq_id",
+      "reference_norm_sum_sq": 12687,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 6365,
+      "weight_bank_index": 8,
+      "weight_bank_nbytes": 384,
+      "weight_bank_offset_bytes": 3072
+    },
+    {
+      "chime_channel_id": 706,
+      "chord_channel_id": null,
+      "coarse_channel_center_hz": 524218750.0,
+      "coarse_channel_index": 705,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 72260,
+        "anchor_bin": 72,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x0000005555555555",
+          "0x5555540000000000",
+          "0x5555555555555555",
+          "0x5555555555555555"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-11 CHIME upgrade first bundle, parameters only"
+          ],
+          "source_product_sha256": [
+            "9278bd0262cbeb590be1b798222486f7801f95687ed0b9cc43f6a553973fbcd0"
+          ],
+          "null_quantile": 0.99,
+          "note": "Word from the floor, no captures, floor from white noise, 2048 inputs. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 0.9945818610129564,
+      "physical_channel": 23,
+      "pilot_frequency_hz": 524309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 12735,
+      "positive_excess_half_threshold_num": 6333,
+      "receiver_channel_id": 706,
+      "receiver_channel_id_namespace": "chime_freq_id",
+      "reference_norm_sum_sq": 12735,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 6333,
+      "weight_bank_index": 9,
+      "weight_bank_nbytes": 384,
+      "weight_bank_offset_bytes": 3456
+    },
+    {
+      "chime_channel_id": 690,
+      "chord_channel_id": null,
+      "coarse_channel_center_hz": 530468750.0,
+      "coarse_channel_index": 689,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 72260,
+        "anchor_bin": 52,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x0000000000055555",
+          "0x5555555555400000",
+          "0x5555555555555555",
+          "0x5555555555555555"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-11 CHIME upgrade first bundle, parameters only"
+          ],
+          "source_product_sha256": [
+            "9278bd0262cbeb590be1b798222486f7801f95687ed0b9cc43f6a553973fbcd0"
+          ],
+          "null_quantile": 0.99,
+          "note": "Word from the floor, no captures, floor from white noise, 2048 inputs. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 1.0047184649260774,
+      "physical_channel": 24,
+      "pilot_frequency_hz": 530309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 12716,
+      "positive_excess_half_threshold_num": 6388,
+      "receiver_channel_id": 690,
+      "receiver_channel_id_namespace": "chime_freq_id",
+      "reference_norm_sum_sq": 12716,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 6388,
+      "weight_bank_index": 10,
+      "weight_bank_nbytes": 384,
+      "weight_bank_offset_bytes": 3840
+    },
+    {
+      "chime_channel_id": 675,
+      "chord_channel_id": null,
+      "coarse_channel_center_hz": 536328125.0,
+      "coarse_channel_index": 674,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 72260,
+        "anchor_bin": 31,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x0000000000000000",
+          "0x5555555555555555",
+          "0x5555555555555555",
+          "0x5555555555555555"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-11 CHIME upgrade first bundle, parameters only"
+          ],
+          "source_product_sha256": [
+            "9278bd0262cbeb590be1b798222486f7801f95687ed0b9cc43f6a553973fbcd0"
+          ],
+          "null_quantile": 0.99,
+          "note": "Word from the floor, no captures, floor from white noise, 2048 inputs. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 0.9982709839673058,
+      "physical_channel": 25,
+      "pilot_frequency_hz": 536309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 12724,
+      "positive_excess_half_threshold_num": 6351,
+      "receiver_channel_id": 675,
+      "receiver_channel_id_namespace": "chime_freq_id",
+      "reference_norm_sum_sq": 12724,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 6351,
+      "weight_bank_index": 11,
+      "weight_bank_nbytes": 384,
+      "weight_bank_offset_bytes": 4224
+    },
+    {
+      "chime_channel_id": 660,
+      "chord_channel_id": null,
+      "coarse_channel_center_hz": 542187500.0,
+      "coarse_channel_index": 659,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 72260,
+        "anchor_bin": 11,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x5555500000000000",
+          "0x5555555555555555",
+          "0x5555555555555555",
+          "0x0000055555555555"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-11 CHIME upgrade first bundle, parameters only"
+          ],
+          "source_product_sha256": [
+            "9278bd0262cbeb590be1b798222486f7801f95687ed0b9cc43f6a553973fbcd0"
+          ],
+          "null_quantile": 0.99,
+          "note": "Word from the floor, no captures, floor from white noise, 2048 inputs. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 1.0085644692386266,
+      "physical_channel": 26,
+      "pilot_frequency_hz": 542309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 12727,
+      "positive_excess_half_threshold_num": 6418,
+      "receiver_channel_id": 660,
+      "receiver_channel_id_namespace": "chime_freq_id",
+      "reference_norm_sum_sq": 12727,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 6418,
+      "weight_bank_index": 12,
+      "weight_bank_nbytes": 384,
+      "weight_bank_offset_bytes": 4608
+    },
+    {
+      "chime_channel_id": 644,
+      "chord_channel_id": null,
+      "coarse_channel_center_hz": 548437500.0,
+      "coarse_channel_index": 643,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 72260,
+        "anchor_bin": 246,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x5555555555000000",
+          "0x5555555555555555",
+          "0x5555555555555555",
+          "0x0000000000155555"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-11 CHIME upgrade first bundle, parameters only"
+          ],
+          "source_product_sha256": [
+            "9278bd0262cbeb590be1b798222486f7801f95687ed0b9cc43f6a553973fbcd0"
+          ],
+          "null_quantile": 0.99,
+          "note": "Word from the floor, no captures, floor from white noise, 2048 inputs. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 0.992953335421234,
+      "physical_channel": 27,
+      "pilot_frequency_hz": 548309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 12772,
+      "positive_excess_half_threshold_num": 6341,
+      "receiver_channel_id": 644,
+      "receiver_channel_id_namespace": "chime_freq_id",
+      "reference_norm_sum_sq": 12772,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 6341,
+      "weight_bank_index": 13,
+      "weight_bank_nbytes": 384,
+      "weight_bank_offset_bytes": 4992
+    },
+    {
+      "chime_channel_id": 629,
+      "chord_channel_id": null,
+      "coarse_channel_center_hz": 554296875.0,
+      "coarse_channel_index": 628,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 72260,
+        "anchor_bin": 226,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x5555555555555550",
+          "0x5555555555555555",
+          "0x5555555555555555",
+          "0x0000000000000001"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-11 CHIME upgrade first bundle, parameters only"
+          ],
+          "source_product_sha256": [
+            "9278bd0262cbeb590be1b798222486f7801f95687ed0b9cc43f6a553973fbcd0"
+          ],
+          "null_quantile": 0.99,
+          "note": "Word from the floor, no captures, floor from white noise, 2048 inputs. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 1.0033102143757882,
+      "physical_channel": 28,
+      "pilot_frequency_hz": 554309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 12688,
+      "positive_excess_half_threshold_num": 6365,
+      "receiver_channel_id": 629,
+      "receiver_channel_id_namespace": "chime_freq_id",
+      "reference_norm_sum_sq": 12688,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 6365,
+      "weight_bank_index": 14,
+      "weight_bank_nbytes": 384,
+      "weight_bank_offset_bytes": 5376
+    },
+    {
+      "chime_channel_id": 614,
+      "chord_channel_id": null,
+      "coarse_channel_center_hz": 560156250.0,
+      "coarse_channel_index": 613,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 72260,
+        "anchor_bin": 202,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x5555555555555555",
+          "0x5555555555555555",
+          "0x0000015555555555",
+          "0x5555500000000000"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-11 CHIME upgrade first bundle, parameters only"
+          ],
+          "source_product_sha256": [
+            "9278bd0262cbeb590be1b798222486f7801f95687ed0b9cc43f6a553973fbcd0"
+          ],
+          "null_quantile": 0.99,
+          "note": "Word from the floor, no captures, floor from white noise, 2048 inputs. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 1.0024384488319042,
+      "physical_channel": 29,
+      "pilot_frequency_hz": 560309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 12713,
+      "positive_excess_half_threshold_num": 6372,
+      "receiver_channel_id": 614,
+      "receiver_channel_id_namespace": "chime_freq_id",
+      "reference_norm_sum_sq": 12713,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 6372,
+      "weight_bank_index": 15,
+      "weight_bank_nbytes": 384,
+      "weight_bank_offset_bytes": 5760
+    },
+    {
+      "chime_channel_id": 598,
+      "chord_channel_id": null,
+      "coarse_channel_center_hz": 566406250.0,
+      "coarse_channel_index": 597,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 72260,
+        "anchor_bin": 185,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x5555555555555555",
+          "0x5555555555555555",
+          "0x0000000001555555",
+          "0x5555555554000000"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-11 CHIME upgrade first bundle, parameters only"
+          ],
+          "source_product_sha256": [
+            "9278bd0262cbeb590be1b798222486f7801f95687ed0b9cc43f6a553973fbcd0"
+          ],
+          "null_quantile": 0.99,
+          "note": "Word from the floor, no captures, floor from white noise, 2048 inputs. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 0.9966261278932915,
+      "physical_channel": 30,
+      "pilot_frequency_hz": 566309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 12745,
+      "positive_excess_half_threshold_num": 6351,
+      "receiver_channel_id": 598,
+      "receiver_channel_id_namespace": "chime_freq_id",
+      "reference_norm_sum_sq": 12745,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 6351,
+      "weight_bank_index": 16,
+      "weight_bank_nbytes": 384,
+      "weight_bank_offset_bytes": 6144
+    },
+    {
+      "chime_channel_id": 583,
+      "chord_channel_id": null,
+      "coarse_channel_center_hz": 572265625.0,
+      "coarse_channel_index": 582,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 72260,
+        "anchor_bin": 164,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x5555555555555555",
+          "0x5555555555555555",
+          "0x0000000000000005",
+          "0x5555555555555540"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-11 CHIME upgrade first bundle, parameters only"
+          ],
+          "source_product_sha256": [
+            "9278bd0262cbeb590be1b798222486f7801f95687ed0b9cc43f6a553973fbcd0"
+          ],
+          "null_quantile": 0.99,
+          "note": "Word from the floor, no captures, floor from white noise, 2048 inputs. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 1.0019652543039068,
+      "physical_channel": 31,
+      "pilot_frequency_hz": 572309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 12721,
+      "positive_excess_half_threshold_num": 6373,
+      "receiver_channel_id": 583,
+      "receiver_channel_id_namespace": "chime_freq_id",
+      "reference_norm_sum_sq": 12721,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 6373,
+      "weight_bank_index": 17,
+      "weight_bank_nbytes": 384,
+      "weight_bank_offset_bytes": 6528
+    },
+    {
+      "chime_channel_id": 568,
+      "chord_channel_id": null,
+      "coarse_channel_center_hz": 578125000.0,
+      "coarse_channel_index": 567,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 72260,
+        "anchor_bin": 144,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x5555555555555555",
+          "0x0000555555555555",
+          "0x5554000000000000",
+          "0x5555555555555555"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-11 CHIME upgrade first bundle, parameters only"
+          ],
+          "source_product_sha256": [
+            "9278bd0262cbeb590be1b798222486f7801f95687ed0b9cc43f6a553973fbcd0"
+          ],
+          "null_quantile": 0.99,
+          "note": "Word from the floor, no captures, floor from white noise, 2048 inputs. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 1.0022890520167338,
+      "physical_channel": 32,
+      "pilot_frequency_hz": 578309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 12669,
+      "positive_excess_half_threshold_num": 6349,
+      "receiver_channel_id": 568,
+      "receiver_channel_id_namespace": "chime_freq_id",
+      "reference_norm_sum_sq": 12669,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 6349,
+      "weight_bank_index": 18,
+      "weight_bank_nbytes": 384,
+      "weight_bank_offset_bytes": 6912
+    },
+    {
+      "chime_channel_id": 552,
+      "chord_channel_id": null,
+      "coarse_channel_center_hz": 584375000.0,
+      "coarse_channel_index": 551,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 72260,
+        "anchor_bin": 123,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x5555555555555555",
+          "0x0000000005555555",
+          "0x5555555550000000",
+          "0x5555555555555555"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-11 CHIME upgrade first bundle, parameters only"
+          ],
+          "source_product_sha256": [
+            "9278bd0262cbeb590be1b798222486f7801f95687ed0b9cc43f6a553973fbcd0"
+          ],
+          "null_quantile": 0.99,
+          "note": "Word from the floor, no captures, floor from white noise, 2048 inputs. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 1.0049672790349287,
+      "physical_channel": 33,
+      "pilot_frequency_hz": 584309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 12683,
+      "positive_excess_half_threshold_num": 6373,
+      "receiver_channel_id": 552,
+      "receiver_channel_id_namespace": "chime_freq_id",
+      "reference_norm_sum_sq": 12683,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 6373,
+      "weight_bank_index": 19,
+      "weight_bank_nbytes": 384,
+      "weight_bank_offset_bytes": 7296
+    },
+    {
+      "chime_channel_id": 537,
+      "chord_channel_id": null,
+      "coarse_channel_center_hz": 590234375.0,
+      "coarse_channel_index": 536,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 72260,
+        "anchor_bin": 103,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x5555555555555555",
+          "0x0000000000000055",
+          "0x5555555555555500",
+          "0x5555555555555555"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-11 CHIME upgrade first bundle, parameters only"
+          ],
+          "source_product_sha256": [
+            "9278bd0262cbeb590be1b798222486f7801f95687ed0b9cc43f6a553973fbcd0"
+          ],
+          "null_quantile": 0.99,
+          "note": "Word from the floor, no captures, floor from white noise, 2048 inputs. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 1.0043399352955102,
+      "physical_channel": 34,
+      "pilot_frequency_hz": 590309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 12673,
+      "positive_excess_half_threshold_num": 6364,
+      "receiver_channel_id": 537,
+      "receiver_channel_id_namespace": "chime_freq_id",
+      "reference_norm_sum_sq": 12673,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 6364,
+      "weight_bank_index": 20,
+      "weight_bank_nbytes": 384,
+      "weight_bank_offset_bytes": 7680
+    },
+    {
+      "chime_channel_id": 521,
+      "chord_channel_id": null,
+      "coarse_channel_center_hz": 596484375.0,
+      "coarse_channel_index": 520,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 72260,
+        "anchor_bin": 111,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x5555555555555555",
+          "0x0000000000005555",
+          "0x5555555555550000",
+          "0x5555555555555555"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-11 CHIME upgrade first bundle, parameters only"
+          ],
+          "source_product_sha256": [
+            "9278bd0262cbeb590be1b798222486f7801f95687ed0b9cc43f6a553973fbcd0"
+          ],
+          "null_quantile": 0.99,
+          "note": "Word from the floor, no captures, floor from white noise, 2048 inputs. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 0.9974882260596546,
+      "physical_channel": 35,
+      "pilot_frequency_hz": 596309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 12740,
+      "positive_excess_half_threshold_num": 6354,
+      "receiver_channel_id": 521,
+      "receiver_channel_id_namespace": "chime_freq_id",
+      "reference_norm_sum_sq": 12740,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 6354,
+      "weight_bank_index": 21,
+      "weight_bank_nbytes": 384,
+      "weight_bank_offset_bytes": 8064
+    },
+    {
+      "chime_channel_id": 506,
+      "chord_channel_id": null,
+      "coarse_channel_center_hz": 602343750.0,
+      "coarse_channel_index": 505,
+      "fine_calibration": {
+        "status": "calibrated",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 72260,
+        "anchor_bin": 62,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x0000000015555555",
+          "0x5555555500000000",
+          "0x5555555555555555",
+          "0x5555555555555555"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-11 CHIME upgrade first bundle, parameters only"
+          ],
+          "source_product_sha256": [
+            "9278bd0262cbeb590be1b798222486f7801f95687ed0b9cc43f6a553973fbcd0"
+          ],
+          "null_quantile": 0.99,
+          "note": "Word from the floor, no captures, floor from white noise, 2048 inputs. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 0.989132984129466,
+      "physical_channel": 36,
+      "pilot_frequency_hz": 602309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 12791,
+      "positive_excess_half_threshold_num": 6326,
+      "receiver_channel_id": 506,
+      "receiver_channel_id_namespace": "chime_freq_id",
+      "reference_norm_sum_sq": 12791,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 6326,
+      "weight_bank_index": 22,
+      "weight_bank_nbytes": 384,
+      "weight_bank_offset_bytes": 8448
+    },
+    {
+      "chime_channel_id": 491,
+      "chord_channel_id": null,
+      "coarse_channel_center_hz": 608203125.0,
+      "coarse_channel_index": 490,
+      "fine_calibration": {
+        "status": "control",
+        "decision_version": "fine_decision_v1",
+        "cfar_multiplier_q16": 72260,
+        "anchor_bin": 42,
+        "designated_half_width": 32,
+        "cfar_rank": 47,
+        "bulk_mask_words_hex": [
+          "0x0000000000000155",
+          "0x5555555555555000",
+          "0x5555555555555555",
+          "0x5555555555555555"
+        ],
+        "provenance": {
+          "epochs": [
+            "2026-11 CHIME upgrade first bundle, parameters only"
+          ],
+          "source_product_sha256": [
+            "9278bd0262cbeb590be1b798222486f7801f95687ed0b9cc43f6a553973fbcd0"
+          ],
+          "null_quantile": 0.99,
+          "note": "Word from the floor, no captures, floor from white noise, 2048 inputs. Detect-only, not a calibration."
+        }
+      },
+      "null_power_ratio": 1.002831524303917,
+      "physical_channel": 37,
+      "pilot_frequency_hz": 608309441.0,
+      "placement_warnings": "",
+      "positive_excess_half_threshold_den": 12714,
+      "positive_excess_half_threshold_num": 6375,
+      "receiver_channel_id": 491,
+      "receiver_channel_id_namespace": "chime_freq_id",
+      "reference_norm_sum_sq": 12714,
+      "reference_placement_status": "nominal",
+      "target_norm_sq": 6375,
+      "weight_bank_index": 23,
+      "weight_bank_nbytes": 384,
+      "weight_bank_offset_bytes": 8832
+    }
+  ],
+  "receiver_channel_id_namespace": "chime_freq_id",
+  "receiver_profile_id": "chime_dtv_fengine",
+  "schema_version": "pilotproxy_runtime_pilot_profiles_v1",
+  "weight_coordinate_system": "post_nyquist_zone_normalization",
+  "weights_sha256": "cadf84fca2d677c1dd9352d987fd38abeafac5d2ad14deeae0aa9ed911f72c51"
+}

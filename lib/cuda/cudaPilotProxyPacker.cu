@@ -19,13 +19,12 @@ constexpr int TILE_STREAMS = 128;
 // Shared-memory transpose from [T,F,P,D] to [stream,tap], so that both the
 // ring reads (along P*D) and the packed writes (along T) are contiguous.
 // The tile row is padded by 4 bytes to spread the column reads over banks.
-__global__ void
-pilotproxy_pack(std::int8_t* __restrict__ const packed_out,
-                const std::uint8_t* __restrict__ const voltage_ring,
-                const std::ptrdiff_t num_streams, const std::ptrdiff_t num_frequencies,
-                const int freq_index, const std::ptrdiff_t num_time_samples,
-                const std::ptrdiff_t ringbuf_mask_t, const std::ptrdiff_t ringbuf_pos_t,
-                const int detector_window_samples, const bool time_reverse_windows) {
+__global__ void pilotproxy_pack(
+    std::int8_t* __restrict__ const packed_out, const std::uint8_t* __restrict__ const voltage_ring,
+    const std::ptrdiff_t num_streams, const std::ptrdiff_t num_frequencies, const int freq_index,
+    const std::ptrdiff_t num_time_samples, const std::ptrdiff_t ringbuf_mask_t,
+    const std::ptrdiff_t ringbuf_pos_t, const int detector_window_samples,
+    const bool time_reverse_windows, const std::int8_t* __restrict__ const stream_good) {
     extern __shared__ std::uint8_t tile[]; // [K][TILE_STREAMS + 4]
     constexpr int row = TILE_STREAMS + 4;
     const int K = detector_window_samples;
@@ -53,7 +52,9 @@ pilotproxy_pack(std::int8_t* __restrict__ const packed_out,
     for (int sl = tid / lanes; sl < TILE_STREAMS && s0 + sl < num_streams; sl += blockDim.x / lanes)
         for (int k = tid % lanes; k < K; k += lanes)
             packed_out[(s0 + sl) * num_time_samples + w * K + k] =
-                std::int8_t(tile[k * row + sl] ^ std::uint8_t(0x88));
+                !stream_good || stream_good[s0 + sl]
+                    ? std::int8_t(tile[k * row + sl] ^ std::uint8_t(0x88))
+                    : std::int8_t(0);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -65,7 +66,7 @@ void launch_pilotproxy_pack(std::int8_t* const packed_out, const std::uint8_t* c
                             const std::ptrdiff_t num_time_samples,
                             const std::ptrdiff_t ringbuf_size_t, const std::ptrdiff_t ringbuf_pos_t,
                             const int detector_window_samples, const bool time_reverse_windows,
-                            const cudaStream_t stream) {
+                            const std::int8_t* const stream_good, const cudaStream_t stream) {
     assert(packed_out);
     assert(voltage_ring);
     assert(num_dishes > 0);
@@ -89,7 +90,8 @@ void launch_pilotproxy_pack(std::int8_t* const packed_out, const std::uint8_t* c
     const std::size_t shared_bytes = std::size_t(detector_window_samples) * (TILE_STREAMS + 4);
     pilotproxy_pack<<<blocks, threads, shared_bytes, stream>>>(
         packed_out, voltage_ring, num_streams, num_frequencies, freq_index, num_time_samples,
-        ringbuf_size_t - 1, ringbuf_pos_t, detector_window_samples, time_reverse_windows);
+        ringbuf_size_t - 1, ringbuf_pos_t, detector_window_samples, time_reverse_windows,
+        stream_good);
     CHECK_CUDA_ERROR_NON_OO(cudaGetLastError());
 }
 
@@ -101,7 +103,7 @@ void cpu_pilotproxy_pack(std::int8_t* const packed_out, const std::uint8_t* cons
                          const std::ptrdiff_t num_frequencies, const int freq_index,
                          const std::ptrdiff_t num_time_samples, const std::ptrdiff_t ringbuf_size_t,
                          const std::ptrdiff_t ringbuf_pos_t, const int detector_window_samples,
-                         const bool time_reverse_windows) {
+                         const bool time_reverse_windows, const std::int8_t* const stream_good) {
     assert(packed_out);
     assert(voltage_ring);
     assert(0 <= freq_index && freq_index < num_frequencies);
@@ -123,7 +125,9 @@ void cpu_pilotproxy_pack(std::int8_t* const packed_out, const std::uint8_t* cons
                     const std::ptrdiff_t byte =
                         ((phys * num_frequencies + freq_index) * num_polarizations + p) * num_dishes
                         + d;
-                    packed_out[out++] = std::int8_t(voltage_ring[byte] ^ std::uint8_t(0x88));
+                    const bool good = !stream_good || stream_good[p * num_dishes + d];
+                    packed_out[out++] = good ? std::int8_t(voltage_ring[byte] ^ std::uint8_t(0x88))
+                                             : std::int8_t(0);
                 }
             }
         }

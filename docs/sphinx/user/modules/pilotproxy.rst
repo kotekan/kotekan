@@ -15,6 +15,9 @@ presence or absence of the pilot is decided once per 8192-sample block
 (41.94304 ms, one n2k integration).
 
 The tests are described in :ref:`dev_pilotproxy_testing`.
+To calibrate, test, and deploy a bundle on a telescope, see
+``docs/RUNNING_THE_DETECTOR.md`` in the
+`PilotProxy repository <https://github.com/WVURAIL/pilotproxy>`_.
 
 
 Components
@@ -29,9 +32,13 @@ Components
     rejects the block), ``dtv_powers`` (``uint64[1, F, 3]``, the target and the
     two reference frame powers, each the sum of the 256 fine powers of that
     term), and optionally ``dtv_fine_support`` (``int32[1, F, 2]``, described
-    below). Frequencies without a pilot get zero masks and powers. The
-    detector sums every input in the ring, even the inputs that the correlator
-    flags as bad.
+    below) and ``dtv_fine_powers`` (``uint64[1, R, 3, 256]``, the fine powers
+    behind each decision). Frequencies without a bound profile get zero masks and powers. The
+    detector sums every input in the ring, unless ``bf_mask_name`` names the bad
+    feed mask ring, and a flagged input is then packed as zero. When the bundle
+    records ``summed_inputs``, the detector logs a warning while the count of
+    good inputs differs from it by more than 10%, since the words hold for the
+    inputs summed at calibration.
     The leading ``T`` axis holds one block, scaled by its FPGA sequence period,
     so ``hdf5FileWrite`` can concatenate blocks with ``frames_per_file``.
 
@@ -53,8 +60,12 @@ For each of the 256 fine bins, the core divides the power in a target cell at
 the pilot by the mean power in two reference cells beside it. A rank statistic
 of this ratio is taken over the bundle's bulk bins, and the block is
 rejected when the ratio in a bin at the pilot exceeds a calibrated multiple of
-that statistic. All of the arithmetic is exact integer arithmetic, and the GPU
-result matches the CPU reference bit for bit.
+that statistic. This is ``fine_decision_v1``. With ``fine_decision_v2``, the
+rank statistic is taken of the reference power over the bulk bins, and the block
+is rejected when the target power in a bin at the pilot exceeds a calibrated
+multiple of it. The ``decision_version`` of each bundle profile selects the
+test. All of the arithmetic is exact integer arithmetic, and the GPU result
+matches the CPU reference bit for bit.
 
 ``dtv_fine_support`` records the validity of each test. A row of ``(1, n)`` is
 a valid test with ``n`` bulk bins. A row of ``(0, n)`` has too few usable bulk
@@ -73,7 +84,12 @@ Runtime bundle
 which are not part of Kotekan. Each profile gives the ATSC channel, the
 receiver ``coarse_freq`` ID that it binds to (``chord_channel_id``), its
 weights, and its fine calibration. The status of the fine calibration is
-``pending_campaign`` (not calibrated) or ``calibrated``.
+``pending_campaign`` (exported, no values), ``calibrated`` (values filled in) or
+``control``. Only physical channel 37, the control, has status ``control``, and
+it must have it. ``calibrated`` does not mean the channel is qualified for
+masking. Each bundle file and its fields are described in Section 5 of the
+`PilotProxy user guide
+<https://github.com/WVURAIL/pilotproxy/blob/main/docs/pdf/PilotProxy_UG001_User_Guide.pdf>`_.
 
 At startup, the bundle's digests are checked as in the PilotProxy validator.
 ``sha256sums.txt`` must list the other four files with their SHA-256, and
@@ -103,7 +119,8 @@ below is true. Both switches default to false.
     is removed from the visibilities and the valid-sample counts together. A
     frequency with support ``(0, n)`` is also cleared for that block.
     ``dtv_RFImask`` is formed on the host, copied back to the GPU, and written
-    to HDF5.
+    to HDF5. Kotekan refuses to start unless the bundle is qualified for
+    masking (below).
 
 The other keys are listed below.
 
@@ -125,39 +142,62 @@ Both lists hold receiver ``coarse_freq`` IDs. The ATSC channel number of a
 pilot is given only in the bundle. The two lists must not overlap, and every
 listed ID must be on the node, so the lists are set for each node.
 
+A bundle masks only when every channel with status ``calibrated`` carries the
+``mask_qualification`` record, which PilotProxy's ``qualify-bundle`` writes from
+a passing ``test-bundle`` report and the name of the person who read it. Other
+bundles are detect-only. ``DtvRfiMask`` reads ``pilot_profiles.json`` and
+refuses to start with the mask on and a detect-only bundle.
 
-Pathfinder recording
---------------------
 
-``config/chord/pathfinder.j2`` uses the same ``dtv_enabled``, ``dtv_apply_mask``
-and ``dtv_runtime_bundle_dir`` switches. It records masks, powers and fine
-support in 1024-block files (about 43 seconds), under ``dtv_output_dir``
-(default ``/scratch/dtv``).
+Pathfinder
+----------
 
-Detection and recording both start off, so the visibilities do not change
-until the detector is turned on. POST
-``{"enabled": true, "valid_at_time_ns": 0}`` to ``/dtv_detector_enabled`` to
-start detection at the next block. POST ``{"enabled": true}`` to
-``/dtv_write_enabled`` to start recording. Set ``enabled`` to false to stop,
-and recording starts a new file when it resumes. A nonzero
-``valid_at_time_ns`` applies the detector change at the first block starting
-at or after that instrument time. A restart returns both switches to off. A
-POST sent before the stages have started returns 200 but has no effect, so the
-detector log line ``PilotProxy detector on`` confirms the change.
+``config/chord/pathfinder.j2`` always runs the detector and ``DtvRfiMask``, so
+every node needs the bundle (``dtv_runtime_bundle_dir``, as above). n2k always
+reads ``dtv_RFImask``, so it waits for the detector even while the mask is
+off. Two switches can be changed at runtime, and their config values set the
+state at startup (both default to false):
 
-Each X-engine node writes to its own disk, and each file name starts with the
-node's hostname, so files from different nodes do not collide when gathered.
-To collect them in one place, ``dtv_output_dir`` can be set to a directory
-shared by all nodes.
+``dtv_apply_mask``, endpoint ``/dtv_mask_enabled``
+    Apply the DTV mask to the visibilities. While off, ``DtvRfiMask`` copies
+    the SK mask unchanged. With a detect-only bundle, the mask cannot be on at
+    startup, and a POST that switches it on stops Kotekan. ``N2Accumulate`` records the fraction of each bin
+    that the mask was on, which ``hdf5N2Write`` writes as
+    ``frac_dtv_mask_enabled``.
 
-Recording on the recv node would remove the gathering step, and it needs two
-changes. The 16 halves would share one receive buffer for each product, as the
-bad feed masks do, and ``hdf5FileWrite`` opens a new file at each jump in
-``fpga_seq_num``. A stage that splits frames by ``coarse_freq`` is therefore
-needed in front of the writers. Each frame also carries about 149 kB of
-``chordMetadata`` over ``bufferSend``, so the three products would use about
-1.4 Gb/s to deliver 4.8 MB/s of data. Sending several blocks in each frame
-reduces this rate by the same factor.
+``dtv_write_enabled``, endpoint ``/dtv_write_enabled``
+    Send the detector products to the recv node.
+
+``dtv_calibration_mode`` (template only, default false) sets which products are
+sent: only the mask, or with it the powers, fine support and fine powers for
+calibration and debugging. Render ``config/chord/recv.j2`` with the same value.
+
+The detector reads the bad feed mask ring of ``bufferBadInputs``, and a flagged
+input is packed as zero. ``bufferBadInputs`` also flags every element outside
+the main array, which on CHORD are the Missing dishes and the 16 RFI antennas,
+so the detector also drops the RFI antennas, which probably see DTV most
+strongly. ``dtv_powers`` and ``dtv_fine_powers`` fall as inputs are flagged, so
+a bundle calibrated from recorded files needs a steady input count.
+
+Each X-engine half packs 1024 blocks (about 43 seconds) of each sent product
+into one frame with ``NDArrayTimeConcat``, and sends the frames to the recv
+node. ``config/chord/recv.j2`` writes each frame to its own file under
+``/mnt/cs00/data/dtv/acq_<start time>``, one directory per run, named
+``dtv_<product>.<number>.h5``. The numbers follow arrival order, so a file's
+``coarse_freq`` attribute identifies the half, and its ``fpga_seq_num``
+attribute gives the start of the window. The windows are aligned in
+``fpga_seq_num``, so the halves' files cover the same time spans. A block
+missing from a window is a row of ``0xFF`` bytes: ``-1`` for the mask and fine
+support, and the largest ``uint64`` for the powers and fine powers.
+
+POST ``{"enabled": true, "valid_at_time_ns": 0}`` to ``/dtv_mask_enabled`` to
+apply the mask from the next frame, and ``false`` to stop. A nonzero
+``valid_at_time_ns`` applies the change at the first frame starting at or after
+that instrument time, in ``DtvRfiMask`` and in the recorded fraction. POST
+``{"enabled": true}`` or ``{"enabled": false}`` to ``/dtv_write_enabled`` to
+start or stop sending; the change applies to whole frames. A restart returns
+both to their configured values. The ``DtvRfiMask`` log line ``DTV mask on``
+or ``off`` confirms a mask change.
 
 
 GPU streams
@@ -226,4 +266,18 @@ Monitoring
   then cover the DTV rejections as well.
 * ``dtv_powers`` holds the pilot and reference powers of every block, so a
   moved pilot or a new line near a reference bin can be seen there even when
-  the mask does not fire. Either one requires a recalibration.
+  the mask does not fire. Either one requires a recalibration. On CHORD it is
+  sent only in calibration mode.
+* In calibration mode, ``config/chord/dtv.j2`` also sends ``dtv_fine_powers`` to
+  the recv node, on port 11037. PilotProxy calibrates a bundle from these files,
+  so a detect-only run replaces baseband captures for calibration. The output has
+  ``dtv_fine_powers_rows`` rows (R, 2 on the Pathfinder), with bound channel i
+  in row i and its ``coarse_freq`` in the metadata (-1 for an unused row). A
+  node that binds more than R channels stops at its first frame.
+* A bundle profile with the status ``control`` (channel 37, which has no DTV) is
+  decided and recorded like a pilot, and its mask stays zero. Its fine support
+  stays ``(-1, -1)``, so ``DtvRfiMask`` never clears it. Only channel 37 can
+  have this status. Calibration uses it to set the noise floor. With the
+  detector's ``mask_control`` set (``dtv_mask_control`` in
+  ``config/chord/dtv.j2``), the control is masked like a pilot, so its false
+  alarms show what the mask does to a channel without DTV.

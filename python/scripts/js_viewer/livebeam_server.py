@@ -584,7 +584,8 @@ class LiveBeamWSFactory(WebSocketServerFactory):
         # reconnect (see app/socket.js) so transient network blips heal
         # themselves instead of leaving a frozen browser tab.
         self.setProtocolOptions(
-            autoPingInterval=WS_PING_INTERVAL_S, autoPingTimeout=WS_PING_TIMEOUT_S,
+            autoPingInterval=WS_PING_INTERVAL_S,
+            autoPingTimeout=WS_PING_TIMEOUT_S,
         )
 
     def register(self, client):

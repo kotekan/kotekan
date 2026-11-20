@@ -51,7 +51,7 @@ GPU_NEED = re.compile(
       | tests/(test_pilotproxy_integration|test_dtv_rfi_mask|verify_pilotproxy_pipeline)\.py$
       | config/tests/verify_pilotproxy_pipeline\.yaml$
       | lib/stages/DtvRfiMask\.cpp$
-      | config/(fengine/)?include/dtv_.*\.j2$
+      | config/(fengine/include/dtv_.*|chime/dtv)\.j2$
       | tools/docker/                         # the CI images
       | tools/ci_select_jobs\.py              # this script
       | \.github/                             # the CI workflows
@@ -142,7 +142,7 @@ SELF_TEST_CASES = [
     (["tests/test_dtv_rfi_mask.py"], True, True, False),
     (["lib/stages/DtvRfiMask.cpp"], True, True, False),
     (["config/fengine/include/dtv_chord.j2"], True, True, False),
-    (["config/include/dtv_chime_upgrade.j2"], True, True, False),
+    (["config/chime/dtv.j2"], True, True, False),
     (["docs/sphinx/index.rst", "README.md"], False, False, False),
     (["tools/check_ptx.sh"], True, False, True),
     ([".github/workflows/main.yaml"], True, True, True),

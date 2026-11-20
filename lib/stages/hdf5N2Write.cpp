@@ -154,27 +154,6 @@ std::string normalize_base_dir(const std::string& dir) {
 }
 } // namespace
 
-/// Generate an acquisition base directory path: base_dir/acq_YYYYMMDD_HHMMSS_NNNNNNNNN
-static std::string get_acq_base_dir_path(const std::string& base_dir) {
-    // Strip trailing slashes
-    std::string dir = base_dir;
-    while (dir.size() > 1 && dir.back() == '/')
-        dir.pop_back();
-
-    auto now = std::chrono::system_clock::now();
-    auto time_t_now = std::chrono::system_clock::to_time_t(now);
-    auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count()
-              % 1'000'000'000LL;
-
-    std::tm tm_buf{};
-    gmtime_r(&time_t_now, &tm_buf);
-
-    std::ostringstream oss;
-    oss << dir << "/acq_" << std::put_time(&tm_buf, "%Y%m%d_%H%M%S") << "_" << std::setfill('0')
-        << std::setw(9) << ns;
-    return oss.str();
-}
-
 // Monotonic time in seconds
 inline double mono_time_s() {
     using clock = std::chrono::steady_clock;
@@ -631,6 +610,9 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_dataset(*file, "/frac_rfi_first_stage_enabled", {num_file_f, num_file_t_},
                               {"frequency", "time"}, HighFive::create_datatype<float>(),
                               props_empty);
+        _check_create_dataset(*file, "/frac_dtv_mask_enabled", {num_file_f, num_file_t_},
+                              {"frequency", "time"}, HighFive::create_datatype<float>(),
+                              props_empty);
 
         // Digital gains: copy entire gains file verbatim into /digital_gains/ group
         if (!baseband_gain_file.empty() && !file->exist("/digital_gains")) {
@@ -753,6 +735,7 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
     rfi_frame_excision_threshold.assign(num_file_t * MAX_NUM_RFI_THRESHOLDS, 0.0f);
     rfi_frame_excision_fraction.assign(num_file_t * MAX_NUM_RFI_THRESHOLDS, 0.0f);
     frac_rfi_first_stage_enabled.assign(num_file_f * num_file_t, 0.0f);
+    frac_dtv_mask_enabled.assign(num_file_f * num_file_t, 0.0f);
 
 
     added_ft.assign(num_file_f * num_file_t, 0);
@@ -954,6 +937,9 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
         (frame_len_ticks > 0)
             ? (float(fv.n_rfi_first_stage_enabled_fpga_ticks) / float(frame_len_ticks))
             : 0.0f;
+    frac_dtv_mask_enabled[idx_ft(f_index, t_index)] =
+        (frame_len_ticks > 0) ? (float(fv.n_dtv_mask_enabled_fpga_ticks) / float(frame_len_ticks))
+                              : 0.0f;
 
     // Mark (f, t) as added
     size_t si = idx_ft(f_index, t_index);
@@ -1205,6 +1191,9 @@ bool N2FileData::flush_to_disk() {
         h5_file->getDataSet("/frac_rfi_first_stage_enabled")
             .select({0, 0}, {num_file_f, num_file_t})
             .write_raw(frac_rfi_first_stage_enabled.data());
+        h5_file->getDataSet("/frac_dtv_mask_enabled")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(frac_dtv_mask_enabled.data());
     } catch (const HighFive::Exception& e) {
         FATAL_ERROR_NON_OO("Failed to write data to HDF5 file {}: {}", partial_filepath, e.what());
         has_error = true;
@@ -1242,7 +1231,8 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
           [](const kotekan::Stage& stage) {
               return const_cast<kotekan::Stage&>(stage).main_thread();
           }),
-    _base_dir(get_acq_base_dir_path(config.get<std::string>(unique_name, "base_dir"))),
+    _base_dir(hdf5::acq_dir_path(config.get<std::string>(unique_name, "base_dir"),
+                                 std::chrono::system_clock::now())),
     _baseband_gain_file(config.get_default<std::string>(unique_name, "baseband_gain_file", "")),
     _baseband_gain_update_idx(config.get_default<int>(unique_name, "baseband_gain_update_idx", -1)),
     _num_file_t(config.get<std::uint64_t>(unique_name, "num_file_t")),

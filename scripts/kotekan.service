@@ -13,6 +13,7 @@ Group=kotekan
 LimitMEMLOCK=infinity
 Restart=always
 RestartSec=10
+StateDirectory=kotekan
 WorkingDirectory=/var/lib/kotekan
 TimeoutStopSec=60
 KillSignal=SIGTERM
