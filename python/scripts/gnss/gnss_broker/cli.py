@@ -547,10 +547,6 @@ _FROZEN = dict(
     # weighted median, and carrying at least 60% of the vote weight) before the common offset
     # resolves; until then 'apply' changes nothing.
     nh_joint_min_prns=3,
-    # --nh-joint: detections below this SNR do not vote (their phases carry ~2000-chip within-period
-    # residuals and drag the consensus off its inliers); they may still be applied to, which is the
-    # point of the joint fit.
-    nh_joint_min_snr=60.0,
     # A vote further than this from the circular weighted median is an outlier and does not count
     # toward resolution. True agreement is a few chips; the bar is loose on purpose (~0.15 code
     # periods at L5) so disagreement shows in the logged spread rather than as a silent exclusion.
@@ -2122,6 +2118,16 @@ def build_parser(description):
         "chain whose code period is longer than this one's. Needs --almanac and the "
         "capture time anchor (--time0-endpoint, read under --dead-reckon). Default "
         "off.",
+    )
+    ap.add_argument(
+        "--nh-joint-min-snr",
+        type=float,
+        default=60.0,
+        help="--nh-joint: detections below this SNR do not vote (at CHORD their phases "
+        "carry ~2000-chip within-period residuals and drag the consensus off its "
+        "inliers); they may still be applied to, which is the point of the joint fit. "
+        "A single-antenna search on the overlaid code (GPS_L5_Q_NH) measures the "
+        "overlay directly, on a lower SNR scale. Default 60.",
     )
     ap.add_argument(
         "--cp-rate-model-primary",
