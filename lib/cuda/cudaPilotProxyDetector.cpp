@@ -26,6 +26,7 @@
 #include <cmath>              // for isfinite
 #include <cstddef>            // for ptrdiff_t
 #include <cstdint>            // for uint64_t, int8_t, uint8_t
+#include <cstdlib>            // for abs
 #include <cuda_runtime_api.h> // for cudaMemsetAsync, cudaMemcpyAsync
 #include <driver_types.h>     // for cudaEvent_t, cudaStream_t
 #include <exception>          // for exception
@@ -114,13 +115,17 @@ public:
         // fine_calibration for the mask epilogue, used only
         // when status == "calibrated" or "control"
         bool fine_calibrated = false;
-        // decided and recorded like a pilot, but its mask stays zero
+        // decided and recorded like a pilot, and masked only with mask_control
         bool control = false;
         bool archive_review_only = false;
+        // inputs summed at calibration, 0 when the bundle does not say
+        int summed_inputs = 0;
         int anchor_bin = 0;
         int designated_half_width = 0;
         int cfar_rank = 0;
         unsigned long long multiplier_q16 = 0;
+        // fine_decision_v2 compares the largest target bin with the median reference
+        bool decision_v2 = false;
         std::array<unsigned long long, 4> bulk_mask_words{{0, 0, 0, 0}};
         void* detector_handle =
             nullptr; // PilotProxy_Create handle (d_in = d_packed), if calibrated
@@ -156,6 +161,13 @@ public:
     bool enabled = true;
     bool next_enabled = true;
     std::int64_t next_enabled_valid_at_seq = std::numeric_limits<std::int64_t>::max();
+
+    // Summed-input check. A word holds for the inputs summed at calibration, so the live
+    // count is compared with each count the bound channels record.
+    std::mutex inputs_mutex;
+    std::set<int> calibrated_inputs; // distinct summed_inputs of the bound channels
+    int last_live_inputs = -1;       // last count checked, -1 before the first
+    bool inputs_differ = false;      // last count was off by more than the tolerance
 
     const std::int8_t* weights_for(const PilotChannelProfile& profile) const {
         return weight_bank.data() + profile.weight_offset_bytes;
@@ -397,6 +409,13 @@ private:
             const std::string calibration_status = calibration.at("status").get<std::string>();
             if (calibration.contains("provenance") && calibration.at("provenance").is_object()) {
                 const auto& provenance = calibration.at("provenance");
+                if (provenance.contains("summed_inputs")) {
+                    profile.summed_inputs = read_integer<int>(provenance, "summed_inputs");
+                    if (profile.summed_inputs <= 0)
+                        FATAL_ERROR("cudaPilotProxyDetector: summed_inputs must be positive for "
+                                    "physical channel {:d}",
+                                    profile.physical_channel);
+                }
                 if (provenance.contains("threshold_selection")) {
                     const auto& selection = provenance.at("threshold_selection");
                     profile.archive_review_only =
@@ -404,11 +423,13 @@ private:
                         && selection.value("qualification", "") == "archive_review_only";
                 }
             }
-            if (calibration.value("decision_version", "") != "fine_decision_v1")
+            const std::string decision_version = calibration.value("decision_version", "");
+            if (decision_version != "fine_decision_v1" && decision_version != "fine_decision_v2")
                 FATAL_ERROR("cudaPilotProxyDetector: unsupported fine "
                             "decision version for physical "
                             "channel {:d}",
                             profile.physical_channel);
+            profile.decision_v2 = decision_version == "fine_decision_v2";
             if (calibration_status != "pending_campaign" && calibration_status != "calibrated"
                 && calibration_status != "control")
                 FATAL_ERROR("cudaPilotProxyDetector: unknown fine "
@@ -504,7 +525,9 @@ private:
  * on CHORD and 16384 on CHIME.
  * Each bound pilot channel uses the fine CFAR mask and must have a calibrated
  * profile, or the stage stops at the first frame. An uncalibrated channel must be
- * removed from the bundle or listed in permanent_mask_freq_ids.
+ * removed from the bundle or listed in permanent_mask_freq_ids. The profile's
+ * decision_version selects the test: fine_decision_v1 ranks the bin ratios, and
+ * fine_decision_v2 ranks the reference powers and compares the target powers with it.
  *
  * dtv_mask holds one byte per frequency (1 = reject). dtv_powers holds the target,
  * lower-reference, and upper-reference frame powers as uint64, each the sum of the
@@ -591,8 +614,14 @@ private:
  *                                  buffer (default empty, every input is summed). A bad
  *                                  input is packed as zero, as if it carried no signal.
  *                                  On CHORD, bufferBadInputs also flags the RFI antennas.
+ *                                  When the bundle records summed_inputs, the count of
+ *                                  good inputs is logged with a warning when it differs
+ *                                  from that count by more than 10%.
  * @conf bf_mask_lifetime_in_samples Int. Samples each bad feed mask element covers, a
  *                                  multiple of the detector block. Required with bf_mask_name.
+ * @conf mask_control               Bool. Mask the control (channel 37) like a pilot, so its
+ *                                  false alarms show what the mask does without DTV. Default
+ *                                  false: its mask stays 0 and its fine support (-1,-1).
  * @conf enabled_updatable_config   Optional block with `enabled` and `valid_at_time_ns`.
  *                                  First block at or after that time; 0 selects the next block.
  *                                  While off, mask/powers are 0 and support is (-1,-1).
@@ -617,6 +646,9 @@ private:
     /// Queue an update from the `enabled_updatable_config` block
     bool receive_enabled(nlohmann::json& json);
 
+    /// Compare the live summed-input count with the counts the bundle records
+    void check_summed_inputs(int live);
+
     std::shared_ptr<State> detector_state;
 
     // Parameters
@@ -636,6 +668,7 @@ private:
     const int dtv_fine_powers_rows;          // R, 0 without fine powers
     const std::string enabled_config_path;
     const std::string bf_mask_name; // empty: every input is summed
+    const bool mask_control;
 
     // Block geometry
     const int detector_window_samples;    // K
@@ -649,6 +682,9 @@ private:
     std::unique_ptr<NDArrayRingBuffer<std::int8_t, 3>> bf_mask;
     std::int64_t bf_mask_lifetime_in_samples = 0;
     std::unique_ptr<NDArrayBuffer<std::uint64_t, 4>> dtv_fine_powers;
+    // pinned copy of this frame's bad feed mask element, counted in finalize_frame
+    std::int8_t* host_stream_good = nullptr;
+    bool copied_stream_good = false;
 };
 
 REGISTER_CUDA_COMMAND_WITH_STATE(cudaPilotProxyDetector, cudaPilotProxyDetectorState);
@@ -691,6 +727,7 @@ cudaPilotProxyDetector::cudaPilotProxyDetector(kotekan::Config& config,
     enabled_config_path(
         config.get_default<std::string>(unique_name, "enabled_updatable_config", "")),
     bf_mask_name(config.get_default<std::string>(unique_name, "bf_mask_name", "")),
+    mask_control(config.get_default<bool>(unique_name, "mask_control", false)),
     // Block geometry
     detector_window_samples(query_window_samples(*detector_state->core)),
     samples_per_detector_frame(detector_window_samples * query_fine_windows(*detector_state->core)),
@@ -773,6 +810,8 @@ cudaPilotProxyDetector::cudaPilotProxyDetector(kotekan::Config& config,
             std::array<std::string, 3>{"Tbf", "P", "D"},
             std::array<std::ptrdiff_t, 3>{bf_mask_lifetime_in_samples, 1, 1}, *this);
         bf_mask->register_consumer();
+        CHECK_CUDA_ERROR(cudaMallocHost(reinterpret_cast<void**>(&host_stream_good),
+                                        std::size_t(num_polarizations) * num_dishes));
     }
 
     // The switch lives in the state shared by all instances, so subscribe once.
@@ -784,7 +823,35 @@ cudaPilotProxyDetector::cudaPilotProxyDetector(kotekan::Config& config,
     set_command_type(gpuCommandType::KERNEL);
 }
 
-cudaPilotProxyDetector::~cudaPilotProxyDetector() {}
+cudaPilotProxyDetector::~cudaPilotProxyDetector() {
+    if (host_stream_good)
+        cudaFreeHost(host_stream_good);
+}
+
+// relative difference of the live and calibrated input counts that is logged
+static constexpr double summed_inputs_tolerance = 0.1;
+
+void cudaPilotProxyDetector::check_summed_inputs(const int live) {
+    State& state = *detector_state;
+    std::lock_guard<std::mutex> lock(state.inputs_mutex);
+    if (state.calibrated_inputs.empty() || live == state.last_live_inputs)
+        return;
+    bool differ = false;
+    for (const int calibrated : state.calibrated_inputs)
+        differ |= std::abs(live - calibrated) > summed_inputs_tolerance * calibrated;
+    std::string counts;
+    for (const int calibrated : state.calibrated_inputs)
+        counts += (counts.empty() ? "" : ", ") + std::to_string(calibrated);
+    if (differ && (!state.inputs_differ || state.last_live_inputs < 0))
+        WARN("PilotProxy: {:d} inputs are summed but the bundle was calibrated with {:s}; the "
+             "words assume the calibrated inputs, so recalibrate if this persists",
+             live, counts);
+    else if (!differ && (state.inputs_differ || state.last_live_inputs < 0))
+        INFO("PilotProxy: {:d} inputs are summed, within {:.0f}% of the calibrated {:s}", live,
+             100 * summed_inputs_tolerance, counts);
+    state.inputs_differ = differ;
+    state.last_live_inputs = live;
+}
 
 int cudaPilotProxyDetector::wait_on_precondition() {
     DEBUG("Waiting for voltage ring buffer data for frame {:d}...", gpu_frame_id);
@@ -890,6 +957,19 @@ void cudaPilotProxyDetector::bind_first_frame(
 
     for (const auto& channel : state.bound_channels)
         state.core->SetStream(channel.profile->detector_handle, device.getStream(cuda_stream_id));
+
+    {
+        std::lock_guard<std::mutex> lock(state.inputs_mutex);
+        for (const auto& channel : state.bound_channels)
+            if (channel.profile->summed_inputs > 0)
+                state.calibrated_inputs.insert(channel.profile->summed_inputs);
+    }
+    if (state.calibrated_inputs.empty())
+        INFO("PilotProxy: the bundle records no summed-input count; the live count is not "
+             "checked");
+    else if (!bf_mask)
+        // without a bad feed mask every input is summed
+        check_summed_inputs(num_polarizations * num_dishes);
 
     if (dtv_fine_powers && int(state.bound_channels.size()) > dtv_fine_powers_rows)
         FATAL_ERROR("PilotProxy: {:d} channels are bound on this node, more than "
@@ -1020,6 +1100,11 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
         const std::ptrdiff_t element =
             bf_mask->get_read_valid().begin() % bf_mask->get_ndarray().extent(0);
         stream_good = bf_mask->get_ndarray().data() + element * bf_mask->get_ndarray().stride(0);
+        copied_stream_good = !state.calibrated_inputs.empty();
+        if (copied_stream_good)
+            CHECK_CUDA_ERROR(cudaMemcpyAsync(
+                host_stream_good, stream_good, std::size_t(num_polarizations) * num_dishes,
+                cudaMemcpyDeviceToHost, device.getStream(cuda_stream_id)));
     }
 
     // Channels are packed and detected one at a time, and the staging region
@@ -1036,20 +1121,25 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
         unsigned long long* const channel_powers =
             reinterpret_cast<unsigned long long*>(powers_memory + 3 * channel.freq_index);
         // fine CFAR decision, with the frame powers saved for validation
-        // the control row keeps support (-1,-1), so DtvRfiMask never clears channel 37
-        if (support_memory && !profile.control) {
+        // without mask_control the control row keeps support (-1,-1), so DtvRfiMask never
+        // clears channel 37
+        const auto with_support = profile.decision_v2
+                                      ? state.core->Compute_FusedFineMaskV2WithSupport_U64
+                                      : state.core->Compute_FusedFineMaskWithSupport_U64;
+        const auto without_support = profile.decision_v2 ? state.core->Compute_FusedFineMaskV2_U64
+                                                         : state.core->Compute_FusedFineMask_U64;
+        if (support_memory && (mask_control || !profile.control)) {
             // rank support does not cover packet loss or feed health
-            state.core->Compute_FusedFineMaskWithSupport_U64(
-                profile.detector_handle, weights, profile.anchor_bin, profile.designated_half_width,
-                profile.bulk_mask_words.data(), profile.cfar_rank, profile.multiplier_q16,
-                state.fine_power_scratch, state.mask_i32_scratch,
-                support_memory + 2 * channel.freq_index,
-                support_memory + 2 * channel.freq_index + 1, channel_powers, nullptr);
+            with_support(profile.detector_handle, weights, profile.anchor_bin,
+                         profile.designated_half_width, profile.bulk_mask_words.data(),
+                         profile.cfar_rank, profile.multiplier_q16, state.fine_power_scratch,
+                         state.mask_i32_scratch, support_memory + 2 * channel.freq_index,
+                         support_memory + 2 * channel.freq_index + 1, channel_powers, nullptr);
         } else {
-            state.core->Compute_FusedFineMask_U64(
-                profile.detector_handle, weights, profile.anchor_bin, profile.designated_half_width,
-                profile.bulk_mask_words.data(), profile.cfar_rank, profile.multiplier_q16,
-                state.fine_power_scratch, state.mask_i32_scratch, channel_powers, nullptr);
+            without_support(profile.detector_handle, weights, profile.anchor_bin,
+                            profile.designated_half_width, profile.bulk_mask_words.data(),
+                            profile.cfar_rank, profile.multiplier_q16, state.fine_power_scratch,
+                            state.mask_i32_scratch, channel_powers, nullptr);
         }
         if (const char* error = state.core->LastError(); error != nullptr && error[0] != '\0')
             FATAL_ERROR("PilotProxy fine detector failed for physical channel {:d}: {:s}",
@@ -1061,7 +1151,7 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
         // The int32 mask cell is folded into the int8 mask product. The value is
         // 0 or 1, so a copy of the little-endian low byte is exact (both CUDA
         // targets are little-endian).
-        if (!profile.control)
+        if (mask_control || !profile.control)
             CHECK_CUDA_ERROR(cudaMemcpyAsync(mask_memory + channel.freq_index,
                                              state.mask_i32_scratch, 1, cudaMemcpyDeviceToDevice,
                                              kotekan_stream));
@@ -1104,6 +1194,12 @@ bool cudaPilotProxyDetector::receive_enabled(nlohmann::json& json) {
 }
 
 void cudaPilotProxyDetector::finalize_frame() {
+    if (copied_stream_good) {
+        // the copy was queued before this frame's end event, which has completed
+        const std::ptrdiff_t n = std::ptrdiff_t(num_polarizations) * num_dishes;
+        check_summed_inputs(int(n - std::count(host_stream_good, host_stream_good + n, 0)));
+        copied_stream_good = false;
+    }
     voltage.finish_read();
     if (bf_mask)
         bf_mask->finish_read();

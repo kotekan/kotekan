@@ -274,7 +274,9 @@ add_custom_target(
     COMMENT "Generating timeUtil.py script")
 
 # visFileData unit test + end-to-end writer test (HDF5 backend)
-if(HDF5_FOUND AND HighFive_FOUND)
+if(HDF5_FOUND
+   AND HighFive_FOUND
+   AND HDF5Plugin_PLUGIN_DIR)
     add_executable(test_hdf5N2Write test_hdf5N2Write.cpp)
     target_link_libraries(
         test_hdf5N2Write

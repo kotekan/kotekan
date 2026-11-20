@@ -4,6 +4,7 @@
   (apply the DTV mask to N2) and /dtv_write_enabled (send the products to the recv node).
   Only the mask is sent unless dtv_calibration_mode is set, which also sends the powers,
   fine support and fine powers. recv.j2 must be rendered with the same dtv_calibration_mode.
+  dtv_mask_control masks the control, channel 37, like a pilot (default: never masked).
   The detector zeroes the inputs flagged by bufferBadInputs, the RFI antennas too.
   Disable /rfi_first_stage_enabled for a DTV-only first-stage mask.
   Profiles bind by receiver_channel_id against each NUMA half's coarse_freq.
@@ -93,6 +94,7 @@ run_dtv_detector:
           pilot_profiles_path: {{ dtv_runtime_bundle_dir }}/pilot_profiles.json
           weights_path: {{ dtv_runtime_bundle_dir }}/weights.bin
           bf_mask_name: bf_mask
+          mask_control: {{ dtv_mask_control|default(false)|lower }}
         - name: cudaSyncOutput
         - name: cudaOutputData
           gpu_mem: dtv_mask_buffer
@@ -186,6 +188,8 @@ merge_dtv_mask:
         dtv_buf: host_dtv_mask_buffer{{ n.sfx }}
         fine_support_buf: host_dtv_fine_support_buffer{{ n.sfx }}
         out_buf: host_dtv_RFImask_buffer{{ n.sfx }}
+        # switching the mask on is refused unless every calibrated channel is qualified
+        pilot_profiles_path: {{ dtv_runtime_bundle_dir }}/pilot_profiles.json
         enabled_updatable_config: /dtv_mask_enabled
 {% endfor %}
 

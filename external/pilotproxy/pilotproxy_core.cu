@@ -34,6 +34,8 @@ extern const PilotProxyCore core = {
     PilotProxy_Compute_FusedFine_U64,
     PilotProxy_Compute_FusedFineMask_U64,
     PilotProxy_Compute_FusedFineMaskWithSupport_U64,
+    PilotProxy_Compute_FusedFineMaskV2_U64,
+    PilotProxy_Compute_FusedFineMaskV2WithSupport_U64,
     reference::pilotproxy_ref_row_sums_i32,
     reference::pilotproxy_ref_fine_powers_u64,
     reference::pilotproxy_ref_powers_from_fine_u64,

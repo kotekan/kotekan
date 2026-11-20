@@ -296,11 +296,8 @@ def setup_pipeline(
         cfg.pop("run_dtv_detector")
         cfg.pop("dump_dtv_powers")
         cfg.pop("host_dtv_powers_buffer")
-        for key in (
-            "pilot_profiles_path",
-            "weights_path",
-        ):
-            cfg.pop(key)
+        # DtvRfiMask still reads the bundle's qualification
+        cfg.pop("weights_path")
     cfg["host_dtv_RFImask_buffer"] = buffer(T * F // 8)
     cfg["combine"] = dict(
         kotekan_stage="DtvRfiMask",
@@ -572,6 +569,19 @@ def test_disabled_mask_copies_the_sk_mask(tmp_path, runtime):
         )
 
 
+@pytest.mark.parametrize("mask_enabled", [True, False])
+def test_detect_only_bundle_never_masks(tmp_path, runtime, mask_enabled):
+    pipeline, *_ = setup_pipeline(tmp_path, runtime, mask_enabled=mask_enabled)
+    for profile in pipeline.bundle["profiles"]:
+        del profile["fine_calibration"]["provenance"]["mask_qualification"]
+    code, log = pipeline.run()
+    if mask_enabled:
+        assert code != 0, log[-12000:]
+        assert "refusing to switch the DTV mask on" in log, log[-12000:]
+    else:
+        assert code == 0, log[-12000:]
+
+
 @pytest.mark.parametrize("fault", ["frequency", "late", "missing", "period"])
 def test_refuse_wrong_or_missing_decision_identity(tmp_path, runtime, fault):
     pipeline, *_ = setup_pipeline(tmp_path, runtime, fault=fault)
@@ -686,9 +696,11 @@ def test_chime_detector_is_diagnostic_in_each_numa_domain():
         detector = stage["commands"][0]
         assert detector["receiver_channel_id_namespace"] == "chime_freq_id"
         assert detector["voltage_name"] == "xposed_voltage"
+        assert detector["bf_mask_name"] == "bf_mask"
         assert stage["in_buffers"]["host_xposed_voltage_ringbuffer"].endswith(
             f"_n{numa}"
         )
+        assert stage["in_buffers"]["host_bf_mask_ringbuffer"].endswith(f"_n{numa}")
         assert all(
             row["kotekan_stage"] == "rawFileWrite"
             and row["file_name"].endswith(f"_n{numa}")
@@ -697,11 +709,33 @@ def test_chime_detector_is_diagnostic_in_each_numa_domain():
         added = set(domain) - set(base[f"numa_{numa}"])
         assert added == {
             f"host_dtv_mask_buffer_n{numa}",
-            f"host_dtv_powers_buffer_n{numa}",
-            f"host_dtv_fine_support_buffer_n{numa}",
             "run_dtv_detector",
             "write_dtv",
         }
+        assert list(domain["write_dtv"]) == ["mask"]
+
+
+def test_chime_calibration_mode_writes_every_product():
+    env = Environment(loader=FileSystemLoader(str(ROOT / "config/chime")))
+    template = env.get_template("chime_upgrade_2numa.j2")
+    cfg = yaml.safe_load(
+        template.render(
+            dtv_enabled=True, dtv_write_enabled=True, dtv_calibration_mode=True
+        )
+    )
+    for numa in (0, 1):
+        domain = cfg[f"numa_{numa}"]
+        assert sorted(domain["write_dtv"]) == [
+            "fine_powers",
+            "fine_support",
+            "mask",
+            "powers",
+        ]
+        row = domain["write_dtv"]["fine_powers"]
+        assert row["kotekan_stage"] == "hdf5FileWrite"
+        assert row["file_name"] == f"dtv_fine_powers_n{numa}"
+        detector = domain["run_dtv_detector"]["commands"][0]
+        assert detector["dtv_fine_powers_rows"] == "num_freq_gpu_buf"
 
 
 @pytest.mark.parametrize("reject_finite", [False, True])
