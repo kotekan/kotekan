@@ -53,9 +53,16 @@ struct IncoherentCandidate {
     /// S/N of each block of channels along the dispersion curve. A pulse fills most blocks;
     /// narrow-band interference fills one or two.
     std::array<float, num_blocks> block_snr{};
-    /// The candidate is one of several far apart in DM that fit one arrival without dispersion:
-    /// interference, not a pulse.
+    /// Channels with data along the dispersion curve
+    int num_channels = 0;
+    /// Other candidates far away in DM that fit the same arrival without dispersion, with their
+    /// highest S/N in the same block as this one or the next
+    int num_partners = 0;
+    /// The candidate has two or more partners: interference, not a pulse.
     bool undispersed = false;
+    /// A description, not a verdict: 8 samples or wider, with more than 1.8 times its S/N in
+    /// one block. Faint interference often looks like this; so may a wide burst in a narrow band.
+    bool one_band = false;
 };
 
 /**
@@ -164,7 +171,7 @@ private:
                    std::vector<Hit>& hits, double& max_snr);
     void merge_hits(const std::vector<Hit>& hits);
     void close_events();
-    bool undispersed(const Event& e) const;
+    int count_partners(const Event& e) const;
     int strongest_block(const Hit& hit) const;
     void band_occupancy(IncoherentCandidate& cand, const Hit& hit) const;
     const int8_t* row(int channel, int64_t sample) const {

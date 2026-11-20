@@ -44,11 +44,21 @@ using kotekan::prometheus::Metrics;
  * Each candidate is logged, and appended to candidate_file as a line of JSON: the FPGA sequence
  * number of its arrival at the top channel (and its UNIX time, with GPS time), its S/N, DM,
  * width in samples, the number of samples above threshold merged into it, the S/N in each
- * of 16 blocks of channels along its dispersion curve, and whether it is undispersed: one of
- * several far apart in DM that fit one arrival without dispersion, which is interference in
- * part of the band. Such a candidate is in the file but is not counted or logged as one. A
- * candidate is written once the highest DM has been searched for its arrival: the sweep of
- * dm_max after it reached the top channel.
+ * of 16 blocks of channels along its dispersion curve, and the number of channels with data
+ * there. A candidate is written once the highest DM has been searched for its arrival: the
+ * sweep of dm_max after it reached the top channel.
+ *
+ * The line's "flags" list every reason the candidate is not one to act on, and is empty when
+ * there is none:
+ *  - "undispersed": it is one of several far apart in DM that fit one arrival without
+ *    dispersion, which is interference in part of the band ("partners" is their number). Such
+ *    a candidate is in the file but is not counted or logged as one.
+ *  - "low_dm": its DM is below trigger_min_dm.
+ *  - "low_snr": its S/N is below trigger_min_snr.
+ *
+ * "one_band" describes a wide candidate with most of its S/N in one block of channels. It is
+ * not a flag: faint interference looks like this, and so may a wide burst in a narrow band.
+ * Nothing acts on a candidate yet.
  *
  * With out_buf, every search pass also writes its dedispersed sums (IncoherentSearch::last_sums)
  * as one frame, for tests: 13 MB/s with the default DMs. Row k of a frame holds, for each trial
@@ -92,6 +102,10 @@ using kotekan::prometheus::Metrics;
  * @conf mask_bands_mhz    List of [low, high]. Frequency ranges that are never searched.
  * @conf mask_freq_ids     List of int. FPGA frequency ids that are never searched.
  * @conf threshold         Double. S/N above which a candidate is reported. Default 8.
+ * @conf trigger_min_snr   Double. A candidate below this S/N gets the flag "low_snr".
+ *                         Default 7.5.
+ * @conf trigger_min_dm    Double. A candidate below this DM gets the flag "low_dm".
+ *                         Default 100.
  * @conf holdoff_s         Double. No candidates for this long after a (re)start. Default 120.
  * @conf tau_s             Double. Time constant of the running statistics. Default 5.
  * @conf num_threads       Int. OpenMP threads of the search. Default 4.
@@ -198,6 +212,8 @@ public:
             params.mask_bands_mhz.push_back({f - params.dfreq_mhz / 4, f + params.dfreq_mhz / 4});
         }
         params.threshold = config.get_default<double>(unique_name, "threshold", params.threshold);
+        trigger_min_snr = config.get_default<double>(unique_name, "trigger_min_snr", 7.5);
+        trigger_min_dm = config.get_default<double>(unique_name, "trigger_min_dm", 100.0);
         params.holdoff_s = config.get_default<double>(unique_name, "holdoff_s", params.holdoff_s);
         params.tau_s = config.get_default<double>(unique_name, "tau_s", params.tau_s);
         params.num_threads =
@@ -405,13 +421,23 @@ private:
             }
             if (!candidate_file.is_open())
                 continue;
+            std::vector<std::string> flags;
+            if (c.undispersed)
+                flags.push_back("undispersed");
+            if (c.dm < trigger_min_dm)
+                flags.push_back("low_dm");
+            if (c.snr < trigger_min_snr)
+                flags.push_back("low_snr");
             nlohmann::json line = {{"fpga_seq", seq},
                                    {"snr", c.snr},
                                    {"dm", c.dm},
                                    {"width", c.width},
                                    {"num_hits", c.num_hits},
                                    {"block_snr", c.block_snr},
-                                   {"undispersed", c.undispersed},
+                                   {"num_channels", c.num_channels},
+                                   {"flags", flags},
+                                   {"partners", c.num_partners},
+                                   {"one_band", c.one_band},
                                    {"reported_unix", current_time()}};
             if (tel.gps_time_enabled())
                 line["unix_time"] = ts_to_double(tel.to_time(seq));
@@ -442,6 +468,8 @@ private:
     int64_t ring_len = 0;
     int64_t delay_samples = 0;
     int64_t restart_gap = 0;
+    double trigger_min_snr = 0;
+    double trigger_min_dm = 0;
     int64_t phase = 0;       // fpga_seq modulo period of the sample grid
     int64_t origin = 0;      // the search's first sample
     int64_t next_sample = 0; // the next sample to search

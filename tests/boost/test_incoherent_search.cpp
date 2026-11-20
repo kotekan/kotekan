@@ -83,6 +83,9 @@ BOOST_AUTO_TEST_CASE(pulse_is_found_at_its_dm_and_time) {
     BOOST_CHECK_EQUAL(c.sample, 6000);
     BOOST_CHECK_EQUAL(c.width, 1);
     BOOST_CHECK(!c.undispersed);
+    BOOST_CHECK_EQUAL(c.num_partners, 0);
+    BOOST_CHECK(!c.one_band);
+    BOOST_CHECK_GT(c.num_channels, 240);
     int filled = 0;
     for (float b : c.block_snr)
         filled += b > 3;
@@ -146,12 +149,17 @@ BOOST_AUTO_TEST_CASE(burst_without_dispersion_is_marked_at_every_dm) {
     const std::vector<IncoherentCandidate> cands = run(burst_params(), {}, true);
     BOOST_REQUIRE_GE(cands.size(), 10);
     double dm_low = cands[0].dm, dm_high = cands[0].dm;
+    int one_band = 0;
     for (const IncoherentCandidate& c : cands) {
         BOOST_CHECK(c.undispersed);
+        BOOST_CHECK_GE(c.num_partners, 2);
+        one_band += c.one_band;
         dm_low = std::min(dm_low, c.dm);
         dm_high = std::max(dm_high, c.dm);
     }
     BOOST_CHECK_GT(dm_high - dm_low, 150);
+    // The burst is 16 samples wide in the search and has its S/N in the top two blocks.
+    BOOST_CHECK_GT(one_band, (int)cands.size() / 2);
 }
 
 BOOST_AUTO_TEST_CASE(pulse_beside_a_burst_is_not_marked) {
