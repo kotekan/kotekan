@@ -295,7 +295,8 @@ def one_per_prn(records):
 
 def load_sweep(path):
     """{name: (G2' phase, theta_s or None)} from a --sweep file: satellites whose code is
-    predicted (code-reuse rules) but not measured, with a candidate theta once a sweep found one."""
+    predicted (code-reuse rules) but not measured, with a candidate theta once a sweep found one.
+    """
     with open(path) as fh:
         d = json.load(fh)
     return {
@@ -401,7 +402,25 @@ def main(argv=None):
     )
     ap.add_argument("--cache-dir", default=gp.CACHE_DIR)
     ap.add_argument("--out", default=DEFAULT_OUT)
+    ap.add_argument(
+        "--site",
+        help="LAT,LON,H (deg, deg, m): the receiver, in place of CHORD's (guowang_passes.SITE)",
+    )
+    ap.add_argument(
+        "--boresight",
+        help="AZ,EL (deg): the boresight, in place of the dish's; 0,90 with --sep-deg 80 "
+        "tables an all-sky antenna's passes above 10 deg, the higher keeping a shared code",
+    )
+    ap.add_argument(
+        "--db", default=guowang_codes.GUOWANG_1202_DB, help="satellite database"
+    )
     a = ap.parse_args(argv)
+    if a.site:
+        lat, lon, h = (float(x) for x in a.site.split(","))
+        gp.SITE = dict(lat=lat, lon=lon, h=h)
+    if a.boresight:
+        az, el = (float(x) for x in a.boresight.split(","))
+        gp.BORESIGHT = dict(az=az, el=el)
     from skyfield.api import load
 
     ts = load.timescale(builtin=True)
@@ -411,7 +430,7 @@ def main(argv=None):
     if not tle:
         sys.exit("no TLE: give --tle or --fetch")
     sats = gp.read_tle(tle, ts, "DIGUI")
-    db, theta_unknown_s = load_db()
+    db, theta_unknown_s = load_db(a.db)
     # A missing or unreadable sweep file costs the sweep, not the table.
     implied = {}
     if a.sweep:
