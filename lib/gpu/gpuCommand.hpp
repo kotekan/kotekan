@@ -41,7 +41,11 @@ enum class gpuCommandType { COPY_IN, BARRIER, KERNEL, COPY_OUT, NOT_SET };
  * each step in the GPU pipeline.  Sometimes, these peers need to
  * share state, and this base class gives them a mechanism to do that.
  */
-class gpuCommandState : public kotekan::kotekanLogging {};
+class gpuCommandState : public kotekan::kotekanLogging {
+public:
+    // States are deleted through a base pointer (see cudaProcess::create_command).
+    virtual ~gpuCommandState() = default;
+};
 
 /**
  * @class gpuCommand
