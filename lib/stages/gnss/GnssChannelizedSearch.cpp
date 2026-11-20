@@ -1068,6 +1068,8 @@ void GnssChannelizedSearch::get_detections_callback(kotekan::connectionInstance&
                          {"nh", d.nh},
                          {"code_phase_long_chips", d.code_phase_long_chips},
                          {"code_phase_at_ref_chips", d.code_phase_at_ref_chips},
+                         // the modulus of the two phases above
+                         {"long_code_chips", (double)_replica->code_length() * _n_nh},
                          {"snr", d.snr}});
     }
     conn.send_json_reply(reply);

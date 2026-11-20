@@ -195,7 +195,10 @@ DetectionPhase detection_phase(const ChannelizedReplicaBank& bank, double best_c
     if (out.cp0 < 0.0)
         out.cp0 += L;
 
-    if (n_nh <= 1 || best_nh < 0)
+    // A bank with no separate overlay holds its whole code: a code with the overlay tiled in
+    // (GPS_L5_Q_NH, whose replica period spans the NH20) or one with no overlay at all. Its
+    // phases mod L are then the long ones, and the lift below is 0 mod L.
+    if (n_nh > 1 ? best_nh < 0 : bank.secondary_length() > 0)
         return out;
 
     // Long-code phase, mod n_nh*L: the phase a tracker despreading the overlaid code needs. A
