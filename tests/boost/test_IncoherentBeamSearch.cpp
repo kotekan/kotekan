@@ -94,6 +94,7 @@ struct SearchPipeline {
                                 {"dm_step_min", 1},
                                 {"dm_step_max", 3},
                                 {"holdoff_s", 3},
+                                {"trigger_min_dm", 60},
                                 {"num_threads", 2},
                                 {"candidate_file", path},
                                 {"dm_file", dm_path}}}};
@@ -221,7 +222,13 @@ BOOST_AUTO_TEST_CASE(finds_a_pulse_and_restarts_after_a_jump) {
                                - (seq0 + int64_t(8000) * SearchPipeline::period)),
                       3.0 * SearchPipeline::period);
     BOOST_CHECK_EQUAL(cands[0]["block_snr"].size(), 16);
-    BOOST_CHECK_EQUAL(cands[0]["undispersed"].get<bool>(), false);
+    // All 64 channels had data (a sample that rounds to 0 does not count), and nothing speaks
+    // against the pulse: its DM is above trigger_min_dm and its S/N above the default
+    // trigger_min_snr.
+    BOOST_CHECK_GT(cands[0]["num_channels"].get<int>(), 56);
+    BOOST_CHECK(cands[0]["flags"].empty());
+    BOOST_CHECK_EQUAL(cands[0]["partners"].get<int>(), 0);
+    BOOST_CHECK_EQUAL(cands[0]["one_band"].get<bool>(), false);
     // GPS time is on: the arrival time follows from the sequence number at 5.12 us per sample.
     BOOST_CHECK_SMALL(cands[0]["unix_time"].get<double>()
                           - (1767225600 + cands[0]["fpga_seq"].get<int64_t>() * 5.12e-6),

@@ -16,7 +16,7 @@ Base: `develop` at `ba9a1ac86` (#1915).
 | #1848 | `jbm/n2-switch-per-freq` | `9d6821aeb` | 2026-11-05 | 2026-11-05 | hdf5N2Write: record fringestop and second-stage RFI switches per frequency |
 | #1849 | `jbm/n2-gains` | `f76d2aba0` | 2026-11-05 | 2026-11-05 | bufferGains: buffer posted calibration gains; N2Accumulate records them |
 | #1851 | `jbm/async-start` | `944510918` | 2026-11-05 | 2026-11-06 | kotekan: start the pipeline on its own thread, report it in /status |
-| #1903 | `jbm/incoherent-search` | `fa045f6ec` | 2026-11-17 | 2026-11-19 | Incoherent-beam pulse search: IncoherentBeamPower and IncoherentBeamSearch |
+| #1903 | `jbm/incoherent-search` | `b4ca60c4a` | 2026-11-17 | 2026-11-20 | Incoherent-beam pulse search: IncoherentBeamPower and IncoherentBeamSearch |
 | #1884 | `jbm/crs-wide-band` | `b584c2b8a` | 2026-11-11 | 2026-11-11 | CRS capture for a wider science band: frequencies per stream from the band, n2k kernel sizes, worker ring fill gauge |
 | (to open) | `jbm/rfi-frame-mask-exempt` | `668493edf` | 2026-11-19 | 2026-11-19 | RfiFrameMask: leave first-stage exempt channels unmasked |
 
