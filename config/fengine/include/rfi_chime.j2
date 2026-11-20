@@ -1,28 +1,27 @@
 # -*-yaml-*-
 
-# CHIME RFI setup
+# CHIME RFI setup, as config/chime_upgrade_frb.j2
 
 ################################################################################
 
-# from 2.56 μs to 1.31072 ms
-rfi_downsampling_factor: 512
-# from  1.31072 ms to 31.45728 ms
-# # from 1.31072 ms to 31.45728 ms
-# rfi_second_downsampling_factor: 24
-# from 1.31072 ms to 41.94304 ms
-rfi_second_downsampling_factor: 32
+# from 2.56 μs to 0.65536 ms
+rfi_downsampling_factor: 256
+# from 0.65536 ms to 41.94304 ms
+rfi_second_downsampling_factor: 64
 
 rfi_sk_rfimask_sigmas: 5.0
 rfi_single_feed_min_good_frac: 0.8
 rfi_feed_averaged_min_good_frac: 0.8
+# range [2,50] as suggested in SK estimation note in software design document
+# (overleaf 671416c2d6343fda483e336b) and references to the SK note therein.
 rfi_mu_min: 2.0
-rfi_mu_max: 20.0
+rfi_mu_max: 50.0
 
 ################################################################################
 
 # Buffers
 
-rfi_num_times: 32               # 1.31072 ms cadence
+rfi_num_times: 64               # 0.65536 ms cadence
 rfi_num_times_bar: 1            # 41.94304 ms cadence
 
 host_rfi_S012_ringbuffer:
@@ -150,6 +149,7 @@ run_rfi_SKtilde:
           rfi_S012_name: rfi_S012
           rfi_SKtilde_name: rfi_SKtilde
           rfi_RFImask_name: rfi_RFImask
+          enabled_updatable_config: /updatable_config/rfi_first_stage_enabled
 
 run_rfi_SKbar:
     gpu_0:

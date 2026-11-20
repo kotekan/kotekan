@@ -422,6 +422,18 @@ run_recv_hfb1_accumulated_beams:
 
 # Output
 
+# The visibilities with eigenvectors (include/n2k_chime.j2), in the raw format of
+# config/chime_upgrade_frb.j2. VisWriter creates only its acquisition directory, so it writes into
+# base_dir, which hdf5FileWrite creates. The integrations whose eigendecomposition failed are
+# written by hdf5FileWrite (write_failed_n2_vis), not by a second VisWriter as in
+# config/chime_upgrade_frb.j2: its acquisition directory would have the same name.
+write_vis:
+    kotekan_stage: VisWriter
+    root_path: {{ base_dir }}
+    file_type: raw
+    file_length: 256
+    in_buf: vis_buffer
+
 write_data:
     create_single_file: true
     write_bf_mask:
@@ -504,7 +516,19 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_n2_vis_buffer
         file_name: n2_vis
+        # One frame per frequency: kotekan exits after the first integration
+        max_frames: num_frequencies
         create_single_file: false # not implemented
+    write_failed_n2_vis:
+        kotekan_stage: hdf5FileWrite
+        in_buf: failed_buffer
+        file_name: failed_n2_vis
+        create_single_file: false # not implemented
+    write_n2_bf_mask:
+        kotekan_stage: hdf5FileWrite
+        in_buf: host_n2_bf_mask_buffer
+        file_name: n2_bf_mask
+        create_single_file: false  # not time-major
     write_bb_beam_positions:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bb_beam_positions_buffer
@@ -529,6 +553,8 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_bb_beams_buffer
         file_name: bb_beams
+        # One frame per input frame: kotekan exits after all 25 frames of the input file
+        max_frames: 25
         create_single_file: false  # dim 0 has extent 1; single file needs a gap-free stream
     write_bb_pl_mask:
         kotekan_stage: hdf5FileWrite
@@ -593,7 +619,9 @@ write_data:
         kotekan_stage: hdf5FileWrite
         in_buf: host_frb3_beams_offsetscale_buffer
         file_name: frb3_beams_offsetscale
-        max_frames: 4
+        # The 25-frame input file gives 3 FRB frames after the 3-frame output delay
+        # (upchan_output_alignment); kotekan exits after the last one
+        max_frames: 3
         create_single_file: false  # dim 0 has extent 1; single file needs a gap-free stream
     write_frb_pl_mask:
         kotekan_stage: hdf5FileWrite

@@ -2,16 +2,43 @@
 
 # CHIME generate initial conditions for benchmarks
 
+# The generator also writes the lost samples, one buffer per group of 4 frequencies, after the
+# voltages of the group, so that zeroSamples can zero the lost samples as it does in
+# config/chime_upgrade_frb.j2 after dpdk. Jinja variables (default: no packet loss):
+#     lost_sample_rate    probability that a packet (2 samples) of a group is lost
+#     lost_sample_seed
+#     lost_sample_boxes   list of [begin, end) FPGA sample ranges lost in every group
+
 ################################################################################
 
 # Stages
+
+{% from "include/frequency_channels_chime.j2" import frequency_channels %}
+{% set packet_loss = (lost_sample_rate | default(0)) > 0 or (lost_sample_boxes | default([])) %}
 
 generate_voltage_chime:
     kotekan_stage: inventVoltageCHIME
 {% for id in range(16) %}   # num_frequencies = 16
     voltage_{{ id }}: host_voltage_buffer_{{ id }}
 {% endfor %}
+    lost_samples:
+{% for id in range(16 // 4) %}
+        - lost_samples_buffer_{{ id }}
+{% endfor %}
+    lost_sample_rate: {{ lost_sample_rate | default(0) }}
+    lost_sample_seed: {{ lost_sample_seed | default(0) }}
+    lost_sample_boxes: {{ lost_sample_boxes | default([]) | tojson }}
     input_kind: random
-    reuse_frames: true          # otherwise we're too slow
+    # Reusing frames is faster, but zeroSamples zeroes the lost samples in place
+    reuse_frames: {{ 'false' if packet_loss else 'true' }}
     out_frame_first: 30
     out_frame_every: 10
+
+# Zero the lost samples. The voltage buffers have two producers, inventVoltageCHIME and zeroSamples.
+zero_samples:
+{% for id in range(16) %}   # num_frequencies = 16
+    zero_{{ id }}:
+        kotekan_stage: zeroSamples
+        lost_samples_buf: lost_samples_buffer_{{ id // 4 }}
+        out_buf: host_voltage_buffer_{{ id }}
+{% endfor %}
