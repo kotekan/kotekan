@@ -21,24 +21,24 @@
 //
 // E, P and L are one block rather than three jobs because they differ only in code phase: they
 // share a Doppler, so one carrier phasor, and they read the same data sample. Fused, the carrier
-// (a double fmod and a sincosf) and the load happen once per (PRN, channel, hop), and only the
-// chip gather runs three times.
+// (a sincospif) and the load happen once per (PRN, channel, hop), and only the chip gather
+// runs three times.
 //
 // Fusion costs registers, and so occupancy. It pays when each thread walks several hops: the
 // kernel is then throughput-bound and the shared carrier and load dominate. With ~1 hop per
-// thread it is latency-bound (one dependent fmod -> sincosf -> gather chain per thread),
+// thread it is latency-bound (one dependent phase -> sincospif -> gather chain per thread),
 // occupancy is what hides that latency, and fusion loses. The throughput bench in
 // cudaGnssDespreadTest.cpp runs at several hops per thread for this reason, not at the ~1 of
 // its correctness geometry.
 //
 // Numerics (mixed precision: FP64 throughput is a small fraction of FP32 on the target GPUs):
-//   double: the code phase C = cp_ref + dn*cps and its floor/frac split, base = frac*inv_cps,
-//     and the carrier reduction fmod(wc*dn, 2*pi). The tap-boundary index
-//     floor(base + d*inv_cps) splits into an exact integer d*ks and a float remainder
-//     base + d*kf (see chip_gather3).
-//   float: everything per chip after the reduction: Phi tables and the telescoped gather (values
-//     O(1); ~2e-6 relative cancellation error per chip difference), the carrier phasor (sincosf
-//     on the reduced angle), the replica sample, the data MAC and the energy.
+//   fixed point: the code phase per hop and trial, split into chip and fraction, and the carrier
+//     turn (HopPhase, set up once per block from the job's doubles). The tap-boundary index
+//     floor(base + d*inv_cps), base = frac*inv_cps, splits into an exact integer d*ks and a
+//     float remainder base + d*kf (see chip_gather3).
+//   float: everything per chip: Phi tables and the telescoped gather (values O(1); ~2e-6
+//     relative cancellation error per chip difference), the carrier phasor (sincospif of the
+//     turn's top 24 bits), the replica sample, the data MAC and the energy.
 //   double: each lane's sums over its hops and the block reduction across lanes.
 // Agrees with the all-double CPU reference to ~1e-6 relative; the test gates at 1e-5.
 
@@ -70,24 +70,23 @@ __global__ void gnss_despread_kernel(const float2* __restrict__ data, // [nchan]
     // Invariant across hops and trials.
     const int ks = (int)job.inv_cps;
     const float kf = (float)(job.inv_cps - ks);
+    const float inv_cps = (float)job.inv_cps;
     const float2* phiA = job.phiA + (size_t)ci * (p.Lf + 1);
     const float2* phiB = job.phiB + (size_t)ci * (p.Lf + 1);
+    __shared__ gnss_cuda::HopPhase sh_hp;
+    if (m == 0)
+        sh_hp = gnss_cuda::hop_phase_setup(job, p.fft_len, p.n_hops);
+    __syncthreads();
+    const gnss_cuda::HopPhase hp = sh_hp;
 
     for (int mh = m; covered && mh < p.n_hops; mh += blockDim.x) {
-        // Intra-record sample offset of this hop, exact in double.
-        const double dn = (double)((long long)mh * (long long)p.fft_len);
-        // Prompt code phase from the window's reference (DespreadJob::cp_ref), so cps multiplies
-        // only dn. Early is C_P - ds, Late C_P + ds.
-        const double C_P = job.cp_ref + dn * job.cps;
-
-        // Carrier phasor pa = e^{i wc n}, one per hop for all three trials. The phase comes from
-        // the window's reference (DespreadJob::ang0), so wc multiplies only dn; reduce in double
-        // before the float sincosf.
-        const double ang = job.ang0 + fmod(job.wc * dn, 2.0 * M_PI);
-        float sn, cn;
-        sincosf((float)ang, &sn, &cn);
-        const float2 pa = make_float2(cn, sn);
-        const float2 pb = make_float2(cn, -sn);
+        // The prompt, early (- ds) and late (+ ds) code phases and the carrier phasor
+        // pa = e^{i wc n}, one per hop for all three trials, from the window's references
+        // (DespreadJob::cp_ref and ang0).
+        int chip0[3];
+        float phi[3];
+        const float2 pa = gnss_cuda::hop_phase<3>(hp, mh, chip0, phi);
+        const float2 pb = make_float2(pa.x, -pa.y);
 
         // One load for the three trials.
         const float2 dd = data[(size_t)ci * p.data_stride + mh];
@@ -99,10 +98,9 @@ __global__ void gnss_despread_kernel(const float2* __restrict__ data, // [nchan]
         // One walk of the chip loop serves all three trials (chip_gather3): their taps at a
         // given chip are neighbours in the Phi slice, so they share L1 lines.
         float2 g3A[3], g3B[3];
-        const double Cs[3] = {C_P, C_P - job.ds, C_P + job.ds};
-        gnss_cuda::chip_gather3<float2, 3, IMAGE_A>(job.inv_cps, job.code_offset, job.code_len,
+        gnss_cuda::chip_gather3<float2, 3, IMAGE_A>(inv_cps, job.code_offset, job.code_len,
                                                     job.n_chips, job.d_first, p.Lf, code, phiA,
-                                                    phiB, ks, kf, Cs, g3A, g3B);
+                                                    phiB, ks, kf, chip0, phi, g3A, g3B);
 #pragma unroll
         for (int tt = 0; tt < 3; ++tt) {
             const int t = (tt == 0) ? 1 : (tt == 1) ? 0 : 2; // -> P / E (C_P-ds) / L (C_P+ds)

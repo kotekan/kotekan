@@ -11,6 +11,8 @@
 #ifndef CUDA_GNSS_REPLICA_DEVICE_CUH
 #define CUDA_GNSS_REPLICA_DEVICE_CUH
 
+#include "cudaGnssDespreadKernel.hpp" // for DespreadJob
+
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <math.h>
@@ -33,13 +35,80 @@ __device__ inline float2 phi_ld(const __half2* p, int i) {
     return __half22float2(p[i]);
 }
 
+/// A job's code phase and carrier in fixed point, so that the per-hop loop does no fp64: the
+/// code phase in 2^-shift chips, the carrier in 2^-64 turns, as the FIXED path of
+/// gnss_psi_waveform_kernel (cudaGnssPsiSynth.cu). On GB10, whose fp64 rate is 1/64 of fp32,
+/// the per-hop double code phase, its floor and fraction per trial and the carrier's fmod kept
+/// the fp64 pipe busy for ~40% of the waveform kernel. Built once per block from the job's
+/// references at p.n0 (@ref hop_phase_setup).
+struct HopPhase {
+    long long cf_ref;           ///< cp_ref
+    long long dcf;              ///< code advance per hop, fft_len * cps
+    long long dsf;              ///< Early/Late displacement ds
+    long long Lfx;              ///< code_len
+    float cf_r, dcf_r;          ///< cf_ref and dcf in code periods, for the wrap estimate
+    int shift;                  ///< fraction bits of the code phase
+    unsigned long long ang0_t;  ///< ang0
+    unsigned long long dturn_t; ///< carrier advance per hop, wc * fft_len
+};
+
+__device__ inline HopPhase hop_phase_setup(const DespreadJob& job, int fft_len, int n_hops) {
+    HopPhase h;
+    const double adv = (double)fft_len * job.cps;
+    // The largest shift that keeps the record's code-phase range below 2^62.
+    const double max_c = (double)job.code_len + fabs(job.ds) + 2.0 + (double)n_hops * adv;
+    h.shift = min(60, 61 - ilogb(max_c));
+    const double sc = ldexp(1.0, h.shift);
+    h.cf_ref = llrint(job.cp_ref * sc);
+    h.dcf = llrint(adv * sc);
+    h.dsf = llrint(job.ds * sc);
+    h.Lfx = (long long)job.code_len << h.shift;
+    h.cf_r = (float)(job.cp_ref / job.code_len);
+    h.dcf_r = (float)(adv / job.code_len);
+    const double t0 = job.ang0 * (0.5 * M_1_PI);
+    const double td = job.wc * fft_len * (0.5 * M_1_PI);
+    const double two64 = 18446744073709551616.0;
+    h.ang0_t = (unsigned long long)((t0 - floor(t0)) * two64);
+    h.dturn_t = (unsigned long long)((td - floor(td)) * two64);
+    return h;
+}
+
+/// Hop @c mh of the record: the carrier phasor, and the code phase of trial u (0 = prompt,
+/// 1 = early, 2 = late) as chip index chip0[u] in [0, code_len) and fraction phi[u] in [0, 1).
+template<int NT>
+__device__ inline float2 hop_phase(const HopPhase& h, int mh, int* chip0, float* phi) {
+    // The code-period wraps since cp_ref (<= ~11 per record at CHORD) from a float estimate,
+    // then one conditional fix-up each way: a 64-bit modulo is emulated through fp64.
+    const int q = (int)fmaf((float)mh, h.dcf_r, h.cf_r);
+    long long c = h.cf_ref + (long long)mh * h.dcf - (long long)q * h.Lfx;
+    c += c < 0 ? h.Lfx : 0;
+    c -= c >= h.Lfx ? h.Lfx : 0;
+#pragma unroll
+    for (int u = 0; u < NT; ++u) {
+        long long cu = c + (u == 0 ? 0 : (u == 1 ? -h.dsf : h.dsf));
+        cu += cu < 0 ? h.Lfx : 0;
+        cu -= cu >= h.Lfx ? h.Lfx : 0;
+        chip0[u] = (int)(cu >> h.shift);
+        // The fraction's top 24 bits: a 64-bit int to float conversion also runs on the fp64
+        // pipe.
+        phi[u] = (float)((unsigned)(cu >> (h.shift - 24)) & 0xffffffu) * (1.f / 16777216.f);
+    }
+    const unsigned long long at = h.ang0_t + (unsigned long long)mh * h.dturn_t;
+    // The turn's top 24 bits, as [0, 2) half-turns.
+    float sn, cn;
+    sincospif((float)(unsigned)(at >> 40) * (2.f / 16777216.f), &sn, &cn);
+    return make_float2(cn, sn);
+}
+
 /// Chip gather over the filter span for NT code phases (3 = the E/P/L trials, 1 = the prompt
-/// alone) in one walk of the chip loop. For each trial u, at absolute code phase C = C[u]:
+/// alone) in one walk of the chip loop. For each trial u, at code phase chip0[u] + phi[u]
+/// (@ref hop_phase):
 ///   sA/sB = sum_d code[(chip0-d) mod code_len] * (Phi{A,B}[khi(d)+1] - Phi{A,B}[klo(d)])
-/// with chip0 = floor(C), phi = C - chip0, khi(d) = floor((phi+d)*inv_cps),
+/// with khi(d) = floor((phi+d)*inv_cps),
 /// klo(d) = khi(d-1)+1, d in [job_d_first, job_n_chips), and indices clamped to [0, Lf].
-/// @c ks / @c kf are the integer/fraction split of job.inv_cps, hoisted by the caller (they are
-/// invariant across hops and across the E/P/L trials, which share a Doppler).
+/// @c ks / @c kf are the integer/fraction split of job.inv_cps and @c inv_cps its float, hoisted
+/// by the caller (they are invariant across hops and across the E/P/L trials, which share a
+/// Doppler).
 /// @c job_d_first is the first chip of the walk (DespreadJob::d_first, centered truncation);
 /// the walk state is seeded at that chip in closed form. It has no default, so a call site
 /// that omits it fails to compile rather than silently walking from chip 0.
@@ -51,22 +120,23 @@ __device__ inline float2 phi_ld(const __half2* p, int i) {
 /// three walk states instead of one, and registers cap the waveform kernel's block width
 /// (WAVE_THREADS in cudaGnssChordDespread.hpp).
 ///
-/// @c PHI is the table type, float2 or __half2 (see phi_ld). @c C, @c sA and @c sB hold NT
-/// entries. Trial u's arithmetic does not depend on NT, so the prompt of a one-trial walk is
+/// @c PHI is the table type, float2 or __half2 (see phi_ld). @c chip0, @c phi, @c sA and @c sB
+/// hold NT entries. Trial u's arithmetic does not depend on NT, so the prompt of a one-trial walk is
 /// bit-identical to the prompt of the three-trial walk. With @c IMAGE_A false (I/Q input, whose
 /// phiA is zero; DespreadParams::complex_input) phiA is not read and sA is zero, as the walk
 /// over a zero table gives.
 template<class PHI, int NT = 3, bool IMAGE_A = true>
-__device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int job_code_len,
+__device__ inline void chip_gather3(float inv_cps, int job_code_offset, int job_code_len,
                                     int job_n_chips, int job_d_first, int Lf,
                                     const int8_t* __restrict__ code,
                                     const PHI* __restrict__ phiA, const PHI* __restrict__ phiB,
-                                    int ks, float kf, const double* C, float2* sA, float2* sB) {
+                                    int ks, float kf, const int* chip0, const float* phi,
+                                    float2* sA, float2* sB) {
     int idx[NT], khi_base[NT];
     float f[NT];
     float2 pA[NT], pB[NT];
-    // The chip loop does no fp64 and no 64-bit modulo: that work (C's floor/frac split, base,
-    // the code-index seed) is done once before it, and the loop works from phi in [0,1).
+    // The chip loop works from phi in [0,1), with base and the code-index seed set once before
+    // it.
     //  (a) klo(d) = floor((phi+d-1)*inv_cps)+1 and khi(d-1) = floor((phi+d-1)*inv_cps) are the
     //      same expression, so klo(d) == khi(d-1) + 1 and one boundary per chip suffices.
     //  (b) the code index chip0-d decrements by one per chip, so the modulo becomes a decrement
@@ -83,17 +153,15 @@ __device__ inline void chip_gather3(double job_inv_cps, int job_code_offset, int
     //      t(d) == t(d-1), a zero difference, so empty spans need no branch.
 #pragma unroll
     for (int u = 0; u < NT; ++u) {
-        const long long chip0 = (long long)floor(C[u]);
-        const double phi = C[u] - (double)chip0;
         sA[u] = make_float2(0.f, 0.f);
         sB[u] = make_float2(0.f, 0.f);
-        const double base = phi * job_inv_cps;
+        const float base = phi[u] * inv_cps;
         const int d0 = job_d_first;
-        long long i0 = (chip0 - (long long)d0) % (long long)job_code_len;
+        int i0 = chip0[u] - d0; // chip0 is in [0, code_len) and d0 is within the filter span
         if (i0 < 0)
             i0 += job_code_len;
-        idx[u] = (int)i0;                                      // (b) walks with d
-        const float fstart = fmaf((float)d0, kf, (float)base); // (c) base + d0*kf, one rounding
+        idx[u] = i0;                                    // (b) walks with d
+        const float fstart = fmaf((float)d0, kf, base); // (c) base + d0*kf, one rounding
         const int prev_khi = (d0 - 1) * ks + (int)floorf(fstart - kf); // (a) seed: khi(d0-1)
         f[u] = fstart;                                                 // (c) base + d*kf
         khi_base[u] = d0 * ks;                                         // (c) d*ks

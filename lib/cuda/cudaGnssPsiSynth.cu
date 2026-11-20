@@ -110,9 +110,10 @@ __device__ __forceinline__ void psi_blk_setup(const gnss_cuda::DespreadJob& job,
 /// the fixed-point path) and the conjugate carrier phasor pb.
 ///
 /// FIXED: the per-hop code phase and carrier are 64-bit fixed-point accumulations (PsiJob's
-/// cg_ref/dcg/dsg in 2^-shift grid units, ang0_t/dturn_t in 2^-64 turns) instead of the fp64
-/// DFMA + fmod of the production kernel. On GA102 fp64 runs at 1/32 of fp32, and the per-hop
-/// fp64 fmod alone is a sizeable share of a 10-20 us launch.
+/// cg_ref/dcg/dsg in 2^-shift grid units, ang0_t/dturn_t in 2^-64 turns) instead of an fp64
+/// DFMA + fmod. On GA102 fp64 runs at 1/32 of fp32, and the per-hop fp64 fmod alone is a
+/// sizeable share of a 10-20 us launch. The production kernel does the same (HopPhase,
+/// cudaGnssReplicaDevice.cuh).
 template<bool FIXED, class TAB>
 __device__ __forceinline__ void
 psi_hop(const gnss_cuda::DespreadJob& job, const gnss_cuda::PsiJob& pj, const PsiBlk<TAB>& B,
@@ -137,8 +138,8 @@ psi_hop(const gnss_cuda::DespreadJob& job, const gnss_cuda::PsiJob& pj, const Ps
         sincospif(x, &sn, &cn);
         pa = make_float2(cn, sn);
     } else {
-        // As the production kernel: references at p.n0 reduced on the host, the rates
-        // multiply only the intra-record offset dn (cudaGnssChordDespread.cu:69-85).
+        // References at p.n0 reduced on the host, the rates multiply only the intra-record
+        // offset dn.
         const double dn = (double)((long long)mh * (long long)fft_len);
         const double C_P = job.cp_ref + dn * job.cps;
         const double CG = C_P * (double)pj.G;
