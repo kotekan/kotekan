@@ -765,22 +765,24 @@
    "status": "transmitting",
    "catnum": 65046,
    "g2_phase": 1828,
-   "theta_us": 0.7886,
-   "range_rate_m_s": 1140.54,
-   "replica_corr_ns": 28.645,
-   "carrier_minus_tle_ppb": -1.4,
-   "measured_utc": "2026-11-12T19:04:10Z",
-   "source": "2026-11-12 beam dump window 154 (gw_reduce, 39760 frames over 80 s)",
-   "sep_deg": 3.44,
+   "theta_us": 7.821,
+   "range_rate_m_s": 1263.32,
+   "replica": "stretched",
+   "orbit": "broadcast",
+   "carrier_minus_tle_ppb": -3.2,
+   "measured_utc": "2026-11-20T16:30:57Z",
+   "source": "2026-11-20 beam dump window 377 (gw_reduce, 83700 frames over 241 s)",
+   "sep_deg": 0.89,
    "ref_input": 116,
-   "drift_ns_s": 1.58,
-   "last_observed_utc": "2026-11-12T19:04:13Z",
-   "last_checked_utc": "2026-11-12T19:04:13Z",
-   "last_checked_sep_deg": 3.25,
-   "passes_found": 1,
+   "drift_ns_s": 0.08,
+   "last_observed_utc": "2026-11-20T16:29:35Z",
+   "last_checked_utc": "2026-11-20T16:29:35Z",
+   "last_checked_sep_deg": 0.72,
+   "passes_found": 2,
    "passes_silent": 0,
    "passes": [
-    ["2026-11-12T19:04:13Z", 3.25, true]
+    ["2026-11-12T19:04:13Z", 3.25, true],
+    ["2026-11-20T16:29:35Z", 0.72, true]
    ]
   },
   "DIGUI-44": {
@@ -4225,6 +4227,32 @@
     ["2026-11-19T10:42:42Z", 4.71, true]
    ]
   },
+  "DIGUI-198": {
+   "status": "no_transmission",
+   "catnum": null,
+   "g2_phase": null,
+   "last_observed_utc": null,
+   "last_checked_utc": "2026-11-20T16:40:31Z",
+   "last_checked_sep_deg": 2.76,
+   "passes_found": 0,
+   "passes_silent": 1,
+   "passes": [
+    ["2026-11-20T16:40:31Z", 2.76, false]
+   ]
+  },
+  "DIGUI-199": {
+   "status": "no_transmission",
+   "catnum": null,
+   "g2_phase": null,
+   "last_observed_utc": null,
+   "last_checked_utc": "2026-11-20T16:29:35Z",
+   "last_checked_sep_deg": 2.0,
+   "passes_found": 0,
+   "passes_silent": 1,
+   "passes": [
+    ["2026-11-20T16:29:35Z", 2.0, false]
+   ]
+  },
   "DIGUI-200": {
    "status": "no_transmission",
    "catnum": null,
@@ -4754,6 +4782,19 @@
    "passes_silent": 1,
    "passes": [
     ["2026-11-13T03:26:35Z", 1.56, false]
+   ]
+  },
+  "JISHU-SHIYAN-4A": {
+   "status": "no_transmission",
+   "catnum": null,
+   "g2_phase": null,
+   "last_observed_utc": null,
+   "last_checked_utc": "2026-11-20T16:29:35Z",
+   "last_checked_sep_deg": 1.37,
+   "passes_found": 0,
+   "passes_silent": 1,
+   "passes": [
+    ["2026-11-20T16:29:35Z", 1.37, false]
    ]
   },
   "JISHU-SHIYAN-7D": {
