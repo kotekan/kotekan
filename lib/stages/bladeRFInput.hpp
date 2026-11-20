@@ -20,7 +20,7 @@
 #include <libbladeRF.h>       // for bladerf, bladerf_gain_mode
 #include <mutex>              // for mutex
 #include <stddef.h>           // for size_t
-#include <stdint.h>           // for int8_t, uint64_t
+#include <stdint.h>           // for int8_t, int64_t, uint64_t
 #include <string>             // for string
 
 /**
@@ -50,7 +50,8 @@
  * @par Buffers
  * @buffer out_buf The kotekan buffer which will be fed; any size holding whole samples.
  *     @buffer_format Array of @c int8_t I/Q pairs (cint8)
- *     @buffer_metadata none
+ *     @buffer_metadata none, or GnssChanMetadata: each frame's @c sample_seq is then the
+ *                      index of its first sample (see @c frame0_utc).
  *
  * @par REST endpoints
  * Registered under `<unique_name>/`.
@@ -100,6 +101,11 @@
  *                         jumps and corrupted samples, and 0xa0 (160) was clean.
  * @conf   max_stream_restarts Int (default 3). Consecutive failed reads that restart the
  *                         stream before the stage stops kotekan.
+ * @conf   frame0_utc      Float (default 0). UTC of sample 0, in seconds since the Unix
+ *                         epoch. Above 0, @c sample_seq counts from that instant, by the
+ *                         system clock when the first samples arrive, and frames start a
+ *                         whole number of frames after it; the first frame is padded with
+ *                         zeros. 0 counts from the first sample.
  * @conf   adcstat_timeout_ms Int (default 250). How long a GET @c /adcstat waits for the
  *                         next frame before failing.
  *
@@ -167,6 +173,8 @@ private:
     size_t frame_samples;
     /// Index of the current frame.
     int frame_id = 0;
+    /// Index in the stream of the current frame's first sample.
+    int64_t frame_seq = 0;
 
     // options
     std::string _serial;
@@ -200,6 +208,8 @@ private:
     uint64_t _max_gap_fill;
     /// Samples discarded at startup.
     uint64_t _startup_discard;
+    /// UTC of sample 0, in seconds; 0 counts from the first sample.
+    double _frame0_utc;
     /// Longest wait in @c adcstat_callback for the producer, in ms.
     int _adcstat_timeout_ms;
 

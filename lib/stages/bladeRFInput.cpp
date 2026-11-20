@@ -1,6 +1,7 @@
 #include "bladeRFInput.hpp"
 
 #include "Config.hpp"            // for Config
+#include "GnssChanMetadata.hpp"  // for get_gnss_chan_metadata, metadata_is_gnss_chan
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
@@ -12,8 +13,8 @@
 
 #include <algorithm>  // for min
 #include <bladeRF2.h> // for bladerf_set_bias_tee, bladerf_set_pll_enable
-#include <chrono>     // for steady_clock, milliseconds, seconds
-#include <cmath>      // for sqrt
+#include <chrono>     // for steady_clock, system_clock, milliseconds, seconds
+#include <cmath>      // for llround, sqrt
 #include <exception>  // for exception
 #include <functional> // for bind, _1, _2
 #include <future>     // for promise, future
@@ -85,6 +86,7 @@ bladeRFInput::bladeRFInput(Config& config, const std::string& unique_name,
         config.get_default<double>(unique_name, "max_gap_fill_ms", 1000) * 1e-3 * _sample_rate;
     _startup_discard =
         config.get_default<double>(unique_name, "startup_discard_ms", 100) * 1e-3 * _sample_rate;
+    _frame0_utc = config.get_default<double>(unique_name, "frame0_utc", 0.0);
     _adcstat_timeout_ms = config.get_default<int>(unique_name, "adcstat_timeout_ms", 250);
     _force_filter_open = config.get_default<bool>(unique_name, "force_filter_open", false);
     _data_port_delay = config.get_default<int>(unique_name, "data_port_delay", -1);
@@ -613,6 +615,22 @@ void bladeRFInput::stream() {
             next_timestamp = meta.timestamp;
             first_timestamp = meta.timestamp;
             INFO("Streaming; the first sample has timestamp {:d}", meta.timestamp);
+            if (_frame0_utc > 0) {
+                // This read's last sample arrived about now.
+                const double now = std::chrono::duration<double>(
+                                       std::chrono::system_clock::now().time_since_epoch())
+                                       .count();
+                const int64_t seq = std::llround((now - _frame0_utc) * _actual_sample_rate)
+                                    - (int64_t)meta.actual_count;
+                if (seq < 0) {
+                    FATAL_ERROR("frame0_utc {:.3f} is in the future.", _frame0_utc);
+                    return;
+                }
+                frame_seq = seq - seq % (int64_t)frame_samples;
+                INFO("The first sample is sample {:d} from frame0_utc {:.3f}", seq, _frame0_utc);
+                if (!write_samples(nullptr, seq % (int64_t)frame_samples))
+                    return;
+            }
         }
         if (meta.timestamp != next_timestamp) {
             if (meta.timestamp < next_timestamp) {
@@ -686,6 +704,11 @@ bool bladeRFInput::write_samples(const int8_t* src, size_t n) {
             // Lock-free check on the hot path; the stats are published under adcstat_mutex.
             if (dump_adcstat)
                 publish_adcstat(frame_ptr, frame_samples);
+            if (metadata_is_gnss_chan(buf)) {
+                buf->allocate_new_metadata_object(frame_id);
+                get_gnss_chan_metadata(buf, frame_id)->sample_seq = frame_seq;
+            }
+            frame_seq += frame_samples;
             buf->mark_frame_full(unique_name, frame_id);
             frame_id = (frame_id + 1) % buf->num_frames;
             frame_ptr = nullptr;

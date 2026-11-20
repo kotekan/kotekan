@@ -1,14 +1,15 @@
 #include "fftwEngine.hpp"
 
-#include "Config.hpp"          // for Config
-#include "NDArray.hpp"         // for GenericNDArray
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
-#include "airspyFrameDesc.hpp" // for make_fengine_desc
-#include "buffer.hpp"          // for Buffer
-#include "bufferContainer.hpp" // for bufferContainer
-#include "fftwPlannerLock.hpp" // for fftw_planner_mutex
-#include "kotekanLogging.hpp"  // for DEBUG, FATAL_ERROR
-#include "pfbPrototype.hpp"    // for pfb_prototype, pfb_push, pfb_fold, pfb_window_from_string
+#include "Config.hpp"           // for Config
+#include "GnssChanMetadata.hpp" // for get_gnss_chan_metadata, metadata_is_gnss_chan
+#include "NDArray.hpp"          // for GenericNDArray
+#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "airspyFrameDesc.hpp"  // for make_fengine_desc
+#include "buffer.hpp"           // for Buffer
+#include "bufferContainer.hpp"  // for bufferContainer
+#include "fftwPlannerLock.hpp"  // for fftw_planner_mutex
+#include "kotekanLogging.hpp"   // for DEBUG, FATAL_ERROR
+#include "pfbPrototype.hpp"     // for pfb_prototype, pfb_push, pfb_fold, pfb_window_from_string
 
 #include "fmt.hpp" // for compile_string_to_view
 
@@ -171,6 +172,13 @@ void fftwEngine::main_thread() {
             }
         } else {
             complex_transforms(in_local, samples_per_input_frame / 2, out_local);
+        }
+
+        // The spectra start at the frame's first sample.
+        if (metadata_is_gnss_chan(in_buf) && metadata_is_gnss_chan(out_buf)) {
+            out_buf->allocate_new_metadata_object(frame_out);
+            get_gnss_chan_metadata(out_buf, frame_out)->sample_seq =
+                get_gnss_chan_metadata(in_buf, frame_in)->sample_seq;
         }
 
         in_buf->mark_frame_empty(unique_name, frame_in);

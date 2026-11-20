@@ -58,10 +58,11 @@
  * @buffer in_buf Input kotekan buffer.
  *     @buffer_format Array of @c int16_t (real samples, or interleaved I/Q pairs), or of
  *                    @c int8_t I/Q pairs for @c complex_int8
- *     @buffer_metadata none
+ *     @buffer_metadata none, or GnssChanMetadata
  * @buffer out_buf Output kotekan buffer.
  *     @buffer_format Array of @c fftwf_complex
- *     @buffer_metadata none
+ *     @buffer_metadata none, or GnssChanMetadata: when both buffers carry it, each frame's
+ *                      @c sample_seq is copied across.
  *
  * @conf   spectrum_length  Int (default 128). Number of complex bins per output spectrum;
  *                          even for complex input.
