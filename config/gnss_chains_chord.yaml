@@ -842,6 +842,10 @@ chains:
     # at ~4.5/s, past the round-trip stability bound (cli.py --fleet-trim-bandwidth).
         fleet-trim-bandwidth: 1.4
         fleet-trim-readback: 1
+    # The BOC side peak at +-1.05 chips holds a track with every row present (#201): a PRN more
+    # than half a chip (73 m) off its glo_l3oc residual, against the pooled L2OC-L3OC level, for
+    # 30 s is released and restarts from the seed (trimarm.py XREF_*).
+        xband-referee: glo_l3oc
     # Every GPU of the 10-25 fleet holds a channel of the lobe. The derived combiner is
     # cx19 GPU 0 (6388, ~6% of the power); its GPU 1 holds the near-empty lobe edges.
         trackers: fleet

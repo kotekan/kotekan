@@ -24,6 +24,7 @@ from gnss_broker import instruments
 from gnss_broker import codeloop
 from gnss_broker import jtrk
 from gnss_broker import trkresid
+from gnss_broker import trimarm
 from gnss_broker import fleetadr
 
 
@@ -483,6 +484,14 @@ def stage_fleet_dll(ctx):
         except Exception as _te:
             ctx.dllp.trk = {}
             _log_rl("trkresid", "tracker residual failed (%s)" % _te, every_s=60.0)
+        # Shared for another chain's cross-band referee, and judged against this chain's own
+        # reference before the rows are published (prompt_lock reads the verdict).
+        ctx.rx.contribute_trk(ctx.chain_id, ctx.dllp.trk, ctx.t0)
+        if ctx.args.xband_referee:
+            try:
+                trimarm.xband_judge(ctx)
+            except Exception as _xe:
+                _log_rl("xref", "cross-band referee failed (%s)" % _xe, every_s=60.0)
         # The shadow joint state (#191 step 2): this chain's gated residuals, consumed by
         # nothing. Like the residual itself, failure costs the loop nothing.
         if ctx.args.joint_trk_feed:

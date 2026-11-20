@@ -13,6 +13,8 @@ reading a dead copy. RateFeedState's per-cycle fields are the exception and say 
 @author Keith Vanderlinde
 """
 
+import collections
+
 
 class NhOverlay(object):
     """Neumann-Hoffman overlay alignment: which overlay chip the sky is on.
@@ -67,6 +69,10 @@ class DllLoopState(object):
         "lobe_since",
         "lobe_release",
         "lobe_done",
+        "xref_since",
+        "xref_release",
+        "xref_done",
+        "xref_pool",
     )
 
     def __init__(self):
@@ -85,7 +91,8 @@ class DllLoopState(object):
         self.deep_gate_seen = (
             {}
         )  # prn -> t0 of the last search detection at snr >= --dll-deep-gate-from-search
-        # The PRNs neither loop trims this cycle: slewing seeds and lobe releases (trimarm.py).
+        # The PRNs neither loop trims this cycle: slewing seeds, lobe and cross-band releases
+        # (trimarm.py).
         self.held_off = set()
         self.readback_ok = False  # did the last /get_dll read succeed (empty or not)
         # prn -> t0: xcoh first below the lobe bar (while it stays), a release's start (while it
@@ -93,6 +100,12 @@ class DllLoopState(object):
         self.lobe_since = {}
         self.lobe_release = {}
         self.lobe_done = {}
+        # The cross-band referee (trimarm.xband_referee), the same three as the lobe's, and
+        # its pool of (t0, own-minus-reference difference, m) over every PRN.
+        self.xref_since = {}
+        self.xref_release = {}
+        self.xref_done = {}
+        self.xref_pool = collections.deque()
 
 
 class HoldState(object):
