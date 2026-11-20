@@ -239,7 +239,9 @@ def stage_almanac_predict(ctx):
         # spread that one epoch shift explains is a stale sample-0 epoch on the nodes
         # (gnss_broker/timebase.py).
         timebase.observe(ctx, _log_rl)
-        _local_ok = len(resid) >= ctx.args.bias_min_sats
+        # --freq-bias-adopt: the bias is the receiver's, taken from the chain that solves it.
+        _adopt_fb = getattr(ctx.args, "freq_bias_adopt", False)
+        _local_ok = len(resid) >= ctx.args.bias_min_sats and not _adopt_fb
         if _local_ok:
             # The per-cycle median is quantized to the search's Doppler grid and jumps as the
             # detected set changes, while the true bias is a slow oscillator drift. The EMA
@@ -354,10 +356,10 @@ def stage_almanac_predict(ctx):
             )
         else:
             # A free-running oscillator (--dr-drift-source bias): a chain that cannot solve the
-            # bias takes another chain's, scaled to its own carrier.
+            # bias takes another chain's, scaled to its own carrier, as does a chain told to.
             _fb = (
                 ctx.rx.freq_bias(exclude=ctx.chain_id, t_now=ctx.t0)
-                if getattr(ctx.args, "dr_drift_source", "solve") == "bias"
+                if _adopt_fb or getattr(ctx.args, "dr_drift_source", "solve") == "bias"
                 else None
             )
             if _fb is not None:
@@ -371,16 +373,17 @@ def stage_almanac_predict(ctx):
                     every_s=60.0,
                 )
             # Log both counts, so a held or unsolved bias reads as too few satellites rather
-            # than a clock or front-end fault.
-            _log_rl(
-                "clkbias",
-                "clock-freq bias %s (%d sats < bias_min_sats %d: residual not "
-                "trusted)"
-                % (
-                    "held %+.0f Hz" % ctx.cb.value
-                    if ctx.cb.ema is not None
-                    else "UNSOLVED (wide margins)",
-                    len(resid),
-                    ctx.args.bias_min_sats,
-                ),
-            )
+            # than a clock or front-end fault. An adopted bias has its own line above.
+            if not _adopt_fb:
+                _log_rl(
+                    "clkbias",
+                    "clock-freq bias %s (%d sats < bias_min_sats %d: residual not "
+                    "trusted)"
+                    % (
+                        "held %+.0f Hz" % ctx.cb.value
+                        if ctx.cb.ema is not None
+                        else "UNSOLVED (wide margins)",
+                        len(resid),
+                        ctx.args.bias_min_sats,
+                    ),
+                )

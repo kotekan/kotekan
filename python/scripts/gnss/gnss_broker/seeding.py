@@ -1352,6 +1352,20 @@ def stage_push_seeds(ctx):
                     _cmd = _prev + _stp
                 d["carrier_trim_hz"] = _cmd
                 ctx.rr_cmd_new[prn] = _cmd
+        elif ctx.args.carrier_resid_gain > 0.0 and prn not in ctx.probe_set:
+            # --carrier-resid-gain: the carrier closed on the combiner's carrier_hz_resid
+            # (commanded minus true Doppler, fitted to the squared records, so a data sign does
+            # not reach it), for satellites the rrate rows never see cohere (GuoWang's). The
+            # tracker applies carrier_trim_hz against the Doppler, so the trim follows the
+            # residual: the opposite sign ran away on the bladeRF.
+            _cmd = ctx.rf.cmd_applied.get(prn, 0.0)
+            _res = (ctx.status.get(prn) or {}).get("carrier_hz_resid")
+            if isinstance(_res, (int, float)) and math.isfinite(_res):
+                _cmd += ctx.args.carrier_resid_gain * _res
+            if ctx.args.carrier_max_hz > 0.0:
+                _cmd = max(-ctx.args.carrier_max_hz, min(ctx.args.carrier_max_hz, _cmd))
+            d["carrier_trim_hz"] = _cmd
+            ctx.rr_cmd_new[prn] = _cmd
         # Release slew: a PRN that leaves the command set (sig bar lost, sigma widened, row gone)
         # walks its standing command back to 0 at the same bounded rate instead of stepping, the
         # reference discontinuity the slew bound exists to prevent. It drops out once within one

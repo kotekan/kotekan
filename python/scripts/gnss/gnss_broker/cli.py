@@ -1456,6 +1456,16 @@ def build_parser(description):
         "need it.",
     )
     ap.add_argument(
+        "--carrier-resid-gain",
+        type=float,
+        default=0.0,
+        help="close each satellite's carrier on the combiner's carrier_hz_resid: the seed's "
+        "carrier_trim_hz moves by gain x residual each poll, clamped to --carrier-max-hz. "
+        "For satellites the rrate rows (--rrate-command) never see cohere: GuoWang's, whose "
+        "TLE Doppler is 10-25 ppb off and whose data-modulated records do not cohere until "
+        "it is removed. Probes are not commanded. 0 = off.",
+    )
+    ap.add_argument(
         "--rrate-command",
         action="store_true",
         help="close the carrier loop: each seed carries carrier_trim_hz, the joint "
@@ -2256,6 +2266,15 @@ def build_parser(description):
         "ephemeris; the tracker then despreads noise there, and cross-correlation with "
         "the real satellites can make it look like a plausible satellite. --signal "
         "sets 19 for B1C, B2a and B2b.",
+    )
+    ap.add_argument(
+        "--freq-bias-adopt",
+        action="store_true",
+        help="take the receiver's clock-frequency bias from another chain in this process "
+        "(the shared Receiver, scaled to this chain's carrier) instead of solving it from "
+        "this chain's Doppler residuals. For a chain whose residuals do not measure the "
+        "receiver: LEO satellites (GuoWang), whose TLE Doppler is 10-25 ppb off and whose "
+        "Doppler moves 100 Hz/s, so a detection half a second old reads 50 Hz off.",
     )
     ap.add_argument(
         "--dr-clock-adopt-max-chips",
