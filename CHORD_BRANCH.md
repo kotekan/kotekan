@@ -10,26 +10,21 @@ Base: `develop` at `ba9a1ac86` (#1915).
 |---|---|---|---|---|---|
 | #1732 | `jbm/eigen-phase-mask` | `dbe6a1008` | 2026-10-03 | 2026-11-05 | EigenMaskedSubspaceSolver: subspace steps on the masked matrix, phase reference |
 | #1743 | `jbm/dish_pointings` | `6bba47a3c` | 2026-10-17 | 2026-11-05 | Fringestop only array dishes; require a set pointing |
-| #1843 | `jbm/rest-logs` | `294bc2188` | 2026-11-04 | 2026-11-05 | Serve recent log lines at /logs |
-| #1844 | `jbm/n2-truncate` | `def072ff5` | 2026-11-05 | 2026-11-05 | hdf5N2Write: optional weight-based truncation of vis and weights |
+| #1843 | `jbm/rest-logs` | `076aed9d2` | 2026-11-04 | 2026-11-20 | Serve recent log lines at /logs |
+| #1844 | `jbm/n2-truncate` | `b3ddcf97d` | 2026-11-05 | 2026-11-20 | hdf5N2Write: optional weight-based truncation of vis and weights |
 | #1847 | `jbm/gpu-ring-graph` | `7b3fc8f2b` | 2026-11-04 | 2026-11-05 | Pipeline graph: GPU rings as host ring nodes, GPU tables, /pipeline_gpu_svg |
 | #1848 | `jbm/n2-switch-per-freq` | `9d6821aeb` | 2026-11-05 | 2026-11-05 | hdf5N2Write: record fringestop and second-stage RFI switches per frequency |
-| #1849 | `jbm/n2-gains` | `f76d2aba0` | 2026-11-05 | 2026-11-05 | bufferGains: buffer posted calibration gains; N2Accumulate records them |
+| #1849 | `jbm/n2-gains` | `8868a27f3` | 2026-11-05 | 2026-11-20 | bufferGains: buffer posted calibration gains; N2Accumulate records them |
 | #1851 | `jbm/async-start` | `944510918` | 2026-11-05 | 2026-11-06 | kotekan: start the pipeline on its own thread, report it in /status |
-| #1903 | `jbm/incoherent-search` | `b4ca60c4a` | 2026-11-17 | 2026-11-20 | Incoherent-beam pulse search: IncoherentBeamPower and IncoherentBeamSearch |
-| #1884 | `jbm/crs-wide-band` | `b584c2b8a` | 2026-11-11 | 2026-11-11 | CRS capture for a wider science band: frequencies per stream from the band, n2k kernel sizes, worker ring fill gauge |
-| (to open) | `jbm/rfi-frame-mask-exempt` | `668493edf` | 2026-11-19 | 2026-11-19 | RfiFrameMask: leave first-stage exempt channels unmasked |
+| #1903 | `jbm/incoherent-search` | `a9a9b05fe` | 2026-11-17 | 2026-11-20 | Incoherent-beam pulse search: IncoherentBeamPower and IncoherentBeamSearch |
+| #1884 | `jbm/crs-wide-band` | `4dea22979` | 2026-11-11 | 2026-11-20 | CRS capture for a wider science band: frequencies per stream from the band, n2k kernel sizes, worker ring fill gauge |
+| #1918 | `jbm/rfi-frame-mask-exempt` | `668493edf` | 2026-11-19 | 2026-11-19 | RfiFrameMask: leave first-stage exempt channels unmasked |
+| #1919 | `jbm/chord-config-docs` | `408a29a67` | 2026-11-20 | 2026-11-20 | config/chord: controller full name, 4096 bins with fringestopping, second-stage RFI excision |
+
+The PR branches carry the site config they need, so config/chord in `chord` is `develop` plus these heads.
 
 ## Chord-only commits
 
 | Commit | Files | Change |
 |---|---|---|
-| `cd85d6afb` | `config/chord/common.j2` | Keep recent log lines for `GET /logs` (#1843) |
-| `030e1715f` | `config/chord/recv.j2` | Truncate subset vis and weights before writing (#1844) |
 | `12f44fcb5` | `CHORD_BRANCH.md`, `AGENTS.md` | This file and the chord workflow notes |
-| `a82b96f02` | `config/chord/pathfinder.j2` | Record calibration gains in the X-engine N2 frames (#1849) |
-| `ef35f45de` | `config/chord/common.j2` | Name the F-engine controller by its full name |
-| `e401a4b50` | `config/chord/{telescope,pathfinder,recv}.j2` | Science band 150-1600 MHz: 58 bins per stream, 464 frequencies per GPU |
-| `0d3694ffb`, `058674b73`, `e3f2cd7d0`, `fd512854a`, `45fc64ebe` | `config/chord/{incoherent,pathfinder,recv}.j2` | Incoherent-beam pulse search: power from each half to the recv node, search there (#1903) |
-| `116fc8984` | `config/chord/{pathfinder,recv}.j2` | 4096 accumulation bins per rotation (21.04 s), fringestopping on by default |
-| `9b8fdbd74` | `config/chord/pathfinder.j2` | Second-stage RFI excision on by default: 3 sigma, fraction 0.1 |
