@@ -157,6 +157,19 @@ l5_rec_buf:
     num_frames: 64
     frame_size: 32 * 44 * 4
 
+# L5's data component (I5), despread at the L5 tracker's own seeds (its data block), and its
+# CNAV symbols.
+l5i_epl_buf:
+    kotekan_buffer: standard
+    metadata_pool: gnss_pool
+    num_frames: 8
+    frame_size: 647344
+l5i_rec_buf:
+    kotekan_buffer: standard
+    metadata_pool: gnss_pool
+    num_frames: 64
+    frame_size: 32 * 44 * 4
+
 # Galileo E5a-Q: same carrier as L5, so the same channels. No search: the broker dead-reckons it
 # on the L5 chain's receiver clock. gnss_gpu::frame_bytes(36 PRNs, 12 channels, 4 rows, 1 element).
 e5a_epl_buf:
@@ -191,6 +204,7 @@ gputrack:
         q_valve_buf: q_valve_buf
     out_buffers:
         l5_epl_buf: l5_epl_buf
+        l5i_epl_buf: l5i_epl_buf
         e5a_epl_buf: e5a_epl_buf
         b2a_epl_buf: b2a_epl_buf
     commands:
@@ -213,6 +227,10 @@ gputrack:
           set_trim_endpoint: /l5_track/set_trim
           get_prns_endpoint: /l5_track/get_prns
           set_prns_endpoint: /l5_track/set_prns
+          # I5 with NH10 tiled in: one 10 ms code, one CNAV symbol.
+          data:
+              signal: GPS_L5_I_NH
+              gpu_mem_output: l5i_epl
         - name: cudaGnssTrack
           gpu_mem_input: gnss_chan_frame
           gpu_mem_output: e5a_epl
@@ -251,6 +269,10 @@ gputrack:
           out_buf: l5_epl_buf
           in_buf: q_valve_buf
         - name: cudaOutputData
+          gpu_mem: l5i_epl
+          out_buf: l5i_epl_buf
+          in_buf: q_valve_buf
+        - name: cudaOutputData
           gpu_mem: e5a_epl
           out_buf: e5a_epl_buf
           in_buf: q_valve_buf
@@ -271,6 +293,20 @@ l5_combine:
     # 0.2 s of 1 ms records.
     integration_length: 200
     record_export: 64
+
+l5i_assemble:
+    kotekan_stage: GnssGpuRecordAssemble
+    in_buf: l5i_epl_buf
+    out_buf: l5i_rec_buf
+    prns: *l5_prns
+# I5's symbols against Q5, served for the broker's CNAV decode (cnav-combiner).
+l5i_symbols:
+    kotekan_stage: GnssNavSymbols
+    pilot_buf: l5_rec_buf
+    data_buf: l5i_rec_buf
+    n_prn: 32
+    symbol_records: 10
+    offset_deg: 90
 
 e5a_assemble:
     kotekan_stage: GnssGpuRecordAssemble
