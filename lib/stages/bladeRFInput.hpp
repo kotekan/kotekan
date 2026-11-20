@@ -101,7 +101,8 @@
  *                         jumps and corrupted samples, and 0xa0 (160) was clean.
  * @conf   max_stream_restarts Int (default 3). Consecutive failed reads that restart the
  *                         stream before the stage stops kotekan.
- * @conf   frame0_utc      Float (default 0). UTC of sample 0, in seconds since the Unix
+ * @conf   frame0_utc      Float (default: the telescope's time of sample 0, from
+ *                         /gps_time, else 0). UTC of sample 0, in seconds since the Unix
  *                         epoch. Above 0, @c sample_seq counts from that instant, by the
  *                         system clock when the first samples arrive, and frames start a
  *                         whole number of frames after it; the first frame is padded with

@@ -3,6 +3,7 @@
 #include "Config.hpp"            // for Config
 #include "GnssChanMetadata.hpp"  // for get_gnss_chan_metadata, metadata_is_gnss_chan
 #include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"         // for Telescope
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
 #include "kotekanLogging.hpp"    // for INFO, WARN, ERROR, FATAL_ERROR
@@ -86,7 +87,10 @@ bladeRFInput::bladeRFInput(Config& config, const std::string& unique_name,
         config.get_default<double>(unique_name, "max_gap_fill_ms", 1000) * 1e-3 * _sample_rate;
     _startup_discard =
         config.get_default<double>(unique_name, "startup_discard_ms", 100) * 1e-3 * _sample_rate;
+    // As the GNSS stages take it: the config's value, else the telescope's time of sample 0.
     _frame0_utc = config.get_default<double>(unique_name, "frame0_utc", 0.0);
+    if (_frame0_utc <= 0 && Telescope::instance().gps_time_enabled())
+        _frame0_utc = Telescope::instance().to_time_ns(0) * 1e-9;
     _adcstat_timeout_ms = config.get_default<int>(unique_name, "adcstat_timeout_ms", 250);
     _force_filter_open = config.get_default<bool>(unique_name, "force_filter_open", false);
     _data_port_delay = config.get_default<int>(unique_name, "data_port_delay", -1);

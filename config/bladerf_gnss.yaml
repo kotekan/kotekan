@@ -45,8 +45,10 @@ n_elements: 1
 buffer_depth: 4
 
 # UTC of sample 0, here 2026-11-20 00:00:00: bladeRFInput counts samples from it by the system
-# clock, and the tracker stamps its records with it. Keep it within a few months of the run.
-frame0_utc: 1795132800
+# clock, the tracker stamps its records with it, and the broker reads it at telescope/time0_ns.
+# Keep it within a few months of the run.
+gps_time:
+    frame0_nano: 1795132800000000000
 
 gnss_pool:
     kotekan_metadata_pool: GnssChanMetadata
