@@ -142,6 +142,34 @@ l5_search:
     acquire_fine_step: 2
     hint_ttl_s: 30
     use_cuda_acquire: true
+# GuoWang: every code in the satellite library (PRN = G2' phase + 1), and PRNs 1 to 3, codes no
+# satellite carries, as dark noise probes. The window is one 2 ms frame, whose ranging half
+# carries one data sign; the broker hints the visible satellites from the TLE table.
+gw_search:
+    kotekan_stage: GnssChannelizedSearch
+    in_buf: search_buf
+    signal: GW_1202
+    prns: &gw_prns [1, 2, 3, 10, 124, 133, 188, 203, 266, 269, 272, 288, 303, 391, 556, 597, 600,
+                    613, 648, 665, 703, 729, 747, 779, 793, 831, 857, 894, 896, 906, 910, 916,
+                    943, 1094, 1101, 1135, 1145, 1158, 1214, 1234, 1243, 1276, 1293, 1352, 1375,
+                    1378, 1381, 1403, 1425, 1443, 1457, 1459, 1483, 1519, 1554, 1561, 1586, 1606,
+                    1611, 1676, 1696, 1836, 1891, 1897, 1923, 1941, 2028]
+    f_offset: -22.975e6
+    n_channels: 64
+    channel_ids: [32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
+                  48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63,
+                  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+                  16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
+    # LEO Doppler reaches +-30 kHz; 250 Hz is half the 2 ms window's bin.
+    doppler_min: -40000
+    doppler_max: 40000
+    doppler_step: 250
+    doppler_margin_hz: 40000
+    acquire_windows: 25
+    acquire_snr: 6
+    acquire_fine_step: 2
+    hint_ttl_s: 30
+    use_cuda_acquire: true
 
 # ---- Tracker ----
 # gnss_gpu::frame_bytes(32 PRNs, 12 channels, 4 rows, 1 element).
@@ -183,6 +211,20 @@ e5a_rec_buf:
     num_frames: 64
     frame_size: 36 * 44 * 4
 
+# GuoWang (1202.025 MHz, 22.975 MHz below the LO): DFT bins 50 to 54, frame positions 18 to 22,
+# the main lobe and part of the first sidelobes. gnss_gpu::frame_bytes(67 PRNs, 5 channels, 4 rows,
+# 1 element).
+gw_epl_buf:
+    kotekan_buffer: standard
+    metadata_pool: gnss_pool
+    num_frames: 8
+    frame_size: 634800
+gw_rec_buf:
+    kotekan_buffer: standard
+    metadata_pool: gnss_pool
+    num_frames: 64
+    frame_size: 67 * 44 * 4
+
 # BeiDou B2a pilot: the same channels again, dead-reckoned as E5a.
 # gnss_gpu::frame_bytes(31 PRNs, 12 channels, 4 rows, 1 element).
 b2a_epl_buf:
@@ -207,6 +249,7 @@ gputrack:
         l5i_epl_buf: l5i_epl_buf
         e5a_epl_buf: e5a_epl_buf
         b2a_epl_buf: b2a_epl_buf
+        gw_epl_buf: gw_epl_buf
     commands:
         - name: cudaInputData
           in_buf: q_valve_buf
@@ -263,6 +306,21 @@ gputrack:
           set_trim_endpoint: /b2a_track/set_trim
           get_prns_endpoint: /b2a_track/get_prns
           set_prns_endpoint: /b2a_track/set_prns
+        - name: cudaGnssTrack
+          gpu_mem_input: gnss_chan_frame
+          gpu_mem_output: gw_epl
+          # One 2 ms frame, the CSK half zeroed (gnssSignal.hpp).
+          signal: GW_1202
+          prns: *gw_prns
+          f_offset_hz: -22.975e6
+          n_channels: 5
+          channel_ids: [50, 51, 52, 53, 54]
+          gnss_local_channels: [18, 19, 20, 21, 22]
+          dll_spacing: 0.5
+          seed_endpoint: /gw_track/set_seeds
+          set_trim_endpoint: /gw_track/set_trim
+          get_prns_endpoint: /gw_track/get_prns
+          set_prns_endpoint: /gw_track/set_prns
         - name: cudaSyncOutput
         - name: cudaOutputData
           gpu_mem: l5_epl
@@ -279,6 +337,10 @@ gputrack:
         - name: cudaOutputData
           gpu_mem: b2a_epl
           out_buf: b2a_epl_buf
+          in_buf: q_valve_buf
+        - name: cudaOutputData
+          gpu_mem: gw_epl
+          out_buf: gw_epl_buf
           in_buf: q_valve_buf
 
 l5_assemble:
@@ -331,3 +393,26 @@ b2a_combine:
     n_prn: 31
     integration_length: 200
     record_export: 64
+
+gw_assemble:
+    kotekan_stage: GnssGpuRecordAssemble
+    in_buf: gw_epl_buf
+    out_buf: gw_rec_buf
+    prns: *gw_prns
+# The data sign changes every 4 ms (two frames): the deep sum wipes it per 4-record bit.
+gw_combine:
+    kotekan_stage: GnssCoherentCombiner
+    in_bufs: [gw_rec_buf]
+    n_prn: 67
+    integration_length: 200
+    record_export: 64
+    navwipe_bit_records: 4
+    bit_export: true
+# GuoWang's low-rate symbols (4 ms, two 2 ms frames, the sign of the ranging half), decided from
+# its own records: no pilot.
+gw_symbols:
+    kotekan_stage: GnssNavSymbols
+    data_buf: gw_rec_buf
+    n_prn: 67
+    symbol_records: 4
+    periods_per_symbol: 2
