@@ -153,6 +153,19 @@ l5_rec_buf:
     num_frames: 64
     frame_size: 32 * 44 * 4
 
+# Galileo E5a-Q: same carrier as L5, so the same channels. No search: the broker dead-reckons it
+# on the L5 chain's receiver clock. gnss_gpu::frame_bytes(36 PRNs, 12 channels, 4 rows, 1 element).
+e5a_epl_buf:
+    kotekan_buffer: standard
+    metadata_pool: gnss_pool
+    num_frames: 8
+    frame_size: 728240
+e5a_rec_buf:
+    kotekan_buffer: standard
+    metadata_pool: gnss_pool
+    num_frames: 64
+    frame_size: 36 * 44 * 4
+
 gputrack:
     kotekan_stage: cudaProcess
     gpu_id: 0
@@ -161,6 +174,7 @@ gputrack:
         q_valve_buf: q_valve_buf
     out_buffers:
         l5_epl_buf: l5_epl_buf
+        e5a_epl_buf: e5a_epl_buf
     commands:
         - name: cudaInputData
           in_buf: q_valve_buf
@@ -181,10 +195,30 @@ gputrack:
           set_trim_endpoint: /l5_track/set_trim
           get_prns_endpoint: /l5_track/get_prns
           set_prns_endpoint: /l5_track/set_prns
+        - name: cudaGnssTrack
+          gpu_mem_input: gnss_chan_frame
+          gpu_mem_output: e5a_epl
+          # CS100 tiled in: one 1023000-chip, 100 ms code.
+          signal: GAL_E5A_Q_CS
+          prns: &e5a_prns [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+                           21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]
+          f_offset_hz: -48.55e6
+          n_channels: 12
+          channel_ids: [33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44]
+          gnss_local_channels: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+          dll_spacing: 0.5
+          seed_endpoint: /e5a_track/set_seeds
+          set_trim_endpoint: /e5a_track/set_trim
+          get_prns_endpoint: /e5a_track/get_prns
+          set_prns_endpoint: /e5a_track/set_prns
         - name: cudaSyncOutput
         - name: cudaOutputData
           gpu_mem: l5_epl
           out_buf: l5_epl_buf
+          in_buf: q_valve_buf
+        - name: cudaOutputData
+          gpu_mem: e5a_epl
+          out_buf: e5a_epl_buf
           in_buf: q_valve_buf
 
 l5_assemble:
@@ -197,5 +231,17 @@ l5_combine:
     in_bufs: [l5_rec_buf]
     n_prn: 32
     # 0.2 s of 1 ms records.
+    integration_length: 200
+    record_export: 64
+
+e5a_assemble:
+    kotekan_stage: GnssGpuRecordAssemble
+    in_buf: e5a_epl_buf
+    out_buf: e5a_rec_buf
+    prns: *e5a_prns
+e5a_combine:
+    kotekan_stage: GnssCoherentCombiner
+    in_bufs: [e5a_rec_buf]
+    n_prn: 36
     integration_length: 200
     record_export: 64
