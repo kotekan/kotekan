@@ -1952,23 +1952,24 @@
    "status": "transmitting",
    "catnum": 66414,
    "g2_phase": 915,
-   "theta_us": -0.0665,
-   "range_rate_m_s": 1223.17,
-   "replica_corr_ns": 28.507,
-   "carrier_minus_tle_ppb": 1.4,
-   "measured_utc": "2026-11-05T23:13:47Z",
-   "source": "2026-11-05 beam dump window 29 (gw_reduce, 40180 frames over 80 s)",
-   "sep_deg": 4.88,
+   "theta_us": -2.027,
+   "range_rate_m_s": 1383.5,
+   "replica": "stretched",
+   "orbit": "broadcast",
+   "carrier_minus_tle_ppb": 0.4,
+   "measured_utc": "2026-11-20T18:40:35Z",
+   "source": "2026-11-20 beam dump window 384 (gw_reduce, 55986 frames over 174 s)",
+   "sep_deg": 3.98,
    "ref_input": 116,
-   "drift_ns_s": -1.24,
-   "note": "partial copy, 56/64 channels",
-   "last_observed_utc": "2026-11-05T23:13:51Z",
-   "last_checked_utc": "2026-11-05T23:13:51Z",
-   "last_checked_sep_deg": 4.84,
-   "passes_found": 1,
+   "drift_ns_s": 0.05,
+   "last_observed_utc": "2026-11-20T18:41:30Z",
+   "last_checked_utc": "2026-11-20T18:41:30Z",
+   "last_checked_sep_deg": 3.8,
+   "passes_found": 2,
    "passes_silent": 0,
    "passes": [
-    ["2026-11-05T23:13:51Z", 4.84, true]
+    ["2026-11-05T23:13:51Z", 4.84, true],
+    ["2026-11-20T18:41:30Z", 3.8, true]
    ]
   },
   "DIGUI-99": {
@@ -2365,14 +2366,15 @@
    "sep_deg": 1.98,
    "ref_input": 116,
    "drift_ns_s": -13.45,
-   "last_observed_utc": "2026-11-10T08:00:12Z",
-   "last_checked_utc": "2026-11-10T08:00:12Z",
-   "last_checked_sep_deg": 1.6,
-   "passes_found": 2,
+   "last_observed_utc": "2026-11-20T19:34:40Z",
+   "last_checked_utc": "2026-11-20T19:34:40Z",
+   "last_checked_sep_deg": 3.89,
+   "passes_found": 3,
    "passes_silent": 0,
    "passes": [
     ["2026-11-05T08:20:08Z", 5.13, true],
-    ["2026-11-10T08:00:12Z", 1.6, true]
+    ["2026-11-10T08:00:12Z", 1.6, true],
+    ["2026-11-20T19:34:40Z", 3.89, true]
    ]
   },
   "DIGUI-118": {
@@ -4530,6 +4532,19 @@
     ["2026-11-04T13:31:39Z", 1.21, true],
     ["2026-11-11T11:31:41Z", 3.91, true],
     ["2026-11-19T08:58:31Z", 1.15, true]
+   ]
+  },
+  "DIGUI-215": {
+   "status": "no_transmission",
+   "catnum": null,
+   "g2_phase": null,
+   "last_observed_utc": null,
+   "last_checked_utc": "2026-11-20T18:41:30Z",
+   "last_checked_sep_deg": 3.44,
+   "passes_found": 0,
+   "passes_silent": 1,
+   "passes": [
+    ["2026-11-20T18:41:30Z", 3.44, false]
    ]
   },
   "DIGUI-216": {
