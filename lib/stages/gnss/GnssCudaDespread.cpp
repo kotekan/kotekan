@@ -16,7 +16,9 @@
 #include <cstring>
 #include <cuda_runtime.h>
 #include <deque>
+#if defined(__F16C__) && defined(__AVX__)
 #include <immintrin.h>
+#endif
 #include <limits>
 #include <mutex>
 #include <pthread.h>
