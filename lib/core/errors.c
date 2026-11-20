@@ -1,5 +1,7 @@
 #include "errors.h"
 
+#include "logBuffer.h" // for log_buffer_append
+
 #include <pthread.h> // for pthread_mutex_t, pthread_mutex_lock, pthread_mutex_unlock
 #include <signal.h>  // for raise, SIGTERM
 #include <stdarg.h>  // for va_end, va_list, va_start
@@ -12,16 +14,17 @@ enum ReturnCode __status_code = CLEAN_EXIT;
 static pthread_mutex_t status_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void internal_logging_f(int log, const char* format, ...) {
+    char log_buf[MAX_LOG_MSG_LEN];
     va_list args;
     va_start(args, format);
+    (void)vsnprintf(log_buf, MAX_LOG_MSG_LEN, format, args);
+    va_end(args);
     if (__enable_syslog == 1) {
-        (void)vsyslog(log, format, args);
+        syslog(log, "%s", log_buf);
     } else {
-        char log_buf[MAX_LOG_MSG_LEN];
-        (void)vsnprintf(log_buf, MAX_LOG_MSG_LEN, format, args);
         fprintf(stderr, "%s: %s\n", get_log_level_string(log), log_buf);
     }
-    va_end(args);
+    log_buffer_append(log, "", log_buf);
 }
 
 // Starts kotekan shutdown and sets a status code.

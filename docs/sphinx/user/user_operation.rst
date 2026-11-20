@@ -10,6 +10,11 @@ REST endpoints
 - ``/status`` (GET) – returns whether kotekan is running.
 - ``/config`` (GET) – returns the active config.
 - ``/version`` (GET) – version/build info.
+- ``/logs`` (GET) – the last 1000 log lines, oldest first, as a JSON list of ``time`` (UNIX
+  seconds), ``level`` and ``msg``, each line cut to 1 KiB. Off unless the top-level
+  ``log_buffer: true`` is set. Lines are kept from the time a config starts, at the config's
+  ``log_level``, and survive ``/stop`` until the next config starts. Lines are lost when
+  kotekan exits, including after a fatal error; use the node's syslog for those.
 - ``/endpoints`` (GET) – list all registered endpoints (including aliases).
 - ``/metrics`` (GET) – Prometheus-format metrics (buffers, stages, broker errors, etc.).
 - ``/buffers`` (GET) – per-buffer status: frame fullness, frame size, last arrival time.

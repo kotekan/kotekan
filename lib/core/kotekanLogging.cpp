@@ -1,6 +1,7 @@
 #include "kotekanLogging.hpp"
 
-#include "errors.h" // for MAX_LOG_MSG_LEN, get_log_level_string, __enable_syslog
+#include "errors.h"    // for MAX_LOG_MSG_LEN, get_log_level_string, __enable_syslog
+#include "logBuffer.h" // for log_buffer_append, log_buffer_on
 
 #include "fmt.hpp" // for compile_string_to_view, vformat, vformat_to_n, fmt
 
@@ -40,6 +41,9 @@ void kotekanLogging::vinternal_logging(int type, fmt::basic_string_view<char> lo
             fmt::print(stderr, fmt("{:s}: {:s}\n"), prefix, log_msg);
         }
     }
+    if (log_buffer_on())
+        log_buffer_append(type, std::string(log_prefix.data(), log_prefix.size()).c_str(),
+                          log_msg.c_str());
 }
 
 void kotekanLogging::set_log_level(const logLevel& log_level) {
