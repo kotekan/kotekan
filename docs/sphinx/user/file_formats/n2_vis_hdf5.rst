@@ -620,7 +620,8 @@ verifies consistency, within ns-level tolerance, as frames arrive).
    * - ``rfi_frame_excision_enabled``
      - bool
      - Whether second-stage (frame-level) RFI excision was active for this
-       bin.
+       bin. Channels listed in RfiFrameMask's
+       ``rfi_first_stage_excision_exempt_freq_ids`` are not excised.
    * - ``rfi_frame_excision_num``
      - int32
      - Number of active excision thresholds (<= :math:`N_k`); only the
