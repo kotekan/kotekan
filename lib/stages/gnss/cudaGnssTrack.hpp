@@ -11,14 +11,20 @@
 #include "cudaGnssChordTrack.hpp" // for cudaGnssChordTrackState
 #include "gnssTrackChain.hpp"     // for TrackChain
 
-#include <memory> // for shared_ptr
-#include <string> // for string
-#include <vector> // for vector
+#include <cuda_runtime_api.h> // for cudaStream_t
+#include <memory>             // for shared_ptr, unique_ptr
+#include <string>             // for string
+#include <vector>             // for vector
 
-/// cudaGnssTrack's state: cudaGnssInject's, registered under its own name.
+/// cudaGnssTrack's state: cudaGnssInject's, registered under its own name, plus the chain of
+/// its @c data block.
 class cudaGnssTrackState : public cudaGnssChordTrackState {
 public:
-    using cudaGnssChordTrackState::cudaGnssChordTrackState;
+    cudaGnssTrackState(kotekan::Config& config, const std::string& unique_name,
+                       kotekan::bufferContainer& host_buffers, cudaDeviceInterface& device);
+
+    /// The data component, despread at the pilot chain's seeds; null without a @c data block.
+    std::unique_ptr<gnss::TrackChain> data;
 };
 
 /**
@@ -37,12 +43,22 @@ public:
  * The data is conjugated before the correlation, as the replicas assume
  * (gnss::Channelization).
  *
+ * A @c data block adds a data component despread at this chain's own seeds, trims and PRN map,
+ * for a signal whose data and pilot share code timing and carrier (GPS_L5_I_NH under
+ * GPS_L5_Q_NH). It is a gnss::TrackChain configured at `<command>/data`, which sets its own
+ * `signal` and `gpu_mem_output` and inherits every other key from the command. Its code length
+ * must divide this chain's, so a seed places both, and it serves no endpoints. Its frame has
+ * the same layout as this chain's and goes to its own GnssGpuRecordAssemble.
+ *
  * @par GPU Memory
  * @gpu_mem gpu_mem_input   The channelized frame, [samples_per_data_set][num_local_freq].
  *     @gpu_mem_type        staging
  *     @gpu_mem_format      Array of @c uint8_t, 4+4 bits (gnss44.hpp)
  *     @gpu_mem_metadata    GnssChanMetadata
  * @gpu_mem gpu_mem_output  The gnssGpuChain.hpp frame, one element.
+ *     @gpu_mem_type        staging
+ *     @gpu_mem_format      gnss_gpu::frame_bytes(n_prn, n_channels, 4, 1) bytes
+ * @gpu_mem data/gpu_mem_output  The data component's frame, as gpu_mem_output's.
  *     @gpu_mem_type        staging
  *     @gpu_mem_format      gnss_gpu::frame_bytes(n_prn, n_channels, 4, 1) bytes
  *
@@ -52,6 +68,8 @@ public:
  * @conf  num_local_freq       Int. Channels in the input frame.
  * @conf  gnss_local_channels  List of Int. Index in the input frame of each covering channel,
  *                             in channel_ids order.
+ * @conf  data                 Block (optional). The data component: `signal` and
+ *                             `gpu_mem_output`.
  */
 class cudaGnssTrack : public cudaCommand {
 public:
@@ -66,13 +84,25 @@ public:
 private:
     gnss::TrackChain& chain();
 
+    /// Build chain @p C's frame from the frame's @p seeds and @p trim_now: the control block in
+    /// @p stage, copied to @p d_out after the despread of each record into it. Returns the
+    /// frame's jobs, and in @p n_active the slots with a job in the first record.
+    int enqueue_frame(gnss::TrackChain& C, char* stage, char* d_out, void* d_jobs,
+                      const std::vector<gnss::TrackChain::Seed>& seeds,
+                      const std::vector<double>& trim_now, long long hop0_frame,
+                      const unsigned char* d_frame, const float* d_chan_scale,
+                      const int* d_chan_ids, void* d_wave, cudaStream_t stream, int& n_active);
+
     const std::string _gpu_mem_input;
     const std::string _gpu_mem_output;
     const std::int32_t _num_local_freq;
     const std::vector<std::int32_t> _local_channels;
+    /// The data block's output; empty without one.
+    std::string _gpu_mem_output_data;
 
     /// Pinned staging for the frame's control block: the header, window starts and PrnCtl rows.
     char* _stage = nullptr;
+    char* _stage_data = nullptr; ///< the data component's
     bool _uploaded_static = false;
     uint64_t _frames = 0;
 };
