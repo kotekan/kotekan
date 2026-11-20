@@ -703,7 +703,7 @@ void frbNetworkSend::ping_destinations() {
         DestIpSocketTime& dest_ping_info = std::get<1>(ipaddr_dst);
         dest_by_time.push(dest_ping_info);
     }
-    const auto startup_time = dest_by_time.top().get().last_responded;
+    const auto startup_time = std::chrono::steady_clock::now();
     bool startup_phase = true;
 
     // it's silly to have a mutex local to a thread, but we need it for the condition variable used
