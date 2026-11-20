@@ -897,7 +897,7 @@ void dpdkCore::add_graph_details(kotekan::PipelineGraph& graph) const {
         port_node.set_category(kotekan::GraphCategory::Endpoint);
 
         // A port configured with dpdk_handler: none has no handler.
-        if (port >= num_system_ports || handlers[port] == nullptr) {
+        if (handlers[port] == nullptr) {
             port_node.add_line("no handler");
             continue;
         }
