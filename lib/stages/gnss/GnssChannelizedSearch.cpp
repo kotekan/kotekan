@@ -282,12 +282,11 @@ void GnssChannelizedSearch::search_snapshot() {
             _repl_k0[(size_t)m] = (long long)std::floor(chip / (double)Lc);
         }
         // Disk cache of the bank, which is the same on every restart (the anchor is derived, not
-        // per run). The file name is a 64-bit hash of the code and secondary lengths, chip rate,
-        // sample rate, fft_len, Mp, anchor, PRN list and covering set; the signal name and codes,
-        // f_offset, FDMA offsets, num_taps and window are not hashed. /tmp keeps the file
-        // (~170 MB at CHORD dimensions) node-local, off NFS. Bump CACHE_VERSION to invalidate
-        // every file.
-        constexpr uint32_t CACHE_VERSION = 1;
+        // per run). The file name is a 64-bit hash of what the bank is built from: the signal
+        // name, code and secondary lengths, chip rate, the channelization, each slot's carrier
+        // offset, Mp, anchor, PRN list and covering set. /tmp keeps the file (~170 MB at CHORD
+        // dimensions) node-local, off NFS. Bump CACHE_VERSION to invalidate every file.
+        constexpr uint32_t CACHE_VERSION = 2;
         uint64_t ckey = 1469598103934665603ull;
         const auto mix = [&ckey](const void* d, size_t n) {
             const auto* b = static_cast<const unsigned char*>(d);
@@ -308,6 +307,18 @@ void GnssChannelizedSearch::search_snapshot() {
             mix(&sl, sizeof sl);
             mix(&_sample_rate, sizeof _sample_rate);
             mix(&_fft_len, sizeof _fft_len);
+            const std::string name = _replica->signal_name();
+            mix(name.data(), name.size());
+            const gnss::Channelization& chz = _replica->channelization();
+            const int taps = chz.num_taps, window = (int)chz.window;
+            const int fold = (chz.complex_input ? 1 : 0) | (chz.time_order_fold ? 2 : 0);
+            mix(&taps, sizeof taps);
+            mix(&window, sizeof window);
+            mix(&fold, sizeof fold);
+            for (int p = 0; p < n_prn; ++p) {
+                const double f = _replica->carrier_offset(p);
+                mix(&f, sizeof f);
+            }
             mix(&Mp, sizeof Mp);
             mix(&anchor, sizeof anchor);
             mix(&n_prn, sizeof n_prn);

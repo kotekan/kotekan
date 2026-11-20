@@ -296,6 +296,9 @@ public:
     int repl_period_hops() const {
         return _repl_period_hops;
     }
+    const char* signal_name() const {
+        return _sig.name;
+    }
     double chip_rate_hz() const {
         return _sig.chip_rate_hz;
     }
