@@ -86,7 +86,7 @@ bladerf_input:
     freq: 1225.
     sample_bw: 122.88
     gain_mode: manual
-    gain: 45
+    gain: 51               # outdoors: ADC ~23 counts RMS, no clipping; sky further over the ADC floor at the band edges
     bias_tee: true           # powers the antenna's LNA
     force_filter_open: true
     data_port_delay: 160     # 0xa0; libbladeRF's 0x50 sat at the edge of the data eye
