@@ -4535,12 +4535,13 @@
    "catnum": null,
    "g2_phase": null,
    "last_observed_utc": null,
-   "last_checked_utc": "2026-11-13T04:24:12Z",
-   "last_checked_sep_deg": 1.34,
+   "last_checked_utc": "2026-11-20T02:13:17Z",
+   "last_checked_sep_deg": 1.2,
    "passes_found": 0,
-   "passes_silent": 1,
+   "passes_silent": 2,
    "passes": [
-    ["2026-11-13T04:24:12Z", 1.34, false]
+    ["2026-11-13T04:24:12Z", 1.34, false],
+    ["2026-11-20T02:13:17Z", 1.2, false]
    ]
   },
   "DIGUI-232": {
