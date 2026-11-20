@@ -793,7 +793,7 @@ struct GnssCudaDespread::Impl {
                 const double delay_s = h_jobs[i].ds / cps / fs;
                 const double f_car = wc * fs / (2.0 * M_PI);
                 for (int ci = 0; ci < n_chan; ++ci) {
-                    const double f_c = (double)all_chans[(size_t)ci] * fs / bank.fft_len();
+                    const double f_c = bank.chan_freq(all_chans[(size_t)ci]);
                     h_rot[i * (size_t)n_chan + ci] = (float)(2.0 * M_PI * (f_c - f_car) * delay_s);
                     last_rot[(size_t)sp.p * n_chan + ci] = h_rot[i * (size_t)n_chan + ci];
                 }

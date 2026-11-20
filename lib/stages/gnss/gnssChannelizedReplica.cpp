@@ -245,11 +245,17 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
 ChannelizedReplicaBank::ChannelizedReplicaBank(const SignalDescriptor& sig, double sample_rate,
                                                double f_offset, int spectrum_length, int num_taps,
                                                dsp::Window window, const std::vector<int>& prns) :
-    _sig(sig), _sample_rate(sample_rate), _f_offset(f_offset), _N(spectrum_length),
-    _fft_len(2 * spectrum_length), _num_taps(num_taps), _fold(nullptr), _spec(nullptr),
-    _p_fwd(nullptr) {
+    ChannelizedReplicaBank(sig, Channelization{sample_rate, spectrum_length, num_taps, window},
+                           f_offset, prns) {}
 
-    _proto = dsp::pfb_prototype(_fft_len, _num_taps, window);
+ChannelizedReplicaBank::ChannelizedReplicaBank(const SignalDescriptor& sig,
+                                               const Channelization& chz, double f_offset,
+                                               const std::vector<int>& prns) :
+    _sig(sig), _chz(chz), _sample_rate(chz.sample_rate), _f_offset(f_offset),
+    _N(chz.spectrum_length), _fft_len(chz.fft_len()), _num_taps(chz.num_taps), _fold(nullptr),
+    _spec(nullptr), _p_fwd(nullptr) {
+
+    _proto = dsp::pfb_prototype(_fft_len, _num_taps, chz.window);
 
     const long code_samples = (long)std::llround(_sig.code_period_s * _sample_rate);
     _repl_period_hops =
@@ -311,9 +317,13 @@ ChannelizedReplicaBank::ChannelizedReplicaBank(const SignalDescriptor& sig, doub
     }
 
     std::lock_guard<std::mutex> planner_lock(fftw_planner_mutex());
-    _fold = (float*)fftwf_malloc(sizeof(float) * _fft_len);
     _spec = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * (_N + 1));
-    _p_fwd = fftwf_plan_dft_r2c_1d(_fft_len, _fold, _spec, FFTW_ESTIMATE);
+    if (_chz.complex_input) {
+        _p_fwd = fftwf_plan_dft_1d(_fft_len, _spec, _spec, FFTW_FORWARD, FFTW_ESTIMATE);
+    } else {
+        _fold = (float*)fftwf_malloc(sizeof(float) * _fft_len);
+        _p_fwd = fftwf_plan_dft_r2c_1d(_fft_len, _fold, _spec, FFTW_ESTIMATE);
+    }
 }
 
 std::vector<int8_t> ChannelizedReplicaBank::build_full_code(int prn) const {
@@ -443,11 +453,11 @@ double ChannelizedReplicaBank::carrier_offset(int prn_index) const {
 
 std::vector<int> ChannelizedReplicaBank::covering_bins(double doppler_hz, double doppler_margin_hz,
                                                        int prn_index) const {
-    // Global r2c bin grid: bin j centred at j*Fs/(2N) over [0, Fs/2), natural order.
+    // Global bin grid, natural order: bin j centred at j*Fs/(2N) over [0, Fs/2) for real input.
     std::vector<ChannelBand> chans(_N);
     const double bin_w = _sample_rate / _fft_len;
     for (int j = 0; j < _N; ++j)
-        chans[j] = {(freq_id_t)j, j * bin_w, bin_w};
+        chans[j] = {(freq_id_t)j, _chz.chan_freq(j), bin_w};
     SignalDescriptor local = _sig;
     local.carrier_hz = carrier_offset(prn_index);
     const double max_dop = std::abs(doppler_hz) + doppler_margin_hz;
@@ -479,6 +489,12 @@ std::vector<std::vector<cf>> ChannelizedReplicaBank::channels(int p, long long w
 
     _replica_hist.assign((size_t)_fft_len * _num_taps, 0.0f);
     std::vector<float> block(_fft_len);
+    // I/Q input uses a complex delay line instead.
+    std::vector<cf> hist_iq, block_iq;
+    if (_chz.complex_input) {
+        hist_iq.assign((size_t)_fft_len * _num_taps, cf(0.0f, 0.0f));
+        block_iq.resize((size_t)_fft_len);
+    }
     std::vector<std::vector<cf>> chan(_N, std::vector<cf>(n_hops));
 
     // Code-Doppler feed-forward: the code clock scales with the carrier Doppler,
@@ -523,22 +539,36 @@ std::vector<std::vector<cf>> ChannelizedReplicaBank::channels(int p, long long w
                 // Real passband replica code*cos(carrier). It goes through the same r2c bank
                 // as the data, so it lands in the same carrier image.
                 block[i] = c * (float)cph.real();
+                // I/Q input: the conjugate of code*e^{+i carrier}, since the bank's channels
+                // are the conjugate of the channelizer's (see Channelization).
+                if (_chz.complex_input)
+                    block_iq[(size_t)i] = (float)c * (cf)std::conj(cph);
             } else {
                 block[i] = 0.0f; // pre-stream: matches F-engine zero init
+                if (_chz.complex_input)
+                    block_iq[(size_t)i] = cf(0.0f, 0.0f);
             }
             cph *= cstep; // advance the carrier phasor (kept aligned with n)
         }
         cph /= std::abs(cph); // renormalise to unit modulus once per hop
-        dsp::pfb_push(_replica_hist.data(), block.data(), _fft_len, _num_taps);
-        dsp::pfb_fold(_replica_hist.data(), _proto.data(), _fft_len, _num_taps, _fold);
-        fftwf_execute(_p_fwd); // _fold (real) -> _spec (r2c, _N+1 bins)
+        auto* spec = reinterpret_cast<cf*>(_spec);
+        if (_chz.complex_input) {
+            dsp::pfb_push(hist_iq.data(), block_iq.data(), _fft_len, _num_taps);
+            dsp::pfb_fold(hist_iq.data(), _proto.data(), _fft_len, _num_taps, spec);
+        } else {
+            dsp::pfb_push(_replica_hist.data(), block.data(), _fft_len, _num_taps);
+            dsp::pfb_fold(_replica_hist.data(), _proto.data(), _fft_len, _num_taps, _fold);
+        }
+        fftwf_execute(_p_fwd); // _fold (real) -> _spec (r2c, _N+1 bins), or _spec in place
         if (h < warm)
             continue;
         const int m = h - warm;
         // Natural order, dropping Nyquist: channel j = positive-freq bin j.
-        auto* spec = reinterpret_cast<cf*>(_spec);
         for (int j = 0; j < _N; ++j)
             chan[j][m] = spec[j];
+        if (_chz.time_order_fold)
+            for (int j = 0; j < _N; ++j)
+                chan[j][m] *= (cf)std::polar(1.0, -2.0 * M_PI * (double)j / (double)_fft_len);
     }
     return chan;
 }
@@ -596,6 +626,15 @@ void hoprate_channel_taps(const float* proto, int Lf, double off, double wc, Emi
 }
 } // namespace
 
+void ChannelizedReplicaBank::image_weights(int chan, std::complex<double>& wa,
+                                           std::complex<double>& wb) const {
+    const std::complex<double> ramp =
+        _chz.time_order_fold ? std::polar(1.0, -2.0 * M_PI * (double)chan / (double)_fft_len) : 1.0;
+    // The conjugate of I/Q input has the -carrier image only, at twice a real carrier's half.
+    wa = _chz.complex_input ? 0.0 : ramp;
+    wb = _chz.complex_input ? 2.0 * ramp : ramp;
+}
+
 ChannelizedReplicaBank::HopRateFilter
 ChannelizedReplicaBank::hoprate_filter(const std::vector<int>& want, double doppler_hz,
                                        int prn_index) const {
@@ -625,6 +664,14 @@ ChannelizedReplicaBank::hoprate_filter(const std::vector<int>& want, double dopp
                 A[k + 1] = sa;
                 B[k + 1] = sb;
             });
+        if (_chz.complex_input || _chz.time_order_fold) {
+            std::complex<double> wa, wb;
+            image_weights(want[ci], wa, wb);
+            for (int k = 0; k <= Lf; ++k) {
+                A[k] *= wa;
+                B[k] *= wb;
+            }
+        }
     }
     return f;
 }
@@ -653,6 +700,18 @@ ChannelizedReplicaBank::hoprate_filter_f32(const std::vector<int>& want, double 
                 B[2 * (k + 1)] = (float)sb.real();
                 B[2 * (k + 1) + 1] = (float)sb.imag();
             });
+        if (_chz.complex_input || _chz.time_order_fold) {
+            std::complex<double> wa, wb;
+            image_weights((int)want[ci], wa, wb);
+            for (int k = 0; k <= Lf; ++k) {
+                const std::complex<double> a = wa * std::complex<double>(A[2 * k], A[2 * k + 1]);
+                const std::complex<double> b = wb * std::complex<double>(B[2 * k], B[2 * k + 1]);
+                A[2 * k] = (float)a.real();
+                A[2 * k + 1] = (float)a.imag();
+                B[2 * k] = (float)b.real();
+                B[2 * k + 1] = (float)b.imag();
+            }
+        }
     }
     return f;
 }

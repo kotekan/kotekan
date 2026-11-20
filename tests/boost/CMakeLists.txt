@@ -179,6 +179,7 @@ if(FFTW_FOUND)
         ../../lib/stages/gnss/gnssChannelizedDespread.cpp
         ../../lib/stages/gnss/gnssBandPlan.cpp
         ../../lib/stages/dspPfbPrototype.cpp
+        ../../lib/utils/pfbPrototype.cpp
         ../../lib/stages/gnss/gpsCACode.cpp
         ../../lib/stages/gnss/gpsL1CCode.cpp
         ../../lib/stages/gnss/gpsL2CCode.cpp
@@ -197,7 +198,8 @@ if(FFTW_FOUND)
         ../../lib/stages/gnss/glonassL2OCCode.cpp
         ../../lib/stages/gnss/guowang1202Code.cpp)
     target_include_directories(test_gnss_channelized_replica PRIVATE ../../lib/stages
-                                                                     ../../lib/stages/gnss)
+                                                                     ../../lib/stages/gnss
+                                                                     ../../lib/utils)
     target_include_directories(test_gnss_channelized_replica SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(test_gnss_channelized_replica PRIVATE ${FFTW_LIBRARY} ${FFTWF_LIBRARY})
 

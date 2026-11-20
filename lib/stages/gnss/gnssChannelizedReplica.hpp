@@ -19,20 +19,64 @@
 namespace gnss {
 
 /**
- * @class ChannelizedReplicaBank
- * @brief Generates a GNSS replica and analyses it through the same r2c PFB the F-engine
- *        uses, returning per-channel hop streams.
+ * @struct Channelization
+ * @brief The channelizer whose output a replica has to match.
  *
- * The replica is a real passband @c code*cos(carrier) pushed through the @ref fftwEngine PFB
- * (real-input r2c, @c 2N real samples per hop, @c spectrum_length positive-frequency channels
- * in natural order). It is anchored to the absolute sample index, so its inter-channel phases
- * match the channelized data's exactly. Owns its FFTW plan and buffers and the expanded
- * spreading codes; not thread-safe (one bank per worker thread).
+ * The bank folds newest-first (dsp::pfb_fold), so its channel k is the conjugate of channel k
+ * of a PFB that folds in time order, as the CHORD F-engine and @ref fftwEngine do. The stages
+ * conjugate the data to match (their @c conjugate key).
+ */
+struct Channelization {
+    double sample_rate = 0.0;                  ///< input samples per second (I/Q pairs count once)
+    int spectrum_length = 0;                   ///< channels per hop
+    int num_taps = 4;                          ///< PFB taps per channel
+    dsp::Window window = dsp::Window::Hamming; ///< PFB prototype window
+    /// I/Q input: @c spectrum_length samples per hop rather than twice that, and one carrier
+    /// image. Channel k is DFT bin k, so the upper half of the channels lies below the tuned
+    /// frequency.
+    bool complex_input = false;
+    /// The channelizer folds in time order, as @ref fftwEngine does. Its DFT's phase origin is
+    /// then one sample after the newest-first fold's, a phase of -2 pi k / fft_len on channel
+    /// k of the conjugated data. Off, the replica leaves that phase out; a delay of one sample
+    /// absorbs most of it.
+    bool time_order_fold = false;
+
+    /// Input samples per hop.
+    int fft_len() const {
+        return complex_input ? spectrum_length : 2 * spectrum_length;
+    }
+    /// Centre frequency of channel @p k at the channelizer's input, Hz.
+    double chan_freq(int k) const {
+        if (complex_input && 2 * k >= spectrum_length)
+            k -= spectrum_length;
+        return k * (sample_rate / fft_len());
+    }
+};
+
+/**
+ * @class ChannelizedReplicaBank
+ * @brief Generates a GNSS replica and analyses it through the same PFB the F-engine uses,
+ *        returning per-channel hop streams.
+ *
+ * By default the replica is a real passband @c code*cos(carrier) pushed through a real-input
+ * r2c PFB (@c 2N real samples per hop, @c spectrum_length positive-frequency channels in
+ * natural order); a @ref Channelization selects I/Q input or a time-order fold. It is anchored
+ * to the absolute sample index, so its inter-channel phases match the channelized data's
+ * exactly. Owns its FFTW plan and buffers and the expanded spreading codes; not thread-safe
+ * (one bank per worker thread).
  *
  * @author Keith Vanderlinde
  */
 class ChannelizedReplicaBank {
 public:
+    /// @param sig      signal descriptor (chip rate, code length/period).
+    /// @param chz      the channelizer to match.
+    /// @param f_offset carrier frequency at the channelizer's input, Hz: for I/Q input the
+    ///                 carrier minus the tuned frequency, which may be negative.
+    /// @param prns     PRN list; @c channels()/@c code_chip() index into it.
+    ChannelizedReplicaBank(const SignalDescriptor& sig, const Channelization& chz, double f_offset,
+                           const std::vector<int>& prns);
+    /// As above for real input and a newest-first fold.
     /// @param sig            signal descriptor (chip rate, code length/period).
     /// @param sample_rate    full (pre-channelization) sample rate, Hz.
     /// @param f_offset       carrier offset from band centre, Hz.
@@ -233,6 +277,13 @@ public:
     int spectrum_length() const {
         return _N;
     }
+    const Channelization& channelization() const {
+        return _chz;
+    }
+    /// Centre frequency of channel @p k at the channelizer's input, Hz.
+    double chan_freq(int k) const {
+        return _chz.chan_freq(k);
+    }
     int fft_len() const {
         return _fft_len;
     }
@@ -286,6 +337,9 @@ private:
     /// The chip span, truncation and carrier shared by @ref hoprate_filter and
     /// @ref hoprate_filter_f32.
     HopRateFilter hoprate_header(double doppler_hz, int prn_index) const;
+    /// The factors on channel @p chan's +carrier and -carrier images under a Channelization
+    /// other than the default.
+    void image_weights(int chan, std::complex<double>& wa, std::complex<double>& wb) const;
     /// Expand one PRN's component code into the combined stream this bank works in (TDM
     /// zero-stuffing, BOC half-cycles, or plain). Shared by the constructor and @ref set_prn so
     /// a slot swapped at runtime gets exactly the table it would have had at startup.
@@ -294,11 +348,12 @@ private:
     int _max_chips = 0;           ///< 0 = the filter's true span (see set_max_chips)
     bool _chips_centered = false; ///< see set_chips_centered
     SignalDescriptor _sig;
+    Channelization _chz;
     double _sample_rate;
     std::vector<double> _prn_df; ///< per-PRN FDMA carrier offset, Hz (empty/0 = CDMA)
     double _f_offset;
     int _N;
-    int _fft_len; ///< 2*N real samples per hop (r2c)
+    int _fft_len; ///< input samples per hop: 2*N real (r2c), or N for I/Q input
     int _num_taps;
     int _repl_period_hops; ///< code_samples / gcd(fft_len, code_samples)
     // The bank works on the combined stream: a time-multiplexed component (L2C CM/CL) at its
@@ -313,6 +368,7 @@ private:
     std::vector<int8_t> _secondary; ///< +-1 Neuman-Hofman overlay (NH10/NH20); empty if none
     int _secondary_length = 0;      ///< overlay period in primary periods; 0 = no overlay
 
+    /// channels()'s transform: _fold (real) to _spec, or _spec in place for I/Q input.
     float* _fold;
     fftwf_complex* _spec;
     fftwf_plan _p_fwd;

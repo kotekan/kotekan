@@ -115,12 +115,22 @@ TrackChain::TrackChain(Config& config, const std::string& cfg_path) {
                     (int)channel_ids.size(), n_chan);
 
     // The replica bank must use the F-engine's PFB, or the channelized replica does not match
-    // the data: CHORD's is a 4-tap Hamming critically-sampled bank over 8192 positive-frequency
-    // bins (arXiv:2607.01625 s2.2.2, recorded in chord_gnss_node.yaml).
-    const int N = fft_len / 2;
-    replica = std::make_unique<gnss::ChannelizedReplicaBank>(
-        *sig, sample_rate, f_offset_hz, N, /*num_taps=*/4, dsp::window_from_string("hamming"),
-        prns);
+    // the data. The defaults are CHORD's: a 4-tap Hamming critically-sampled bank over 8192
+    // positive-frequency bins (arXiv:2607.01625 s2.2.2, recorded in chord_gnss_node.yaml).
+    gnss::Channelization chz;
+    chz.sample_rate = sample_rate;
+    chz.complex_input = config.get_default<std::string>(cfg_path, "input_type", "real") != "real";
+    chz.spectrum_length = chz.complex_input ? fft_len : fft_len / 2;
+    chz.num_taps = config.get_default<int>(cfg_path, "num_taps", 4);
+    chz.window =
+        dsp::window_from_string(config.get_default<std::string>(cfg_path, "pfb_window", "hamming"));
+    chz.time_order_fold = config.get_default<bool>(cfg_path, "pfb_time_order", false);
+    // The Psi tables assume real input's near and far carrier images and leave the fold's
+    // phase out.
+    if (psi_synth && (chz.complex_input || chz.time_order_fold))
+        FATAL_ERROR("cudaGnssChordTrack: psi_synth supports neither I/Q input nor "
+                    "pfb_time_order");
+    replica = std::make_unique<gnss::ChannelizedReplicaBank>(*sig, chz, f_offset_hz, prns);
     // FDMA (GLONASS L2OF): each slot's carrier offset from the descriptor's, before the despread
     // reads the bank. Empty for a CDMA signal.
     replica->set_prn_freq_offsets(

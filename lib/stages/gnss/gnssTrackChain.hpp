@@ -37,10 +37,16 @@ namespace gnss {
  * @conf n_elements      Int. Required, but only logged.
  * @conf samples_per_data_set Int. Hops per frame.
  * @conf hops_per_record Int. Hops per record; must divide samples_per_data_set.
- * @conf fft_length      Int. Real samples per hop.
- * @conf sample_rate     Double. Real sample rate, Hz.
- * @conf f_offset_hz     Double. Carrier offset from band centre, Hz (on CHORD, the carrier
- *                       itself).
+ * @conf fft_length      Int. Input samples per hop.
+ * @conf sample_rate     Double. Input sample rate, Hz.
+ * @conf input_type      String. "real", or "complex" or "complex_int8" for I/Q input
+ *                       (gnss::Channelization::complex_input). Default "real".
+ * @conf num_taps        Int. The F-engine's PFB taps per channel. Default 4.
+ * @conf pfb_window      String. The F-engine's PFB window. Default "hamming".
+ * @conf pfb_time_order  Bool. The F-engine folds in time order, as fftwEngine does
+ *                       (gnss::Channelization::time_order_fold). Default false.
+ * @conf f_offset_hz     Double. Carrier frequency at the F-engine's input, Hz: on CHORD the
+ *                       carrier itself, for I/Q input the carrier minus the tuned frequency.
  * @conf conjugate       Bool. Must be true: the F-engine output is conjugated, and
  *                       cudaGnssInject always conjugates the replica. Default true.
  * @conf dll_spacing     Double. Early/Late offset, chips.
