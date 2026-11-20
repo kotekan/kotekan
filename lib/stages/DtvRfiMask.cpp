@@ -14,11 +14,52 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <fstream>
 #include <functional>
 #include <limits>
 #include <mutex>
 #include <set>
+#include <string>
 #include <vector>
+
+namespace {
+
+/// Return why the runtime bundle may not mask, or an empty string when it may.
+/// Every channel with status "calibrated" must carry the mask_qualification record that
+/// pilotproxy's qualify-bundle writes. The control and pending channels never reach a mask.
+std::string mask_unqualified_reason(const std::string& path) {
+    std::ifstream stream(path);
+    if (!stream)
+        return "cannot open " + path;
+    nlohmann::json bundle;
+    try {
+        stream >> bundle;
+    } catch (const std::exception& e) {
+        return path + " is not JSON: " + e.what();
+    }
+    if (!bundle.contains("profiles") || !bundle.at("profiles").is_array())
+        return path + " has no profiles";
+    for (const auto& row : bundle.at("profiles")) {
+        const auto channel = row.value("physical_channel", -1);
+        if (!row.contains("fine_calibration") || !row.at("fine_calibration").is_object())
+            return fmt::format("physical channel {:d} has no fine_calibration", channel);
+        const auto& calibration = row.at("fine_calibration");
+        if (calibration.value("status", "") != "calibrated")
+            continue;
+        const auto provenance = calibration.value("provenance", nlohmann::json::object());
+        const auto record = provenance.is_object()
+                                ? provenance.value("mask_qualification", nlohmann::json())
+                                : nlohmann::json();
+        const auto digest = record.is_object() ? record.value("test_report_sha256", "") : "";
+        const auto reviewer = record.is_object() ? record.value("reviewer", "") : "";
+        if (digest.size() != 64 || digest.find_first_not_of("0123456789abcdef") != std::string::npos
+            || reviewer.empty())
+            return fmt::format("physical channel {:d} is not qualified for masking", channel);
+    }
+    return "";
+}
+
+} // namespace
 
 /**
  * @class DtvRfiMask
@@ -55,6 +96,10 @@
  *          in [0,CHORD_META_MAX_FREQ) that must have an evaluated fine decision (default []).
  *          Requires fine_support_buf when nonempty. Both lists must be disjoint and
  *          contain only IDs in the input frequency assignment.
+ * @conf    pilot_profiles_path String. pilot_profiles.json of the detector's runtime bundle.
+ *          The mask can be on only when every calibrated channel in it carries the
+ *          mask_qualification record of pilotproxy's qualify-bundle. Otherwise the stage
+ *          refuses to start with the mask on, and a POST that switches it on stops Kotekan.
  * @conf    enabled_updatable_config Optional path to a block with `enabled` and
  *          `valid_at_time_ns` (0: from startup). While disabled, the RFImask is copied
  *          unchanged and require_fine_freq_ids is not checked. A change applies from the
@@ -118,8 +163,15 @@ public:
             if (support_desc)
                 ensure_product_desc(support, true, support_desc->get_rank());
         }
+        pilot_profiles_path = config.get<std::string>(unique_name, "pilot_profiles_path");
+        unqualified_reason = mask_unqualified_reason(pilot_profiles_path);
         enabled_config_path =
             config.get_default<std::string>(unique_name, "enabled_updatable_config", "");
+        // without the switch the mask is always on
+        if (enabled_config_path.empty() && !unqualified_reason.empty())
+            FATAL_ERROR("DtvRfiMask: the DTV mask is always on, but the bundle {:s} is "
+                        "detect-only: {:s}",
+                        pilot_profiles_path, unqualified_reason);
         if (!enabled_config_path.empty())
             kotekan::configUpdater::instance().subscribe(
                 enabled_config_path,
@@ -269,6 +321,13 @@ private:
             }
             seq = Telescope::instance().to_seq(time_ns);
         }
+        if (new_enabled && !unqualified_reason.empty()) {
+            // a refused update stops Kotekan, so a detect-only bundle never masks data
+            ERROR("DtvRfiMask: refusing to switch the DTV mask on: the bundle {:s} is "
+                  "detect-only: {:s}",
+                  pilot_profiles_path, unqualified_reason);
+            return false;
+        }
         INFO("{:s} the DTV mask from seq {:d}", new_enabled ? "Enabling" : "Disabling", seq);
         std::lock_guard<std::mutex> lock(enabled_mutex);
         next_enabled = new_enabled;
@@ -302,6 +361,9 @@ private:
     const int mask_rows;
     Buffer *rfi, *dtv, *output, *support;
     std::vector<int> permanent, required;
+    std::string pilot_profiles_path;
+    // empty when the bundle may mask
+    std::string unqualified_reason;
     std::string enabled_config_path;
     std::mutex enabled_mutex;
     bool enabled = true;

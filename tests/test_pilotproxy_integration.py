@@ -475,8 +475,16 @@ def test_bad_feed_mask_zeroes_flagged_inputs(pipeline, lifetime_blocks):
     stage = config["run_dtv_detector"]["gpu_0"]
     stage["in_buffers"]["host_bf_mask_ringbuffer"] = "host_bf_mask_ringbuffer"
     pipeline.detector["bf_mask_name"] = "bf_mask"
+    inputs = 2 * num_dishes
+    for profile in pipeline.bundle["profiles"]:
+        profile["fine_calibration"]["provenance"]["summed_inputs"] = inputs
     code, output = pipeline.run()
     assert code == 0, output[-12000:]
+    # the all-bad elements are logged against the calibrated count, and the all-good ones clear it
+    assert f"0 inputs are summed but the bundle was calibrated with {inputs}" in output
+    assert (
+        f"{inputs} inputs are summed, within 10% of the calibrated {inputs}" in output
+    )
 
     masks = reference.read_raw_frames(
         str(pipeline.directory / "out/bf_mask_*.raw"), 2 * num_dishes

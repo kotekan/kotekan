@@ -296,11 +296,8 @@ def setup_pipeline(
         cfg.pop("run_dtv_detector")
         cfg.pop("dump_dtv_powers")
         cfg.pop("host_dtv_powers_buffer")
-        for key in (
-            "pilot_profiles_path",
-            "weights_path",
-        ):
-            cfg.pop(key)
+        # DtvRfiMask still reads the bundle's qualification
+        cfg.pop("weights_path")
     cfg["host_dtv_RFImask_buffer"] = buffer(T * F // 8)
     cfg["combine"] = dict(
         kotekan_stage="DtvRfiMask",
@@ -570,6 +567,19 @@ def test_disabled_mask_copies_the_sk_mask(tmp_path, runtime):
         np.testing.assert_array_equal(
             combined[index].payload.reshape(T // 1024, F, 128), packed
         )
+
+
+@pytest.mark.parametrize("mask_enabled", [True, False])
+def test_detect_only_bundle_never_masks(tmp_path, runtime, mask_enabled):
+    pipeline, *_ = setup_pipeline(tmp_path, runtime, mask_enabled=mask_enabled)
+    for profile in pipeline.bundle["profiles"]:
+        del profile["fine_calibration"]["provenance"]["mask_qualification"]
+    code, log = pipeline.run()
+    if mask_enabled:
+        assert code != 0, log[-12000:]
+        assert "refusing to switch the DTV mask on" in log, log[-12000:]
+    else:
+        assert code == 0, log[-12000:]
 
 
 @pytest.mark.parametrize("fault", ["frequency", "late", "missing", "period"])

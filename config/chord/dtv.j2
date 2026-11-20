@@ -186,6 +186,8 @@ merge_dtv_mask:
         dtv_buf: host_dtv_mask_buffer{{ n.sfx }}
         fine_support_buf: host_dtv_fine_support_buffer{{ n.sfx }}
         out_buf: host_dtv_RFImask_buffer{{ n.sfx }}
+        # switching the mask on is refused unless every calibrated channel is qualified
+        pilot_profiles_path: {{ dtv_runtime_bundle_dir }}/pilot_profiles.json
         enabled_updatable_config: /dtv_mask_enabled
 {% endfor %}
 

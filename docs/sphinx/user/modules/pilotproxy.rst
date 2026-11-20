@@ -35,7 +35,10 @@ Components
     below) and ``dtv_fine_powers`` (``uint64[1, R, 3, 256]``, the fine powers
     behind each decision). Frequencies without a bound profile get zero masks and powers. The
     detector sums every input in the ring, unless ``bf_mask_name`` names the bad
-    feed mask ring, and a flagged input is then packed as zero.
+    feed mask ring, and a flagged input is then packed as zero. When the bundle
+    records ``summed_inputs``, the detector logs a warning while the count of
+    good inputs differs from it by more than 10%, since the words hold for the
+    inputs summed at calibration.
     The leading ``T`` axis holds one block, scaled by its FPGA sequence period,
     so ``hdf5FileWrite`` can concatenate blocks with ``frames_per_file``.
 
@@ -57,8 +60,12 @@ For each of the 256 fine bins, the core divides the power in a target cell at
 the pilot by the mean power in two reference cells beside it. A rank statistic
 of this ratio is taken over the bundle's bulk bins, and the block is
 rejected when the ratio in a bin at the pilot exceeds a calibrated multiple of
-that statistic. All of the arithmetic is exact integer arithmetic, and the GPU
-result matches the CPU reference bit for bit.
+that statistic. This is ``fine_decision_v1``. With ``fine_decision_v2``, the
+rank statistic is taken of the reference power over the bulk bins, and the block
+is rejected when the target power in a bin at the pilot exceeds a calibrated
+multiple of it. The ``decision_version`` of each bundle profile selects the
+test. All of the arithmetic is exact integer arithmetic, and the GPU result
+matches the CPU reference bit for bit.
 
 ``dtv_fine_support`` records the validity of each test. A row of ``(1, n)`` is
 a valid test with ``n`` bulk bins. A row of ``(0, n)`` has too few usable bulk
@@ -112,7 +119,8 @@ below is true. Both switches default to false.
     is removed from the visibilities and the valid-sample counts together. A
     frequency with support ``(0, n)`` is also cleared for that block.
     ``dtv_RFImask`` is formed on the host, copied back to the GPU, and written
-    to HDF5.
+    to HDF5. Kotekan refuses to start unless the bundle is qualified for
+    masking (below).
 
 The other keys are listed below.
 
@@ -134,6 +142,12 @@ Both lists hold receiver ``coarse_freq`` IDs. The ATSC channel number of a
 pilot is given only in the bundle. The two lists must not overlap, and every
 listed ID must be on the node, so the lists are set for each node.
 
+A bundle masks only when every channel with status ``calibrated`` carries the
+``mask_qualification`` record, which PilotProxy's ``qualify-bundle`` writes from
+a passing ``test-bundle`` report and the name of the person who read it. Other
+bundles are detect-only. ``DtvRfiMask`` reads ``pilot_profiles.json`` and
+refuses to start with the mask on and a detect-only bundle.
+
 
 Pathfinder
 ----------
@@ -146,7 +160,8 @@ state at startup (both default to false):
 
 ``dtv_apply_mask``, endpoint ``/dtv_mask_enabled``
     Apply the DTV mask to the visibilities. While off, ``DtvRfiMask`` copies
-    the SK mask unchanged. ``N2Accumulate`` records the fraction of each bin
+    the SK mask unchanged. With a detect-only bundle, the mask cannot be on at
+    startup, and a POST that switches it on stops Kotekan. ``N2Accumulate`` records the fraction of each bin
     that the mask was on, which ``hdf5N2Write`` writes as
     ``frac_dtv_mask_enabled``.
 

@@ -28,6 +28,14 @@ struct PilotProxyCore {
                                                  const unsigned long long*, int,
                                                  unsigned long long, unsigned long long*, int*,
                                                  int*, int*, unsigned long long*, int*);
+    // fine decision v2: the largest target bin over the median reference
+    void (*Compute_FusedFineMaskV2_U64)(void*, const std::int8_t*, int, int,
+                                        const unsigned long long*, int, unsigned long long,
+                                        unsigned long long*, int*, unsigned long long*, int*);
+    void (*Compute_FusedFineMaskV2WithSupport_U64)(void*, const std::int8_t*, int, int,
+                                                   const unsigned long long*, int,
+                                                   unsigned long long, unsigned long long*, int*,
+                                                   int*, int*, unsigned long long*, int*);
     void (*row_sums_i32)(const std::int8_t*, const std::int8_t*, int, int*);
     void (*fine_powers_u64)(const int*, int, unsigned long long (*)[256]);
     void (*powers_from_fine_u64)(const unsigned long long (*)[256], unsigned long long*);
