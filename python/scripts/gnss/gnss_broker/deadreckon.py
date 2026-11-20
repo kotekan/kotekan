@@ -297,7 +297,11 @@ def dr_clock_quality(ctx):
         if _cone is not None or _unread:
             ctx.dr_state.pop("raw_prev", None)
         prev_raw = ctx.dr_state.get("raw_prev")
-        if prev_raw is not None and 0.5 < ctx.drp.now_w - prev_raw[1] < 30.0:
+        if (
+            ctx.args.dr_drift_source == "solve"
+            and prev_raw is not None
+            and 0.5 < ctx.drp.now_w - prev_raw[1] < 30.0
+        ):
             d_est = (
                 ((ctx.drp.raw_clk - prev_raw[0] + ctx.code_len / 2) % ctx.code_len)
                 - ctx.code_len / 2
@@ -1900,7 +1904,7 @@ def dr_seed(ctx):
         _log_rl(
             "drclk",
             "DRCLK clk_now %.3f chips drift %+.4f chips/s (la %+.4f ppm)"
-            % (ctx.drp.clk_now, ctx.dr_state.get("drift") or 0.0, ctx.drp.la * 1e6),
+            % (ctx.drp.clk_now, ctx.drp.drift, ctx.drp.la * 1e6),
             every_s=30.0,
         )
         # SEED-OFFSET summary: the joint offset against the legacy one (clk_now + b_sat) for every
@@ -2914,6 +2918,10 @@ def stage_dead_reckon(ctx):
                 # an unstamped drift gets one full lifetime from now, not forever
                 ctx.dr_state["drift_t"] = ctx.drp.now_w
             ctx.drp.drift = ctx.dr_state.get("drift")
+            if ctx.args.dr_drift_source == "bias" and ctx.cb.ema is not None:
+                # A free-running oscillator: the carrier bias is its frequency error, and the
+                # code clock runs off by the same fraction.
+                ctx.drp.drift = ctx.cb.ema * ctx.args.chip_rate_hz / ctx.args.carrier_hz
             if ctx.drp.drift is None:
                 ctx.drp.drift = ctx.args.chip_rate_hz * ctx.drp.la
             # The hop-axis epoch (#208): every model below is evaluated at _ep_w and labelled

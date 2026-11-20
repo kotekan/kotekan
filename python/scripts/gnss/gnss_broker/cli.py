@@ -2176,6 +2176,16 @@ def build_parser(description):
         "capture range (~0.4 chips). Needs --almanac and --time0-endpoint.",
     )
     ap.add_argument(
+        "--dr-drift-source",
+        default="solve",
+        choices=("solve", "bias"),
+        help="where the dead-reckon receiver clock gets its drift. solve (default): an "
+        "EMA of consecutive clock solves, bounded by dr_max_drift_chips_s for a "
+        "GPS-disciplined clock. bias: the solved clock-frequency bias, scaled to code "
+        "(bias x chip rate / carrier), for a free-running oscillator, whose clock walks "
+        "chips per second; until the bias is solved, as solve.",
+    )
+    ap.add_argument(
         "--dr-constellation",
         default="G",
         choices=("G", "E", "C", "R", "W"),
