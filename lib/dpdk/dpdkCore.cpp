@@ -883,21 +883,28 @@ void dpdkCore::add_graph_details(kotekan::PipelineGraph& graph) const {
     // centrally land inside the box rather than on an empty node beside it.
     stage_node.cluster = cluster.id;
 
-    for (uint i = 0; i < num_ports; ++i) {
-        // a port configured with dpdk_handler: none has no handler
-        if (handlers[i] == nullptr)
-            continue;
-        auto& handler = graph.add_node(handlers[i]->unique_name);
-        handler.add_line(kotekan::leaf_name(handlers[i]->unique_name));
-        handler.cluster = cluster.id;
-        handler.set_category(kotekan::GraphCategory::Io);
+    // The port ids the lcores use, which need not be 0 to num_ports - 1.
+    std::set<uint32_t> ports;
+    for (const auto& lcore_ports : lcore_port_list)
+        ports.insert(lcore_ports.begin(), lcore_ports.end());
 
+    for (uint32_t port : ports) {
         // Port node ids carry the stage, so several dpdkCore stages each with a
         // port 0 stay distinct.
-        const std::string port_id = fmt::format("{:s}/port_{:d}", name, i);
-        graph.add_node(port_id)
-            .add_line(fmt::format(fmt("port {:d}"), i))
-            .set_category(kotekan::GraphCategory::Endpoint);
-        graph.add_edge(port_id, handlers[i]->unique_name);
+        const std::string port_id = fmt::format("{:s}/port_{:d}", name, port);
+        auto& port_node = graph.add_node(port_id);
+        port_node.add_line(fmt::format(fmt("port {:d}"), port));
+        port_node.set_category(kotekan::GraphCategory::Endpoint);
+
+        // A port configured with dpdk_handler: none has no handler.
+        if (port >= num_system_ports || handlers[port] == nullptr) {
+            port_node.add_line("no handler");
+            continue;
+        }
+        auto& handler = graph.add_node(handlers[port]->unique_name);
+        handler.add_line(kotekan::leaf_name(handlers[port]->unique_name));
+        handler.cluster = cluster.id;
+        handler.set_category(kotekan::GraphCategory::Io);
+        graph.add_edge(port_id, handlers[port]->unique_name);
     }
 }
