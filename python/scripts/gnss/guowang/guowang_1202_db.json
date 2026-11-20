@@ -218,38 +218,41 @@
    "sep_deg": 0.93,
    "ref_input": 116,
    "drift_ns_s": -2.14,
-   "last_observed_utc": "2026-11-19T14:54:54Z",
-   "last_checked_utc": "2026-11-19T14:54:54Z",
-   "last_checked_sep_deg": 1.36,
-   "passes_found": 4,
+   "last_observed_utc": "2026-11-20T14:22:55Z",
+   "last_checked_utc": "2026-11-20T14:22:55Z",
+   "last_checked_sep_deg": 5.09,
+   "passes_found": 5,
    "passes_silent": 0,
    "passes": [
     ["2026-11-06T14:32:51Z", 5.56, true],
     ["2026-11-07T13:59:24Z", 0.86, true],
     ["2026-11-11T17:28:15Z", 5.17, true],
-    ["2026-11-19T14:54:54Z", 1.36, true]
+    ["2026-11-19T14:54:54Z", 1.36, true],
+    ["2026-11-20T14:22:55Z", 5.09, true]
    ]
   },
   "DIGUI-15": {
    "status": "transmitting",
    "catnum": 62975,
    "g2_phase": 1518,
-   "theta_us": 1.1354,
-   "range_rate_m_s": -539.32,
-   "replica_corr_ns": -29.648,
-   "carrier_minus_tle_ppb": 6.1,
-   "measured_utc": "2026-11-07T14:24:53Z",
-   "source": "2026-11-07 beam dump window 111 (gw_reduce, 21859 frames over 170 s)",
-   "sep_deg": 10.51,
+   "theta_us": -2.031,
+   "range_rate_m_s": 1404.57,
+   "replica": "stretched",
+   "orbit": "tle",
+   "carrier_minus_tle_ppb": 52.3,
+   "measured_utc": "2026-11-20T14:46:50Z",
+   "source": "2026-11-20 beam dump window 374 (gw_reduce, 39761 frames over 80 s)",
+   "sep_deg": 5.52,
    "ref_input": 116,
-   "drift_ns_s": -5.31,
-   "last_observed_utc": "2026-11-07T14:26:17Z",
-   "last_checked_utc": "2026-11-07T14:26:17Z",
-   "last_checked_sep_deg": 9.97,
-   "passes_found": 1,
+   "drift_ns_s": -52.56,
+   "last_observed_utc": "2026-11-20T14:46:46Z",
+   "last_checked_utc": "2026-11-20T14:46:46Z",
+   "last_checked_sep_deg": 5.41,
+   "passes_found": 2,
    "passes_silent": 0,
    "passes": [
-    ["2026-11-07T14:26:17Z", 9.97, true]
+    ["2026-11-07T14:26:17Z", 9.97, true],
+    ["2026-11-20T14:46:46Z", 5.41, true]
    ]
   },
   "DIGUI-16": {
@@ -320,23 +323,25 @@
    "status": "transmitting",
    "catnum": 62979,
    "g2_phase": 1922,
-   "theta_us": 0.8496,
-   "range_rate_m_s": 1159.67,
-   "replica_corr_ns": 28.613,
-   "carrier_minus_tle_ppb": -0.7,
-   "measured_utc": "2026-11-12T17:08:22Z",
-   "source": "2026-11-12 beam dump window 148 (gw_reduce, 39719 frames over 79 s)",
-   "sep_deg": 4.26,
+   "theta_us": 1.037,
+   "range_rate_m_s": 1103.91,
+   "replica": "stretched",
+   "orbit": "broadcast",
+   "carrier_minus_tle_ppb": -2.7,
+   "measured_utc": "2026-11-20T14:35:05Z",
+   "source": "2026-11-20 beam dump window 372 (gw_reduce, 39510 frames over 79 s)",
+   "sep_deg": 1.06,
    "ref_input": 116,
-   "drift_ns_s": 0.87,
-   "last_observed_utc": "2026-11-12T17:08:26Z",
-   "last_checked_utc": "2026-11-12T17:08:26Z",
-   "last_checked_sep_deg": 4.11,
-   "passes_found": 2,
+   "drift_ns_s": 0.08,
+   "last_observed_utc": "2026-11-20T14:35:09Z",
+   "last_checked_utc": "2026-11-20T14:35:09Z",
+   "last_checked_sep_deg": 0.38,
+   "passes_found": 3,
    "passes_silent": 0,
    "passes": [
     ["2026-11-07T14:12:57Z", 4.55, true],
-    ["2026-11-12T17:08:26Z", 4.11, true]
+    ["2026-11-12T17:08:26Z", 4.11, true],
+    ["2026-11-20T14:35:09Z", 0.38, true]
    ]
   },
   "DIGUI-20": {
@@ -1904,15 +1909,16 @@
    "sep_deg": 1.98,
    "ref_input": 116,
    "drift_ns_s": 1.46,
-   "last_observed_utc": "2026-11-19T18:35:37Z",
-   "last_checked_utc": "2026-11-19T18:35:37Z",
-   "last_checked_sep_deg": 5.48,
-   "passes_found": 3,
+   "last_observed_utc": "2026-11-20T14:12:16Z",
+   "last_checked_utc": "2026-11-20T14:12:16Z",
+   "last_checked_sep_deg": 4.17,
+   "passes_found": 4,
    "passes_silent": 0,
    "passes": [
     ["2026-11-03T23:42:14Z", 1.93, true],
     ["2026-11-10T21:42:19Z", 4.72, true],
-    ["2026-11-19T18:35:37Z", 5.48, true]
+    ["2026-11-19T18:35:37Z", 5.48, true],
+    ["2026-11-20T14:12:16Z", 4.17, true]
    ]
   },
   "DIGUI-97": {
@@ -3627,6 +3633,29 @@
     ["2026-11-07T18:19:32Z", 4.21, true]
    ]
   },
+  "DIGUI-172": {
+   "status": "transmitting",
+   "catnum": 69575,
+   "g2_phase": 893,
+   "theta_us": 328.954,
+   "range_rate_m_s": 1130.42,
+   "replica": "stretched",
+   "orbit": "tle",
+   "carrier_minus_tle_ppb": -1.7,
+   "measured_utc": "2026-11-20T14:40:34Z",
+   "source": "2026-11-20 beam dump window 373 (gw_reduce, 39741 frames over 79 s)",
+   "sep_deg": 2.84,
+   "ref_input": 116,
+   "drift_ns_s": 1.66,
+   "last_observed_utc": "2026-11-20T14:40:38Z",
+   "last_checked_utc": "2026-11-20T14:40:38Z",
+   "last_checked_sep_deg": 2.61,
+   "passes_found": 1,
+   "passes_silent": 0,
+   "passes": [
+    ["2026-11-20T14:40:38Z", 2.61, true]
+   ]
+  },
   "DIGUI-173": {
    "status": "transmitting",
    "catnum": 69576,
@@ -4489,12 +4518,13 @@
    "catnum": null,
    "g2_phase": null,
    "last_observed_utc": null,
-   "last_checked_utc": "2026-11-19T18:52:56Z",
-   "last_checked_sep_deg": 1.22,
+   "last_checked_utc": "2026-11-20T14:12:16Z",
+   "last_checked_sep_deg": 0.21,
    "passes_found": 0,
-   "passes_silent": 1,
+   "passes_silent": 2,
    "passes": [
-    ["2026-11-19T18:52:56Z", 1.22, false]
+    ["2026-11-19T18:52:56Z", 1.22, false],
+    ["2026-11-20T14:12:16Z", 0.21, false]
    ]
   },
   "DIGUI-221": {
