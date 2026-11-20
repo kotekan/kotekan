@@ -4499,6 +4499,32 @@
     ["2026-11-19T18:45:55Z", 2.02, false]
    ]
   },
+  "DIGUI-225": {
+   "status": "no_transmission",
+   "catnum": null,
+   "g2_phase": null,
+   "last_observed_utc": null,
+   "last_checked_utc": "2026-11-20T06:40:01Z",
+   "last_checked_sep_deg": 0.24,
+   "passes_found": 0,
+   "passes_silent": 1,
+   "passes": [
+    ["2026-11-20T06:40:01Z", 0.24, false]
+   ]
+  },
+  "DIGUI-226": {
+   "status": "no_transmission",
+   "catnum": null,
+   "g2_phase": null,
+   "last_observed_utc": null,
+   "last_checked_utc": "2026-11-20T06:31:28Z",
+   "last_checked_sep_deg": 3.7,
+   "passes_found": 0,
+   "passes_silent": 1,
+   "passes": [
+    ["2026-11-20T06:31:28Z", 3.7, false]
+   ]
+  },
   "DIGUI-227": {
    "status": "no_transmission",
    "catnum": null,
