@@ -177,12 +177,13 @@ struct SeedPropagation {
 ///
 /// @param bank   the tracker's bank, whose phase_from_arg/arg_from_phase reduce at the code
 ///               length the seed lives at (204600 for GPS_L5_Q_NH, overlay tiled in).
-/// @param f_offset_hz  divides the dop_rate term's code Doppler (chip_rate / f_offset_hz);
-///               callers pass the stage's f_offset_hz, the carrier itself in CHORD configs.
+/// @param carrier_hz  the sky carrier, which divides the dop_rate term's code Doppler
+///               (chip_rate / carrier_hz). It is the stage's f_offset_hz only where the
+///               F-engine samples at RF, as CHORD's does.
 /// @param trim_chips  the DLL trim, added unscaled to the propagated (combined-chip) phase. The
 ///               broker's seed stays the model and the trim carries the sub-chip residual.
 SeedPropagation propagate_seed(const ChannelizedReplicaBank& bank, const SeedState& sd,
-                               long long hop0, double sample_rate, double f_offset_hz,
+                               long long hop0, double sample_rate, double carrier_hz,
                                double trim_chips);
 
 } // namespace gnss
