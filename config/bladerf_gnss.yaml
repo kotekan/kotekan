@@ -90,6 +90,9 @@ bladerf_input:
     bias_tee: true           # powers the antenna's LNA
     force_filter_open: true
     data_port_delay: 160     # 0xa0; libbladeRF's 0x50 sat at the edge of the data eye
+    # The GPSDO's 10 MHz on REFIN (not CLKIN, which wants a 38.4 MHz clock). Without it
+    # connected the stage stops with an error; set 0 to run on the free VCTCXO.
+    ref_in_freq: 10
 fengine:
     kotekan_stage: fftwEngine
     in_buf: input_buf
