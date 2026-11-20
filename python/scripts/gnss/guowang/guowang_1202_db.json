@@ -811,13 +811,14 @@
    "catnum": 65049,
    "g2_phase": null,
    "last_observed_utc": null,
-   "last_checked_utc": "2026-11-10T19:33:13Z",
-   "last_checked_sep_deg": 0.12,
+   "last_checked_utc": "2026-11-20T12:04:32Z",
+   "last_checked_sep_deg": 0.37,
    "passes_found": 0,
-   "passes_silent": 2,
+   "passes_silent": 3,
    "passes": [
     ["2026-11-02T22:06:32Z", 3.85, false],
-    ["2026-11-10T19:33:13Z", 0.12, false]
+    ["2026-11-10T19:33:13Z", 0.12, false],
+    ["2026-11-20T12:04:32Z", 0.37, false]
    ]
   },
   "DIGUI-47": {
@@ -1280,28 +1281,17 @@
    ]
   },
   "DIGUI-68": {
-   "status": "transmitting",
+   "status": "no_transmission",
    "catnum": 65228,
-   "g2_phase": 268,
-   "theta_us": 789.379,
-   "range_rate_m_s": -2692.0,
-   "replica": "stretched",
-   "orbit": "tle",
-   "carrier_minus_tle_ppb": -26.3,
-   "measured_utc": "2026-11-20T01:42:29Z",
-   "source": "2026-11-20 beam dump window 335 (gw_reduce, 11642 frames over 32 s)",
-   "sep_deg": 3.0,
-   "ref_input": 116,
-   "drift_ns_s": -208.78,
-   "last_observed_utc": "2026-11-20T01:42:25Z",
-   "last_checked_utc": "2026-11-20T01:42:25Z",
-   "last_checked_sep_deg": 2.79,
-   "passes_found": 1,
+   "g2_phase": null,
+   "last_observed_utc": null,
+   "last_checked_utc": "2026-11-09T14:09:25Z",
+   "last_checked_sep_deg": 0.91,
+   "passes_found": 0,
    "passes_silent": 2,
    "passes": [
     ["2026-11-04T03:07:57Z", 3.94, false],
-    ["2026-11-09T14:09:25Z", 0.91, false],
-    ["2026-11-20T01:42:25Z", 2.79, true]
+    ["2026-11-09T14:09:25Z", 0.91, false]
    ]
   },
   "DIGUI-69": {
@@ -4231,12 +4221,13 @@
    "catnum": null,
    "g2_phase": null,
    "last_observed_utc": null,
-   "last_checked_utc": "2026-11-12T18:57:55Z",
-   "last_checked_sep_deg": 1.29,
+   "last_checked_utc": "2026-11-20T12:00:33Z",
+   "last_checked_sep_deg": 1.71,
    "passes_found": 0,
-   "passes_silent": 1,
+   "passes_silent": 2,
    "passes": [
-    ["2026-11-12T18:57:55Z", 1.29, false]
+    ["2026-11-12T18:57:55Z", 1.29, false],
+    ["2026-11-20T12:00:33Z", 1.71, false]
    ]
   },
   "DIGUI-203": {
@@ -4878,6 +4869,9 @@
   ],
   "DIGUI-180": [
    ["2026-11-09T15:27:12Z", "code-mate test (paper data/beamdump_detections.csv): the code 555 is DIGUI-166's, 7.3 us from its predicted theta, against 664 us from DIGUI-180's; window 57 at 26.9 deg"]
+  ],
+  "DIGUI-68": [
+   ["2026-11-20T01:42:25Z", "code-mate DIGUI-133 (G2' 268) in a sidelobe 18 deg off: the 238 km range difference = the +779 us theta, drift -209 ns/s = the range-rate difference, 29% good frames (beam dump w335)"]
   ]
  }
 }
