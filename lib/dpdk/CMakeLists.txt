@@ -5,7 +5,7 @@ project(kotekan_dpdk)
 
 find_package(NUMA REQUIRED)
 
-add_library(kotekan_dpdk dpdkCore.cpp zeroSamples.cpp invalidateVDIFframes.cpp)
+add_library(kotekan_dpdk dpdkCore.cpp invalidateVDIFframes.cpp)
 
 # Timing the rx poll loop costs cycles per poll, so it is off unless asked for.
 if(${DPDK_EXTRA_STATS})

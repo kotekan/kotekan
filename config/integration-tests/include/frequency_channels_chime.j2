@@ -1,0 +1,4 @@
+{#- The CHIME frequency channels, those of config/chime_upgrade_frb.j2. They must be sorted.
+    The includes that need them import them:
+        {% from "include/frequency_channels_chime.j2" import frequency_channels %} -#}
+{% set frequency_channels = [58, 66, 234, 666, 698, 730, 738, 746, 802, 818, 826, 898, 906, 954, 962, 978] %}
