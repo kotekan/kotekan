@@ -1467,6 +1467,23 @@ and the cube leg's unit. Until this is understood, stop the broker and gather by
 
 ## Open — the fix is in the NODE BINARY (queue for the next cycle)
 
+### #232 — GPS L2C is tracked on CM, the data code, only; the CL pilot has no chain (2026-11-20, KV: "can we add L2C CL to the buglist / todo? I'd like to do that, but we'll have to come back to it in a bit")
+**What:** gps_l2c despreads GPS_L2C_CM, the 10230-chip, 20 ms data component on the even chips of the 1.023 Mcps
+combined stream (comb_mult 2). CL, the dataless 767250-chip, 1.5 s pilot on the odd chips, has a descriptor
+(`[tree]` gnssSignal.hpp GPS_L2C_CL) and a code generator (gpsL2CCode.hpp) but no chain. CM alone carries half the
+L2C power, and its CNAV symbol (20 ms, one per code period) caps coherent integration at 20 ms unless the symbols
+are decoded and wiped; CL is dataless, and CM+CL together carry the full L2C power.
+**Why CM:** `[tree]` config/gnss_chains_chord.yaml (gps_l2c) and config/gnss_fleet_chord.yaml: CM's 20 ms period
+fits the record geometry the fleet runs, CL's 1.5 s does not and needs its own bring-up. CL cannot be searched
+blind; its phase follows from GPS time once CM is locked.
+**History:** the airspy prototype ran a CL sibling tracker seeded from the CM solution (clsibling.py), retired in
+c4c076bda (10-08) since only the airspy launcher used it; the wall-clock CL time assist went as dead code in
+gnss-broker ff167396 (10-13). The CHORD fleet never tracked CL.
+**Work:** a CL record path in the node (a 1.5 s code against 20 ms records); CL phase from GPS time in the broker
+once CM is locked; then the CM+CL combination, with #219's open L2 terms. cnav_predictor.py's docstring ("CL
+already gives L2C a dataless pilot") holds only after this.
+**Status:** filed 11-20, parked by KV. Needs a node binary and sky time.
+
 ### #229 — the projection's duplicate test keeps the strongest lane, not the best: at a bright GuoWang pass's peak a lane contaminated by GuoWang goes in first and the satellite's own lane is dropped, capping the null near 10 dB (2026-11-07, KV: "Let's add to the bug list — no need to interrupt the run for that tonight!")
 **What:** GnssN2Project builds each channel's lane basis from its candidates sorted by prompt power, local lanes
 before fleet lanes (`[tree]` GnssN2Project.cpp:270, 4534f85b4). Each goes through gnssProjSubspace::add(), which
