@@ -489,13 +489,14 @@
    "source": "2026-10-30 baseband dump chunk 52",
    "sep_deg": 0.13,
    "note": "theta from the 2026-10-30 dump's own reference: tag_early_us of input 116 applied (inputs differ by 0.02 us); gw_win.py's replica was unstretched as well: replica_corr_ns applied",
-   "last_observed_utc": "2026-10-30T11:00:04Z",
-   "last_checked_utc": "2026-10-30T11:00:04Z",
-   "last_checked_sep_deg": 0.13,
-   "passes_found": 1,
+   "last_observed_utc": "2026-11-20T09:14:54Z",
+   "last_checked_utc": "2026-11-20T09:14:54Z",
+   "last_checked_sep_deg": 5.64,
+   "passes_found": 2,
    "passes_silent": 0,
    "passes": [
-    ["2026-10-30T11:00:04Z", 0.13, true]
+    ["2026-10-30T11:00:04Z", 0.13, true],
+    ["2026-11-20T09:14:54Z", 5.64, true]
    ]
   },
   "DIGUI-28": {
@@ -4409,13 +4410,14 @@
    "ref_input": 116,
    "drift_ns_s": -23.05,
    "note": "inferred satellite: theta and ppb on its TLE moved -6.889 s along track (fitted to the carrier); partial copy, 56/64 channels",
-   "last_observed_utc": "2026-11-06T12:50:07Z",
-   "last_checked_utc": "2026-11-06T12:50:07Z",
-   "last_checked_sep_deg": 1.32,
-   "passes_found": 1,
+   "last_observed_utc": "2026-11-20T08:50:24Z",
+   "last_checked_utc": "2026-11-20T08:50:24Z",
+   "last_checked_sep_deg": 5.13,
+   "passes_found": 2,
    "passes_silent": 0,
    "passes": [
-    ["2026-11-06T12:50:07Z", 1.32, true]
+    ["2026-11-06T12:50:07Z", 1.32, true],
+    ["2026-11-20T08:50:24Z", 5.13, true]
    ]
   },
   "DIGUI-212": {
