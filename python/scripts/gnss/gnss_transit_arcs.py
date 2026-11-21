@@ -5,7 +5,7 @@ with matched quiet windows as the control.
 Transits come from the broadcast ephemeris for every G/E/C satellite in it, healthy or not and
 tracked or not: an untracked emitter (E14, the BDS-3 PRNs below 19, G19's L2 P(Y)) leaks into
 our chains exactly as a tracked one does. A transit is the span within --bore-deg of boresight
-(az 180, el 81.41); the 5 deg default is the bound of the broker's transit clock freeze
+(the pointing in force, from config/pointings.yaml); the 5 deg default is the bound of the broker's transit clock freeze
 (dr_clock_transit_freeze_deg in gnss_broker/cli.py).
 
 TEC is gnss_tec_chord.py's product, rebuilt with its rules: fadr_g_dop_cycles of two bands
@@ -58,6 +58,7 @@ import time
 from multiprocessing import Pool
 
 import numpy as np
+import yaml
 
 GNSS = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, GNSS)
@@ -68,7 +69,42 @@ OBS = "/home/kvand/gnss/fixtures/obs"
 NAV = os.path.expanduser("~/.cache/kotekan_gps")
 # The station, as in gnss_beam_cube.py.
 LAT, LON, ALT = 49.32075144444, -119.62081125, 545.0
-BORE_AZ, BORE_EL = 180.0, 81.41
+# The boresight per pointing epoch (config/pointings.yaml): a meridian pointing at
+# boresight_dec_deg; an epoch without one has no common boresight, and so no transits.
+POINTINGS = os.path.join(GNSS, "..", "..", "..", "config", "pointings.yaml")
+
+
+def load_boresights(path=POINTINGS):
+    """[(t0, t1 or None, (az, el) or None)], sorted, from the pointings file."""
+
+    def unix(v):  # YAML reads an ISO time as a datetime; a quoted one stays a string
+        if hasattr(v, "utctimetuple"):
+            return calendar.timegm(v.utctimetuple())
+        return calendar.timegm(time.strptime(str(v)[:19], "%Y-%m-%dT%H:%M:%S"))
+
+    out = []
+    for e in yaml.safe_load(open(path)) or []:
+        t0 = unix(e["from"])
+        t1 = unix(e["to"]) if e.get("to") else None
+        dec = e.get("boresight_dec_deg")
+        bore = None
+        if dec is not None:
+            bore = (180.0 if dec < LAT else 0.0, 90.0 - abs(LAT - float(dec)))
+        out.append((t0, t1, bore))
+    return sorted(out, key=lambda x: x[0])
+
+
+BORESIGHTS = load_boresights()
+# The current pointing, for callers without a time.
+BORE_AZ, BORE_EL = [b for _, _, b in BORESIGHTS if b is not None][-1]
+
+
+def boresight_at(t):
+    """(az, el) of the boresight at unix time t, or None where no common pointing is declared."""
+    for t0, t1, bore in BORESIGHTS:
+        if t >= t0 and (t1 is None or t < t1):
+            return bore
+    return None
 PAIRS = [("gal_e5a", "gal_e6"), ("bds_b2a", "bds_b3i"), ("gps_l5", "gps_l2c")]
 CHAINS = [
     "gps_l5",
@@ -128,8 +164,13 @@ def hm(t):
     return time.strftime("%m-%d %H:%M:%S", time.gmtime(t))
 
 
-def bore_sep(az, el):
-    a1, e1, a2, e2 = map(math.radians, (az, el, BORE_AZ, BORE_EL))
+def bore_sep(az, el, t=None):
+    """Degrees from the boresight in force at unix time t (default: the current pointing); 99
+    where no common pointing is declared."""
+    bore = (BORE_AZ, BORE_EL) if t is None else boresight_at(t)
+    if bore is None:
+        return 99.0
+    a1, e1, a2, e2 = map(math.radians, (az, el) + tuple(bore))
     c = math.sin(e1) * math.sin(e2) + math.cos(e1) * math.cos(e2) * math.cos(a1 - a2)
     return math.degrees(math.acos(max(-1.0, min(1.0, c))))
 
@@ -181,7 +222,7 @@ def transits(t_lo, t_hi, bore_deg):
             if e is None:
                 return 99.0, None
             az, el = sat_azel(e, g, rx)
-            return bore_sep(az, el), e
+            return bore_sep(az, el, float(t)), e
 
         tc = np.arange(t_lo, t_hi, 60.0)
         coarse = np.array([sep_at(t)[0] for t in tc])
