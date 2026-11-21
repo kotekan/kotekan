@@ -449,9 +449,10 @@ def test_broker_dll_spacing_is_the_tables():
 
         out = load(chains_cfg())
         check(
-            out["chains"]["gps_l2c"]["dll-spacing"] == 0.33
+            out["chains"]["gps_l2c"]["dll-spacing"] == 0.4
             and out["chains"]["gps_l5"]["dll-spacing"] == 0.5,
-            "each chain's dll-spacing is its row's",
+            "each chain's dll-spacing is its row's, L2C's derived from the six nodes' five "
+            "channels (%s)" % out["chains"]["gps_l2c"]["dll-spacing"],
         )
         cfg = chains_cfg()
         cfg["chains"]["gps_l2c"]["dll-spacing"] = 0.33
@@ -476,7 +477,7 @@ def test_broker_dll_spacing_is_the_tables():
         cfg["chains"]["l2c_b"] = {}
         got = load(cfg)
         check(
-            not isinstance(got, str) and got["chains"]["l2c_b"]["dll-spacing"] == 0.33,
+            not isinstance(got, str) and got["chains"]["l2c_b"]["dll-spacing"] == 0.4,
             "a chain without its own signal takes common's row (%s)"
             % (got if isinstance(got, str) else got["chains"]["l2c_b"]),
         )
@@ -498,6 +499,134 @@ def test_broker_dll_spacing_is_the_tables():
         and any("chains.gal_e5a: node-hosts is the fleet's" in p for p in probs),
         "--check names a hand dll-spacing, a row without a broker chain and a chain's "
         "own node-hosts (%s)" % probs,
+    )
+
+
+def off(*hosts):
+    """The repo's manifest with these hosts set role "off" (quoted: a bare off is YAML false)."""
+    man = manifest({})
+    with open(gf.MANIFEST) as fh:
+        man["nodes"] = yaml.safe_load(fh)["nodes"]
+    for h in hosts:
+        man["nodes"][h] = {"role": "off"}
+    return man
+
+
+def test_l2c_spacing_follows_the_fleet():
+    """L2C's row says dll-spacing-chips `fleet`: the spacing comes from the count of contiguous
+    L2C channels the fleet's nodes hold, 0.33 for the committed eight nodes' six and 0.5 with
+    cx42 and cx47 off (four), the same in the broker's chains (load_chains) and the table the
+    taps take (Fleet.table). A gap, an FDMA row or an unresolved row is refused."""
+    import gnss_chain_table as ct
+
+    raw = {r.key: r for r in ct.load()}
+    check(raw["gps_l2c"].dll_spacing_chips == ct.FLEET, "L2C's row says fleet")
+    check(
+        [gf.dirichlet_spacing(n, 511.5e3, 195312.5) for n in (2, 3, 4, 5, 6, 7)]
+        == [1.0, 0.67, 0.5, 0.4, 0.33, 0.29],
+        "the Dirichlet spacing reproduces 0.4 on five channels and 0.33 on six",
+    )
+    live = gf.Fleet(None, None)
+    l2c = {r.key: r for r in live.chains}["gps_l2c"]
+    check(
+        live.chain_channels(l2c) == list(range(6283, 6289))
+        and live.dll_spacing(l2c) == 0.33,
+        "the committed eight nodes hold 6283-6288: 0.33 (%s, %s)"
+        % (live.chain_channels(l2c), live.dll_spacing(l2c)),
+    )
+    table = {r.key: r.dll_spacing_chips for r in live.table()}
+    check(
+        table["gps_l2c"] == 0.33
+        and all(table[k] == raw[k].dll_spacing_chips for k in raw if k != "gps_l2c"),
+        "Fleet.table resolves L2C and leaves every written row as it is",
+    )
+    fl = gf.Fleet(off("cx42", "cx47"), site())
+    check(
+        fl.chain_channels(l2c) == [6285, 6286, 6287, 6288]
+        and fl.dll_spacing(l2c) == 0.5,
+        "cx42 and cx47 off (6284, 6283) leave four channels: 0.5 (%s, %s)"
+        % (fl.chain_channels(l2c), fl.dll_spacing(l2c)),
+    )
+    with tempfile.TemporaryDirectory() as d:
+        with open(os.path.join(d, "gnss_fleet_chord.yaml"), "w") as fh:
+            yaml.safe_dump(off("cx42", "cx47"), fh)
+        with open(os.path.join(d, "chord_gnss_node.yaml"), "w") as fh:
+            yaml.safe_dump(site(), fh)
+        path = os.path.join(d, "chains.yaml")
+        with open(path, "w") as fh:
+            yaml.safe_dump(chains_cfg(), fh)
+        out = gf.load_chains(path)
+    check(
+        out["chains"]["gps_l2c"]["dll-spacing"] == 0.5,
+        "the broker's chains take the same 0.5 from the manifest beside them",
+    )
+    try:
+        gf.Fleet(off("cx19"), site()).dll_spacing(l2c)
+        got = None
+    except gf.FleetError as e:
+        got = str(e)
+    check(
+        got is not None and "6283 6284 6285 6287 6288, are not contiguous" in got,
+        "cx19 off leaves a gap at 6286, refused (%s)" % got,
+    )
+    l2of = {r.key: r for r in live.chains}["glo_l2of"]._replace(
+        dll_spacing_chips="fleet"
+    )
+    try:
+        live.dll_spacing(l2of)
+        got = None
+    except gf.FleetError as e:
+        got = str(e)
+    check(
+        got is not None and "an FDMA chain" in got,
+        "an FDMA row cannot say fleet (%s)" % got,
+    )
+    check(ct.validate(ct.load()) == [], "the table with a fleet row validates")
+    try:
+        gf.table_keys(chains_cfg(), live.chains)
+        got = None
+    except gf.FleetError as e:
+        got = str(e)
+    check(
+        got is not None and "no fleet list was given" in got,
+        "table_keys refuses a fleet row without a fleet to derive it from (%s)" % got,
+    )
+    out = gf.table_keys(chains_cfg(), live.chains, fleet=fl)
+    check(
+        out["chains"]["gps_l2c"]["dll-spacing"] == 0.5,
+        "...and derives it from the one it is given",
+    )
+
+
+def test_check_spacing():
+    """gen_fleet --check reads every injector's spacing, plain or hosted, and names one the
+    broker's law would not take: here the eight-node 0.33 against the cx42/cx47-off fleet."""
+    text = (
+        "# header\n"
+        "gnss0_n2dual:\n  commands:\n  - name: cudaGnssInject\n    chains:\n"
+        "      gnss0_gps_l2c: {signal: GPS_L2C_CM, dll_spacing: 0.33}\n"
+        "      gnss0_gps_l5: {signal: GPS_L5_Q_NH, dll_spacing: 0.5}\n"
+        "gnss1_n2dual:\n  commands:\n"
+        "  - {name: cudaGnssInject, signal: GAL_E1C_CS, dll_spacing: 0.2}\n"
+    )
+    check(
+        gen_fleet.tap_spacings(text)
+        == {"gps_l2c": {0.33}, "gps_l5": {0.5}, "gal_e1c": {0.2}},
+        "hosted rows and a plain command are both read",
+    )
+    check(
+        gen_fleet.check_spacing(gf.Fleet(None, None), {"cx19": text}) == [],
+        "the eight nodes' taps match their own fleet",
+    )
+    got = gen_fleet.check_spacing(gf.Fleet(off("cx42", "cx47"), site()), {"cx19": text})
+    check(
+        got == ["cx19: gps_l2c dll spacing 0.33, the chains table says 0.5"],
+        "taps built for another node set are named (%s)" % got,
+    )
+    got = gen_fleet.check_spacing(gf.Fleet(None, None), {"cx19": "a: 1\n"})
+    check(
+        got == ["cx19: its config has no cudaGnssInject to read a spacing from"],
+        "a config without injectors is named, not passed (%s)" % got,
     )
 
 

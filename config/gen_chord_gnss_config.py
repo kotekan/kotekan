@@ -326,6 +326,25 @@ def chain_row(chain):
     return chain["row"] if chain else chain_rows()[0]
 
 
+_FLEET = []
+
+
+def tap_dll_spacing(row):
+    """A chain's E/L tap spacing: its row's, or for a row that says `fleet` the one derived from
+    the fleet list and the node table (gnss_fleet.Fleet.dll_spacing), the derivation
+    gnss_fleet.load_chains gives the broker's trim law from the same two files."""
+    if row.dll_spacing_chips != gnss_chain_table.FLEET:
+        return row.dll_spacing_chips
+    import gnss_fleet
+
+    try:
+        if not _FLEET:
+            _FLEET.append(gnss_fleet.Fleet())
+        return _FLEET[0].dll_spacing(row)
+    except (OSError, gnss_fleet.FleetError) as e:
+        raise SystemExit(f"chain {row.key}: no DLL spacing for its taps: {e}")
+
+
 def primary_prns():
     """The primary chain's PRN slots, one list for the run: the blocks that name them share it,
     and yaml.safe_dump writes a shared list once, under an anchor, so the sharing is part of
@@ -1430,8 +1449,9 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                     "channel_ids": freq_ids,  # global bins, local order (replica sky freq)
                     "signal": track_signal,
                     # E/L tap offset in the signal's chips, from the chain's row, which the
-                    # broker's trim law reads too (config/gnss_fleet_chord.yaml chains:).
-                    "dll_spacing": row.dll_spacing_chips,
+                    # broker's trim law reads too (config/gnss_fleet_chord.yaml chains:), or
+                    # derived from the fleet when the row says `fleet` (tap_dll_spacing).
+                    "dll_spacing": tap_dll_spacing(row),
                     # The E/L lanes as rotations of the prompt, one chip walk per hop
                     # (lanes_per_slot_for).
                     **({"epl_from_prompt": True} if args.epl_from_prompt else {}),

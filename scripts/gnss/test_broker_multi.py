@@ -81,13 +81,14 @@ def test_dll_spacing_from_the_chains_table():
     thread parses it, is its chains-table row's (the node taps' value) and the pinned one."""
     from gnss_broker.cli import build_parser
     import gnss_chain_table
+    import gnss_fleet
 
     ap = build_parser("test")
     path = os.path.join(HERE, "..", "..", "config", "gnss_chains_chord.yaml")
     got = {
         name: ap.parse_args(argv).dll_spacing for name, argv in broker_multi.load(path)
     }
-    table = gnss_chain_table.load()
+    table = gnss_fleet.Fleet().table()
     check(
         gnss_chain_table.dll_spacing_drift(table, got, "broker") == [],
         "every chain's dll_spacing is its row's (%s)"
