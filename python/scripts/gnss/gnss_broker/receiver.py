@@ -174,6 +174,12 @@ class Receiver(object):
             st = self._joint.get(JOINT_STATE)
             return bool(st is not None and abs(st.clk) > 0.4 * st.L)
 
+    def forget(self, key):
+        """Remove satellite `key`'s rows from every joint state (JointReceiverState.forget)."""
+        with self._lock:
+            for st in self._joint.values():
+                st.forget(key)
+
     def joint_unit(self, which=JOINT_STATE):
         """(chip_rate_hz, code_len) of the joint state `which` (JOINT_STATE, the live one, by
         default; a consumer passes joint_which(args)): (JOINT_REF_RATE_HZ, its modulus in

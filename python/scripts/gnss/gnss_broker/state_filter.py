@@ -85,6 +85,12 @@ class SatBiasFilter:
             return 0.0
         return self._b.get(prn, 0.0)
 
+    def forget(self, prn):
+        """Drop prn's bias, for a code another satellite now flies (GuoWang)."""
+        self._b.pop(prn, None)
+        self._t.pop(prn, None)
+        self._n.pop(prn, None)
+
     def summary(self, t_now):
         """One log line's worth: live biases, stale ones marked, rejection count."""
         parts = []
@@ -451,6 +457,15 @@ class JointReceiverState:
         for k in keys:
             self._rr_reject_run.pop(k, None)
         self._remove_rows(rows)
+
+    def forget(self, key):
+        """Remove one satellite's b_sat and rrate rows, as _drop and _drop_rr do for stale ones:
+        for a code another satellite now flies (GuoWang), whose rows describe the last one.
+        """
+        if key in self._idx:
+            self._drop([key])
+        if key in self._rr_idx:
+            self._drop_rr([key])
 
     def _membership_changed(self):
         """Handle the gauge step a satellite joining or leaving can cause.
