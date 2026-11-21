@@ -1,0 +1,5 @@
+**********
+ibvUdpRecv
+**********
+
+.. doxygenclass:: ibvUdpRecv

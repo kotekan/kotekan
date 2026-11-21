@@ -1,0 +1,14 @@
+---
+# Run just the tensor-core FFT kernel test. Needs a CUDA build and a GPU.
+
+type: config
+log_level: INFO
+
+cpu_affinity: [0]
+
+telescope:
+    name: fake
+
+test_tensor_fft:
+    kotekan_stage: testTensorFFT
+log_config_usage: fatal_error
