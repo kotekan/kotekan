@@ -11,13 +11,10 @@ apart, the middle one closest and strongest).
     capture     proposed start times for a --length s capture centred on each train's best pass
     validate    observed burst list (burstspec RESULTS file) against the predictions
 
-Elements: --tle FILE (TLE, or OMM if it ends in .json), else the newest cache in --cache-dir.
---fetch downloads the group from CelesTrak as OMM into the cache, but only when the newest cache
-is older than 2 h: CelesTrak serves a GROUP once per 2 h per client and answers sooner requests
-with an error, so a test download burns the slot. OMM, not TLE: the TLE's five-digit catalogue
-number ran out in July 2026, so FORMAT=tle leaves out every GuoWang satellite launched since.
-Refresh the elements the day before a capture; 1-2 day old elements are good to ~1 s along
-track.
+TLEs: --tle FILE, else the newest cache in --cache-dir. --fetch downloads the group from CelesTrak
+into the cache, but only when the newest cache is older than 2 h: CelesTrak serves a GROUP once per
+2 h per client and answers sooner requests with an error, so a test download burns the slot.
+Refresh the TLEs the day before a capture; 1-2 day old TLEs are good to ~1 s along track.
 
     python guowang_passes.py passes --start 2026-10-29 --days 7
     python guowang_passes.py capture --start 2026-10-29 --days 7 --length 80
@@ -28,7 +25,6 @@ Needs skyfield (the gnss venv: /home/kvand/gnss/venv/bin/python).
 import argparse
 import datetime as dt
 import glob
-import json
 import os
 import re
 import sys
@@ -42,7 +38,7 @@ F_B3 = 1268.52e6
 F_L3 = 1202.025e6
 SITE = dict(lat=49.3199845, lon=-119.62262691, h=528.4)
 BORESIGHT = dict(az=180.0, el=62.70)
-CELESTRAK = "https://celestrak.org/NORAD/elements/gp.php?GROUP=hulianwang&FORMAT=json"
+CELESTRAK = "https://celestrak.org/NORAD/elements/gp.php?GROUP=hulianwang&FORMAT=tle"
 CACHE_DIR = os.path.expanduser("~/.cache/guowang")
 FALLBACK_TLE = (
     "/home/kvand/gnss/builds/scratch_bak_20261023_gnssmain/emit1027/g_hulianwang.tle"
@@ -63,17 +59,13 @@ SUSPECT_BATCHES = {
 
 
 def newest_cache(cache_dir):
-    """The newest cached group: OMM (.json), or TLE (.tle) from before the fetch took OMM."""
-    files = sorted(
-        glob.glob(os.path.join(cache_dir, "hulianwang_*.json"))
-        + glob.glob(os.path.join(cache_dir, "hulianwang_*.tle"))
-    )
+    files = sorted(glob.glob(os.path.join(cache_dir, "hulianwang_*.tle")))
     return files[-1] if files else None
 
 
-def fetch_omm(cache_dir, min_age_s=7200.0):
-    """Download the group as OMM into cache_dir/hulianwang_YYYYmmddTHHMMSSZ.json unless the
-    newest cache is younger than min_age_s. Returns the path used."""
+def fetch_tle(cache_dir, min_age_s=7200.0):
+    """Download the group into cache_dir/hulianwang_YYYYmmddTHHMMSSZ.tle unless the newest cache is
+    younger than min_age_s. Returns the path used."""
     os.makedirs(cache_dir, exist_ok=True)
     last = newest_cache(cache_dir)
     if last is not None and time.time() - os.path.getmtime(last) < min_age_s:
@@ -85,15 +77,11 @@ def fetch_omm(cache_dir, min_age_s=7200.0):
         )
         return last
     with urllib.request.urlopen(CELESTRAK, timeout=60) as r:
-        txt = r.read().decode("utf-8", "replace")
-    try:
-        ok = len(json.loads(txt)) > 0
-    except ValueError:
-        ok = False
-    if not ok:
-        raise RuntimeError("CelesTrak returned no elements: %r" % txt[:200])
+        txt = r.read().decode("ascii", "replace")
+    if "1 " not in txt or "2 " not in txt:
+        raise RuntimeError("CelesTrak returned no TLEs: %r" % txt[:200])
     path = os.path.join(
-        cache_dir, time.strftime("hulianwang_%Y%m%dT%H%M%SZ.json", time.gmtime())
+        cache_dir, time.strftime("hulianwang_%Y%m%dT%H%M%SZ.tle", time.gmtime())
     )
     with open(path, "w") as f:
         f.write(txt)
@@ -119,32 +107,6 @@ def read_tle(path, ts, name_filter="DIGUI"):
         else:
             i += 1
     return sats
-
-
-def read_omm(path, ts, name_filter="DIGUI"):
-    """read_tle for an OMM file (CelesTrak FORMAT=json)."""
-    from sgp4 import omm
-    from sgp4.api import Satrec
-    from skyfield.api import EarthSatellite
-
-    sats, seen = [], set()
-    with open(path) as fh:
-        for f in json.load(fh):
-            name = f["OBJECT_NAME"]
-            if f["NORAD_CAT_ID"] in seen or (name_filter and name_filter not in name):
-                continue
-            seen.add(f["NORAD_CAT_ID"])
-            sat = Satrec()
-            omm.initialize(sat, f)
-            es = EarthSatellite.from_satrec(sat, ts)
-            es.name = name
-            sats.append(es)
-    return sats
-
-
-def read_elements(path, ts, name_filter="DIGUI"):
-    """read_omm for a .json file, else read_tle."""
-    return (read_omm if path.endswith(".json") else read_tle)(path, ts, name_filter)
 
 
 # --------------------------------------------------------------------------- geometry
@@ -384,14 +346,14 @@ def setup(args):
     path = args.tle
     if path is None:
         path = (
-            fetch_omm(args.cache_dir)
+            fetch_tle(args.cache_dir)
             if args.fetch
             else (newest_cache(args.cache_dir) or FALLBACK_TLE)
         )
-    sats = read_elements(path, ts, args.name_filter)
+    sats = read_tle(path, ts, args.name_filter)
     epochs = np.array([s.epoch.utc_datetime().timestamp() for s in sats])
     print(
-        "# elements %s: %d objects matching %r, epochs %s .. %s"
+        "# TLE %s: %d objects matching %r, epochs %s .. %s"
         % (path, len(sats), args.name_filter, iso(epochs.min()), iso(epochs.max()))
     )
     geo = Geometry(ts, az=args.az, el=args.el)
