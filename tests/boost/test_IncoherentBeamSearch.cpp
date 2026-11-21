@@ -17,6 +17,8 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <ctime>
+#include <filesystem>
 #include <fstream>
 #include <json.hpp>
 #include <memory>
@@ -47,14 +49,15 @@ static std::vector<double> trial_dms() {
 // frames of 32 time samples. 64 channels from 400 MHz: DM 100 sweeps 116 samples.
 struct SearchPipeline {
     static constexpr int halves = 4, T = 32, F = 16, min_freq_id = 2048, period = 256;
-    static constexpr int frames = 8, sum_samples = 256, snr_passes = 32;
-    const std::string path, dm_path;
+    static constexpr int frames = 8, sum_samples = 256, snr_passes = 32, cutout_samples = 256;
+    const std::string path, dm_path, cutout_dir;
     const std::vector<double> dms = trial_dms();
     kotekan::Config config;
     std::shared_ptr<metadataPool> pool;
-    Buffer input, sums, snr;
+    Buffer input, sums, snr, cutout;
     kotekan::bufferContainer buffers;
     std::unique_ptr<kotekan::Stage> stage;
+    std::unique_ptr<kotekan::Stage> writer; // hdf5FileWrite of the cutouts, when kotekan has it
     std::mt19937 rng{1};
     int next_slot = 0;
 
@@ -69,13 +72,16 @@ struct SearchPipeline {
     SearchPipeline() :
         path("/tmp/test_IncoherentBeamSearch." + std::to_string(getpid()) + ".jsonl"),
         dm_path("/tmp/test_IncoherentBeamSearch." + std::to_string(getpid()) + ".dms.json"),
+        cutout_dir("/tmp/test_IncoherentBeamSearch." + std::to_string(getpid()) + ".cutouts"),
         pool(metadataPool::create(32, sizeof(chordMetadata), "pool", "chordMetadata")),
         input(frames, T * F * sizeof(uint16_t), pool, "input", "standard", 0, false, false,
               std::vector<int>{}, true),
         sums(4, sum_samples * dms.size() * sizeof(float), pool, "sums", "standard", 0, false, false,
              std::vector<int>{}, true),
         snr(4, snr_passes * dms.size() * sizeof(float), pool, "snr", "standard", 0, false, false,
-            std::vector<int>{}, true) {
+            std::vector<int>{}, true),
+        cutout(4, halves * F * cutout_samples, pool, "cutout", "standard", 0, false, false,
+               std::vector<int>{}, true) {
         // Force metadata registration from the static library.
         chordMetadata metadata;
         std::remove(path.c_str());
@@ -85,6 +91,7 @@ struct SearchPipeline {
                                {{"in_buf", "input"},
                                 {"out_buf", "sums"},
                                 {"snr_buf", "snr"},
+                                {"cutout_buf", "cutout"},
                                 {"freq_id_base", min_freq_id},
                                 {"num_local_freq", halves * F},
                                 {"num_feeds", 128},
@@ -97,7 +104,13 @@ struct SearchPipeline {
                                 {"trigger_min_dm", 60},
                                 {"num_threads", 2},
                                 {"candidate_file", path},
-                                {"dm_file", dm_path}}}};
+                                {"dm_file", dm_path}}},
+                              {"write_cutouts",
+                               {{"in_buf", "cutout"},
+                                {"base_dir", cutout_dir},
+                                {"file_name", "cutout"},
+                                {"time_in_file_name", true},
+                                {"prefix_hostname", false}}}};
         add_test_telescope_config(cfg);
         cfg["gps_time"] = {{"frame0_nano", 1767225600000000000}};
         cfg["num_polarizations"] = 2;
@@ -111,21 +124,33 @@ struct SearchPipeline {
         buffers.add_buffer("input", &input);
         buffers.add_buffer("sums", &sums);
         buffers.add_buffer("snr", &snr);
+        buffers.add_buffer("cutout", &cutout);
         input.register_producer("test");
         sums.register_consumer("test");
+        cutout.register_consumer("test");
         // As on the telescope, nothing consumes the image of recent passes: it is peeked.
         snr.enable_peek_hold();
         auto makers = kotekan::StageFactoryRegistry::get_registered_stages();
         stage.reset(makers.at("IncoherentBeamSearch")->create(config, "/search", buffers));
+        if (makers.count("hdf5FileWrite")) {
+            writer.reset(makers.at("hdf5FileWrite")->create(config, "/write_cutouts", buffers));
+            writer->start();
+        }
         sums_thread = std::thread(&SearchPipeline::read_sums, this);
     }
 
     ~SearchPipeline() {
         input.send_shutdown_signal();
         sums.send_shutdown_signal();
+        cutout.send_shutdown_signal();
         stage->stop();
         stage->join();
+        if (writer) {
+            writer->stop();
+            writer->join();
+        }
         sums_thread.join();
+        std::filesystem::remove_all(cutout_dir);
         std::remove(path.c_str());
         std::remove(dm_path.c_str());
     }
@@ -234,6 +259,52 @@ BOOST_AUTO_TEST_CASE(finds_a_pulse_and_restarts_after_a_jump) {
                           - (1767225600 + cands[0]["fpga_seq"].get<int64_t>() * 5.12e-6),
                       1e-3);
 
+    // The candidate has no flag, so it has a cutout: the first one. The pulse is the middle
+    // column, and the frame starts half a cutout before the candidate at the top channel.
+    BOOST_CHECK_EQUAL(cands[0]["cutout"].get<int64_t>(), 0);
+    {
+        const int T = SearchPipeline::cutout_samples;
+        const int num_freq = SearchPipeline::halves * SearchPipeline::F;
+        const int8_t* const frame = (const int8_t*)p.cutout.wait_for_full_frame("test", 0);
+        BOOST_REQUIRE(frame);
+        const auto meta = get_chord_metadata(&p.cutout, 0);
+        BOOST_CHECK_EQUAL(meta->get_fpga_seq_num(), cands[0]["fpga_seq"].get<int64_t>()
+                                                        - int64_t(T / 2) * SearchPipeline::period);
+        BOOST_CHECK_EQUAL(meta->get_coarse_freq().size(), num_freq);
+        BOOST_CHECK_EQUAL(meta->get_coarse_freq()[0], SearchPipeline::min_freq_id);
+        int brightest = 0;
+        double brightest_sum = 0;
+        for (int k = 0; k < T; ++k) {
+            double sum = 0;
+            for (int c = 0; c < num_freq; ++c)
+                sum += frame[c * T + k] / 32.0;
+            if (sum > brightest_sum) {
+                brightest_sum = sum;
+                brightest = k;
+            }
+        }
+        BOOST_CHECK_EQUAL(brightest, T / 2);
+        BOOST_CHECK_GT(brightest_sum, 80); // 2 sigma in each of 64 channels
+        p.cutout.mark_frame_empty("test", 0);
+    }
+    // hdf5FileWrite numbers its files as the stage numbers the cutouts, after the UTC time of
+    // the cutout's first sample: 5.12 us per FPGA sample from frame0_nano.
+    if (p.writer) {
+        const int64_t first_seq =
+            cands[0]["fpga_seq"].get<int64_t>()
+            - int64_t(SearchPipeline::cutout_samples / 2) * SearchPipeline::period;
+        const std::time_t seconds = 1767225600 + first_seq * 5120 / 1000000000;
+        std::tm utc{};
+        gmtime_r(&seconds, &utc);
+        char time_tag[32];
+        std::strftime(time_tag, sizeof(time_tag), "%Y%m%dT%H%M%S", &utc);
+        const std::string file = p.cutout_dir + "/cutout." + time_tag + ".00000000.h5";
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while (!std::filesystem::exists(file) && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        BOOST_CHECK(std::filesystem::exists(file));
+    }
+
     // dm_file has the trial DMs. The largest dedispersed sum in the output is the pulse: at
     // DM 100, in the row of its arrival at the bottom channel, one sweep after the top.
     std::ifstream dm_file(p.dm_path);
@@ -293,6 +364,7 @@ BOOST_AUTO_TEST_CASE(finds_a_pulse_and_restarts_after_a_jump) {
         metric_has("kotekan_incoherent_beam_search_restarts_total{stage_name=\"/search\"} 1"));
     BOOST_REQUIRE_EQUAL(cands.size(), 2);
     BOOST_CHECK_CLOSE(cands[1]["dm"].get<double>(), 100, 5);
+    BOOST_CHECK_EQUAL(cands[1]["cutout"].get<int64_t>(), 1);
     BOOST_CHECK_SMALL((double)(cands[1]["fpga_seq"].get<int64_t>()
                                - (seq1 + int64_t(8000) * SearchPipeline::period)),
                       3.0 * SearchPipeline::period);

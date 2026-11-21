@@ -16,8 +16,6 @@ const std::array<int, 5> widths = {1, 2, 4, 8, 16};
 const int baseline = 128;
 // A normalized sample is limited to this many sigma
 const double sample_clip = 3.0;
-// Stored samples are in units of 1 / sample_scale sigma: int8 reaches 4 sigma
-const double sample_scale = 32.0;
 // A channel is masked when its sigma/mean exceeds mask_threshold times the lower quartile of the
 // channels within mask_neighbours on each side
 const double mask_threshold = 1.25;
@@ -127,8 +125,9 @@ IncoherentSearch::IncoherentSearch(const IncoherentSearchParams& params) :
     if (p.keep_sums)
         pass_sums.assign((size_t)D * chunk, 0.0f);
 
-    // A candidate's samples are still in the buffer when it is closed: band_occupancy relies on it.
-    keep = max_delay_all + lookahead + wmax + 4 * chunk + close_after;
+    // A candidate's samples are still in the buffer when it is closed, with half a cutout
+    // before them: band_occupancy and cutout rely on it.
+    keep = max_delay_all + lookahead + wmax + 4 * chunk + close_after + cutout_samples / 2;
     buffer_len = keep + std::max<int64_t>(4096, keep / 4);
     w.assign((size_t)F * buffer_len, 0);
 }
@@ -444,6 +443,7 @@ void IncoherentSearch::close_events() {
         IncoherentCandidate cand;
         cand.snr = e.best.snr;
         cand.dm = p.dms[e.best.dm_index];
+        cand.dm_index = e.best.dm_index;
         cand.width = widths[e.best.width_index];
         cand.sample = e.best.sample;
         cand.num_hits = e.num_hits;
@@ -526,6 +526,17 @@ int IncoherentSearch::strongest_block(const Hit& hit) const {
     band_occupancy(cand, hit);
     return (int)(std::max_element(cand.block_snr.begin(), cand.block_snr.end())
                  - cand.block_snr.begin());
+}
+
+void IncoherentSearch::cutout(const IncoherentCandidate& cand, int8_t* out) const {
+    const int32_t* const dl = &delay[(size_t)cand.dm_index * F];
+    for (int c = 0; c < F; ++c) {
+        const int64_t first = cand.sample - cutout_samples / 2 + dl[c];
+        for (int k = 0; k < cutout_samples; ++k) {
+            const int64_t s = first + k;
+            out[(size_t)c * cutout_samples + k] = s >= base && s < ns ? *row(c, s) : 0;
+        }
+    }
 }
 
 std::vector<IncoherentCandidate> IncoherentSearch::take_candidates() {

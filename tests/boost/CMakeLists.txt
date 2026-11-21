@@ -543,6 +543,17 @@ add_executable(test_IncoherentBeamSearch test_IncoherentBeamSearch.cpp
                                          ${KOTEKAN_SOURCE_DIR}/lib/stages/IncoherentBeamSearch.cpp)
 target_link_libraries(test_IncoherentBeamSearch PRIVATE kotekan_core kotekan_metadata kotekan_utils
                                                         libexternal)
+# With HDF5 the test also writes the cutouts with hdf5FileWrite.
+if(HDF5_FOUND AND HighFive_FOUND)
+    target_sources(test_IncoherentBeamSearch
+                   PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages/hdf5FileWrite.cpp)
+    target_link_libraries(
+        test_IncoherentBeamSearch PRIVATE kotekan_stages kotekan_libs ${HDF5_HL_LIBRARIES}
+                                          ${HDF5_LIBRARIES} HighFive::HighFive)
+    target_include_directories(
+        test_IncoherentBeamSearch PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
+                                          ${KOTEKAN_SOURCE_DIR}/lib/utils ${HDF5_INCLUDE_DIRS})
+endif()
 
 add_executable(test_ProcessPacketMask test_ProcessPacketMask.cpp
                                       ${KOTEKAN_SOURCE_DIR}/lib/stages/ProcessPacketMask.cpp)

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <boost/test/included/unit_test.hpp>
 #include <cmath>
+#include <cstdint>
 #include <random>
 #include <vector>
 
@@ -35,9 +36,11 @@ struct Pulse {
 // Runs noise of unit mean with the pulses through the search. With `burst`, interference at DM 0
 // that the limit per block lets through is added: 8 sigma in 14 channels across the edge of the
 // top two blocks, for 96 samples from sample 4000. Their delays differ by less than the burst
-// lasts, so every DM up to 250 adds them up, to about 9 sigma at the widest window.
+// lasts, so every DM up to 250 adds them up, to about 9 sigma at the widest window. `cutout`
+// gets the cutout of the last candidate.
 static std::vector<IncoherentCandidate> run(const IncoherentSearchParams& p,
-                                            const std::vector<Pulse>& pulses, bool burst = false) {
+                                            const std::vector<Pulse>& pulses, bool burst = false,
+                                            std::vector<int8_t>* cutout = nullptr) {
     const double mean = 1000;
     const int num_samples = 12000;
     const double nu_top = (p.freq0_mhz + p.dfreq_mhz * (p.num_freq - 1)) / 1e3;
@@ -61,8 +64,13 @@ static std::vector<IncoherentCandidate> run(const IncoherentSearchParams& p,
             power[c] = (float)(mean * (1 + p.thermal * (gauss(rng) + amplitude)));
         }
         search.add_sample(power.data());
-        for (const IncoherentCandidate& c : search.take_candidates())
+        for (const IncoherentCandidate& c : search.take_candidates()) {
             out.push_back(c);
+            if (cutout != nullptr) {
+                cutout->resize((size_t)p.num_freq * IncoherentSearch::cutout_samples);
+                search.cutout(c, cutout->data());
+            }
+        }
     }
     return out;
 }
@@ -90,6 +98,26 @@ BOOST_AUTO_TEST_CASE(pulse_is_found_at_its_dm_and_time) {
     for (float b : c.block_snr)
         filled += b > 3;
     BOOST_CHECK_GE(filled, 14);
+}
+
+BOOST_AUTO_TEST_CASE(cutout_has_the_pulse_in_its_middle_column) {
+    const IncoherentSearchParams p = test_params();
+    std::vector<int8_t> cutout;
+    const std::vector<IncoherentCandidate> cands =
+        run(p, {{1.5, 100, 6000, p.num_freq}}, false, &cutout);
+    BOOST_REQUIRE_EQUAL(cands.size(), 1);
+    const int T = IncoherentSearch::cutout_samples;
+    BOOST_REQUIRE_EQUAL(cutout.size(), (size_t)p.num_freq * T);
+    // 1.5 sigma in each of 256 channels in the pulse's column, noise of 16 sigma in the others.
+    for (int k = 0; k < T; ++k) {
+        double sum = 0;
+        for (int c = 0; c < p.num_freq; ++c)
+            sum += cutout[(size_t)c * T + k] / (double)IncoherentSearch::sample_scale;
+        if (k == T / 2)
+            BOOST_CHECK_GT(sum, 300);
+        else
+            BOOST_CHECK_LT(std::abs(sum), 100);
+    }
 }
 
 BOOST_AUTO_TEST_CASE(band_occupancy_shows_a_narrow_signal) {
