@@ -2584,7 +2584,6 @@
   },
   "DIGUI-126": {
    "status": "transmitting",
-   "status_basis": "track beam: PRN 1276 with sender ID 89 (DIGUI-126's own), 79 CRC-valid seconds 11-13 22:41 to 22:44; code-mate DIGUI-119 sends ID 82 (2026-11-13T22:41:37Z)",
    "catnum": 67066,
    "g2_phase": 1275,
    "theta_us": 7.1387,
@@ -2596,14 +2595,15 @@
    "sep_deg": 2.79,
    "ref_input": 116,
    "drift_ns_s": 4.11,
-   "last_observed_utc": "2026-11-07T04:30:37Z",
-   "last_checked_utc": "2026-11-07T04:30:37Z",
-   "last_checked_sep_deg": 2.7,
-   "passes_found": 2,
+   "last_observed_utc": "2026-11-21T00:30:42Z",
+   "last_checked_utc": "2026-11-21T00:30:42Z",
+   "last_checked_sep_deg": 2.81,
+   "passes_found": 3,
    "passes_silent": 0,
    "passes": [
     ["2026-11-06T05:04:02Z", 3.82, true],
-    ["2026-11-07T04:30:37Z", 2.7, true]
+    ["2026-11-07T04:30:37Z", 2.7, true],
+    ["2026-11-21T00:30:42Z", 2.81, true]
    ]
   },
   "DIGUI-127": {
