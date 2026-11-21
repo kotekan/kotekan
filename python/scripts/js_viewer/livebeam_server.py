@@ -1647,13 +1647,18 @@ class DecodeHealthResource(resource.Resource):
                 res["n_meas"] = len(meas)
                 res["smooth_s"] = self.pvt_smooth_s
                 res["min_el_deg"] = self.pvt_min_el_deg
-                # the per-satellite inputs, so the panel can show what the fit ate
+                # the per-satellite inputs, so the panel can show what the fit ate, each
+                # with its post-fit residual
+                post = _pvt.post_fit_m(meas, res)
                 res["meas"] = [
-                    {
-                        k: (round(v, 3) if isinstance(v, float) else v)
-                        for k, v in m.items()
-                    }
-                    for m in meas
+                    dict(
+                        {
+                            k: (round(v, 3) if isinstance(v, float) else v)
+                            for k, v in m.items()
+                        },
+                        post_m=None if p is None else round(p, 3),
+                    )
+                    for m, p in zip(meas, post)
                 ]
         except Exception as e:
             res = {"error": str(e)}

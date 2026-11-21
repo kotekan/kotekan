@@ -92,20 +92,24 @@ export class PositionSurveyPanel {
             }
             h += `</tbody></table>`;
         }
-        // The per-satellite inputs to the fit: its residual, how many rows the smoothing
-        // (gnss_pvt.hatch_smooth) used and their code scatter. A satellite whose sd is far above
-        // its neighbours' is the one to look at; "single" means one row, so no smoothing.
+        // The per-satellite inputs to the fit: its post-fit residual (gnss_pvt.post_fit_m; the
+        // input residual, which keeps the receiver clock, is the tooltip), how many rows the
+        // smoothing (gnss_pvt.hatch_smooth) used and their code scatter. A satellite whose sd
+        // or post-fit residual is far above its neighbours' is the one to look at; "single"
+        // means one row, so no smoothing.
         const meas = (pvt.meas || []).slice().sort((a, b) =>
             a.group < b.group ? -1 : a.group > b.group ? 1 : (a.prn || 0) - (b.prn || 0));
         if (meas.length) {
             h += `<table style="border-collapse:collapse;width:100%;font-size:10px;`
                + `margin-top:6px;color:#8a8f98"><thead><tr style="text-align:left;`
                + `border-bottom:1px solid #333"><th style="padding:1px 6px">sat</th>`
-               + `<th>el</th><th>resid</th><th>rows</th><th>code sd</th></tr></thead><tbody>`;
+               + `<th>el</th><th>post-fit</th><th>rows</th><th>code sd</th></tr></thead><tbody>`;
             for (const m of meas) {
                 h += `<tr><td style="padding:1px 6px">${m.group} ${m.sys || ""}${m.prn || ""}</td>`
                    + `<td>${m.el != null ? m.el.toFixed(0) + "°" : ""}</td>`
-                   + `<td>${m.resid_m != null ? m.resid_m.toFixed(1) + " m" : ""}</td>`
+                   + `<td title="input residual (receiver clock included): `
+                   + `${m.resid_m != null ? m.resid_m.toFixed(1) + " m" : "none"}">`
+                   + `${m.post_m != null ? m.post_m.toFixed(1) + " m" : "—"}</td>`
                    + `<td>${m.n != null ? m.n : ""}${m.method === "single" ? " (single)" : ""}</td>`
                    + `<td>${m.sd_m != null ? m.sd_m.toFixed(1) + " m" : ""}</td></tr>`;
             }

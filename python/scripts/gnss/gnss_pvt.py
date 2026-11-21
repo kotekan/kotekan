@@ -136,6 +136,31 @@ def _solve(rows, n_groups, reject_floor=60.0, reject_k=5.0):
     )
 
 
+def post_fit_m(measurements, out):
+    """Each measurement's post-fit residual (m), against the combined solution (combined_if
+    for an "-IF" group) with its group's clock, else against its group's own solution; None
+    where neither holds the group. The model is -los . d_enu + clock (_fit). resid_m keeps the
+    receiver clock, tens of km on the tracker's range form, so it is not readable alone.
+    """
+    post = []
+    for m in measurements:
+        g = m.get("group")
+        c = out.get("combined_if" if str(g).endswith("-IF") else "combined") or {}
+        own = (out.get("groups") or {}).get(g)
+        if g in (c.get("clocks_m") or {}):
+            sol, clk = c, c["clocks_m"][g]
+        elif own:
+            sol, clk = own, own["clock_m"]
+        else:
+            sol = None
+        if sol is None or None in (m.get("az"), m.get("el"), m.get("resid_m")):
+            post.append(None)
+            continue
+        d = np.array([sol["d_e"], sol["d_n"], sol["d_u"]])
+        post.append(float(m["resid_m"] + _los_enu(m["az"], m["el"]) @ d - clk))
+    return post
+
+
 def _dops(Ninv3):
     """PDOP/HDOP/VDOP from the position block of (H^T H)^-1 (unit-weighted geometry)."""
     d = np.clip(np.diag(Ninv3), 0.0, None)
