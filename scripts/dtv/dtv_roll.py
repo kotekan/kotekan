@@ -306,7 +306,29 @@ def main():
             from dtv_steer import Sky, ranges  # skyfield
 
             sky, pass_fids = Sky(a.pass_tle), ranges(a.pass_freq)
+            sky_mtime = os.path.getmtime(a.pass_tle)
         while True:
+            # the TLE file is refreshed in place by cron (tle_refresh.py, #235): re-read it when it
+            # changes, and keep the old sets if the new file does not load
+            if sky is not None:
+                try:
+                    m = os.path.getmtime(a.pass_tle)
+                    if m != sky_mtime:
+                        sky_mtime = m
+                        sky = Sky(a.pass_tle)
+                        print(
+                            stamp(),
+                            "pass TLE reloaded:",
+                            ", ".join(sky.sats),
+                            flush=True,
+                        )
+                except Exception as e:
+                    print(
+                        stamp(),
+                        "pass TLE reload failed, kept the old sets:",
+                        e,
+                        flush=True,
+                    )
             want = None
             if a.protect_min > 0:
                 name, sep, ha = nearest_protected(a.protect or PROTECT, a.boresight_dec)
