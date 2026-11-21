@@ -585,7 +585,8 @@ e6_combine:
     kotekan_stage: GnssCoherentCombiner
     in_bufs: [e6_rec_buf]
     n_prn: 32
-    integration_length: 200
+    # A pilot ~11 dB under E5a here (the antenna rolls off at 1278 MHz): 1 s instead of 200 ms.
+    integration_length: 1000
     record_export: 64
 
 l2c_assemble:
