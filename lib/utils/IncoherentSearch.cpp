@@ -54,9 +54,11 @@ const int far_blocks = 1;
 const double block_fraction = 0.5;
 // A candidate is described as one_band when it is at least one_band_width samples wide and one
 // block of channels has more than one_band_ratio times its S/N. A pulse that fills the band has
-// a quarter of its S/N in each of 16 blocks.
+// a quarter of its S/N in each of 16 blocks. On the pathfinder, interference a few MHz wide
+// that lasts tens of ms has a ratio of 0.9 to 2; pulses of the Crab have about 1 but are narrower
+// than one_band_width.
 const int one_band_width = 8;
-const double one_band_ratio = 1.8;
+const double one_band_ratio = 0.8;
 // A running statistic is used after this many seconds of updates
 const double settle_s = 1.0;
 // A candidate is reported this many seconds after its first sample above threshold

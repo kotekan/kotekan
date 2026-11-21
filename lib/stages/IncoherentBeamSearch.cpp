@@ -56,9 +56,10 @@ using kotekan::prometheus::Metrics;
  *    others). Such a candidate is in the file but is not counted or logged as one.
  *  - "low_dm": its DM is below trigger_min_dm.
  *  - "low_snr": its S/N is below trigger_min_snr.
+ *  - "one_band": it is 8 samples or wider and one of 16 blocks of channels has more than 0.8
+ *    times its S/N, which is how interference a few MHz wide looks. A wide burst in a narrow
+ *    band looks the same.
  *
- * "one_band" describes a wide candidate with most of its S/N in one block of channels. It is
- * not a flag: faint interference looks like this, and so may a wide burst in a narrow band.
  * Nothing acts on a candidate yet.
  *
  * With out_buf, every search pass also writes its dedispersed sums (IncoherentSearch::last_sums)
@@ -477,6 +478,8 @@ private:
                 flags.push_back("low_dm");
             if (c.snr < trigger_min_snr)
                 flags.push_back("low_snr");
+            if (c.one_band)
+                flags.push_back("one_band");
             const int64_t cutout = cutout_buf != nullptr && flags.empty() ? write_cutout(c) : -1;
             if (!candidate_file.is_open())
                 continue;
