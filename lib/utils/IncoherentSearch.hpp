@@ -28,6 +28,8 @@ struct IncoherentSearchParams {
     double thermal = 0;
     /// Frequency ranges that are always masked, MHz
     std::vector<std::pair<double, double>> mask_bands_mhz;
+    /// A channel that becomes masked is also masked for this long before, seconds
+    double mask_margin_s = 0.17;
     /// Candidates are reported above this S/N
     double threshold = 8.0;
     /// No candidates before this time after the first sample, seconds
@@ -63,9 +65,16 @@ struct IncoherentCandidate {
     /// The candidate has two or more partners, and with them covers more than 50 DM units:
     /// interference, not a pulse.
     bool undispersed = false;
-    /// A description, not a verdict: 8 samples or wider, with more than 1.8 times its S/N in
-    /// one block. Faint interference often looks like this; so may a wide burst in a narrow band.
+    /// 8 samples or wider, with more than 0.8 times its S/N in one block. Interference a few MHz
+    /// wide looks like this; so may a wide burst in a narrow band.
     bool one_band = false;
+    /// The highest S/N of the candidate in a contiguous part of the band, of 2 to 16 sixteenths
+    /// of the channels with data, after the sum of every 8 adjacent channels over the window is
+    /// limited to 3 sigma, or to what a pulse in two sixteenths would give; and its ratio to the
+    /// S/N of the whole band from the same samples. The ratio is about 1 for noise, below 1 for
+    /// interference a few MHz wide, and above 1 for a pulse that fills part of the band.
+    float part_snr = 0;
+    float part_ratio = 0;
 };
 
 /**
@@ -74,9 +83,10 @@ struct IncoherentCandidate {
  *
  * Each channel keeps an exponential running mean and variance and is normalized by them. Channels
  * that are missing, in a fixed band, noisier than their neighbours or drifting (the means of
- * 64-sample blocks vary more than white noise allows) are masked. So is, for one time sample, a
- * sixteenth of the band whose channels add up to far more than their noise: interference in
- * part of the band, which the limit on single samples does not stop. The channel average is
+ * 64-sample blocks vary more than white noise allows) are masked, with two channels on each side
+ * of a noisy or drifting one and with the mask_margin_s before the mask. So is, for one time
+ * sample, a sixteenth of the band whose channels add up to far more than their noise: interference
+ * in part of the band, which the limit on single samples does not stop. The channel average is
  * subtracted at each time (zero DM). The normalized samples are summed along
  * each trial DM's dispersion curve with delays rounded to the nearest sample, relative to the top
  * channel. Each sum is tried at several widths against a baseline from the samples on both sides,
@@ -199,6 +209,7 @@ private:
                        double& dm_range) const;
     int strongest_block(const Hit& hit) const;
     void band_occupancy(IncoherentCandidate& cand, const Hit& hit) const;
+    void band_parts(IncoherentCandidate& cand) const;
     const int8_t* row(int channel, int64_t sample) const {
         return &w[(size_t)channel * buffer_len + (size_t)(sample - base)];
     }
@@ -220,6 +231,7 @@ private:
     int64_t holdoff = 0;
     int64_t min_count = 0;    // updates a statistic needs before it is used
     int64_t close_after = 0;  // a candidate is reported this long after its first sample
+    int64_t mask_margin = 0;  // masked before a channel's mask
     int64_t ref_interval = 0; // between updates of the neighbours' reference
     int64_t lookahead = 0;    // sums needed after a window's start
 
@@ -230,6 +242,8 @@ private:
     std::vector<uint8_t> band_ok;    // 0 in a fixed masked band
     std::vector<ChannelState> state; // in the sample being added
     std::vector<float> scratch;      // normalized value in the sample being added
+    std::vector<uint8_t> noisy;      // fails its own test in the sample being added
+    std::vector<uint8_t> was_used;   // used in the last sample, before the cut of blocks
     // Drift test: the sum of the current block of normalized samples, and the running variance
     // of the block means in units of that of white noise.
     std::vector<double> block_sum, drift;

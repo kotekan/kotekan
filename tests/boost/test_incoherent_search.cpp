@@ -93,6 +93,9 @@ BOOST_AUTO_TEST_CASE(pulse_is_found_at_its_dm_and_time) {
     BOOST_CHECK(!c.undispersed);
     BOOST_CHECK_EQUAL(c.num_partners, 0);
     BOOST_CHECK(!c.one_band);
+    // The pulse fills the band: no part of it has much more S/N than the whole.
+    BOOST_CHECK_GT(c.part_ratio, 0.9);
+    BOOST_CHECK_LT(c.part_ratio, 1.15);
     BOOST_CHECK_GT(c.num_channels, 240);
     int filled = 0;
     for (float b : c.block_snr)
@@ -163,10 +166,12 @@ BOOST_AUTO_TEST_CASE(burst_in_part_of_the_band_is_cut) {
     BOOST_CHECK_EQUAL(num_candidates, 0);
 }
 
-// Trial DMs 50 to 250, for the burst of run().
+// Trial DMs 50 to 250, for the burst of run(). The burst's channels are masked 32 samples after
+// it begins, and a margin before the mask would take those too.
 static IncoherentSearchParams burst_params() {
     IncoherentSearchParams p = test_params();
     p.threshold = 6;
+    p.mask_margin_s = 0;
     p.dms.clear();
     for (double dm = 50; dm <= 250; dm += 2)
         p.dms.push_back(dm);
@@ -188,6 +193,13 @@ BOOST_AUTO_TEST_CASE(burst_without_dispersion_is_marked_at_every_dm) {
     BOOST_CHECK_GT(dm_high - dm_low, 150);
     // The burst is 16 samples wide in the search and has its S/N in the top two blocks.
     BOOST_CHECK_GT(one_band, (int)cands.size() / 2);
+}
+
+BOOST_AUTO_TEST_CASE(burst_is_masked_from_its_start_with_the_margin) {
+    IncoherentSearchParams p = burst_params();
+    BOOST_CHECK(!run(p, {}, true).empty());
+    p.mask_margin_s = IncoherentSearchParams().mask_margin_s;
+    BOOST_CHECK(run(p, {}, true).empty());
 }
 
 BOOST_AUTO_TEST_CASE(burst_over_a_narrow_range_of_dm_is_marked_in_the_middle) {
@@ -216,6 +228,8 @@ BOOST_AUTO_TEST_CASE(pulse_beside_a_burst_is_not_marked) {
     for (const IncoherentCandidate& c : cands) {
         if (c.dm == 100 && c.sample == 4200) {
             BOOST_CHECK(!c.undispersed);
+            // The pulse is in half of the band.
+            BOOST_CHECK_GT(c.part_ratio, 1.25);
             ++pulses;
         } else {
             marked += c.undispersed;

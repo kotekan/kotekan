@@ -254,6 +254,7 @@ BOOST_AUTO_TEST_CASE(finds_a_pulse_and_restarts_after_a_jump) {
     BOOST_CHECK(cands[0]["flags"].empty());
     BOOST_CHECK_EQUAL(cands[0]["partners"].get<int>(), 0);
     BOOST_CHECK_EQUAL(cands[0]["one_band"].get<bool>(), false);
+    BOOST_CHECK(cands[0].contains("part_ratio"));
     // GPS time is on: the arrival time follows from the sequence number at 5.12 us per sample.
     BOOST_CHECK_SMALL(cands[0]["unix_time"].get<double>()
                           - (1767225600 + cands[0]["fpga_seq"].get<int64_t>() * 5.12e-6),

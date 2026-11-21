@@ -24,6 +24,10 @@ const int mask_neighbours = 256;
 const double drift_threshold = 2.0;
 // Samples per block of the drift test
 const int drift_block = 64;
+// The tests of a channel see interference a few MHz wide only after tens of ms, and in its
+// strongest channels first. So a channel that fails a test takes mask_margin_channels on each
+// side with it, and a channel that becomes masked loses its last mask_margin_s too.
+const int mask_margin_channels = 2;
 // Updates of a running statistic before the update is clipped
 const int64_t unclipped_updates = 64;
 // An update of a running statistic is limited to this many sigma
@@ -59,6 +63,9 @@ const double block_fraction = 0.5;
 // than one_band_width.
 const int one_band_width = 8;
 const double one_band_ratio = 0.8;
+// part_snr: adjacent channels with data in a bin, and the limit on a bin's sum in sigma
+const int part_bin = 8;
+const double part_clip = 3.0;
 // A running statistic is used after this many seconds of updates
 const double settle_s = 1.0;
 // A candidate is reported this many seconds after its first sample above threshold
@@ -71,12 +78,13 @@ IncoherentSearch::IncoherentSearch(const IncoherentSearchParams& params) :
     p(params), F(params.num_freq), D((int)params.dms.size()), W((int)widths.size()),
     a(params.sample_s / params.tau_s) {
     if (F <= 0 || D == 0 || p.sample_s <= 0 || p.tau_s <= 0 || p.thermal <= 0 || p.dfreq_mhz <= 0
-        || p.freq0_mhz <= 0)
+        || p.freq0_mhz <= 0 || p.mask_margin_s < 0)
         throw std::invalid_argument("IncoherentSearch: invalid parameters");
 
     holdoff = std::llround(p.holdoff_s / p.sample_s);
     min_count = std::llround(settle_s / p.sample_s);
     close_after = std::llround(close_after_s / p.sample_s);
+    mask_margin = std::llround(p.mask_margin_s / p.sample_s);
     ref_interval = std::max<int64_t>(1, std::llround(ref_interval_s / p.sample_s));
 
     mean.assign(F, 0.0);
@@ -86,6 +94,8 @@ IncoherentSearch::IncoherentSearch(const IncoherentSearchParams& params) :
     block_sum.assign(F, 0.0);
     drift.assign(F, 0.0);
     scratch.assign(F, 0.0f);
+    noisy.assign(F, 0);
+    was_used.assign(F, 0);
     state.assign(F, ChannelState::missing);
     band_ok.assign(F, 1);
     for (int c = 0; c < F; ++c) {
@@ -178,6 +188,7 @@ bool IncoherentSearch::add_sample(const float* power) {
         const double x = power[c];
         state[c] = ChannelState::missing;
         scratch[c] = 0;
+        noisy[c] = 0;
         // A channel that comes back from no data starts its statistics again: its level may
         // have changed (another set of feeds, a restarted node).
         if (!(x > 0)) {
@@ -196,11 +207,8 @@ bool IncoherentSearch::add_sample(const float* power) {
             scratch[c] = (float)std::clamp(d / sd, -sample_clip, sample_clip);
             const bool quiet = sd <= mask_threshold * ref[c] * p.thermal * mean[c];
             const bool steady = drift[c] <= drift_threshold;
+            noisy[c] = band_ok[c] && !(quiet && steady);
             state[c] = band_ok[c] && quiet && steady ? ChannelState::used : ChannelState::masked;
-            if (state[c] == ChannelState::used) {
-                zero_dm += scratch[c];
-                ++n_used;
-            }
         }
         // A variance of zero must stay free to grow.
         const double dc = count[c] >= unclipped_updates && sd > 0
@@ -210,6 +218,27 @@ bool IncoherentSearch::add_sample(const float* power) {
         mean[c] += weight * dc;
         var[c] += weight * (dc * dc - var[c]);
         ++count[c];
+    }
+    for (int c = 0; c < F; ++c) {
+        if (!noisy[c])
+            continue;
+        const int lo = std::max(0, c - mask_margin_channels);
+        const int hi = std::min(F - 1, c + mask_margin_channels);
+        for (int k = lo; k <= hi; ++k)
+            if (state[k] == ChannelState::used)
+                state[k] = ChannelState::masked;
+    }
+    // The stored samples that a sum has already taken stay in that sum.
+    const int64_t held = ns - base;
+    const int64_t margin = std::min(mask_margin, held);
+    for (int c = 0; c < F; ++c) {
+        if (was_used[c] && state[c] == ChannelState::masked)
+            std::memset(&w[(size_t)c * buffer_len + held - margin], 0, margin);
+        was_used[c] = state[c] == ChannelState::used;
+        if (was_used[c]) {
+            zero_dm += scratch[c];
+            ++n_used;
+        }
     }
     if (n_used)
         zero_dm /= n_used;
@@ -456,6 +485,7 @@ void IncoherentSearch::close_events() {
         cand.one_band = cand.width >= one_band_width
                         && *std::max_element(cand.block_snr.begin(), cand.block_snr.end())
                                > one_band_ratio * cand.snr;
+        band_parts(cand);
         candidates.push_back(cand);
         e.reported = true;
     }
@@ -521,6 +551,92 @@ void IncoherentSearch::band_occupancy(IncoherentCandidate& cand, const Hit& hit)
         cand.block_snr[b] = n ? (float)(sum / std::sqrt((double)n * wd)) : 0.0f;
         cand.num_channels += n;
     }
+}
+
+// part_snr and part_ratio of a candidate with dm_index and sample set. Windows of every width
+// that start up to the width and 2 samples before the candidate and up to 2 after are tried.
+void IncoherentSearch::band_parts(IncoherentCandidate& cand) const {
+    const int32_t* const dl = &delay[(size_t)cand.dm_index * F];
+    const int wmax = widths.back();
+    const int span = 2 * wmax + 4;
+    const int64_t first = cand.sample - wmax - 2;
+    // For each bin of part_bin channels with data, the running sums over the span of the
+    // samples and of their number.
+    std::vector<int32_t> sum, num;
+    std::vector<int8_t> v(span);
+    int in_bin = 0;
+    for (int c = 0; c < F; ++c) {
+        bool data = false;
+        for (int k = 0; k < span; ++k) {
+            const int64_t s = first + k + dl[c];
+            v[k] = s >= base && s < ns ? *row(c, s) : 0;
+            data = data || v[k] != 0;
+        }
+        if (!data)
+            continue;
+        if (in_bin == 0) {
+            sum.resize(sum.size() + span + 1, 0);
+            num.resize(num.size() + span + 1, 0);
+        }
+        int32_t* const bs = &sum[sum.size() - span - 1];
+        int32_t* const bn = &num[num.size() - span - 1];
+        int32_t run = 0, count = 0;
+        for (int k = 0; k < span; ++k) {
+            run += v[k];
+            count += v[k] != 0;
+            bs[k + 1] += run;
+            bn[k + 1] += count;
+        }
+        in_bin = (in_bin + 1) % part_bin;
+    }
+    // A last bin with fewer channels is left out.
+    const int bins = (int)(sum.size() / (span + 1)) - (in_bin != 0);
+    const int parts = IncoherentCandidate::num_blocks;
+    cand.part_snr = 0;
+    cand.part_ratio = 0;
+    if (bins < parts)
+        return;
+    double full = 0, part = 0;
+    std::vector<double> cy(parts + 1, 0.0), cn(parts + 1, 0.0);
+    for (const int wd : widths) {
+        for (int o = wmax - wd; o <= wmax + 4; ++o) {
+            double total = 0, total_n = 0;
+            for (int b = 0; b < bins; ++b) {
+                const size_t at = (size_t)b * (span + 1) + o;
+                total += sum[at + wd] - sum[at];
+                total_n += num[at + wd] - num[at];
+            }
+            if (total_n == 0)
+                continue;
+            full = std::max(full, total / std::sqrt(total_n));
+            // A pulse with all its S/N in two of the parts has parts / 2 over the root of the
+            // number of bins times the S/N of the whole band in each bin: a bright pulse is not
+            // limited below that.
+            const double share = parts / 2 * total / std::sqrt(total_n * bins);
+            const double clip = std::max(part_clip * sample_scale, share);
+            double y = 0, yn = 0;
+            int edge = 1;
+            for (int b = 0; b < bins; ++b) {
+                const size_t at = (size_t)b * (span + 1) + o;
+                const double x = sum[at + wd] - sum[at];
+                const double n = num[at + wd] - num[at];
+                const double limit = clip * std::sqrt(n);
+                yn += n;
+                y += std::clamp(x, -limit, limit);
+                if (b + 1 == (int)((int64_t)edge * bins / parts)) {
+                    cy[edge] = y;
+                    cn[edge] = yn;
+                    ++edge;
+                }
+            }
+            for (int i = 0; i < parts; ++i)
+                for (int j = i + 2; j <= parts; ++j)
+                    if (cn[j] > cn[i])
+                        part = std::max(part, (cy[j] - cy[i]) / std::sqrt(cn[j] - cn[i]));
+        }
+    }
+    cand.part_snr = (float)(part / sample_scale);
+    cand.part_ratio = full > 0 ? (float)(part / full) : 0.0f;
 }
 
 int IncoherentSearch::strongest_block(const Hit& hit) const {
