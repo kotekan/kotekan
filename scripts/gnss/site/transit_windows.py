@@ -9,10 +9,11 @@ least --min-quiet-s with no GNSS satellite within --quiet-deg, no GuoWang satell
 
     transit_windows.py [--start 2026-10-30T18:00] [--hours 1] [--by-band] [--fetch]
 
-TLEs: GPS, Galileo, BeiDou and GLONASS from ~/.cache/kotekan_gps/tle_<group>.txt (kept fresh by
-tle_refresh.py's cron), GuoWang from the newest ~/.cache/guowang/hulianwang_*.tle plus --extra-tle
-(the uncatalogued GuoWang sets fitted on 2026-10-29). --fetch downloads the GuoWang group again
-when the newest cache is older than 2 h (CelesTrak serves a group once per 2 h per client).
+Elements: GPS, Galileo, BeiDou and GLONASS TLEs from ~/.cache/kotekan_gps/tle_<group>.txt (kept
+fresh by tle_refresh.py's cron), GuoWang from the newest CelesTrak OMM CSV
+~/.cache/guowang/gp_hulianwang_*.csv (gw_published_tle.py's cron, every 2 h; OMM carries the
+six-digit catalogue numbers TLEs cannot) plus any --extra-tle. --fetch downloads the GuoWang group
+again when the newest cache is older than 2 h (CelesTrak serves a group once per 2 h per client).
 GNSS TLEs a few days old place a satellite to ~0.05 deg; GuoWang TLEs drift ~1 s along track per
 day, so --fetch before a capture. The Sun and the radio sources use low-precision formulas
 (~0.01 deg, with first-order precession from J2000 for the sources): enough to flag them.
@@ -35,8 +36,7 @@ SITE = dict(lat=49.3199845, lon=-119.62262691, h=528.4)
 GNSS_TLE = os.path.expanduser("~/.cache/kotekan_gps")
 GROUPS = [("gps-ops", "G"), ("galileo", "E"), ("beidou", "C"), ("glo-ops", "R")]
 GW_CACHE = os.path.expanduser("~/.cache/guowang")
-GW_URL = "https://celestrak.org/NORAD/elements/gp.php?GROUP=hulianwang&FORMAT=tle"
-GW_HIDDEN = "/home/kvand/gnss/builds/scratch_bak_20261023_gnssmain/taua1029/hidden_guowang_20261029.tle"
+GW_URL = "https://celestrak.org/NORAD/elements/gp.php?GROUP=hulianwang&FORMAT=csv"
 SOURCES = {
     "Tau A": (83.633, 22.014),
     "Cyg A": (299.868, 40.734),
@@ -84,6 +84,23 @@ def read_tles(path):
     return out
 
 
+def read_sats(path):
+    """(name, Satrec) per satellite of a CelesTrak OMM CSV (.csv) or FORMAT=tle file."""
+    from sgp4.api import Satrec
+
+    if not path.endswith(".csv"):
+        return [(n, Satrec.twoline2rv(l1, l2)) for n, l1, l2 in read_tles(path)]
+    from sgp4 import omm
+
+    out = []
+    with open(path) as fh:
+        for row in omm.parse_csv(fh):
+            rec = Satrec()
+            omm.initialize(rec, row)
+            out.append((row["OBJECT_NAME"], rec))
+    return out
+
+
 def short_name(name, sys_):
     """G22, C06, ... where the CelesTrak name carries the PRN; the plain name otherwise."""
     if sys_ == "G" and "PRN" in name:
@@ -103,18 +120,20 @@ def newest(pattern):
 
 
 def fetch_guowang():
-    p = newest(os.path.join(GW_CACHE, "hulianwang_*.tle"))
+    p = newest(os.path.join(GW_CACHE, "gp_hulianwang_*.csv"))
     if p and time.time() - os.path.getmtime(p) < 7200.0:
         return p
     os.makedirs(GW_CACHE, exist_ok=True)
     with urllib.request.urlopen(GW_URL, timeout=30) as r:
         data = r.read().decode()
-    if data.count("\n1 ") < 10:
+    if not data.startswith("OBJECT_NAME") or data.count("\n") < 10:
         raise SystemExit(
-            "CelesTrak answered without TLEs (once per 2 h per client): %r" % data[:200]
+            "CelesTrak answered without elements (once per 2 h per client): %r"
+            % data[:200]
         )
     out = os.path.join(
-        GW_CACHE, "hulianwang_%s.tle" % time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+        GW_CACHE,
+        "gp_hulianwang_%s.csv" % time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()),
     )
     with open(out, "w") as fh:
         fh.write(data)
@@ -170,8 +189,8 @@ def separations(sats, t, bore):
     tt = ts.from_datetimes([dt.datetime.fromtimestamp(x, dt.timezone.utc) for x in t])
     site = wgs84.latlon(SITE["lat"], SITE["lon"], elevation_m=SITE["h"])
     out = np.empty((len(sats), len(t)))
-    for i, (name, l1, l2) in enumerate(sats):
-        alt, az, _ = (EarthSatellite(l1, l2, name, ts) - site).at(tt).altaz()
+    for i, (name, rec) in enumerate(sats):
+        alt, az, _ = (EarthSatellite.from_satrec(rec, ts) - site).at(tt).altaz()
         out[i] = np.degrees(
             np.arccos(np.clip(unit(az.degrees, alt.degrees) @ bore, -1.0, 1.0))
         )
@@ -212,13 +231,13 @@ def parse_args(argv=None):
     ap.add_argument(
         "--extra-tle",
         nargs="*",
-        default=[GW_HIDDEN] if os.path.exists(GW_HIDDEN) else [],
-        help="more GuoWang TLE files (default: the 2026-10-29 uncatalogued sets)",
+        default=[],
+        help="more GuoWang element files (TLE, or OMM .csv)",
     )
     ap.add_argument(
         "--fetch",
         action="store_true",
-        help="refresh the GuoWang TLEs (at most every 2 h)",
+        help="refresh the GuoWang elements (at most every 2 h)",
     )
     ap.add_argument(
         "--by-band", action="store_true", help="also quiet windows per F-engine lobe"
@@ -237,24 +256,24 @@ def forecast(args):
     for group, s in GROUPS:
         p = os.path.join(GNSS_TLE, "tle_%s.txt" % group)
         if os.path.exists(p):
-            tl = read_tles(p)
+            tl = read_sats(p)
             sats += tl
             sysof += [s] * len(tl)
             ages.append([group, round((t0 - os.path.getmtime(p)) / 86400.0, 2)])
     gw = (
         fetch_guowang()
         if args.fetch
-        else newest(os.path.join(GW_CACHE, "hulianwang_*.tle"))
+        else newest(os.path.join(GW_CACHE, "gp_hulianwang_*.csv"))
     )
     for p in ([gw] if gw else []) + list(args.extra_tle):
-        tl = [x for x in read_tles(p) if "DIGUI" in x[0]]
+        tl = [x for x in read_sats(p) if "DIGUI" in x[0]]
         sats += tl
         sysof += ["W"] * len(tl)
         ages.append(
             [os.path.basename(p), round((t0 - os.path.getmtime(p)) / 86400.0, 2)]
         )
     if not sats:
-        raise SystemExit("no TLEs found under %s or %s" % (GNSS_TLE, GW_CACHE))
+        raise SystemExit("no elements found under %s or %s" % (GNSS_TLE, GW_CACHE))
     sysof = np.array(sysof)
     sep = separations(sats, t, bore)
     gw_rows = sysof == "W"
