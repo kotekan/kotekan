@@ -33,10 +33,9 @@
 
 
 # DTV detector products from the X-engine halves (dtv.j2): one frame of dtv_blocks_per_frame
-# 8192-sample blocks per half. dtv_shared.j2 holds the shapes and ports for both sides, and
+# 8192-sample blocks per half. telescope.j2 holds the shapes and ports for both sides, and
 # dtv_enabled false leaves the DTV buffers and stages out.
-{% from "dtv_shared.j2" import dtv_enabled, dtv_blocks_per_frame, dtv_sent with context %}
-{% from "telescope.j2" import num_local_freq %}
+{% from "telescope.j2" import num_local_freq, dtv_enabled, dtv_blocks_per_frame, dtv_sent with context %}
 
 ---
 {% include "common.j2" %}
