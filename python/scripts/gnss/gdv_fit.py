@@ -22,6 +22,8 @@ import os
 import statistics as st
 import sys
 
+from gnss_pvt import code_resid_meas_m
+
 OUT = sys.argv[1]
 OBS = "/home/kvand/gnss/fixtures/obs/%s_%s.jsonl"
 CHAINS = {  # chain: chip length (m)
@@ -79,8 +81,9 @@ def load(chain, windows):
                 if abs(r.get("dll_trim_cpp") or 0.0) >= RAIL * CLAMP[chain]:
                     continue
                 # the residual without the map the broker applied (gnss_broker/gdvmap), so a
-                # refit measures the array, not the previous map's error
-                x = r["code_resid_m"] - (r.get("gdv_m") or 0.0)
+                # refit measures the array, not the previous map's error; x is the code phase
+                # residual (model minus measured range: a late arrival is negative)
+                x = -code_resid_meas_m(r) - (r.get("gdv_m") or 0.0)
                 ep[int(r["t"] // 10)][r["prn"]] = (x, r["az"], r["el"], r["t"])
         for k, d in ep.items():
             if len(d) < 5:

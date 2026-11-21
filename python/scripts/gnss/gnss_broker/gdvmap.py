@@ -12,9 +12,10 @@ The map is fitted per band on a sky grid (az 5 x el 2.5 deg below el 20, az 10 x
 jointly with one constant per satellite, relative to each epoch's median satellite, gauge
 median M(el >= 45) = 0. A constant common to every satellite is the receiver clock's, so the
 gauge costs nothing. Sign: + = LATE (a longer path), the sense of tropo_m and iono_m, so
-cp_predicted adds gdv_m to the range. The obs rows' code_resid_m (cp_phys - cp_model, negative =
-late) loses it once applied; each row carries gdv_m so the pre-map residual is code_resid_m -
-gdv_m.
+cp_predicted adds gdv_m to the range. The obs rows' code_resid_m (measured minus model range,
+positive = late; gnss_pvt.code_resid_meas_m also reads rows from before 2026-11-21, which carry
+the opposite sign) loses it once applied; each row carries gdv_m so the pre-map residual is
+code_resid_m + gdv_m.
 
 Lookup is a Gaussian-kernel mean over the fitted cells' centres on the sphere (KERNEL_DEG), so
 the term is smooth as a satellite crosses cell edges and the two grid resolutions join without a

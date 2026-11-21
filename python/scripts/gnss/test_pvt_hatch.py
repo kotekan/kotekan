@@ -27,11 +27,31 @@ def rows(n, code_sd, arc=1, t0=0.0, slope=0.0, const=-4.6e12, wrap=False):
         code = truth(t) + slope * t + random.gauss(0.0, code_sd)
         if wrap:
             code += L_M * (i % 2)  # alternate rows one period apart
-        out.append({"t": t, "code_resid_m": code, "carr_resid_m": carr, "adr_arc": arc})
+        out.append(
+            {
+                "t": t,
+                "code_resid_m": code,
+                "code_resid_sign": gnss_pvt.CODE_RESID_SIGN,
+                "carr_resid_m": carr,
+                "adr_arc": arc,
+            }
+        )
     return out
 
 
 class T(unittest.TestCase):
+    def test_a_row_without_the_sign_marker_is_negated(self):
+        new = {"code_resid_m": 2.5, "code_resid_sign": gnss_pvt.CODE_RESID_SIGN}
+        self.assertEqual(gnss_pvt.code_resid_meas_m(new), 2.5)
+        self.assertEqual(gnss_pvt.code_resid_meas_m({"code_resid_m": 2.5}), -2.5)
+        self.assertIsNone(gnss_pvt.code_resid_meas_m({"code_resid_m": None}))
+        old = [dict(r, code_resid_m=-r["code_resid_m"]) for r in rows(90, code_sd=5.0)]
+        for r in old:
+            del r["code_resid_sign"]
+        self.assertEqual(
+            gnss_pvt.hatch_smooth(old, 90.0), gnss_pvt.hatch_smooth(rows(90, 5.0), 90.0)
+        )
+
     def test_smoothing_beats_the_single_row(self):
         r = rows(90, code_sd=5.0)
         val, n, sd, method = gnss_pvt.hatch_smooth(r, 90.0)

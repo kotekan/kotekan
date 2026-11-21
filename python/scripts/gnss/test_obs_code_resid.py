@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """The observables row's code residual: the tracker's range form (receiver clock left in) while
-it is fresh, else the search's clock-free dr_integ, and code_resid_clk says which.
+it is fresh, else the search's clock-free dr_integ, and code_resid_clk says which. Both are
+measured minus model range, the negative of the broker's phase residuals.
 
 CMC pairs code_resid with a carrier residual that carries the receiver clock, so a row flagged
 clock-in whose residual is the clock-free dr_integ mixes the two forms.
@@ -25,7 +26,7 @@ class TestCodeResid(unittest.TestCase):
             CHIP_HZ,
         )
         self.assertEqual((src, clk), ("trk", True))
-        self.assertAlmostEqual(m, 1e-7 * C_LIGHT)
+        self.assertAlmostEqual(m, -1e-7 * C_LIGHT)
 
     def test_stale_tracker_falls_back_clock_free(self):
         m, src, clk = code_resid(
@@ -38,7 +39,7 @@ class TestCodeResid(unittest.TestCase):
             CHIP_HZ,
         )
         self.assertEqual((src, clk), ("dr_integ", False))
-        self.assertAlmostEqual(m, 0.3 * C_LIGHT / CHIP_HZ)
+        self.assertAlmostEqual(m, -0.3 * C_LIGHT / CHIP_HZ)
 
     def test_no_residual_is_not_clock_in(self):
         self.assertEqual(

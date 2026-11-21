@@ -4,9 +4,11 @@
 One JSONL row per satellite per band per epoch, carrying the two ranging observables and
 the geometry needed to interpret them:
 
-    CODE   code_resid_m: the tracker's model-removed code range (src trk), else the
+    CODE   code_resid_m: the tracker's code range minus the model range (src trk), else the
            search's (dr_integ); plus the record's raw (cp_rec_chips, dop_rec_hz, rec_hop)
-           triple and dll_disc
+           triple and dll_disc. Measured minus model, as carr_resid_m, since 2026-11-21
+           (code_resid_sign "meas-model"); rows without code_resid_sign carry the opposite
+           sign (gnss_pvt.code_resid_meas_m reads both)
     PHASE  adr_cycles and the fleet ADR (fadr_*), each with its arc id
     POWER  cn0_coh_dbhz, cn0_inc_dbhz, cn0_prompt_dbhz, cn0_kcoh_dbhz, sig
     GEOM   az, el, range_m, range_rate_mps, sat_clk_s  (BRDC, evaluated at the epoch)
@@ -47,6 +49,7 @@ from gnss_ephemeris import (
     predict_all,
 )
 from gnss_brdc_supply import cached_brdc
+from gnss_pvt import CODE_RESID_SIGN
 
 # The F-engine hop: an emit's epoch is frame0 + hop * SAMPLES_PER_HOP / SAMPLE_RATE_HZ.
 SAMPLES_PER_HOP = 16384
@@ -104,15 +107,19 @@ def code_resid(r, chip_rate_hz):
     """(code_resid_m, src, clk_in) for a broker row: the tracker's range-form residual
     (trk_range_s, receiver clock left in) while it is at most INTEG_MAX_AGE_S old, else the
     search's (dr_integ_chips, clock removed) under the same age bar, else (None, None, False).
-    clk_in is True only for the tracker's form."""
+    clk_in is True only for the tracker's form.
+
+    Measured minus model range. The broker's residuals are code phase minus the model's, and
+    the model's phase is the transmit time (cp_predicted), so a longer range is a smaller
+    phase: the range residual is their negative."""
     ts = r.get("trk_range_s")
     ta = r.get("trk_resid_age_s")
     if ts is not None and (ta is None or ta <= INTEG_MAX_AGE_S):
-        return float(ts) * C_LIGHT, "trk", True
+        return -float(ts) * C_LIGHT, "trk", True
     ic = r.get("dr_integ_chips")
     ia = r.get("dr_integ_age_s")
     if ic is not None and (ia is None or ia <= INTEG_MAX_AGE_S):
-        return float(ic) * C_LIGHT / chip_rate_hz, "dr_integ", False
+        return -float(ic) * C_LIGHT / chip_rate_hz, "dr_integ", False
     return None, None, False
 
 
@@ -595,7 +602,8 @@ def main():
                     "adr_m": (adr * lam) if adr is not None else None,
                     "adr_arc": arc,
                     "adr_records": nrec,
-                    "code_resid_m": code_resid_m,  # model-removed code range (CMC input)
+                    "code_resid_m": code_resid_m,  # measured minus model range (CMC input)
+                    "code_resid_sign": CODE_RESID_SIGN,
                     # the array code delay in that model (gnss_broker/gdvmap, m, + = late):
                     # code_resid_m - gdv_m is the residual without it
                     "gdv_m": r.get("trk_gdv_m") if code_resid_src == "trk" else None,

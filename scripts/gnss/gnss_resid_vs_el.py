@@ -18,6 +18,7 @@ sys.path.insert(
     ),
 )
 import gnss_atmos as A  # noqa: E402
+from gnss_pvt import code_resid_meas_m  # noqa: E402
 
 SITE = (
     49.32001414,
@@ -97,14 +98,14 @@ for band in a.bands:
             if r.get("code_resid_src") != "trk" or not r.get("code_resid_clk"):
                 continue
             el = r.get("el")
-            cr = r.get("code_resid_m")
+            cr = code_resid_meas_m(r)
             if el is None or cr is None or el < 5.0:
                 continue
             if not (_h0 <= (r["t"] % 86400.0) / 3600.0 < _h1):
                 continue
-            # cr = measured - model: an unmodelled delay makes it negative; add the model back
+            # cr = measured - model: an unmodelled delay is positive; subtract the model
             rows.append(
-                (el, cr + atmos(band, el, r.get("az", 0.0), r["t"]), r["prn"], r["t"])
+                (el, cr - atmos(band, el, r.get("az", 0.0), r["t"]), r["prn"], r["t"])
             )
     # code_resid_m carries the receiver clock (code_resid_clk): remove the per-10-s median across
     # satellites, keeping buckets with >= 4 PRNs, then the elevation dependence is what is left.

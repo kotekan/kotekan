@@ -2,10 +2,11 @@
 """Step 0b re-survey (docs/CHORD_JOINT_TRACKING.md 6.3): fit the station position error from the tracker code residual with the troposphere
 applied. Model per row: resid = clk(epoch) + dU*sin(el) + dN*cos(el)cos(az) + dE*cos(el)sin(az).
 The per-epoch clock is removed as a fixed effect (within-10-s demeaning of y and the regressors).
-Sign: resid = measured - model in metres (a delay is negative, verified by the troposphere flattening
-the low-elevation bins), i.e. resid = r_model - r_true = -(d . u) with d = model station - true station
-(ENU) and u the unit vector to the satellite. The printed dU/dN/dE are therefore d = MODEL - TRUE: the
-model station sits that far up/north/east of the true one, and the correction is to SUBTRACT them.
+Sign: resid = measured - model range in metres (a delay is positive; gnss_pvt.code_resid_meas_m also
+reads rows from before 2026-11-21, written with the opposite sign), i.e. resid = r_true - r_model = d . u
+with d = model station - true station (ENU) and u the unit vector to the satellite. The printed dU/dN/dE
+are therefore d = MODEL - TRUE: the model station sits that far up/north/east of the true one, and the
+correction is to SUBTRACT them.
 Gate after a position change: dU, dN, dE within +-2 m of 0 on the next day's obs.
 usage: gnss_resurvey.py OBS_DIR YYYYMMDD band [band ...]"""
 import argparse
@@ -24,6 +25,7 @@ sys.path.insert(
     ),
 )
 import gnss_atmos as ATM  # noqa: E402
+from gnss_pvt import code_resid_meas_m  # noqa: E402
 
 SITE = (
     49.32001414,
@@ -87,13 +89,13 @@ for band in a.bands:
                 continue
             if r.get("code_resid_src") != "trk" or not r.get("code_resid_clk"):
                 continue
-            el, az, cr = r.get("el"), r.get("az"), r.get("code_resid_m")
+            el, az, cr = r.get("el"), r.get("az"), code_resid_meas_m(r)
             if el is None or az is None or cr is None or el < 7.0:
                 continue
             if not (_h0 <= (r["t"] % 86400.0) / 3600.0 < _h1):
                 continue
             rows.append(
-                (int(r["t"] // 10), r["prn"], el, az, cr + _atmos(el, az, r["t"]))
+                (int(r["t"] // 10), r["prn"], el, az, cr - _atmos(el, az, r["t"]))
             )
     # fixed effects: demean within epoch buckets with >= 4 PRNs
     by = {}
@@ -127,7 +129,7 @@ for band in a.bands:
         res = y - x @ sol
         s = 1.4826 * np.median(np.abs(res[m] - np.median(res[m])))
         m = np.abs(res) < 3 * s
-    dU, dN, dE = -sol  # d = model - true
+    dU, dN, dE = sol  # d = model - true
     print(
         "%-8s %5s UTC rows %6d  model-true: dU %+6.2f m  dN %+6.2f m  dE %+6.2f m"
         "   (robust rms %.2f m, %d used)%s"

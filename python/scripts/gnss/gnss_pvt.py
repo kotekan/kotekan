@@ -1,7 +1,8 @@
 """Single-point position (PVT self-survey) from the code observable.
 
 The obs logs carry a per-satellite `code_resid_m` (measured code range minus the model range
-predicted at the configured position) and `az`/`el`. That residual is a linearized
+predicted at the configured position; rows written before 2026-11-21 carry the opposite sign,
+see code_resid_meas_m) and `az`/`el`. That residual is a linearized
 single-point-position observation about the configured position:
 
     code_resid_i  ~=  -e_i . dx  +  c*dt_group  +  (iono_i + multipath_i + noise_i)
@@ -25,6 +26,17 @@ import numpy as np
 C_LIGHT = 299792458.0
 WGS84_A = 6378137.0
 WGS84_E2 = 6.69437999014e-3
+# The obs rows' code_resid_m has been measured minus model range since 2026-11-21, marked by
+# code_resid_sign; rows without the marker were written as model minus measured.
+CODE_RESID_SIGN = "meas-model"
+
+
+def code_resid_meas_m(r):
+    """An obs-log row's code residual as measured minus model range (m), or None."""
+    c = r.get("code_resid_m")
+    if c is None:
+        return None
+    return float(c) if r.get("code_resid_sign") == CODE_RESID_SIGN else -float(c)
 
 
 def _llh_to_ecef(lat, lon, alt):
@@ -193,7 +205,7 @@ def hatch_smooth(rows, window_s, wrap_m=None):
         (
             r
             for r in rows
-            if r.get("code_resid_m") is not None and r.get("t") is not None
+            if code_resid_meas_m(r) is not None and r.get("t") is not None
         ),
         key=lambda r: r["t"],
     )
@@ -208,10 +220,10 @@ def hatch_smooth(rows, window_s, wrap_m=None):
 
     t_new, arc = new["t"], _arc(new)
     sel = [r for r in rows if r["t"] >= t_new - window_s and _arc(r) == arc]
-    c_new = float(new["code_resid_m"])
+    c_new = code_resid_meas_m(new)
 
     def _code(r):
-        c = float(r["code_resid_m"])
+        c = code_resid_meas_m(r)
         return c - wrap_m * round((c - c_new) / wrap_m) if wrap_m else c
 
     if len(sel) < 2:
