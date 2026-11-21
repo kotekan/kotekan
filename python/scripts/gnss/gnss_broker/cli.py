@@ -1456,16 +1456,6 @@ def build_parser(description):
         "need it.",
     )
     ap.add_argument(
-        "--carrier-resid-gain",
-        type=float,
-        default=0.0,
-        help="close each satellite's carrier on the combiner's carrier_hz_resid: the seed's "
-        "carrier_trim_hz moves by gain x residual each poll, clamped to --carrier-max-hz. "
-        "For satellites the rrate rows (--rrate-command) never see cohere: GuoWang's, whose "
-        "TLE Doppler is 10-25 ppb off and whose data-modulated records do not cohere until "
-        "it is removed. Probes are not commanded. 0 = off.",
-    )
-    ap.add_argument(
         "--rrate-command",
         action="store_true",
         help="close the carrier loop: each seed carries carrier_trim_hz, the joint "
