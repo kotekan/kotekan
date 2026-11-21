@@ -200,17 +200,21 @@ class Ephemeris:
     def add(self, sf):
         self.pages.setdefault(self.issue_of(sf.sow), {})[sf.page] = sf.payload
 
+    def words(self, toe):
+        """The words of issue `toe`, which must have all four pages."""
+        p = self.pages[toe]
+        w = {
+            k: (_s if sg else _u)(p[pg], first, width) * scale
+            for k, (pg, first, width, sg, scale) in WORDS.items()
+        }
+        w["toe"] = toe
+        return w
+
     def latest(self):
         """(toe, words) of the newest issue with all four pages, or None."""
         for toe in sorted(self.pages, reverse=True):
-            p = self.pages[toe]
-            if all(k in p for k in (1, 2, 3, 4)):
-                w = {
-                    k: (_s if sg else _u)(p[pg], first, width) * scale
-                    for k, (pg, first, width, sg, scale) in WORDS.items()
-                }
-                w["toe"] = toe
-                return toe, w
+            if all(k in self.pages[toe] for k in (1, 2, 3, 4)):
+                return toe, self.words(toe)
         return None
 
     def position(self, w, sow):
