@@ -1236,24 +1236,26 @@ class GpsSkyResource(resource.Resource):
     # A TLE satellite stands in for a broker-sky satellite on the hover path only within this
     # angle of the broker's position for it now.
     TRACK_MATCH_DEG = 3.0
-    # The table gw_ephem_table.py writes (its DEFAULT_OUT; the broker's gw-table), which names
-    # the TLE file the broker's GuoWang sky was propagated from, and the hidden DIGUI TLEs it
-    # adds (guowang_passes.CACHE_DIR).
+    # The table gw_ephem_table.py writes (its DEFAULT_OUT; the broker's gw-table, --gw-table),
+    # which names the TLE file the broker's GuoWang sky was propagated from and the extra TLEs
+    # it adds (extra_tle), or else the hidden DIGUI TLEs (guowang_passes.CACHE_DIR).
     GW_TABLE = "/var/tmp/gnss-guowang/gw_ephem.json"
     GW_HIDDEN_TLE = os.path.expanduser("~/.cache/guowang/hidden_digui.tle")
 
     def _gw_sats(self):
         """{index: EarthSatellite} for every GuoWang TLE behind the broker's W sky, reloaded
-        when the table names a new file."""
+        when the table names a new file or the extra file changes."""
         from skyfield.api import load
 
         with open(self.GW_TABLE) as f:
-            path = json.load(f)["tle"]
-        if self._gw_tle[0] != path:
-            sats = load.tle_file(path, reload=False)
-            if os.path.exists(self.GW_HIDDEN_TLE):
-                sats += load.tle_file(self.GW_HIDDEN_TLE, reload=False)
-            self._gw_tle = (path, dict(enumerate(sats)))
+            doc = json.load(f)
+        extra = doc.get("extra_tle") or self.GW_HIDDEN_TLE
+        key = (doc["tle"], extra, os.path.exists(extra) and os.path.getmtime(extra))
+        if self._gw_tle[0] != key:
+            sats = load.tle_file(doc["tle"], reload=False)
+            if os.path.exists(extra):
+                sats += load.tle_file(extra, reload=False)
+            self._gw_tle = (key, dict(enumerate(sats)))
         return self._gw_tle[1]
 
     def track(self, tag, prn):
@@ -1813,6 +1815,12 @@ def main():
         "for the viewer panel; a file older than 120 s is dropped. Default: %(default)s",
     )
     gg.add_argument(
+        "--gw-table",
+        default=GpsSkyResource.GW_TABLE,
+        help="the broker's GuoWang table (gw-table), for the hover paths of GuoWang satellites. "
+        "Default: %(default)s",
+    )
+    gg.add_argument(
         "--pvt-obs-globs",
         default="",
         help="comma-separated globs of obs-log jsonl (code_resid_m + az/el) the PVT "
@@ -1937,6 +1945,7 @@ def main():
             glonass_sigids=_glo_sigids,
             broker=(args.kotekan_host, args.kotekan_rest_port),
         )
+        sky.GW_TABLE = args.gw_table
         root.putChild(b"gps_sky", sky)
         root.putChild(b"gps_track", GpsTrackResource(sky))
         root.putChild(
