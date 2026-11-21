@@ -458,6 +458,7 @@ class JointReceiverState:
             self._rr_reject_run.pop(k, None)
         self._remove_rows(rows)
 
+    @_locked
     def forget(self, key):
         """Remove one satellite's b_sat and rrate rows, as _drop and _drop_rr do for stale ones:
         for a code another satellite now flies (GuoWang), whose rows describe the last one.
