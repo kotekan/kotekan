@@ -42,15 +42,18 @@ const double block_clip = 6.0;
 const int merge_slack = 20;
 // A partner of a candidate is another one more than partner_dm from it in DM, of at least
 // far_fraction of its S/N, that fits the same arrival without dispersion and has its strongest
-// block of channels within far_blocks of the candidate's. A candidate is undispersed when it
-// has far_candidates partners and they cover, with it, more than far_dm in DM. A pulse's own
-// candidates at neighbouring DMs lie within partner_dm, and two pulsars in the beam within
-// far_dm of each other.
+// block of channels where the candidate is strong too: within far_blocks of a block in which
+// the candidate has block_fraction of its own highest S/N. Two sources of interference at once
+// can put a candidate's highest S/N in another block than its partners'. A candidate is
+// undispersed when it has far_candidates partners and they cover, with it, more than far_dm
+// in DM. A pulse's own candidates at neighbouring DMs lie within partner_dm, and two pulsars
+// in the beam within far_dm of each other.
 const double partner_dm = 20.0;
 const double far_dm = 50.0;
 const double far_fraction = 0.5;
 const int far_candidates = 2;
 const int far_blocks = 1;
+const double block_fraction = 0.5;
 // A candidate is described as one_band when it is at least one_band_width samples wide and one
 // block of channels has more than one_band_ratio times its S/N. A pulse that fills the band has
 // a quarter of its S/N in each of 16 blocks.
@@ -444,10 +447,10 @@ void IncoherentSearch::close_events() {
         cand.width = widths[e.best.width_index];
         cand.sample = e.best.sample;
         cand.num_hits = e.num_hits;
-        double dm_range = 0;
-        cand.num_partners = count_partners(e, dm_range);
-        cand.undispersed = cand.num_partners >= far_candidates && dm_range > far_dm;
         band_occupancy(cand, e.best);
+        double dm_range = 0;
+        cand.num_partners = count_partners(e, cand.block_snr, dm_range);
+        cand.undispersed = cand.num_partners >= far_candidates && dm_range > far_dm;
         cand.one_band = cand.width >= one_band_width
                         && *std::max_element(cand.block_snr.begin(), cand.block_snr.end())
                                > one_band_ratio * cand.snr;
@@ -466,15 +469,23 @@ void IncoherentSearch::close_events() {
 // DM that they and this event cover. The search places such an arrival earlier at the top
 // channel the higher the DM: by nothing when it is at the top of the band, by the whole sweep
 // between the two DMs when it is at the bottom. The arrival is in one part of the band, so the
-// others have their S/N where this event has it.
-int IncoherentSearch::count_partners(const Event& e, double& dm_range) const {
+// others have their S/N where this event, with block_snr along its curve, has S/N too.
+int IncoherentSearch::count_partners(
+    const Event& e, const std::array<float, IncoherentCandidate::num_blocks>& block_snr,
+    double& dm_range) const {
     const double dm = p.dms[e.best.dm_index];
+    const float strong = block_fraction * *std::max_element(block_snr.begin(), block_snr.end());
     double lowest = 0, highest = 0; // of the partners' DMs, relative to this event's
     int n = 0;
     for (const Event& other : events) {
         const double ddm = p.dms[other.best.dm_index] - dm;
-        if (std::abs(ddm) <= partner_dm || other.best.snr < far_fraction * e.best.snr
-            || std::abs(other.block - e.block) > far_blocks)
+        if (std::abs(ddm) <= partner_dm || other.best.snr < far_fraction * e.best.snr)
+            continue;
+        bool shared = false;
+        for (int b = std::max(0, other.block - far_blocks);
+             b <= std::min(IncoherentCandidate::num_blocks - 1, other.block + far_blocks); ++b)
+            shared = shared || block_snr[b] >= strong;
+        if (!shared)
             continue;
         const int64_t earlier =
             ddm > 0 ? e.best.sample - other.best.sample : other.best.sample - e.best.sample;
