@@ -4145,13 +4145,14 @@
    "ref_input": 116,
    "drift_ns_s": -10.92,
    "note": "inferred satellite: theta and ppb on its TLE moved +0.832 s along track (fitted to the carrier)",
-   "last_observed_utc": "2026-11-07T14:26:17Z",
-   "last_checked_utc": "2026-11-07T14:26:17Z",
-   "last_checked_sep_deg": 2.31,
-   "passes_found": 1,
+   "last_observed_utc": "2026-11-21T10:26:20Z",
+   "last_checked_utc": "2026-11-21T10:26:20Z",
+   "last_checked_sep_deg": 3.07,
+   "passes_found": 2,
    "passes_silent": 0,
    "passes": [
-    ["2026-11-07T14:26:17Z", 2.31, true]
+    ["2026-11-07T14:26:17Z", 2.31, true],
+    ["2026-11-21T10:26:20Z", 3.07, true]
    ]
   },
   "DIGUI-192": {
