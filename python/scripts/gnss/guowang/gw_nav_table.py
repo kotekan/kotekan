@@ -16,8 +16,13 @@ send only fill pages, which are skipped. A TLE segment is cut around the decoded
 still covers the rest of the pass. The output is rewritten (atomically) whenever an issue or the
 TLE table changes; the broker reloads it by mtime (gw-table).
 
+With --decode-health-file it also exports each code's decode state for the viewer's
+decode-health panel (decode_health.py): subframes decoded, whether its symbols decode now, and
+whether a broadcast arc is in the table.
+
     gw_nav_table.py --tle-table gw_ephem_tle.json --out gw_ephem.json [--clock-offset-us 0]
                     [--symbols http://localhost:12048/gw_symbols] [--every 5] [--log PATH]
+                    [--decode-health-file PATH]
 """
 
 import argparse
@@ -34,6 +39,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(HERE, ".."))
 
+import decode_health  # noqa: E402
 import guowang1202_nav as gn  # noqa: E402
 from gnss_ephemeris import BDT_GPST  # noqa: E402
 
@@ -176,7 +182,14 @@ def main():
     )
     ap.add_argument("--step-s", type=float, default=10.0)
     ap.add_argument("--log", help="append each decoded subframe here (jsonl)")
+    ap.add_argument(
+        "--decode-health-file", help="the viewer's decode-health JSON for this decoder"
+    )
     a = ap.parse_args()
+    dhw = decode_health.DecodeHealthWriter(
+        a.decode_health_file, chain="gw_1202", sys="W", log=print
+    )
+    n_sf = {}  # prn -> subframes decoded
     offset_s = a.clock_offset_us * 1e-6
     ephs, seen = {}, set()
     tle, tle_mtime, written = None, None, None
@@ -197,15 +210,18 @@ def main():
         except Exception as e:
             print("symbols unreadable: %s" % e, flush=True)
             rows = []
+        synced = set()
         for row in rows:
             prn = row["prn"]
             if row["snr_db"] < a.min_snr:
                 continue
+            synced.add(prn)
             sym = np.array([b[1] for b in row["nav_obs"]["bits"]], dtype=float)
             for sf in gn.decode_subframes(sym):
                 if (prn, sf.sow) in seen:
                     continue
                 seen.add((prn, sf.sow))
+                n_sf[prn] = n_sf.get(prn, 0) + 1
                 # The shell is the sender's, found once an issue is complete (nav_record).
                 if not is_fill(sf):
                     ephs.setdefault(prn, gn.Ephemeris(shell=50)).add(sf)
@@ -246,6 +262,17 @@ def main():
                     continue
                 nav.append(nav_record(prn, eph, w, offset_s, a.step_s, like))
                 keys.append((prn, toe))
+        with_arc = {k[0] for k in keys}
+        for prn in n_sf:
+            dhw.observe(
+                "GW_1202",
+                prn,
+                time.time(),
+                count=n_sf[prn],
+                synced=prn in synced,
+                eph=prn in with_arc,
+            )
+        dhw.flush(time.time())
         state = (tle_mtime, tuple(keys))
         if state != written:
             write(build(tle, nav), a.out)

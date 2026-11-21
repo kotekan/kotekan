@@ -34,6 +34,7 @@ SIGNAL_BAND = {
     "BDS_B1C_BCNAV1": ("C", "L1"),
     "BDS_B2A_BCNAV2": ("C", "L5"),
     "BDS_B2B_BCNAV3": ("C", "L5"),
+    "GW_1202": ("W", "L5"),
 }
 
 
