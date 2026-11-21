@@ -65,6 +65,13 @@ if(DPDK_FOUND AND ("${USE_DPDK}" STREQUAL "AUTO" OR "${USE_DPDK}" STREQUAL "ON")
     target_link_libraries(kotekan_libs INTERFACE kotekan_dpdk ${DPDK_LIBRARIES})
 endif()
 
+# ibverbs selection is handled in FeatureIbverbs.cmake. Only include/link when libibverbs was found
+# and the toggle is AUTO or ON.
+if(IBVERBS_FOUND AND ("${USE_IBVERBS}" STREQUAL "AUTO" OR "${USE_IBVERBS}" STREQUAL "ON"))
+    add_subdirectory(ibverbs)
+    target_link_libraries(kotekan_libs INTERFACE kotekan_ibverbs ${IBVERBS_LDFLAGS})
+endif()
+
 # HDF5 stuff
 if(HDF5_FOUND
    AND HighFive_FOUND

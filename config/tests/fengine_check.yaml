@@ -1,0 +1,69 @@
+---
+#
+# The X-engine side of the F-engine test: receives the spectra spark_fengine.yaml (spark) emits
+# and checks them against the tones crs_dengine_sim.yaml injects. Both ADCs arrive interleaved
+# on one port, so the checker runs in wire mode, packet by packet.
+#
+# Needs CAP_NET_RAW on the kotekan binary after every build:
+#     sudo setcap cap_net_raw+ep <build>/kotekan/kotekan
+# and buffer_depth * 8 free 2 MB huge pages. Runs on cobalt alongside the simulator: start
+# it with a REST port of its own, kotekan -b 0.0.0.0:12050 -c <this file>.
+#
+type: config
+log_level: INFO
+
+cpu_affinity: [8, 9]
+
+telescope:
+    name: fake
+
+interface: ens2f0np0
+dst_ip: 10.0.0.2
+dst_port: 11000
+
+# Output CRS packets: 64 byte headers, 8192 4+4-bit bins.
+header_size: 64
+header_slot: 128
+payload_size: 8192
+payload_slot: 8192
+packets_per_frame: 2048
+buffer_depth: 16
+queue_depth: 8192
+poll_mode: event
+
+# Must match the F-engine and the simulator.
+fft_length: 134217728
+bins_per_packet: 8192
+
+header_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: packets_per_frame * header_slot
+payload_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: packets_per_frame * payload_slot
+    use_hugepages: true
+    numa_node: 0
+
+recv:
+    kotekan_stage: ibvUdpRecv
+    cpu_affinity: [8]
+    header_buf: header_buffer
+    payload_buf: payload_buffer
+
+check:
+    kotekan_stage: fEngineCheck
+    cpu_affinity: [9]
+    header_buf: header_buffer
+    payload_buf: payload_buffer
+    wire_mode: true
+    num_adcs: 2
+    # The simulator's tones of 5 and 9 cycles per packet: bins 5 * 32768 and 9 * 32768.
+    tone_bins: [163840, 294912]
+    # round(gain * tone_amplitude / 2048) = round(8 * 1000 / 2048) = 4.
+    expected_reals: [4, 4]
+    tolerance: 1
+    num_windows: 12
+    # A window the F-engine noise-filled end to end (a drop burst) zeroes its tone packet.
+    max_bad_windows: 8

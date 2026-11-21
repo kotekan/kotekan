@@ -1,0 +1,270 @@
+---
+#
+# The whole F-engine demo on the spark alone, over the NIC: the ConnectX-7 hairpins raw
+# packets whose destination MAC is the port's own, so one process runs
+#
+#   crsPacketGen -> ibvUdpSend ~~NIC~~ 2x (ibvUdpRecv -> crsWindowAlign -> cudaSparkFEngine +
+#   crsHeaderGen -> ibvUdpSend) ~~NIC~~ ibvUdpRecv -> fEngineCheck (wire mode)
+#
+# and exits TEST_PASSED once 8 windows per ADC came back correct. The D-engine is paced to
+# 20 Gb/s (about a quarter of real time); crs_dengine_sim.yaml + spark_fengine.yaml +
+# fengine_check.yaml run the same thing at full rate across cobalt and spark.
+#
+# Needs CAP_NET_RAW on the kotekan binary after every build:
+#     sudo setcap cap_net_raw+ep <build>/kotekan/kotekan
+# about 300 free 2 MB huge pages, and a CUDA build (-DUSE_CUDA=ON
+# -DCMAKE_CUDA_ARCHITECTURES=121).
+#
+type: config
+log_level: INFO
+
+cpu_affinity: [0, 1, 16, 17]
+
+telescope:
+    name: fake
+
+interface: enp1s0f0np0
+own_mac: &own_mac "30:c5:99:3f:09:1e"
+dst_ip: 10.0.0.1
+
+# Input CRS packets: 4096 12-bit samples, 6208 bytes on the wire.
+header_size: 64
+header_slot: 128
+payload_size: 6144
+payload_slot: 6144
+packets_per_frame: 1024
+samples_per_packet: 4096
+queue_depth: 8192
+poll_mode: event
+
+fft_length: 16777216
+fft_precision: fp16
+gain: 8
+bins_per_packet: 8192
+
+# --- D-engine simulator ----------------------------------------------------------------------
+
+sim_header_buffer:
+    kotekan_buffer: standard
+    num_frames: 16
+    frame_size: packets_per_frame * header_slot
+sim_payload_buffer:
+    kotekan_buffer: standard
+    num_frames: 16
+    frame_size: packets_per_frame * payload_slot
+    use_hugepages: true
+    numa_node: 0
+
+sim:
+    kotekan_stage: crsPacketGen
+    cpu_affinity: [2]
+    header_buf: sim_header_buffer
+    payload_buf: sim_payload_buffer
+    src_mac: *own_mac
+    dst_mac: *own_mac
+    src_ip: 10.0.0.1
+    dst_ip: 10.0.0.1
+    src_port: 4000
+    dst_port_base: 10000
+    num_adcs: 2
+    # Tones of 5 and 9 cycles per packet: output bins 5 * 4096 = 20480 and 9 * 4096 = 36864.
+    tone_bin: [5, 9]
+    tone_amplitude: [1000, 1000]
+    noise_rms: 0
+    num_frames: -1
+
+sim_send:
+    kotekan_stage: ibvUdpSend
+    cpu_affinity: [3]
+    header_buf: sim_header_buffer
+    payload_buf: sim_payload_buffer
+    # 20 Gb/s: a quarter of the real D-engine rate.
+    rate_limit_kbps: 20000000
+
+# --- ADC 0 chain -----------------------------------------------------------------------------
+
+header_buffer_adc0:
+    kotekan_buffer: standard
+    num_frames: 2 * fft_length / samples_per_packet / packets_per_frame + 32
+    frame_size: packets_per_frame * header_slot
+payload_buffer_adc0:
+    kotekan_buffer: standard
+    num_frames: 2 * fft_length / samples_per_packet / packets_per_frame + 32
+    frame_size: packets_per_frame * payload_slot
+    use_hugepages: true
+    numa_node: 0
+job_buffer_adc0:
+    kotekan_buffer: standard
+    num_frames: 4
+    frame_size: 48 + 8 * fft_length / samples_per_packet
+noise_buffer_adc0:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: 1024 * payload_slot
+out_header_buffer_adc0:
+    kotekan_buffer: standard
+    num_frames: 4
+    frame_size: fft_length / 2 / bins_per_packet * header_slot
+out_payload_buffer_adc0:
+    kotekan_buffer: standard
+    num_frames: 4
+    frame_size: fft_length / 2
+    use_hugepages: true
+    numa_node: 0
+
+recv_adc0:
+    kotekan_stage: ibvUdpRecv
+    cpu_affinity: [4]
+    dst_port: 10000
+    header_buf: header_buffer_adc0
+    payload_buf: payload_buffer_adc0
+
+align_adc0:
+    kotekan_stage: crsWindowAlign
+    cpu_affinity: [6]
+    adc_id: 0
+    header_buf: header_buffer_adc0
+    payload_buf: payload_buffer_adc0
+    job_buf: job_buffer_adc0
+    noise_buf: noise_buffer_adc0
+
+fengine_adc0:
+    kotekan_stage: cudaSparkFEngine
+    cpu_affinity: [8]
+    job_buf: job_buffer_adc0
+    payload_buf: payload_buffer_adc0
+    noise_buf: noise_buffer_adc0
+    out_payload_buf: out_payload_buffer_adc0
+
+headers_adc0:
+    kotekan_stage: crsHeaderGen
+    cpu_affinity: [10]
+    adc_id: 0
+    src_mac: *own_mac
+    dst_mac: *own_mac
+    src_ip: 10.0.0.1
+    dst_ip: 10.0.0.1
+    src_port: 4100
+    dst_port: 11000
+    job_buf: job_buffer_adc0
+    out_header_buf: out_header_buffer_adc0
+
+send_adc0:
+    kotekan_stage: ibvUdpSend
+    cpu_affinity: [11]
+    header_buf: out_header_buffer_adc0
+    payload_buf: out_payload_buffer_adc0
+    payload_size: bins_per_packet
+    payload_slot: bins_per_packet
+
+# --- ADC 1 chain -----------------------------------------------------------------------------
+
+header_buffer_adc1:
+    kotekan_buffer: standard
+    num_frames: 2 * fft_length / samples_per_packet / packets_per_frame + 32
+    frame_size: packets_per_frame * header_slot
+payload_buffer_adc1:
+    kotekan_buffer: standard
+    num_frames: 2 * fft_length / samples_per_packet / packets_per_frame + 32
+    frame_size: packets_per_frame * payload_slot
+    use_hugepages: true
+    numa_node: 0
+job_buffer_adc1:
+    kotekan_buffer: standard
+    num_frames: 4
+    frame_size: 48 + 8 * fft_length / samples_per_packet
+noise_buffer_adc1:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: 1024 * payload_slot
+out_header_buffer_adc1:
+    kotekan_buffer: standard
+    num_frames: 4
+    frame_size: fft_length / 2 / bins_per_packet * header_slot
+out_payload_buffer_adc1:
+    kotekan_buffer: standard
+    num_frames: 4
+    frame_size: fft_length / 2
+    use_hugepages: true
+    numa_node: 0
+
+recv_adc1:
+    kotekan_stage: ibvUdpRecv
+    cpu_affinity: [5]
+    dst_port: 10001
+    header_buf: header_buffer_adc1
+    payload_buf: payload_buffer_adc1
+
+align_adc1:
+    kotekan_stage: crsWindowAlign
+    cpu_affinity: [7]
+    adc_id: 1
+    header_buf: header_buffer_adc1
+    payload_buf: payload_buffer_adc1
+    job_buf: job_buffer_adc1
+    noise_buf: noise_buffer_adc1
+
+fengine_adc1:
+    kotekan_stage: cudaSparkFEngine
+    cpu_affinity: [9]
+    job_buf: job_buffer_adc1
+    payload_buf: payload_buffer_adc1
+    noise_buf: noise_buffer_adc1
+    out_payload_buf: out_payload_buffer_adc1
+
+headers_adc1:
+    kotekan_stage: crsHeaderGen
+    cpu_affinity: [10]
+    adc_id: 1
+    src_mac: *own_mac
+    dst_mac: *own_mac
+    src_ip: 10.0.0.1
+    dst_ip: 10.0.0.1
+    src_port: 4101
+    dst_port: 11000
+    job_buf: job_buffer_adc1
+    out_header_buf: out_header_buffer_adc1
+
+send_adc1:
+    kotekan_stage: ibvUdpSend
+    cpu_affinity: [12]
+    header_buf: out_header_buffer_adc1
+    payload_buf: out_payload_buffer_adc1
+    payload_size: bins_per_packet
+    payload_slot: bins_per_packet
+
+# --- X-engine side: receive the spectra back and check them ----------------------------------
+
+check_header_buffer:
+    kotekan_buffer: standard
+    num_frames: 16
+    frame_size: 1024 * header_slot
+check_payload_buffer:
+    kotekan_buffer: standard
+    num_frames: 16
+    frame_size: 1024 * bins_per_packet
+    use_hugepages: true
+    numa_node: 0
+
+recv_out:
+    kotekan_stage: ibvUdpRecv
+    cpu_affinity: [13]
+    dst_port: 11000
+    header_buf: check_header_buffer
+    payload_buf: check_payload_buffer
+    payload_size: bins_per_packet
+    payload_slot: bins_per_packet
+
+check:
+    kotekan_stage: fEngineCheck
+    cpu_affinity: [14]
+    header_buf: check_header_buffer
+    payload_buf: check_payload_buffer
+    payload_size: bins_per_packet
+    payload_slot: bins_per_packet
+    wire_mode: true
+    num_adcs: 2
+    tone_bins: [20480, 36864]
+    expected_reals: [4, 4]
+    num_windows: 8
+    max_bad_windows: 0

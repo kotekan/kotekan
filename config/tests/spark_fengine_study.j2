@@ -1,0 +1,120 @@
+# -*-yaml-*-
+#
+# spark_fengine_study.j2
+#
+# No-NIC GPU F-engine throughput study: `chains` parallel
+#     crsPacketGen -> crsWindowAlign -> cudaSparkFEngine -> dropAllFrames
+# pipelines on one GPU, for finding how many ADC chains a window size sustains. The
+# generators free-run, so each chain's windows/s is the rate that chain can reach; a chain
+# keeps up with a 3.2 Gsample/s ADC when kotekan_cuda_spark_fengine_windows_total grows by at
+# least 3.2e9 / fft_length per second:
+#     curl -s localhost:12048/metrics | grep spark_fengine
+#
+# Jinja variables (-e), e.g.
+#     kotekan -c config/tests/spark_fengine_study.j2 -e '{"chains": 4, "fft_length": 8388608}'
+#     chains      parallel ADC chains, default 2 (cores: gen/align/fengine of chain i on
+#                 3i .. 3i+2, drops from 12, the rest on 16-19 -- laid out for the 20-core
+#                 GB10, so at most 4)
+#     fft_length  window size, default 2^24
+#     pfb_taps    1 (plain FFT) or 4, default 4
+#     fft_impl    cufft or tensor, default tensor
+#
+# Needs a CUDA build and, per chain, 3 * (payload num_frames) + fft_length / 2^22 free 2 MB
+# huge pages.
+#
+---
+type: config
+log_level: INFO
+cpu_affinity: [16, 17, 18, 19]
+
+telescope:
+    name: fake
+
+{% set chains = chains | default(2) %}
+{% set fft_length = fft_length | default(16777216) %}
+{% set pfb_taps = pfb_taps | default(4) %}
+{% set fft_impl = fft_impl | default("tensor") %}
+{% set fused_quantize = fused_quantize | default(false) %}
+{# Payload frames: five windows (the direct-fold PFB holds four) plus posted and slack. #}
+{% set window_frames = (fft_length + 4194303) // 4194304 %}
+{% set num_frames = 5 * window_frames + 8 %}
+
+header_size: 64
+header_slot: 128
+payload_size: 6144
+payload_slot: 6144
+packets_per_frame: 1024
+samples_per_packet: 4096
+noise_slots: 64
+fft_length: {{ fft_length }}
+
+# The generator fills packet headers for a NIC that never sees them.
+src_mac: "30:c5:99:3f:09:1e"
+dst_mac: "10:70:fd:53:05:06"
+src_ip: 10.0.0.1
+dst_ip: 10.0.0.2
+src_port: 4000
+
+{% for i in range(chains) %}
+header_buffer_{{ i }}:
+    kotekan_buffer: standard
+    num_frames: {{ num_frames }}
+    frame_size: packets_per_frame * header_slot
+payload_buffer_{{ i }}:
+    kotekan_buffer: standard
+    num_frames: {{ num_frames }}
+    frame_size: packets_per_frame * payload_slot
+    use_hugepages: true
+job_buffer_{{ i }}:
+    kotekan_buffer: standard
+    num_frames: 4
+    frame_size: 48 + 8 * fft_length / samples_per_packet
+noise_buffer_{{ i }}:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: noise_slots * payload_slot
+out_payload_buffer_{{ i }}:
+    kotekan_buffer: standard
+    num_frames: 4
+    frame_size: fft_length / 2
+    use_hugepages: true
+
+gen_{{ i }}:
+    kotekan_stage: crsPacketGen
+    cpu_affinity: [{{ 3 * i }}]
+    header_buf: header_buffer_{{ i }}
+    payload_buf: payload_buffer_{{ i }}
+    num_adcs: 1
+    start_seq: 0
+    tone_bin: [5]
+    tone_amplitude: [1000]
+    noise_rms: 0
+
+align_{{ i }}:
+    kotekan_stage: crsWindowAlign
+    cpu_affinity: [{{ 3 * i + 1 }}]
+    header_buf: header_buffer_{{ i }}
+    payload_buf: payload_buffer_{{ i }}
+    job_buf: job_buffer_{{ i }}
+    noise_buf: noise_buffer_{{ i }}
+    noise_rms: 10
+    queue_depth: 2048
+
+fengine_{{ i }}:
+    kotekan_stage: cudaSparkFEngine
+    cpu_affinity: [{{ 3 * i + 2 }}]
+    job_buf: job_buffer_{{ i }}
+    payload_buf: payload_buffer_{{ i }}
+    noise_buf: noise_buffer_{{ i }}
+    out_payload_buf: out_payload_buffer_{{ i }}
+    gain: 8
+    fft_precision: fp16
+    fft_impl: {{ fft_impl }}
+    pfb_taps: {{ pfb_taps }}
+    fused_quantize: {{ fused_quantize }}
+
+drop_{{ i }}:
+    kotekan_stage: dropAllFrames
+    cpu_affinity: [{{ 12 + i }}]
+    in_buf: out_payload_buffer_{{ i }}
+{% endfor %}
