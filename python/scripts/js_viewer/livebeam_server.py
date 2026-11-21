@@ -31,6 +31,7 @@ this server before kotekan starts streaming.
 """
 
 import argparse
+import glob
 import json
 import logging
 import math
@@ -1597,6 +1598,78 @@ class DecodeHealthResource(resource.Resource):
         return json.dumps(out).encode("utf-8")
 
 
+class AlertsResource(resource.Resource):
+    """``GET /alerts`` -> the stack's ALERT files and heartbeats, for the viewer's alert panel.
+
+    An ALERT file (a cron's report of what needs a human) is served with its age and first
+    lines. A heartbeat is a file a job rewrites while it works, flagged stale when older than
+    its limit: a job that has stopped writes no ALERT, so only its silence shows it."""
+
+    isLeaf = True
+    MAX_LINES = 12
+
+    def __init__(self, alert_globs, heartbeats):
+        resource.Resource.__init__(self)
+        self.alert_globs = alert_globs
+        self.heartbeats = heartbeats  # [(name, path, max_age_s)]
+
+    def render_GET(self, request):
+        request.setHeader(b"content-type", b"application/json")
+        request.setHeader(b"cache-control", b"no-store")
+        now = time.time()
+        alerts = []
+        for g in self.alert_globs:
+            for path in sorted(glob.glob(os.path.expanduser(g))):
+                try:
+                    age = now - os.stat(path).st_mtime
+                    with open(path, errors="replace") as f:
+                        lines = f.read(8192).splitlines()[: self.MAX_LINES]
+                except OSError:
+                    continue
+                alerts.append(
+                    {
+                        "name": os.path.basename(os.path.dirname(path)),
+                        "path": path,
+                        "age_s": age,
+                        "lines": lines,
+                    }
+                )
+        beats = []
+        for name, path, max_age_s in self.heartbeats:
+            try:
+                age = now - os.stat(os.path.expanduser(path)).st_mtime
+            except OSError:
+                age = None
+            beats.append(
+                {
+                    "name": name,
+                    "path": path,
+                    "age_s": age,
+                    "max_age_s": max_age_s,
+                    "stale": age is None or age > max_age_s,
+                }
+            )
+        return json.dumps({"alerts": alerts, "heartbeats": beats, "t": now}).encode("utf-8")
+
+
+def parse_heartbeat(spec):
+    """'NAME=PATH:MAX_AGE_S' -> (name, path, max_age_s)."""
+    name, _, rest = spec.partition("=")
+    path, _, age = rest.rpartition(":")
+    if not name or not path or not age:
+        raise argparse.ArgumentTypeError("heartbeat %r is not NAME=PATH:MAX_AGE_S" % spec)
+    return name, path, float(age)
+
+
+# The gnss VM's ALERT files and the jobs whose silence matters (#171).
+DEFAULT_ALERT_GLOBS = ["~/gnss/fixtures/obs/*/ALERT"]
+DEFAULT_HEARTBEATS = [
+    "elem_ref cron=~/gnss/fixtures/obs/elem_ref/watch.log:900",
+    "beam-cube fold=/mnt/cs00/data/kvand/gnss_cube/l0/manifest.jsonl:7200",
+    "eop cron=/var/tmp/gnss-logs/eop_cron.log:93600",
+]
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Bridge kotekan networkPowerStream to a browser viewer."
@@ -1713,6 +1786,22 @@ def main():
         help="Elevation mask (deg, default %(default)s) for the sky positions computed "
         "from TLE: GLONASS, and every constellation when the broker's /get_sky cannot "
         "answer. Positions from /get_sky are not masked.",
+    )
+    gg.add_argument(
+        "--alert-glob",
+        action="append",
+        default=None,
+        help="glob of ALERT files served at /alerts for the alert panel (repeatable; default "
+        "%s)" % DEFAULT_ALERT_GLOBS,
+    )
+    gg.add_argument(
+        "--heartbeat",
+        action="append",
+        type=parse_heartbeat,
+        default=None,
+        metavar="NAME=PATH:MAX_AGE_S",
+        help="a file a job rewrites while it works, flagged at /alerts when older than "
+        "MAX_AGE_S (repeatable; default %s)" % DEFAULT_HEARTBEATS,
     )
     gg.add_argument(
         "--decode-health-dir",
@@ -1850,6 +1939,13 @@ def main():
         )
         root.putChild(b"gps_sky", sky)
         root.putChild(b"gps_track", GpsTrackResource(sky))
+        root.putChild(
+            b"alerts",
+            AlertsResource(
+                args.alert_glob or DEFAULT_ALERT_GLOBS,
+                args.heartbeat or [parse_heartbeat(h) for h in DEFAULT_HEARTBEATS],
+            ),
+        )
         root.putChild(
             b"decode_health",
             DecodeHealthResource(

@@ -31,6 +31,7 @@ import {GpsFeed, configure_chains, configure_signals} from "./panels/gps_feed.js
 import {GpsAmpHistoryPanel}       from "./panels/gps_amp_history.js";
 import {AirspyStatsPanel}         from "./panels/airspy_stats.js";
 import {DecodeHealthPanel}        from "./panels/decode_health.js";
+import {AlertsPanel}              from "./panels/alerts.js";
 import {PositionSurveyPanel}      from "./panels/position_survey.js";
 
 
@@ -222,6 +223,11 @@ export class App {
             this.layout.addWidget({mount_id: "position_survey_card", title: "Position self-survey",
                                    x: 0, y: 18, w: 12, h: 4, min_w: 4, min_h: 2});
             this.panels.push(new PositionSurveyPanel({target: "position_survey_card"}));
+            // The stack's ALERT files and the heartbeats of the jobs that write no ALERT when
+            // they stop (the viewer server's /alerts).
+            this.layout.addWidget({mount_id: "alerts_card", title: "Alerts",
+                                   x: 0, y: 22, w: 12, h: 3, min_w: 4, min_h: 2});
+            this.panels.push(new AlertsPanel({target: "alerts_card"}));
             this.layout.restore_from_storage();
             return;
         }
