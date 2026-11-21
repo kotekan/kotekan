@@ -3,19 +3,16 @@
 What is open on the CHORD side (branch `kv/chord-gnss`). Closed items are in
 [`CHORD_BUGLIST_CLOSED.md`](CHORD_BUGLIST_CLOSED.md); their narratives are in git history.
 
-**Last reconciled: 2026-10-13 after the dead-code merge** (previous passes 2026-10-11 at `0011cf3b1`, 2026-09-12 at
-`b45949144`). The 10-13 pass re-checked every open entry's anchor against the tree after `d505f3943`: all still
-present except the 09-14 mitigations of #131 (gone with the launchers) and the generator's profiling switch #114 relied
-on. Closed since 10-11: **#55, #62, #63, #113, #115, #121, #125, #144, #146 residual, #150, #159, #161, #172, #173,
-#174**, the #1750 latent lock (PR #1763), and the 10-11 batch (#31, #34, #88, #102, #107 residual, #112, #123,
-#130/#153, #133, #149, #160, #162). Opened: **#175–#189**. The same evening the ready-now set ran in two reviewed lanes and merged: **#186, #183** closed; **#176, #175** have their guards built (live since the 21:05Z broker restart); **#119, #152** are instrumented; **#94**'s gauge test is in; **#131**'s shutdown race is fixed and its death not reproduced. Overnight (10-14) the hygiene set merged, nothing live changed: the `test_skyscope` flake and the replay goldens fixed, **#129**'s GLONASS propagator landed, **#180** and **#179** fixed in the tree for the next node binary. The 10-11 and 10-13 memory notes record every check.
+**Last reconciled: 2026-11-21**, against kv/chord-gnss `5e7ad2eb0` and gnss-broker `fcf2f1bd` with live reads: two
+reviewers read every open entry and a third tried to refute each proposed closure (summary
+`~/gnss/builds/buglist_review_20261120.md`). Closed: **#207, #209, #208, #206, #202, #200, #229, #168, #164, #163**
+(fixed); **#212, #213, #199, #196, #214, #114, #124, #131, #75, #14** (premise gone); **#203, #210, #227, #226, #56,
+#169, #192** closed with a residual line kept below. Kept open on the check: **#204**. Opened: **#232-#235**. Previous
+passes: 2026-10-13 after the dead-code merge, 2026-10-11 at `0011cf3b1`, 2026-09-12 at `b45949144`.
 
-**Fleet state (10-13): the F-engine is OFF** (since 10-12 17:05Z, for about a week); the six nodes are down, their hosts
-up; the broker, obs writers and viewer run the merged tree on the gnss VM, the gather and aggregator the 10-12 binaries.
-The last sky ran on `d30be5f66` (telemetry v8, the L5 code fix). The dead-code removal and the j2 deletion are merged and
-pushed; `fleet-d505f3943` and `gather-d505f3943` are built and not staged. The F-engine last ran the 10-07 gain table
-(#167) and did not send rows C/D (#166). `[live]` marks dated before 10-10 sit across a re-base and a binary change;
-treat them as `[carried]` until re-measured.
+**Fleet state (11-21):** six GNSS X-engines (cx19 cx27 cx43 cx44 cx51 cx52) on the R1+R2 binary `437d6a9cd` with
+config/generated; cx42 and cx47 back on stock kotekan under choco since 11-21 02:05Z. Broker stack on the gnss VM from
+gnss-broker `fcf2f1bd` (per-half trim targets), the gather on `gather-e4a01a357`. recv1 on chord `a22ff0da41`.
 
 **How to read the marks.** `[tree]` = checked against the working tree, with the check named.
 `[live]` = measured on the running fleet, with the date and the number. `[bench]` / `[archive]` =
@@ -92,6 +89,14 @@ the aggregator and gather. #184–#187 below are what the removal left for later
 
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
 
+### #235 — tle_refresh.py is in no crontab: the DTV pass freeze's cx1.tle is 11 days old (2026-11-21, review)
+The viewer keeps its own TLE caches fresh, but `/var/tmp/kvand-dtvsteer/cx1.tle` (cf06, #231's `--pass-tle`) is refreshed by
+nothing, so the CHUANGXIN freeze windows drift as the TLE ages. Add a daily refresh, or point the watcher at a cache that has one.
+
+### #233 — the viewer's metrics should be a Prometheus endpoint for the CHORD Grafana (2026-11-20, KV: "Ultimately we should be publishing all the viewer metrics to a prometheus endpoint so it can be scraped and viewed in our larger CHORD grafana setup")
+The /alerts panel (#171) is the stopgap. Serve the viewer's numbers (and the ALERT/heartbeat states) as /metrics in the
+Prometheus text format, so the site's Grafana scrapes and alerts on them.
+
 ### #231 — CHUANGXIN 1-03 / 1-04 burst at 369.05 MHz on every pass and trip the DTV rolling fit on freq IDs 1887-1892: freeze the fit through each pass now, null the satellites later (2026-11-09, KV: "put a note in the todos to try and null these late as well, but for now, yes, let's freeze during the transits")
 **What:** two CAST store-and-forward LEO satellites (NORAD 37930, 40137; one sun-synchronous plane,
 P 100.7 min, i 98.7°) emit ~1.5 MHz at 369.05 MHz (freq IDs 1886-1893; x2 shoulders over 1880-1899 on
@@ -110,6 +115,7 @@ watcher logs the TLE age at each freeze; refresh the file every week or two.
 built for MUOS: its 10 s update, 30 s rate and per-pass eigen start need checking against a LEO that
 crosses the sky in ~13 min. The other route is to project them out of the N2 from TLE directions, as
 the GuoWang lanes do (#190).
+**11-21:** the pass freeze is LIVE (kv/dtv `cd9eb77d2`; cf06 gnss-dtv-watch runs `--pass-tle`). Open: refresh `cx1.tle` (11 days old, no cron, see #235) and null the bursts (#190 tiers 2-3).
 
 ### #230 — no alert for the first GuoWang satellites at 1174.404 MHz: the filed odd 50° planes would land inside the L5 / E5a band, and railing will be the first sign (2026-11-07, KV: "our first indication will be railing at 1174, so maybe we should set up some sort of watch there, maybe flag as a todo, we can likely hand that to Jim to add to the Prometheus / grafana alerts")
 **What:** the ITU filing (CM20 2023) puts 216 more GuoWang satellites in 12 odd 50° planes at
@@ -141,157 +147,6 @@ the merge gave 9-15 PRNs per chain and hints within 2 s.
 **Fix (candidate):** treat an empty first sky like a collapse: with `peak_n` 0 and the store's newest record
 older than the 4 h window, re-parse on the bridge gate (60 s) until a satellite appears. **Workaround:** after
 an outage longer than ~4 h, restart the broker once the `BRDC hourly merge` line has appeared, or wait 15 min.
-
-### #207 — every search-derived code phase carried range_rate x 16 ms: `detection_phase` left the replica anchor's code-Doppler advance on `cp0` and `cp_long` (2026-10-18, live, measured three ways; ROOT CAUSE FOUND + FIXED 10-18 21:30Z, DEPLOYED 22:53Z, live gate passed)
-**What [live 10-18, gps_l5 + gal_e5a]:** the broker's search-derived offsets (`_det_offset`: the detection's sample-0
-argument re-advanced to `ref_hop`, minus `cp_predicted` at that hop) feed the clock solve, the joint state's b_sat and
-the SEARCH-MONITOR. Within one satellite's pass they move linearly with its Doppler: GPS b_sat vs the tracker Doppler,
-per PRN over the day, slopes -4e-5..-1.8e-4 chip/Hz with r down to -0.87 (G03 over -2.4..+2.5 kHz), pooled over 11
-PRNs and 3,293 points **-8.6e-5 chip/Hz = a +9.9 ms lever** (d(cp)/d(dop) = chip_rate/f x dt); SEARCH-MONITOR gal_e5a
-per PRN -9.6e-5 (r -0.83, +11 ms); GPS b_sat per PRN -1.2e-4 (+13.7 ms). The tracker path has NO such term: today's
-obs `code_resid_m` vs `range_rate_mps` with per-satellite intercepts gives -1.8/+1.2/+1.8/+0.5 ms on gal_e5a/bds_b2a/
-bds_b3i/gal_e5b. So a range-rate x ~10 ms error (+-8 m at +-2 kHz) sits in every search-derived measurement and in
-nothing the loop converges on; the audit's "b_sat swings to -1.2 chips at rise" (10-12) is partly this, and the joint
-clock's median is biased by the fed set's mean range rate x 10 ms. **Where it is not:** the shipped harness run at
-nonzero Doppler (scripts/gnss/e2e, rebuilt 10-18 on cf05 against builds/fleet-954af6047; its default `--dop 0`, the
-only setting it had ever been read at, cannot see a lever, and its 27-channel stride-4 search comb aliases by 4096
-samples = 13.09 chips at |dop| >= 1 kHz, so judge it at +-500..700 Hz) puts the cp0 path within the refine's +-0.07
-chip of truth at the labelled snapshot start at every Doppler (new CP0 LEG ERROR line), while `cp_at_ref`, the
-transported seed, carries a ~-23 ms lever (+0.081 at +500, -0.171 at -500, -0.247 at -1000 Hz) that the tracker loop
-absorbs; on live detections the two differ by one hop (52.4 chips) plus a 16.0 ms lever. **Where it must be:** between
-the detection's label and the model's epoch on the aggregator path: `_snap_start_hop` is the first frame's
-`sample_seq / fft_len` (GnssChannelizedSearch.cpp:891), `t_i = ref_hop / hops_per_sec`, and `cp_predicted` propagates
-range from `t_eph_age` (wall axis) to `t_i` (hop axis); a ~10 ms disagreement between those axes, or a one-record
-(10.49 ms) offset in the search feed's `sample_seq` against the nodes' records, gives exactly this. The 0.486 ms
-residue of a one-record error would land a 4,972-chip constant in the clock, which the model-primary chains would not
-survive, so a round 10 ms (an axis) is likelier than a record (a label). **Next:** pin the live number with the fit
-above every hour (it is 10 ms to +-2), then compare the search feed's `sample_seq` with the same node's record hops
-for one frame, and `utc0_sample0` against the hop axis (the F-engine `time0_ns` convention: frame start or end).
-**Fix [broker or aggregator]:** whichever axis is wrong; the harness then gets a `--dop` sweep in its gate.
-**21:00Z, NARROWED TO THE SEARCH STAGE (e2e.cf05, built 10-18 from the tree against builds/fleet-954af6047):** with
-PRODUCTION parameters (`--s-stride 1 --s-nchan 79 --refine-step 103 --fine-step 128 --refine-span 512 --refine-hops
-391 --cuda-refine`) the cp0 leg error is a clean line in Doppler: +0.389, +0.197, +0.102, +0.087, -0.010, -0.103,
--0.214 chip at -2000..+2000 Hz = **-1.5e-4 chip/Hz = a 17 ms lever on cp0, the quantity the broker's clock solve,
-joint feed and SEARCH-MONITOR use**, while cp_at_ref (the tracker's seed) stays flat (+0.03..+0.11) and the CUDA
-refine equals the CPU one bit-for-bit. With the harness's DEFAULT parameters (27-channel stride-4 comb, fine refine
-step) the roles swap: cp0 flat, cp_at_ref -23 ms. The two phases come from ONE refined peak through
-`detection_phase`, so the lever is in how that peak's epoch is referenced versus the refine window/grid
-(`refine_span`/`refine_step`/the comb), not in the broker's Python (ruled out: trkresid uses the same
-`cp_predicted(v, hop/hps)` and is clean; the VM's NTP is at 40 us). Single-parameter toggles at +-2 kHz on the
-default comb (which aliases by 13 chips at |dop| >= 1 kHz, so only the sub-chip rows count): comb79 alone cp0
-+0.744/+0.035; refine-step 103 alone +0.151/-0.247; span 512 alone +0.145/-0.564 -- each moves it. **Next
-(cf05, harness only, no sky):** print the acquire's coarse peak and the refine window's first/last hop against
-truth in e2e, read `detection_phase` (lib/stages/gnss/gnssSeedTransport.*) and `refine_peak`'s reference epoch, find
-the interval the Doppler advance is applied over for cp0 vs cp_at_ref, fix it in the stage, gate with a `--dop`
-sweep at production parameters. Then a broker restart (the aggregator binary carries the stage: a rebuild + KV
-cycle of gnss-aggregator) and re-fit b_sat vs Doppler live (must go to 0 +- 2 ms).
-**21:30Z ROOT CAUSE (by reading, then three gates).** The refined peak `best_cp` is the argument of a replica
-generated at the search's fixed `anchor` (= Mp*fft_len samples, one replica period = 16 L = 16 ms of code at CHORD)
-that matches the data at the snapshot start S_snap. Every generator forms C(n) = arg + n*cps*(1 + s*dop/f) over the
-ABSOLUTE sample index, so matching the two gives arg0 = best_cp - (S_snap - anchor)*cps_d. `detection_phase`
-(lib/stages/gnss/gnssSeedTransport.cpp) removed the advance over S_snap alone: the anchor's nominal share, 16 L, is 0
-mod L and hid the omission from `cp0`, but its code-Doppler share, 16 L * s*dop/f, is not -- a Doppler lever of
-exactly one replica period, 16 ms, on `cp0`; and 16 L is not 0 mod 20 L, so `cp_long` was also 16 (= -4 mod 20)
-periods off at every Doppler (latent: the tracker prefers the `cp_at_ref` phase, which adds the anchor's advance
-back and was always right -- the roles are the reverse of what `_det_offset`'s docstring claimed). Predicted slope
-16 L / f = 1.392e-4 chip/Hz; the 10-18 harness sweep measured -1.5e-4 through a 0.33-chip refine step, and the live
-"cp_loc - cp_at_ref = one hop + 16 ms" was the same term. Why it was never seen: the acquire tests and the
-harness's only-ever `--dop 0` all have the data AT the anchor or at zero Doppler, where both shares vanish.
-**Fix [committed 10-18]:** one advance over `S_snap - anchor` in long double (as `window_advance_chips`, with the
-generators' own double `cps_d`; the old `% Mp` shortcut also assumed Mp*fft_len*cps is exactly 16 L in floating
-point, ~1e-3 chip at 4e7 periods), reduced mod L for `cp0` and mod n_nh*L for `cp_long`; `cp_at_ref` unchanged.
-**Gates:** (1) tests/boost `detection_phase_removes_the_anchor_at_every_doppler` (data 3.2 days from the anchor;
-the anchor-replica convention checked by despread; cp0 == arg0 to 1e-5 at +-4 kHz; cp_at_ref mod L == cp0
-re-advanced); (2) the harness, now with a CP_LONG LEG line: OLD library at production parameters cp0 +0.087/-0.214
-chip at 0/+2000 Hz and cp_long +4 periods at both; NEW library at -2000, -1000, -500, 0, +500, +1000, +2000 Hz: CP0 LEG +0.112, +0.060, +0.034, +0.088, +0.059, +0.034, +0.062 chip (flat, the refine's 0.33-chip step), CP_LONG and SEARCH LEG identical to cp0 at every point with 0 periods, CUDA refine = CPU to the bit; (3) LIVE, on the running
-aggregator before the fix (scratch script polling /gps_search/get_detections): resid = cp_at_ref - cp0 re-advanced
-equals 1.3913e-4 chip/Hz x dop on all 5 GPS detections to 4 decimals = a 16.00 ms lever, no noise -- after the cycle
-it must read 0.0000 on every PRN. The per-PRN b_sat-vs-Doppler re-fit (pooled +9.3 ms over 18:40-21:10Z) is NOT a
-clean gate: within a pass Doppler and time are degenerate and unmodelled tropo/iono (0b) is elevation-dependent, so
-per-PRN slopes come out mixed-sign (G4 +16.6, G9 +15.6, G6 -15.0 ms); read it only as "the pooled slope moved by
-~-1.4e-4 chip/Hz". **Consequences to re-read after the cycle:** SEARCH-MONITOR gal_e5a (its per-PRN scatter, MAD
-0.15-0.33, was this lever: the +0.49 chip Galileo median (#191) was taken over 11 PRNs with mixed Dopplers and may
-move); the joint clock's bias by the fed set's mean range rate x 16 ms; the PVT self-survey, which fed the search's
-code phase (#99 era) and so carried Doppler-correlated pseudorange errors -> 0b's re-survey. **Deploy:** the stage
-lives in the aggregator binary (build_nodpdk/kotekan/kotekan, shared with the gather and cf06's cube archiver):
-builds/agg-<sha> on cf05 with the gather recipe, staged by builds/stage_agg_<sha>.sh (ldd + three check-configs +
-hard-linked rollback) immediately before KV's `systemctl --user restart gnss-aggregator`; the gather keeps its
-mapped inode until its own next restart, which will then run this build too. **Restart the broker right after
-the aggregator** (skeptic review, 21:35Z): its per-PRN histories (cp-rate fit window, innovation and SEARCH-MONITOR
-5-min medians, the joint state's b_i) would otherwise mix pre- and post-fix detections, which step by 1.39e-4
-chip/Hz x dop (0.56 chip at 4 kHz) and by 4 periods in cp_long at the cycle; the 100-chip jump guard does not
-refuse that, and the cp-rate fit would read it as a slope for one window. Behaviour change to know: the seeding
-fallbacks that strip `cp_at_ref` (hold_freeze with no at_ref, dr_seed_phys/tracker_phase_at's argument branch) were
-seeding 4 overlay periods off from `cp_long` and are right after the cycle. **Reading the live result:** the
-`resid == 0` poll proves the new stage is running (both fields come from one best_cp by construction); the
-independent live gate is a search-vs-tracker clock per PRN against Doppler (SEARCH-MONITOR gal_e5a per-PRN values,
-or the GPS search clock minus trkresid), whose slope must move from ~-1.39e-4 chip/Hz to ~0. The pre-fix b_sat
-slopes (-8.6e-5..-1.2e-4) were 0.6-0.9 of the prediction, so a residual of ~-3e-5 chip/Hz after the cycle is the
-pre-existing elevation/iono degeneracy (0b), not a failed fix.
-**22:53Z DEPLOYED (KV):** builds/agg-daee06222 staged into build_nodpdk (md5 72d3a36c4b2b; rollback
-`kotekan.prev_4514061a6_20261018`), gnss-aggregator then gnss-broker restarted at 22:53:02Z; 0 CHAIN DIED, cross-band
-bootstrap at T+15 s. **Live gate PASSED at 22:54Z:** resid = cp_at_ref - cp0 re-advanced = +0.0001 chip on all six
-GPS detections over -2834..+2236 Hz (the old stage would have read -0.394..+0.311), i.e. the lever is gone from the
-stage. The gather still runs the previous inode (00d51e99b6e4) until its own restart. Independent live read-back
-(search-vs-tracker per PRN vs Doppler, SEARCH-MONITOR gal_e5a, the b_sat fit) follows once the joint state has
-re-established. **23:11Z (T+18 min):** invariant still 0.0000 on 7 PRNs (-2911..+2236 Hz); joint state re-converged
-(n=7, clk 151.83 +- 0.08 chip, 0 CHAIN DIED); SEARCH-MONITOR gal_e5a per-PRN scatter tightened to MAD 0.07-0.16 chip
-(pre-fix 0.15-0.33: that scatter WAS the lever), 5-min median +0.577 chip (+16.9 m, p10/p90 +0.45/+0.69) against +0.49
-pre-fix -- the datum (GPS L5 search clock) and each Galileo PRN moved by 1.39e-4 x their own Doppler, so the #191
-constant now reads +0.58 chip with the lever gone. The b_sat-vs-Doppler fit over 22:56-23:11Z (196 points, each PRN
-spanning ~300 Hz) is not interpretable: the post-restart settling aliases into a within-pass slope (per-PRN +242..-36
-ms); re-fit over full passes (hours) before reading it. **#207 is closed on the stage and the live invariant; the
-pooled-slope re-fit is the remaining read-back (0b territory).** **10-19 10:47Z re-fit over the night (01:30-10:47Z,
-7,076 points, 18 PRNs, with 0b live): pooled slope +2.3e-5 chip/Hz = -2.7 ms, from -8.1e-5 (+9.3 ms) before; the
-change is +1.0e-4 of the predicted +1.4e-4, the rest the within-pass degeneracy (per-PRN -11..+1 ms). CLOSED.**
-
-### #209 — `--detectors-monitor` (the E5a search experiment) silently disables the slewed seed refresh: every locked gal_e5a satellite is re-born every ~8 min with a trim wipe, and the obs rows carry 100-1000 m excursions since 2026-10-18 18:37Z (2026-10-19, overnight check; FIXED 2672b773b, LIVE since the 12:18:53Z broker restart)
-**What:** gal_e5a's `code_resid_m` rows have >20 m excursions on most PRNs since hour 18 of 10-18 (308 of 3,995 rows in
-that hour, 8 the hour before, ~600/h all night; 10-18's night had 3 in 14,826), with the per-PRN medians still fine (+-1 m)
-but p10/p90 of -100..+200 m (E2 -384/+192, E11 p90 +3,310). The night re-survey fit on gal_e5a reads rms 7 m with half
-the rows clipped, while gal_e5b (no detectors) is clean (rms 0.75). Broker log since the 00:56Z restart: gal_e5a 147
-`SEEDAUDIT STEP PRN N: -7.7 chips (= -0.004 Hz x lever) ddop ... dt ~460-500 s [dop=dr_birth cp0=dr_birth ...]` + 312
-`SAWTOOTH ... BARE-WIPE` + 374 HOLD-BY-PROMPT, against 3 / 0 / 41 on gal_e5b. **Why (deadreckon.py dr_seed):**
-`_slew = prn in seeds and (not ctx.detectors or prn in mp_flipped) and ...` -- the slewed refresh of a locked
-dead-reckon seed is gated on "this chain has no detectors"; the monitor mode sets `ctx.detectors` (the e5a_search URL)
-although its detections never seed, so every locked PRN takes the plain-hold path and is re-born on the hold cadence,
-each re-birth re-basing the seed under a standing trim (the tap moves, the trim rebuilds = the sawtooth). The stage-9
-reviewer flagged it on 10-18 20:45Z ("--detectors-monitor also turns off dr_seed's slewed refresh ... consistent with
-E33 walking to the 3.0 trim clamp"); it sat in #192's list. **Not** the 22:53Z (#207) or 00:56Z (0b/position) restarts.
-**Fix:** every seeding decision that asks "does this chain have detectors" must ask "do its detections seed" --
-`ctx.detectors` and `ctx.args.detectors_monitor` together (a helper); then a broker restart. Until then gal_e5a's code
-observables are unusable for the fits (the SEARCH-MONITOR itself is fine: it reads the search, not the tracker).
-
-**12:19Z LANDED, 13:20Z VERIFIED:** gnss-broker restarted 12:18:53Z on 06be1fdd8 (seeds_are_model_owned). In the quiet
-window 12:50-13:20Z gal_e5a logged SEEDAUDIT STEP 0, SAWTOOTH 0, slew 179 against gal_e5b's 0 / 0 / 180 (overnight under the
-defect: 147 / 312 per night, 0 slews); after the 13:26:44Z restart (the #211 referee fix) its rows read 0 excursions in
-427 with every PRN at 0 +- 1 m and trims 0.3-0.4. **FIXED.** (The 12:18Z restart itself left three E5a satellites parked
-on a grating lobe for an hour; that is #211, not this.)
-
-### #212 — 96 live elements (rows A-F) with the dishes pointed apart: what is open (2026-10-20)
-**What:** since 00:22Z the GNSS correlator runs rows A-F, `live_element_ranges [[0,47],[64,111]]`, array epoch
-`2026-10-20-rows-af96` (c1f8bdacd; fleet reference `config/elem_shared_ref_20261020.json`, bd3fa86c8). Row G cannot
-join alone (16-aligned ranges; 48-63 brings the silent row H). Census from the first snapshot: 75 good / 9 weak / 12
-dark elements (dark: B01 B02 D04 C08 F01 E07). **Open:** (a) C-F positions are the telescope.j2 grid fitted to the
-refined A/B ones (1.3 cm median on A/B); possolve against A01 aliases (beam phase of differently pointed dishes),
-against C06 it puts 17 of 27 C-F dishes within 2-4 cm of nominal (fixtures/elemsteer/out/pos1020_*). Re-solve after
-the realignment. (b) Pointing groups measured (fixtures/elemsteer/pointing_scan.py, pointing_peaks.py): A/B minus B04
-on Cyg A; C-F + B04 at the maintenance tip (~57-60 S); C05 D07 E01 E05 ~2 deg higher. The shared element model is
-one vector per band across all satellites, which is wrong while the rows point apart (b2a/b2b pol-0 shape split, per-
-PRN gain 0.5-2.2x vs 32 elements). (c) At 96 elements every chain's GnssGpuRecordAssemble on a GPU shares one core
-(33/57) and it saturated (99-100%), mostly the bright-satellite projection (n^2); elem-proj is off fleet-wide
-(5d32bfd57), cores ~60%. Durable: --assembler-core-slots (e390381e0) and an O(n) own-row direction. (d) The
-analysis tools that assumed 32 elements: snap_xinst and possolve are fixed (fixtures, outside git); judge2.py,
-viscap_elem_positions.py's pair loop and gnss_beam_static.py's missing array_epoch_key check are not.
-**Check:** at the realignment: new epoch + boresight, fresh shared-ref snapshot, possolve on a common pointing.
-
-### #213 — recv1 idle since ~05:15Z: N2 not archived, and the GNSS nodes stalled on the blocked send path (2026-10-20)
-**What:** the subset-vis archive's last file is 05:15Z; choco shows recv1 idle (every node in maintenance) and every
-node's buffer_send_n2_* / bad_feed_mask senders are refused from ~07:28Z. cx19, cx42, cx43 and cx51 stopped together
-at 05:19Z and 10:20-10:23Z ("8 frames past the start of the next active frame, kotekan stopping" after seconds of
-DPDK `wait_for_empty_frame ... will block`: a downstream consumer stopped freeing frames). cx27, cx44 and the stock
-cx47/cx52 rode through; none on 10-18/10-19. Reading (inference): recv1 stalled and the send path backed up, on nodes
-with no margin left on the assembler core (#212 c). **Fix:** site: bring recv1 back (KV/Jim). Check that the stops end.
 
 ### #211 — restart ORDER: a broker restart within minutes of an aggregator restart bootstraps on a cold search, and every model-primary chain is thrown onto grating lobes for half an hour (2026-10-19 12:17-12:50Z, measured, self-healing)
 **What:** gnss-aggregator restarted 12:17:26Z, gnss-gather 12:18:03Z, gnss-broker 12:18:53Z (the post-merge regen cycle).
@@ -365,167 +220,9 @@ satellites (#191 §6.2). gps_l2c does not, so it is unfed and stays `joint-sourc
   for the per-signal offsets) or stays on search.
 Root-cause first: no calibration table (KV 10-24).
 
-### #210 — glo_l3oc's code residual carries a GLONASS-only range-model term: +44 m up-like, +8 m north, +5 m east against the GPS/Galileo/BeiDou chains (2026-10-19, the 0b night gate)
-**What:** the night re-survey fit (gnss_resurvey.py --hours 6-13) on 10-19 with the model live reads glo_l3oc model -
-true = +44.1 U / +8.2 N / +5.2 E (rms 3.5 m, 5,382 of 6,521 rows) while gps_l5, gal_e5b, bds_b2a and bds_b3i read
-+0.6..+1.2 U, +-0.4 N. On 10-18 (model without atmosphere, position 545) it read +59.3 / +12.0 / -3.6 with the
-atmosphere added back, against +18 / +3.3 for GPS: the GLONASS excess (~+41 U, +8 N) was there before the position
-change, so it is in the GLONASS range model, not the site. **Candidates:** the state-vector integration from tb (a
-position error that grows with age; GLONASS_MAX_AGE_S), the PZ-90.11 frame or the GLONASS time scale (UTC(SU) + 3 h,
-tau_c, no leap seconds) in the light-time / Sagnac path, or the L3OC code bias. A height-like error of 40 m at 2 x
-10^4 km is ~2 ppm of range -- an orbit integration error of that size over hours is plausible. **Next:** per-satellite
-residual vs ephemeris age on glo_l3oc; compare the integrated position with a precise orbit for one satellite.
-
-**10-19 20:45Z RESOLVED: A SATELLITE-SIDE TERM, NOT THE RANGE MODEL (tools + outputs in fixtures/jointstate, README "10-19 #210"; one
-skeptic agent re-derived the sign convention and every number).** (1) The propagation is not it: with the receiver clock taken from
-gps_l5 in the same 10-s epochs (glo_l3_obs_vs_gpsclock.py on obs_extract_npz.py output), the glo_l3oc tracker residual moves by a
-median 0.7 m (p90 3-9 m) when a new GLONASS record replaces one 163-222 min old (40 switches/day), and a satellite's per-record
-medians agree to 1-3 m across records up to 222 min old (R19 -35.0/-34.7/-35.7, R06 -43.8/-41.1). That excludes any age-dependent
-term, and it is an order of magnitude below docs/CHORD_MULTIBAND.md section 6's propagation table (18 m median at 2 h): that table
-needs re-checking. (2) The residual equals the standing DLL trim by construction (cp_phys = model + clk + trim), so like the served
-C/N0 it is lobe-blind; the offsets are per SATELLITE and stable across records and days, in our sign (a delay reads NEGATIVE):
-R06 -41/-41 m (10-18/10-19), R19 -33/-32, R20 -40 (10-18; the 10-19 fragment, 142 rows at el 14, is unusable), R23 -30 (both days,
-outside one excursion), R08 +35..+53 (10-18 18:00-20:40Z) hopping -91 m at the 20:41Z broker restart to -41..-68 and -45 on 10-19
-14:50-17:00Z; against +2..+13 on R04/R05/R12/R16/R21/R24 (GLO-M+) and R11/R22 (K1B of 2020/2022). (3) The receiver-independent test
-(glo_l3_station.py = drao_resid.py on IGS stations' C3Q pseudoranges with OUR model and the FDMA broadcast clock, 2026-10-12
-04-12Z, minus each station's GPS-L5 clock; pseudorange sign, a delay POSITIVE): CHWK / WILL / BREW read R19 +30.1/+29.9/+34.3 m,
-R20 +31.2/+31.1/+34.7, R06 -146.5/-147.1/-142.0, R04 -6.4/-6.4/-2.0, R05 -8.6/-9.0/-2.7, R11 -11.2/-11.7/-7.1, R12 -12.6/-11.0,
-R16 -11.3/-11.7/-5.5, R21 -8.1/-8.1/-2.2, R22 -17.4/-17.0, R24 -8.0/-8.0/-1.5. CHWK and WILL agree to <= 1.6 m and BREW sits a
-common +4..+6 m higher (its own receiver bias, 598 epochs); the CAS DCB products (days 282, 288) carry no GLONASS C3 bias, and
-group_delay_s/signal_bias_s apply none for R. So the L3OC signals arrive ~30 m LATE on R19/R20 and ~146 m EARLY on R06 relative to
-the FDMA clock the RINEX R records carry. Our chain closes on them: R19 +32 vs +30 at the stations (2 m), R20 +40 vs +31 (9 m),
-and R06 at +41 = -146 + 2 x 95.9 m: parked two grating lobes of the 3.125-MHz comb (c/3.125 MHz = 95.93 m = 3.273 chips, #211)
-from its true peak, which presence and C/N0 cannot see; it also visited the other lobe (+46..+35 our sign) after the 12:19Z
-restart and came back at the 14:12Z one. R23's -90 m hop at 02:01Z on 10-19 (from +60..+64 since its 00:30Z rise) came through
-a displaced-presence admission, not a restart. The five offset satellites are the two K2s (R06 = R804, R08 = R803, in slot since
-2026-09-25) and the three newest K-series birds (R19 = R807 K1+, R20 = R808 and R23 = R813 K1B, launched 2025-09 and 2026-08);
-the older K1Bs R805/R806 sit at the M+ level. The "+44 m up-like" of this entry was the geometry-weighted projection of these
-per-satellite constants through the re-survey's ENU fit; on the full 10-19 night the same fit reads dU +21.35, dN -6.18, dE +5.15
-with a robust rms of 15.85 m (scratch glo_job.log), i.e. no station-like term at all. **Fix:** a per-satellite L3OC bias in the
-model (gnss_ephemeris.group_delay_s for ('R', glo_l3oc) from a table keyed by SVN, values from glo_l3_station.py on a few
-station-days as the per-satellite part relative to the GLONASS median: R19 +39, R20 +40, R06 -138 m, the rest within +-4 except
-R22 -9 on 24/33 low-elevation epochs), so the seed lands inside the DLL's pull-in and the trims go to zero; our own trims are then
-the monitor. The CDMA L3 nav message is assumed (ICD) to carry its own clock/ISC; we decode neither. Until the table is in,
-glo_l3oc must not feed the joint state (its b_sat would carry 1-5 chip constants and whatever lobe a satellite is parked on).
-
-
-**10-19 23:55Z FIXED IN CODE (needs a broker restart): per-satellite L3OC bias table, gnss_ephemeris.GLO_L3_BIAS_M +
-glonass_l3_bias_s, applied by group_delay_s for ('R', glo_l3oc), so it reaches cp_predicted through the dead-reckon
-predict_all(signal=...) and moves the seed and the trkresid model directly.** Six more station-days (CHWK + WILL full
-days 2026-10-09/15/18, fixtures/jointstate/glo_l3_station_*.txt; the three 10-12 ones stay the 04-12Z windows; DRAO00CAN
-logs no C3), each station-day referred to its median over the constellation (the common part is the receiver ISB, which
-our chain carries in the per-satellite trims since glo_l3oc is model-primary on the joint clock, no tau_band): R06 -138.2 m
-(8 station-days within 0.8 m), R08 -135.2 (6, within 1.5), R19 +41.0 (9, 35.8-42.7), R20 +43.1 (9, 36.2-43.9), R23 +41.9
-(6, 40.6-42.5); the other eight slots within +-3 m and left at the datum. Keyed by SVN with the IGS satellite-metadata
-slot history (R08 = SVN 803 only since 2026-09-25 06:30Z; before that 803 flew in R26): 803/804 = the K2 pair, 807/808/813
-the K1+/K1B three; SVN 809 entered R28 on 10-15 and is in no station-day yet (unmeasured -> 0.0). Term = -value/c (a
-LATE code owes a negative clock term), in the same order: R06 +461 ns, R08 +451, R19 -137, R20 -144, R23 -140 = +4.7,
-+4.6, -1.4, -1.5, -1.4 chips at 10.23 Mcps (1.44 and 1.41 lobes of the 95.9 m comb for the K2 pair). Tests pin the
-sign, the slot/epoch routing, the history's consistency and the controls (test_group_delay.TestGLONASSL3; a skeptic
-agent re-derived the sign from cp_predicted, the GPS TGD branch and the DCB datum, mutation-tested the tests and
-re-converted every SNX epoch); all six goldens EQUIVALENT (no recording tracks GLONASS). Expected on sky after the
-restart: the glo_l3oc trims on R06/R08/R19/R20/R23 fall to the M+ level, and the dead-reckon seed for R06/R08 lands
-1.4 lobes from where it used to, so the one-lobe referee no longer meets three PRNs at one offset. OPEN: (a) the
-day-to-day of the K1 three (4-8 m = 13-27 ns, 10-12 and BREW low) is the FDMA clock's, not ours: re-measure monthly or
-when a slot changes (the IGS metadata's SATELLITE/PRN block); glo_l3_station.py now takes the live table back out of
-the R residual (r -= c*tgd_s, verified on CHWK 10-18 to the 0.1 m), so a re-measure stays the FDMA offset and not the
-remainder; (b) before glo_l3oc feeds the joint state (#191 step 2): the joint filter has no per-band tau, so the
-GLONASS-common ISB (-9 m at the stations) would land in the GLONASS b_sat rows, separated from clk only by the GPS
-majority: give the feed a per-constellation ISB term or feed GLONASS as geometry-only.
-### #208 — wall time sits in the radiometric path: the ephemeris is evaluated at `now_w` and labelled `t_eph_age = now_w - utc0_sample0` (2026-10-18, design, KV: nothing radiometric may depend on wall time; FIXED 10-18 23:45Z: every radiometric "now" is the hop axis (transport.axis_now); lands at the next broker restart)
-**What [tree]:** deadreckon.py:2224-2292 runs `predict_all` at the wall clock `now_w` and stamps the rows'
-capture-age epoch as `now_w - utc0_sample0`; `cp_predicted` then propagates range at `range_rate` from that wall-derived
-epoch to hop-axis epochs (`ref_hop / hops_per_sec` for detections, `rec_hop / hops_per_sec` for records). The comment
-there already knows the two are different clocks. `--dr-fengine-axis` (on, common:) moves "now" onto the hop axis
-for the seeds but not this epoch. Every wall error (NTP offset, the VM's clock) enters as range_rate x error per
-satellite; the VM's chrony reads 40 us today (RMS 0.3 ms), so no number moves now, but the rule stands: any time
-used radiometrically derives from frame 0 (`time0_ns`) and a sequence number. Also wall-stamped: `det_fresh` (a
-freshness gate, not radiometric) and the joint-feed warm-up (bookkeeping). **Fix [broker]:** evaluate the ephemeris
-at the hop-derived now (the fe-axis newest hop / hops_per_sec, converted to GPST through `time0_ns` + leap) and set
-`t_eph_age` to that hop time; keep wall time only for elapsed-time bookkeeping. A few lines in stage_dead_reckon +
-the selftest that pins "no wall time in cp_predicted's inputs" (grep-based, like test_gauge_churn). Needs a broker
-restart.
-**10-18 23:01Z THE DEAD-RECKON EPOCH IS ON THE HOP AXIS (9f9808c7c + the merge follow-up):** `dr_eph_epoch(ctx)` in
-gnss_broker/deadreckon.py returns (t_eph_age, UTC seconds) = (t_now_abs, utc0_sample0 + t_now_abs): under
-`dr-fengine-axis: 1` (every chain) t_now_abs is the F-engine hop counter interpolated by wall ELAPSED seconds only, placed
-on UTC through utc0_sample0, the F-engine's own time of sample 0. All seven model evaluations in the dead-reckon block
-(predict_all x3, predict_from_decoders x3, transit_sky), `decoded_entries` (its epoch argument was dead and read
-`_drp.now_w`; fixed in the follow-up) and the `t_eph_age` label take that epoch. **What this changes numerically: almost
-nothing, and the 9f9808c7c commit message overstates it** (skeptic wf_7bc7b2f7, by a numeric check): cp_predicted
-carries range from the evaluation's OWN label, so range(T_e) + rr x (t_abs - (T_e - utc0)) = range(utc0 + t_abs) to first
-order for any T_e; the old wall form was exact given NTP (40 us here) and the move is second order, a x (t_abs - label)
-x lag ~ 1 cm at the forecast lead, ~1 m for a 60-s-old detection in the clock solve. The one first-order change is the
-seed Doppler carry (dop_geo now evaluated at the label it is carried from): drate x (lag + NTP) ~ 0.04 Hz, below
-anything observable. So there is NO 0.3-chip re-base to expect at the restart; the change is design (KV's rule, no
-wall-clock reading in a radiometric epoch), and it lands at the next broker restart with no visible step. Selftest:
-3 checks (epoch = utc0_sample0 + t_now_abs labelled t_now_abs; a 1-day wall step does not move it; no
-`fromtimestamp(ctx.drp.now_w` left in deadreckon.py). test_drift_freeze/axis_freeze/clockguard/timebase/dr_reload/
-seed_bias/context pass. **STILL OPEN, the wall-time uses the skeptic listed (radiometric, NTP-true today):** (1) the
-almanac stage evaluates at the wall clock (`_alm_now()` in gps_distributed_broker.py -> almanac.py t_pred -> ctx.pred:
-search hints and coasted-seed Doppler); (2) seeding.py builds a detection age and the cp0 retag from
-`now_w - utc0_sample0` against hop labels; (3) searchhint.py builds a hint ref_hop from `ctx.t0 - utc0_sample0`.
-Each wants the hop-axis now (ctx.drp.t_now_abs) in place of the wall difference; one pass, one broker restart.
-The WALL-vs-F-ENGINE tripwire's text now says what a wall step does (nothing to the models; those three paths).
-**10-18 23:25Z THE REMAINDER, DONE (one pass):** `transport.axis_now(ctx)` is the one "now" every stage refers to: the
-F-engine hop counter interpolated by wall ELAPSED seconds (the filtered fe_off plus the frozen cycle clock; the raw newest
-hop plus the seconds since its poll while the filter has no sample; the frozen clock minus utc0_sample0 only before the
-first telemetry or without --dr-fengine-axis), None until utc0_sample0 is known. Consumers: (a) dead-reckon's t_now_abs
-(the block that used to compute this inline, now the only definition); (b) the ALMANAC epoch (`axis_now_utc(ctx)`, the
-wall clock only before the anchor is known). The TIME-BASE DETECTOR (gnss_broker/timebase.py) compares the search's
-measured Doppler with ctx.pred to catch a stale sample-0 epoch from the nodes; a wall-evaluated almanac never moved with
-that epoch, AND (skeptic wf_12d15128) its freshness gate compared the wall clock with stamps built as utc0_sample0 +
-ref_hop/hps, so under a past-stale epoch every detection read hours old and the detector starved either way. Both now on
-the hop axis (`transport.now_utc_s` in timebase.observe and the almanac's bias solve): a stale anchor cancels in the age,
-the prediction moves with the epoch and the measurement does not, which is the spread it looks for; the bias then reads
-stale, so searchhint keeps the wide +-3000 Hz margins (~2 h of epoch error) and the search keeps acquiring while
-geometry is withheld. (c) seeding.py's coast age and cp0 retag (hop-axis now minus ref_hop, the axis ref_hop
-is on); (d) searchhint.py's nh-hint ref_hop and the UTC its predicted alignment is evaluated at. `_alm_now()` keeps the
-wall clock for the BRDC store's day key at setup (a `208-allow` line). Selftest: five axis_now cases (no telemetry, raw
-hop + elapsed, filtered offset + frozen clock, flag off, no anchor), the dr_eph_epoch pair, and a package-wide source grep
-(model-at-wall-time and wall-minus-anchor patterns over gnss_broker/*.py + gps_distributed_broker.py, test files
-excluded, the two allowed lines marked). All 27 gnss_broker test modules pass. **Lands at the next broker restart** (KV,
-when convenient; the 22:53Z restart is settling). Expected visible change (the skeptic's accounting): the coasted seed's
-age and retag used `ctx.drp.now_w`, which only stage_dead_reckon sets, AFTER stage_coast_drop and only every 2 s, so the
-old "now" there was 0.25-2 s stale (and None before the first dead-reckon pass); the hop-axis now corrects the stored
-coasted Doppler by up to ~2 s x rate (~0.8 Hz). Hints and the almanac move by the telemetry lag x rate (~0.04 Hz). Also:
-the almanac and hint stages run before the cycle's telemetry ingest, so they see the previous cycle's axis advanced by the
-frozen clock (ms; a snap's worth for one cycle after an offset snap); the transcript digests (broker_equiv) move with this
-change (coast retag, nh-hint ref_hop) and are to be re-blessed when #192 (g) makes them deterministic; the selftest's
-first grep could not match the call spellings it named (a `\b` after `)`) -- fixed and self-checked.
-
-**10-19 B16/N01 (stage-10 decision B16, triage finding N01, ~/gnss/builds/stage10; kv/b16-warmup):** the joint-feed warm-up is on the cycle clock too: `ctx.uptime_s` (seconds since the
-chain's first cycle, bound beside `t0`, the one owner of every start-up hold-off; `broker_t0` is gone from the context) and
-`--joint-feed-warmup-s` replaces the frozen constant, so a replay can exercise the feed: every recorded fixture is shorter
-than the 240-s warm-up (12-210 s), so no golden ran the feed on any clock; the `jwarm0` variant golden on the holds
-recording now does.
-
-### #206 — viewer: L2OC's dark probes grey out satellites that L3OC holds, and the not-transmitted table is GPS-only (2026-10-18)
-**What [live 13:05Z]:** glo_l2oc runs with `--probe-dark`, so its three noise probes are GLONASS-M satellites above the
-horizon (R4, R5, R12 at el 62/62/9 deg) that cannot broadcast L2OC and that glo_l3oc holds (q 5.9/5.6/3.4 at 13:05Z). The viewer
-merges the chains' rows per satellite, and app/panels/gps_feed.js:390 promotes any one signal's `noise_probe` to the row
-("a satellite that is a noise probe on any signal is below the horizon on all of them": true until 10-18, false now),
-then :420 forces the row inactive: R4/R5/R12 render as unlocked (grey row, hollow ring, not in "N locked") in the table and
-the sky while their L3OC cell shows a green q. That is 3 of the 7 GLONASS rows reading unlocked, each of them locked
-on L3OC, beside an L2OC column with 4 blanks (those three plus R21) for a chain that holds 3 of its 3 capable
-satellites: the "half of L2OC unlocked" on the viewer. Second: livebeam_server.py `_gps_signal_capability()` builds
-the not-transmitted table from the IGS GPS block registry only, so GLO_L2OC_P, GLO_L3OC_P, BDS_B2A_P and BDS_B2B_I
-ship as EMPTY lists with `_prns` = 1..32; gps_feed.js `not_transmitted()` then returns true for every blank
-GLONASS/BeiDou cell with PRN <= 32 (under the C/N0 metric; the q metric prints the number), so the table prints "·"
-(not broadcast) where it should print "—" (no detection). In the 13:05Z snapshot the masked cell is R6's L3OC: a K2 that
-does transmit L3OC, whose L3OC loop sits off-peak (q 0.03, early tap 32x the prompt) and prints "·" as if incapable;
-R9 (K1B, never acquired on L2OC, #205 a) and R11 print the same when up. GAL_* and BDS_B3I ship the GPS 1..32 list
-too (harmless beyond PRN 32). **Fix [viewer, script-side]:**
-keep `noise_probe` per signal (`sig_by[key]`), judge `active` over the non-probe signals, render a probe cell as
-"probe" in grey; build the capability per constellation (the server already has `_glonass_capable_set()` via
-`prnmap.registry_capable(sigid)`; BeiDou from prnmap's BDS-3 set) and key `_prns` by constellation. **Fix shipped 10-18 (viewer code; the restart is KV's):** gps_feed.js keeps `noise_probe` per signal,
-counts probe signals per row and calls a row a probe only when every signal reporting it is one; the row summary (sig,
-C/N0, q) skips probe signals; gps_table.js renders a probe cell as "probe" (greyed value when the metric has one);
-livebeam_server `_gps_signal_capability()` builds the lists per constellation from `prnmap.prn_blocks(sys)` and ships
-`_prns` as {sys: [...]}, and `not_transmitted(key, prn, sys)` looks the PRN up in its own constellation. Checked: the
-builder on the live inventory lists L2OC = the K slots only and L3OC = K + M+, B2a/B2b = BDS-3 only; test_lock_metrics.py
-(dukpy, three new cases) OK. **Judge after `systemctl --user restart gnss-viewer`:** R4/R5/R12 rows filled, their L2OC
-cell "probe" under every metric (the first cut passed the q/sig/hold/duty formatters' own red markup through,
-KV 10-18 14:30Z); R6's L3OC cell "—", not "·"; "N locked" counts them.
+### #210 residual — the L3OC bias table: monthly re-measure, R28 unmeasured, and the calibration-table rule (2026-11-21)
+**Open:** re-measure the L3OC table monthly or at a slot change; SVN 809 (R28) is unmeasured (0). The table is per-satellite: check it against KV's 10-24 rule on calibration tables before calling it the fix.
+**Closed 11-21:** `GLO_L3_BIAS_M` table (`5e9befd9c`), the ISB question moved to #220 (CHORD_BUGLIST_CLOSED.md).
 
 ### #205 — GLONASS, the first night: what the two OC chains showed, kept as watch items (2026-10-18)
 **What [overnight 02:43-12:30Z, judged from broker.log, the obs rows and chain_health]:** (a) **R9 never acquires on
@@ -562,31 +259,11 @@ and the nodes logged a burst of "trim EXPIRED" then. **Fix [script]:** rotate un
 `compresscmd` at low priority (or delaycompress), or cut the aggregator's per-pass INFO lines (NHPROF + per-PRN result,
 ~160 lines/s) to DEBUG; re-add a drop counter the runbook can read (export 0 at start); then find what empties the
 broker's window ring for 11-16 s.
+**11-21 review:** the GC pacing is gnss-broker `23357a68` (live as gc-interval-s 21600), not `decca102e` (the fleet-ADR non-finite fix), and nothing links the 10-18 storms to GC. Not done: nice/ionice/delaycompress in scripts/gnss/site/logrotate.conf, and a drop counter on the gather's :12051/metrics.
 
-### #203 — the follower chains' clocks run off when gps_l5's solve is not established, until a cross-band re-bootstrap (2026-10-18)
-**What [overnight]:** gps_l5's search clock solve was "not established" in stretches (03:10-03:50, 04:30-05:00,
-05:40-06:20, 09:3x, 11:00-11:30Z, and still at 12:0x-12:1x): REFUSED 42 times overnight (11 on 10-17), scatter MAD up to
-4879 chips (06:12:49Z), the cross-band donor WITHHELD from the others. The WITHHELD stretches are not new (10-17: 5-124
-lines/h). **New tonight:** while the donor was withheld, JOINT-CLK adoption kept pulling the followers' legacy clock back
-2.4-4.5 chips every 30 s; at 04:53:03Z it was refused for the first time (delta +5.1, bound 5.0), and DRCLK on glo_l3oc,
-bds_b2b, bds_b3i and gal_e5b ran 151.26 -> 143.70 (04:54:57) -> 141.81 -> 137.03 (04:56:27Z) (gal_e6 and glo_l2oc by the
-same time in their own chips): ~14 chips (~1.4 us) off for ~2 min, until all four re-bootstrapped cross-band from gps_l5 at
-04:56:51Z (150.99 chips). Again 06:12-06:14Z (REFUSED at +7.1, +11.1; DRCLK 141.92 ~30 s; recovered 06:14:28Z with no
-BOOTSTRAP line). On 10-17 no JOINT-CLK refusal exceeded the bound. No visible tracking damage (no FADR break 04:54-04:57Z,
-bds_b2b presence held). **Fix [broker]:** belongs with #200's clock work: a follower whose donor is withheld should hold
-its last good clock, not walk; and why the gps_l5 solve scatters to thousands of chips while 5-7 satellites are present.
-
-### #202 — the viewer re-reads every observables day file since September every 15 s (2026-10-18)
-**What:** `stack_components.sh:120` gives the viewer `--pvt-obs-globs "$GNSS_OBS_OUT/[gb]*_20[0-9]{6}.jsonl"`, which
-matches all 281 day files (37 days), not today's 10. For each file on every PVT recompute (`pvt_ttl_s` 15 s, polled all
-night by an open tab: 17,235 /decode_health requests since 00:23Z) `livebeam_server.py:1222-1229` seeks to size - 4 MB and
-reads to EOF: ~1.1 GB per pass. Since its 02:43Z start the viewer read rchar 2.63 TB (75 MB/s), 657 GB from storage
-(18.8 MB/s), the most of any process on the VM; NFS read calls 351-962/s against 23-249 on 10-11; the viewer sits in D
-state (folio_wait_bit_common) in 7 of 10 samples. It grows by 10 files a day. **Context, the load:** VM load 8-9 (sar)
-since the F-engine return 10-17 ~13Z, not the L2OC restart (10-11, 8 chains: ~5); idle 18-22 %; broker ~2.5 cores, gather
-1.17, aggregator 0.62; nothing starving (broker passes 0.78-0.93 s of 2.0 s); MemAvailable ~2.0 GB drifting -20 MB/h,
-no swap. **Fix [script]:** glob today's (and yesterday's, across 00:00Z) files only, or cache per file by (size, mtime).
-Judge: viewer rchar rate and NFS read calls/s drop by an order of magnitude; load average.
+### #203 residual — gps_l5's search clock solve drops to not-established with 5-7 satellites present (2026-11-21)
+**Open:** gps_l5's search clock solve drops to "not established" with 5-7 satellites present (64 WITHHELD lines 02:41-03:04Z 11-21); why it scatters is unexplained.
+**Closed 11-21:** #191 step 0c COAST `a3bfeabfc`: bds_b3i held 152.26 -> 151.88 over 02:47-03:07Z 11-21, 0 JOINT-CLK refusals (CHORD_BUGLIST_CLOSED.md).
 
 ### #201 — L2OC: the fleet loop parks one chip off the model and stays there, and nothing in the chain can tell (2026-10-18, CONFIRMED from the obs rows: four episodes in 11 h, one live)
 **What [10-18 09:00-13:20Z, glo_l2oc obs rows + broker.log; skeptic-checked]:** four times today a glo_l2oc track
@@ -623,67 +300,7 @@ cp and cp +-1 chip for a few seconds and keep the strongest fleet q; (3) hold th
 PRN not present (removes part of the (b) walk, not (a) or (c)); (4) publish `prompt_lock=false` while the referee
 disagrees, so consumers see a gap instead of a 150-m bias. **Next:** the tap check (E/P/L at +-1 chip) to name the
 peak. Applies to every BOC chain added later.
-### #200 — the whole broker hangs on one node: cx19 is the time anchor and the bare endpoints (2026-10-18)
-**What [live, 10-18 02:25-02:41Z]:** cx19's node was stopped cleanly at 02:25:52Z, and the broker restarted at
-02:27:33Z without it. `common: rest-url: http://cx19:12048` makes cx19 the source of `time0-endpoint` (the F-engine
-frame-0 anchor) and the host of every bare `combiner:` name, so every model-primary chain logged "time anchor
-unavailable" every cycle and seeded only its three probes. Only gps_l5, the blind search, tracked. When cx19 came back at
-02:39:24Z, each model-primary chain gave up waiting and seeded on the 0.00-chip PRIME ("seeding on the 0.00-chip PRIME
-after waiting 710 s"), about 151 L5 chips off the true clock (TRKRES b3i +39.6 chips), and gps_l5 had still logged no
-"receiver clock BOOTSTRAP" two minutes later, so nothing could adopt a clock phase. The fix was a broker restart with
-every node up (the 10-01 rule).
-**The failure mode, end to end:** a broker that starts without the anchor never measures a clock, even after the anchor
-returns. gps_l5's dead-reckon primes the clock at 0.00 chips "REPLACED outright by the first multi-sat solve", but that
-solve never ran in the 16 min the process lived (no "receiver clock BOOTSTRAP" line, though gps_l5's search kept 5-7
-satellites present throughout). The model-primary chains wait up to ~710 s for a clock to adopt, then seed on the
-prime, and from then on the whole fleet tracks nothing but L5 while every node, the gather and the telemetry look
-healthy. Cycling the nodes does not help: it brings the anchor back, not the clock. **Signature, one minute:** `grep
-DRCLK` in the broker log reads `clk_now 0.000 chips` on every chain; "seeding on the 0.00-chip PRIME after waiting N s"
-once per model-primary chain; no "receiver clock BOOTSTRAP" since the last "starting N chain(s)"; TRKRES tens of chips.
-**Remedy, confirmed 10-18:** `systemctl --user restart gnss-broker.service` with every node answering. Restarted
-02:43:22Z: BOOTSTRAP 151.95 chips (6 sats) at 02:43:25.7Z, 0 CHAIN DIED, and at 02:46Z gal_e5a/e5b/e6 11 present,
-bds_b2a/b2b/b3i 8, gps_l2c 9, glo_l3oc 5, glo_l2oc 1 (its first satellite).
-**Fix [broker + config]:** (a) the anchor from any node: `time0-endpoint` tried across the trackers' hosts, first answer
-wins, and the anchors compared (they must agree to the ns); (b) no bare names: each chain's `combiner` as a full URL with
-a fallback list, or chosen at run time from the instances that answer; (c) a broker that starts without the anchor must
-bootstrap gps_l5's clock once it arrives, as at a clean start (today it never did), and the model-primary chains must
-wait for that clock rather than seed on the prime after a fixed wait. Check: stop one node's kotekan (cx19 included),
-restart the broker, and every chain seeds on a measured clock within a few minutes.
-**Root cause of (c), found 10-24 in broker.log.6.gz:** the clock never bootstrapped because gps_l5 was DEAD. At
-02:39:24.812Z the anchor latched; 30 ms later `*** CHAIN DIED: TypeError("unsupported operand type(s) for -: 'NoneType'
-and 'NoneType'")` in seeding._nh_joint_consensus: the search's detections were already flowing on the cycle the anchor
-arrived, so the joint overlay fit voted (gated on utc0_sample0) before the dead-reckon pass had ever stamped
-drp.now_w, the same first-cycle hazard as the 09-28 crash. At a clean start nothing is detected on cycle 1, so it never
-shows. **Fixed 10-24 (kv/broker-robust):** (a) `transport.time0_from_any` over `node_bases(rest-url, trackers)`, for
-the latch and the 60 s re-read; (b) the per-cycle status read is a `transport.Failover` over `combiner` +
-dll-combiners, sticky, logged on a switch; (c) `_nhj_ok` requires drp.now_w and `_nh_joint_consensus` tolerates None.
-Tests: gnss_broker.test_failover, test_nhjoint (no cycle time). Still owed: the live check above (stop one node,
-cx19 included, restart the broker).
-
-### #199 — the cf06 cube leg is not recording: the compactor dies in flush, the archiver is restarted by SIGTERM, the senders sit reset (2026-10-17)
-**What:** found while judging the glo_l3oc roll-out, 22:5xZ. (a) `gnss_cube_compact.py` dies on every pass since the
-17:51:46Z pass (the first after the stage-1 canary cycle; the log opened 13:07:53Z): `flush` -> `np.asarray(self.win["freq_id_lo"])`
-"inhomogeneous shape (121,)", i.e. one (pointing, sender, day) file accumulated windows whose bin count differs, which
-the "geometry changed mid-day" guard at line ~215 did not catch; 5 tracebacks over 37 passes, the loop then "stopped on
-SIGTERM" 6 times. (b) Every pre-10-17 raw file reads "size 91094400 -> 91101600 since it was compacted ... SKIPPED"
-from the first pass on (8 bytes per frame: a frame-format change the index predates, or the archiver appending). (c) The
-archiver has 33 starts in `/tmp/gnss_cubearch.log`, the last ones "Got SIGINT or SIGTERM" (22:52:49Z, 22:59:50Z, ...
-every ~7 min, NRestarts 0 and Result success, so an external restart, not a crash; whose?). Each restart resets the
-nodes' cube senders mid-header ("Connection reset by peer, failed to send header"), and between restarts they log
-"Connection refused"; at 22:54-22:59Z cf06 had 0 established connections on :11070 and at one look no listener at all.
-Not the roll-out's doing: (a) and (b) predate it, and the l3oc senders behave as the others. **Judge:** `ss -tan state
-established | grep -c 11070` on cf06 ~90 (11 instances x 9 chains), raw files growing continuously, a compactor pass
-without a traceback. **Fix:** find the restarter first (KV?), then make `flush` refuse the mixed-geometry file with the
-sender's name instead of dying, then the size check. The viewer's beam cube is dark until then.
-**(c) answered 10-18: the restarter is the login session.** cf06 has `Linger=no` for kvand (`loginctl show-user kvand
--p Linger`; /var/lib/systemd/linger/ empty; the gnss VM has Linger=yes). `gnss-cube.target` is enabled through the
-SHARED home's default.target.wants (since 10-17 13:07, ConditionHost=cf06), so the user manager on cf06 starts the
-archiver and compactor when someone logs in and stops them (SIGTERM) when the last session ends: seen 10-18 12:09:04Z,
-when a checker's ssh started the user manager, archiver and compactor in the same second, and the nodes logged "Broken
-pipe" when it logged out 12:11-12:12Z. Overnight every node's cube senders logged "Connection refused" to
-10.222.3.6:11070 every 30 s (11.7k-22.3k each). cf06 did not reboot (up since 10-15 03:04Z). **Fix:** `sudo loginctl
-enable-linger kvand` on cf06 (KV), then judge as above; (a) and (b) remain.
-
+**11-21:** fixes (1) and (4) built: `--xband-referee glo_l3oc` on glo_l2oc (kv/l2oc-referee `fdca22258`), NOT deployed (broker restart). 11-20 data: the L2OC-L3OC level is -37 m on every PRN; R06 sat a chip high most of the day, R10 and R20 a chip low for long stretches.
 ### #198 — reopened: the fleet cycle still ran at ~30 s per node with the bufferSend fix in the binary (2026-10-17)
 **What:** KV cycled the five nodes onto `b4ab492da` (which carries `d624d7784`, confirmed by `--version` and the
 source) at ~22:40Z and saw the 30 s per node again, with recv1 (restarted 22:48:34Z) and the cube archiver (#199) down
@@ -693,31 +310,6 @@ goes. Unmeasured: whether the 30 s is the stop (SIGTERM -> exit) or the start (`
 answer, which comes after ConfigTracker and the GPU set-up; nothing in `node_up.sh` sleeps). **Next cycle:** time
 `ssh <node> sudo systemctl stop gnss-node` and `node_up.sh <node>` separately on one node, and read
 `/tmp/gnss_node.log.1`'s tail (the previous run's shutdown) for the last stage to go.
-
-### #196 — the tipped-dish week: what is switched off, and the checklist for the realignment (2026-10-17)
-**What:** the dishes are tipped in semi-random directions until next week's realignment, so the broker runs
-`--boresight none` (`cc2b33651`, armed in `config/gnss_chains_chord.yaml` `common:` by `55ca9a036`, live since 14:45Z):
-the D3 transit veto, the dead-reckon clock's transit freeze and the assemblers' model-formation freeze are OFF. The
-fleet element reference in use (`config/elem_shared_ref_20261017.json`, `df37629bb`) was taken at 13:30Z with the dishes
-tipped and 7 of 11 instances healthy. `config/pointings.yaml` p1_scattered_20261017 has no boresight, so the nightly beam
-map refuses and the array epoch is still p0.
-**At the realignment, in order:** (1) delete the `boresight: none` line and restart the broker (T+60 s CHAIN DIED check);
-(2) a fresh `elem_shared_ref.py snapshot` with all 11 instances once their models are warm, copy into `config/`, point the
-manifest's `elem-shared-ref`, regenerate (a node restarted after a cron re-take and before the commit runs up to 30 min on
-the stale file, `ACT_EVERY_S`); (3) a new array epoch and a boresight in `pointings.yaml` before any beam map or the
-64-element step (#168; rows C/D now deliver); (4) read cx27's GPU-1 comb from its tap when its port is back and fix
-`gpu_offsets_mod16` if it moved (#194's leftover); (5) the judges that need a pointed, quiet sky: #154's no-restart re-base
-check (R ≥ 0.95 in every band within ~10 min after an F-engine re-base with no node restart — never yet run as stated),
-#177's per-satellite aggregator L5 search SNR and the per-satellite G re-solve (expect DRAO's 0.64 dB spread), #184's fresh
-replays, #155's transit recount, #191's timing steps, #176's standing `REFUSED (step` watch through a 1176-MHz transit.
-**Check:** `grep -c 'BORESIGHT TRANSIT' broker.log` non-zero again after (1); R ≥ 0.95 at the next cron pass after (2);
-the beam map builds after (3).
-**2026-10-26:** (1) done by `89f9d73eb`, late: the line outlived the Tau A pointing (10-24), and the step-2 soak met two
-transits with every guard off (G13 at 0.12° 05:41Z, E16 at 0.91° 06:49Z; the code-rate clock walked every chain's seeds
-~1.2 chips/s for ~10 min each). The broker now reads the boresight from the nodes' `telescope.dish_coelev_deg`
-(`--boresight telescope`, the default), so a re-pointing needs no edit here; `none` remains for a tipped week. The same
-commit holds the code-rate clock through a transit, which nothing did before. (2) done 10-25
-(`elem_shared_ref_20261025_f0reset`); (4) moot since #216 reads every comb live. (3) and (5) open.
 
 ### #195 — a PRN whose disc sits at the clamp for minutes has no way back to its peak (2026-10-17, split from #175)
 **What:** the #175 refusal stops a chain-wide displaced admission, but a PRN that is already railed stays railed: a railed
@@ -922,27 +514,6 @@ from recv1 burst images, TLEs in taua1029/hidden_guowang_20261029.tle). The burs
 1268.52 MHz and 2.046 Mcps on 1202.025 MHz (null positions), with a flat-topped, high-sidelobe envelope that a
 white-code sinc^2 does not give. Deprojection removes ~70-85 % of a burst in projected channels.
 
-### #214 — the N^2 projection measured on 10-24: what the lanes leave, and what they cannot reach (2026-10-24, KV: "roll it out, get the E6 PRS lobe, note the 1202 emitter")
-**Measured (scratch proj1024/: gauges polled 40x on cx27/43/44/51 ~14:58Z, gains divided out per input, continuum
-from recv1's subset archive off-lobe 1100-1160 + 1300-1400 MHz, figure n2proj_1024.png):** cx51's lanes (95 stations)
-take the 1176 lobe from +4.0 dB over the continuum to -0.7 dB, 1.1 dB above the pure mode-loss line
-continuum x (1 - k/n) (33 lanes): ~13% of the satellite power left, code-shaped. E6-B/C sits at or below the line,
-L2OC +0.1, E5b/B2b +0.5..+1.1. The eigen-path nodes (cx27/43/44) remove <= 0.6 dB in the lobes (k = 0 at 1176).
-**Excess the lanes cannot reach:**
-- 1263-1273 MHz, +1.1..+3.1 dB centred on 1268.5: the Galileo E6 PRS lower lobe (laned only on 1274-1284) under
-  an intermittent rank-1 emitter (subset archive: top eigenvalue 8-25x the bulk most hours, 40-200x in episodes,
-  10-23 03-05Z and 10-24 12:09Z, then on the C-F X feeds). Lever: lane transfer (tier 1.5), kv/proj-rollout.
-- 1202.0 MHz: a ~2 MHz wide bump, +2..+6 dB over the E5b/B2b sides in every archive file 10-22 23Z..10-24 12Z,
-  rising each UTC morning; the L3OC lanes on its channels do not touch it, and an L3OC satellite is a 20 MHz sinc^2,
-  so it is NOT the L3OC carrier (the 10-20 reading). An untracked narrow emitter (1202 MHz is a DME reply channel);
-  the F-engine gains are cut ~3.5 dB on exactly those channels. Noted, not pursued (KV).
-- 1291-1295 MHz: an intermittent single emitter (30-36x the bulk at 10-24 12:09Z), outside the live channels.
-- 1217-1238 MHz: a GPS P(Y)/M-shaped pedestal (+0.8..+1.3 dB); the 10 L2C lanes on 1227.5 remove ~1/4 of it there.
-**Fixed on kv/proj-rollout:** the stage wrote back only the station block, so the products between the stations
-and the other inputs kept the satellites (on cx51, rows G/H: the archived frame was not a covariance, 200-340x
-components over 127 inputs). Also: cx42 runs a stock kotekan (no gnss metrics) on 10-24; recv1's subset archive
-stopped at 12:19Z 10-24.
-
 ### #190 — project ALL KNOWN satellites out of the science N^2 from the lane directions, not the N^2's own eigenvectors (2026-10-13, KV: "swap over once we get back on sky")
 **What [tree]:** GnssN2Project takes its subspace from the science N^2 block's own top-k eigenvectors, gated at
 lambda0 >= 3x mean auto (per-element INR ~ -12 dB over 48 live elements), frac0 >= 0.4, PR >= 6, k <= 3, EMA 0.5 s.
@@ -1143,6 +714,7 @@ split-chain experiment (`fixtures/jointstate/split_draft/`) is not needed.
 nothing reads or forwards; both faults they are built for (#159's lost sky, #154's mis-pins) were found by a person
 reading logs. **Fix:** tie them into CHORD's monitoring and alerting (KV: "ultimately"); until then a one-line summary
 in the viewer would do.
+**11-21:** stopgap built: the viewer serves /alerts and shows an Alerts panel (the ALERT files with age and first lines, plus heartbeats: the elem_ref cron, the beam-cube fold, the eop cron), kv/viewer-alerts `276be8269`, NOT deployed. From #131: the broker also fails quietly when the gather link is refused (telem.py reconnects forever, nothing shows a down gather). The real fix is #233.
 
 ### #158 — projection phase 2 leftovers: `b` reaches only the lobe fold, `k`/source are not exported, the dB judge never ran (2026-10-02)
 **⚡ 10-12: two of the three leftovers done, rolling out (KV: "let's roll that out while things are quiet").**
@@ -1369,6 +941,7 @@ product's remaining losses are the close passes, and one of them on 10-11 was th
     the poll time and swap neighbours; the first pass faked 63% NO ARC that way.
   - A row's `carr_resid_m` is dominated by the ~100-ms record-count stamp (±40 m). Judge a
     band's ADR only at exact grid hops.
+**11-21:** the tool measured from the pre-10-24 boresight (BORE_EL 81.41) since the Tau A repoint; it now takes the boresight per epoch from config/pointings.yaml (kv/transit-bore `e38194bd5`). Open: rerun the transit census.
 
 ### #119 — `--fit-flush-on-reject`'s own revert trigger is tripped, and unread
 Pre-registered as "revert if flushes happen on healthy sats outside events". **[live]** 69
@@ -1464,8 +1037,13 @@ and the cube leg's unit. Until this is understood, stop the broker and gather by
   /var/tmp/gnss-logs/broker.log` at T+60 s = none; `screen -ls` shows `claude` and `screen -r claude` shows two
   windows, each at its session's prompt with a Remote Control URL. Then the VM half of this entry closes; what stays
   open is the target-stop propagation (journal access) and the cube target's enablement at the return.
+**11-21:** the cube fold was dead 11-14..11-21: the corrcal reboot killed the transient loop, and after its relaunch the loop skipped the fold because the stage glob overflowed ARG_MAX at ~30k files (kv/cube-glob `ce2ce04c6`, relaunched 03:03Z 11-21, folding 34k files newest first). Open: a durable unit (KV's call).
 
 ## Open — the fix is in the NODE BINARY (queue for the next cycle)
+
+### #234 — gw_1202's telem_pack drops PRNs beyond its 14 wire rows (2026-11-21, review)
+Every node logs a WARNING that gw_1202 holds more PRNs than telem_pack's 14 wire rows; the rest are not published.
+Size the rows from the chain's PRN count, or cap the chain's PRN list at the row count.
 
 ### #232 — GPS L2C is tracked on CM, the data code, only; the CL pilot has no chain (2026-11-20, KV: "can we add L2C CL to the buglist / todo? I'd like to do that, but we'll have to come back to it in a bit")
 **What:** gps_l2c despreads GPS_L2C_CM, the 10230-chip, 20 ms data component on the even chips of the 1.023 Mcps
@@ -1484,32 +1062,6 @@ once CM is locked; then the CM+CL combination, with #219's open L2 terms. cnav_p
 already gives L2C a dataless pilot") holds only after this.
 **Status:** filed 11-20, parked by KV. Needs a node binary and sky time.
 
-### #229 — the projection's duplicate test keeps the strongest lane, not the best: at a bright GuoWang pass's peak a lane contaminated by GuoWang goes in first and the satellite's own lane is dropped, capping the null near 10 dB (2026-11-07, KV: "Let's add to the bug list — no need to interrupt the run for that tonight!")
-**What:** GnssN2Project builds each channel's lane basis from its candidates sorted by prompt power, local lanes
-before fleet lanes (`[tree]` GnssN2Project.cpp:270, 4534f85b4). Each goes through gnssProjSubspace::add(), which
-drops a lane carrying less than lane_min_new_frac (0.1) of new direction as a duplicate (:333). At the peak of a
-bright GuoWang pass every other lane on the channel (other gw_1202, glo_l3oc, E5b, B2b) carries the GuoWang
-direction, overlap 0.45-0.85. When one of them is stronger than the satellite's own lane it goes in first, and the
-owner lane (overlap 0.99, 20 dB alone) falls under 0.1 new and is dropped. The basis then holds only the smeared
-direction: null ~ -10 log10(new_frac) ~ 10 dB instead of ~20.
-**Evidence:** `[live]` cx27 lane dumps 11-07 00:01-00:53Z (DIGUI-121, -119, -49, -57; cf06:/var/tmp/kvand-lanedump1107/cx27,
-90 files): window A, 8 of 101 bright frames, all at the pass peak, 3-10 dB lost (e.g. lane 1941, overlap 0.84,
-entered ahead of the owner); window B, no duplicate drops; about 7 % of bright frames over both. Tools in
-~/gnss/builds/leo-steer/ (fid_scan.py, cand_at.py); narrative in memory chord-handoff-20261106-cube.md.
-**Options** (none prototyped): the channel's owner lane first; rank by coherence x power; rank by explained power
-q^H R q (most accurate, likely too costly per frame); let a better lane replace a worse near-duplicate already in
-the basis; lower lane_min_new_frac (config only, but configs install only at a cycle, and near-duplicates then
-spend the lane budget, see #228). Every option needs a node cycle.
-**Fix:** e4008ce95 (kv/lane-rank), the explained-power option made cheap. GnssN2Project tracks each live channel's
-top 3 raw-block modes with one subspace-iteration step per frame. Where the top mode is at least lane_rank_min_rel
-mean autos (manifest: 10), the board lanes that explain at least that much go first, ordered by the power they
-explain; the rest keep tracker-power order and fleet lanes still follow. Gauge
-kotekan_gnss_n2project_lane_ranked{freq_id}. Cost on cf05 at n 113: 12 us per channel per frame, 17 us per
-ranked integration (bright channels only).
-**Status:** filed 11-07 03:34Z. KV 11-08 (in gnss-thinking's session): fix it, live from the next node cycle.
-Fix merged into the candidate kv/rel-1108, NOT LIVE until that cycle. On-sky check after the cycle: the
-lane_ranked gauge and a dump census of duplicate drops (expect ~0). Same basis-building step as #228.
-
 ### #228 — gw_1202 lanes are held for up to elem_dir_hold_s = 1500 s, a GNSS-sized hold on LEO satellites: held GuoWang lanes fill the lane budget (2026-11-06, KV: "hold off on the lane hold fix, please file as a todo")
 **What:** a slot whose row falls below elem_dir_coh_min keeps publishing its last coherent direction, steered with
 the current geometry, for elem_dir_hold_s (GnssGpuRecordAssemble). The value is 1500 s on every assembler. That
@@ -1522,46 +1074,13 @@ that the held lanes cost depth on a satellite in the beam.
 Buys lane budget, not depth: tracked GuoWang lanes are rebuilt every frame (11-06 dumps: coh 0.68-0.76, held 0 s).
 **Status:** parked by KV 11-06; ~/gnss/builds/cube-vm-move/lanedump_read.py reads the dumps.
 
-### #227 — GuoWang 1202.025 MHz lanes: track the constellation's ranging code for beam mapping (2026-11-03, KV: "think about using these signals for beam mapping ... collate a database of code <-> sat values ... record their second ms of data chips")
-**What:** the GuoWang downlink at 1202.025 MHz is a GNSS-style ranging signal (dg3_report_20261102.md section 7):
-BPSK at 2.046 Mcps, 2 ms frames of 4092 chips, the first millisecond a fixed 2046-chip code (B1I's G1 from phase
-1206 XOR a new degree-11 m-sequence G2', the satellite set by the G2' phase, as BeiDou assigns PRNs), the second
-millisecond data chips, one data sign per two frames (250 sym/s), one clock for carrier and chips. Five satellites
-are known (`GUOWANG_1202_G2P_PHASE` in python/scripts/gnss/guowang/guowang_codes.py, generator `guowang_1202`,
-family `guowang1202_all`). Hundreds of LEO passes a day at 1202 MHz, ~35 satellites up at once, would probe the
-beam far more densely than the GNSS constellations.
-**Steps:** (a) the code <-> satellite database: every beam-dump window (cf06:/var/tmp/kvand-beamdump, 1202 lobe
-freq_ids 6122-6185, stitch with --ref-input auto, conj=False) through ~/gnss/bb1030/dg3_live.py (run_live3.sh is
-the recipe: --fd from dg_passdoppler.py at the window centre, --chip-dr ~ -0.51 Hz for the carrier-comb pitfall) or
-a correlation of the 1202 fold against the 2047-code family; grow the dict. (b) a signal descriptor (BPSK, 2.046
-Mcps, carrier 1202.025 MHz, 2046-chip code at a 4092-chip period = 50 % duty, 4 ms symbols) in gnssSignal.hpp AND
-ALL_SIGNALS AND the iface mirror (test_iface_mirrors.py); a replica generator beside beidouB1ICode.cpp with the
-test vectors of test_guowang.py. (c) orbit source: no BRDC; TLE-steered Doppler (guowang_passes.py; the
-carriers match the TLE to ~20 ppb on the frame0 axis, LEO rate -120 Hz/s) and a code-phase search hinted by the
-UTC-tied frame epoch (guowang_1202_db.json on kv/gw1202); passes last minutes, so lanes are armed per pass like
-the beam-dump scheduler. (d) log every satellite's data millisecond.
-**Traps:** the 1202 carrier carries a UTC-locked 10 ms (5-frame) phase pattern of up to 0.7 rad (~0.7 dB over
-five frames), whose 100 Hz sidelines catch a search started from a wrong prediction: confirm the carrier by the
-code. The beam-dump window labels (manifest utc) are 2-3 s early; time passes by seq0 on the frame0 axis. No further baseband dumps are needed; the beam dump's 1202 lobe gives
-codes and data chips.
+### #227 residual — the GuoWang code-to-satellite database is incomplete (2026-11-21)
+**Open:** the code-to-satellite database is incomplete: 8 code groups unknown, 5 all-silent (GuoWang handoff 11-11).
+**Closed 11-21:** `beca29fea` (GW_1202 code and nav), the gw_1202 chain live (CHORD_BUGLIST_CLOSED.md).
 
-### #226 — DTV band (470-600 MHz): a blind channel-identification subtraction stage recovers Tau A where projection cannot (2026-11-02, KV: "write up the DTV work, along with a proposed live pathway, and file to the todo list")
-**What:** the seven ATSC channels are one dominant mode plus a multipath tail at Tau A's eigenvalue, so a fixed-K
-projection removes Tau A with the tail (channel 24: 70 % at K = 4, channel 30 lost). Modelling each channel as one
-transmitter timestream through a lagged impulse response per input (49 lags), initialised from the Tau A-deflated
-eigen-beam and fitted by least squares, then peeling the co-channel second station the same way, brings channels
-17 / 24 / 30 to the clean floor with Tau A at 0.98 / 0.90 / 0.69 (the rest is 4-bit damage: the F-engine gain is 2
-and 7 dB down in those channels, levelled with the DTV in). The Green's functions are static over 80 s to < 1 %, so
-a frozen solution subtracts as well as a refitted one. Write-up and pathway: docs/CHORD_DTV_SUBTRACTION_20261102.md;
-tools ~/gnss/bb1030/dtv_*.py; data cf05/cf06:/var/tmp/bb1030/dtv.
-**Pathway:** a cudaCommand before cudaCorrelatorDual in gnss<g>_n2dual (lagged beam for the timestream, lagged
-subtract, requantise in place, lag correlator for a per-second g tracker; ~30 GMAC/s per GPU for ~12 sub-channels),
-the eigen start once per channel off-transit, generator plumbing like --beam-dump-freq-ids, A/B with the beam dump
-and recv1. The same stage covers the 600 / 700 MHz LTE downlinks. **Open before building:** the lag correlation
-between the two peeled timestreams, the direction fit of each arrival with the dish positions, why the MMSE
-refinement costs weak sources a few percent of Tau A, and the tracker's time constant on a longer capture.
-**Status 2026-11-03:** test version built (cudaDtvSubtract replacing the ring copy-in, host fit scripts/gnss/dtv_state.py, branch kv/dtv-subtract); validated by a kernel test, a gpu_batch pipeline test and a replay of dump chunk 0 through the same kernels that reproduces the offline Tau A numbers; the cx51 live test (channels 2727/2733/2903/2909) is written up in the document and waits for KV's go.
-
+### #226 residual — the DTV subtraction's four open design questions (2026-11-21)
+**Open:** the four questions left open before building (lag correlation of the peeled timestreams, per-arrival direction fit, the MMSE weak-source cost, the tracker time constant): answer or drop them.
+**Closed 11-21:** `cudaDtvSubtract` built and live since ~11-06 (12 of 16 GPUs on 11-21: cx42/cx47 on stock) (CHORD_BUGLIST_CLOSED.md).
 
 ### #225 — GnssN2Project runs at 77-86 % of its core per GPU after the 2026-10-30 widening (43 channels, 20-30 lanes): the lane projection's n^2 k per channel-frame is the cost, and the headroom shrinks as satellites rise
 **What:** the stage is single-threaded on one core per GPU (`n2-project-cpus` 15/19). With the 2026-10-30 widening to
@@ -1571,6 +1090,7 @@ lanes per lobe channel, up from 65-73 % at 32 channels, with no backlog in host_
 the worst case, ~30 % above tonight's. **Levers:** project() on the upper triangle only (V is Hermitian; ~1.5-2x),
 channel-parallel threads on the idle HT siblings 47/51, a lane budget ordered by strength rather than board order.
 Related: the relay's copies of a GPU's own satellites on far targets (docs/CHORD_FLEET_LANES.md, Fleet).
+**11-21:** now 87-95 % of a core per GPU (per thread). Threading taken by gnss-main, parked; scouting in memory chord-225-n2project-threading-parked-20261120.md: 43 live channels per GPU, the serial 129 MB frame copy caps the gain unless workers copy their own channels, OpenMP as N2Accumulate does.
 
 
 
@@ -1581,8 +1101,7 @@ transit (10-26 18:02Z, 0.72 deg) the broker posted SAT-GEOMETRY to 12/16 assembl
 engaged cannot be read. **Fix:** a `kotekan_gnss_record_assemble_shared_frozen` gauge (0/1) plus the
 `_bore` separation, and one INFO line on entry and exit.
 
-**Top priority: #177.** The others below it came from the same 10-12 comment review and are
-unconfirmed or dormant.
+The entries below came from the 10-12 comment review and are unconfirmed or dormant.
 
 ### #181 — the replica bank applies no shared overlay for B2I, L3OC and L2OC (2026-10-12, dormant)
 **What [tree]:** the shared-overlay ladder in the `ChannelizedReplicaBank` constructor omits `BDS_B2I`, `GLO_L3OC_P/D`
@@ -1600,13 +1119,6 @@ full window's `best_ph` to `overlay_apply` for every rung, but `overlay_apply` c
 of the window it is given; a suffix rung starting d records later needs `best_ph + d` (the navwipe pin beside it is
 shifted). No live config sets `secondary_overlay` or `navwipe_bit_records`, so the path does not run.
 **Fix:** shift the phase by the rung's record offset, as `pin_here` does.
-
-### #168 — our 32-element code assumes the n/2 pol split (2026-10-10)
-**What [tree, from the rows-C/D survey]:** the shared model splits pols at h = n/2 (`GnssGpuRecordAssemble.cpp`, the
-pol-1 anchor and both learners), so 64 elements = [0,31]+[64,95] is right and 48 = [0,31]+[64,79] silently mixes
-pols; nothing refuses it. Growing the GNSS array to rows C/D must go to 64 inputs, never 48.
-**Fix:** derive the split from the dish table, or refuse `n_elements` not in {32, 64} in the assembler and the
-generator. Check: a generator refusal on a 48-element live_element_ranges.
 
 ### #156 — `get_chord_metadata()` reads an object's `parent_pool` while `deepCopy` can be assigning it (object-content race; found 2026-09-30)
 - **What:** `chordMetadata::deepCopy` does `*this = *chord_other` under both objects' locks, and that assigns the weak_ptr
@@ -1627,57 +1139,6 @@ generator. Check: a generator refusal on a 48-element live_element_ranges.
 ### #145 residual — ElemCal drops any element with rho² > 0.99
 The reference-weight defect is fixed (`978561481`, closed). Left from the same review: an element whose
 rho² exceeds 0.99 is dropped, so a very bright satellite's own cal can end with zero weights. Unmeasured.
-
-### #131 — the gather dies when a telemetry client flaps
-**[live]** 2026-09-14 20:57:45: the cf06 gather (`build_nodpdk`, 09-09) exited with no FATAL, no
-core (no `coredumpctl` on cf06) and a log that ends mid-burst: six `dropped client fd N -- it
-could not take a frame within 200 ms` lines in its final second, and **20 loopback connects /
-20 drops in its last 40 lines** on fds cycling 201–210. That client was the live broker's telemetry
-reader reconnecting after each drop. The broker had been flat (34 drops, 19:12→20:48) until 21
-`broker_equiv` replays ran on the same host (three `gate.sh` runs, 20:50–20:58) and starved it.
-**Consequence:** every `set_policy` and trim post `Connection refused` for 50 min, the fleet ran
-on the gather's *standing* policy (so seven chains looked fine), and L2C — never armed in that
-policy — was the visible casualty. Trim store aged past 300 s, so recovery cost a pull-in.
-**Two defects:** the gather must survive a client that connects and is dropped 20 times a minute
-(reaping path, 241c0e4a1 lineage; suspect a use-after-close in the poster/reaper race); and the
-broker must fail LOUDLY when its gather link is refused -- it logged `TELEM DOWN frames 0` every
-30 s and `0 posts / 1349 failed` while the viewer showed a working fleet. **Mitigations shipped
-09-14:** `gate.sh` refuses on a host with a live gather/broker; the gather runs under
-`segvtrace.so` (separate log `/tmp/gnss_gather_segv.log`) so the next death leaves a backtrace.
-**How to see it:** `ss -ltn | grep -E "11060|11061|12051"` empty; broker log `frames 0` with
-`nothing yet` on every chain; the 2-line `stack_up.sh` health table.
-**10-13:** both mitigations are gone with the dead-code removal (`gate.sh` and the `segvtrace.so` launcher went with the
-pre-systemd launchers), so the next death leaves no backtrace; the gather now runs under its unit with
-`Restart=on-failure`, 30 s. The fix is in the gather binary on the VM (the reaper path), deployable without a node
-cycle; a flap harness (connect, take nothing, repeat 20×/min) is the test.
-
-**10-13: read, sanitised, flapped — not reproduced.** The one defect found by reading and confirmed by ThreadSanitizer
-is the stage-7 one: `~GnssTelemGather` closed `_listen_fd` while the accept thread polled it — fixed (`c955796ff`:
-shutdown, join, then close; `client_drops` under its own mutex, `bad_frames` atomic). A shutdown-time race, so it cannot
-explain a death mid-run. The flap harness now exists: `scripts/gnss/telem_flap.py --kotekan <bin> --config
-config/generated/chord_gnss_gather.yaml --capture fixtures/tec_wander/telem/telem_l5_20261012_1252.bin [--clients N
---flaps-per-min R --read --no-sender]` (ports moved +1000; exits non-zero if the gather dies; the e5a_e6 capture is v7
-and the v8 gather rejects it). The UNFIXED build survived 20/min, 200/min × 10 clients, reading clients, no-sender and a
-starved host (a reading client dropped every 3 s, as the broker was on 09-14) with no ASAN/UBSAN report; the fixed build
-survived 10 min at 20/min (203 drops) and 10 min at 10 reading clients × 200/min (17,045 drops, 858 reaps).
-**What is left:** the 09-14 exit itself — no FATAL, no `terminate called`, no core, under 21 parallel replays on the
-same host — fits a SIGKILL (OOM) better than a stage bug. cf06's kernel log for 2026-09-14 20:50–21:05 settles it
-(`sudo journalctl -k --since "2026-09-14 20:50" --until "2026-09-14 21:05"`, or `zgrep -a "Sep 14 20:5"
-/var/log/kern.log*.gz | grep -i -E "oom|Killed process"`): an OOM kill closes this as host starvation; nothing there
-leaves it open with the harness as the standing check. **10-13 21:08:57Z:** the gather runs the fix (`build_nodpdk` = `4514061a6`, rollback
-`kotekan.prev_d30be5f66_20261013`; the aggregator takes the same binary at its next restart). KV's cf06 kernel log for
-2026-09-14 20:50–21:05 has no entries, so the 09-14 exit stays unexplained: open, with `telem_flap.py` as the standing
-check and the next death as the evidence (the gather now runs under its unit with `Restart=on-failure`).
-
-### #114 — `cudaRFISKtilde` is 6× slower on gpu0 than gpu1 on the same node
-**[live]** 12.89 ms vs 2.12 ms per frame on cx43 with identical per-GPU configuration, and it is
-the largest non-inject kernel on the busier GPU. Per the standing rule that **nothing is
-per-node or per-instance**, an asymmetry like this is a bug until proven otherwise. Investigate
-before optimising anything else on the GPU: it is a bigger lever than anything left in the GPU
-queue.
-**10-13:** `/gpu_profile/<name>` still exists in `gpuProcess`, but the generator's `--n2-debug` (which set
-`log_profiling`) was removed as dead, so the check now needs `log_profiling: true` hand-set on one node's config for one
-run at the F-engine's return.
 
 ### #126 — the F-engine axis is drift-free and ~217 ms stale, and only labels can use it
 Filed for years as "the 215 µs has never been decomposed"; **it was decomposed on 2026-08-17**,
@@ -1742,58 +1203,9 @@ quiet bins 10-20 min apart, 6-9 dB over 10-29, x3-10 in a boresight transit). Wh
 Analysis and products: builds/beam_taua_1029/out/{envelope,night2night,early_oct}/ and RESULTS.md; scripts
 scratch_kv/cubefix/pedestal_variability.py, pedestal_lowenv.py.
 
-### #192 — comment pass, stage 10: the repair run is done; KV's decisions, the golden re-bless and three dead fixtures remain (2026-10-15; run 2026-10-18/19, NOT MERGED)
-**Done, branch `kv/repair-s10`** (24 commits on kv/chord-gnss 2afecde50, `git merge-tree` clean): every input
-(the 199 stage-8 findings, 253 unscreened reviewer residuals, the 27 stage-9 bugs, (a)–(h) and the "for KV" list
-below, 21 found on the way) re-read against the code first: 273 still present, the rest fixed since, text stage 9
-had fixed, duplicates or not bugs. 236 fixed in 24 groups, each by one fix agent then one adversarial reviewer (one
-agent at a time), every behaviour fix with a test shown to fail on the base; review reverted 2 and deferred 1, which
-join the decisions. What changes:
-- **Replays:** `broker_equiv` runs every replay with a closed `--telem-gather` port, so a replay on the gnss VM no
-  longer folds the production gather's live frames — the cause of (g)'s red and nondeterministic VM goldens (cf06,
-  with nothing on 11061, was always right). `GNSS_IGS_SNX` pins prnmap's registry from a `<transcript>.igs.snx`
-  sidecar; `_tree_state` covers the broker's sibling modules; `selftest` passes the flags after `--`.
-- **Broker live path, goldens moved and not re-blessed:** the predicted range rate is rotated into the reception
-  frame (all six on-sky goldens, ≤ 0.05 Hz at L5); rate-0 seeds hold on the single-combiner path (fake_l5 and the
-  three 08-26 ones); trim arming runs on the cycle clock (e5a_20260826). Golden-neutral on today's fixtures: the
-  MINNOV/INNOV windows are 10 min by age (they were 120 samples, ~4 min); a declared clock snap must come from the
-  adopted donor and refusals no longer keep a never-adopted clock fresh; the slew starts from the phase the tracker
-  runs; fleetadr, fits and ratefeed survive a backward re-base and the F-engine axis stays monotone through one;
-  a re-served detection counts once; the coarse rate feed drops below-horizon noise probes ((h)); stale rrate rows age out; telem reads frames
-  without slot 0; the BRDC store parses once per refresh and backs off a failed one; `--joint-consume` refuses an
-  unknown token; the deep gate runs once per pass, not per row.
-- **Offline:** the generator (gather recipe wrapped whole, aggregator feed `base + 2k + g`, the `--frame0-nano` check
-  after the override, default gather/cube ports 12051/12052, `bringup_order` not a host, `--fleet-trim-windows`
-  default 2), gen_fleet (`--check` exit 2 on its own failures), the site scripts (exact env gate, node_up retries,
-  wedge probe by process name, eop_cron reads the manifest's paths, cube launchers), the code checks and gates that
-  could not fail, the cube compactor, the nav decoders, the viewer (TLE retry, decode-health bands, the broker sky
-  kept on a TLE failure), the beam tools.
-
-**Verified**, base against branch: cf06 broker suite + selftest + 52 tool and viewer tests pass, pyflakes one
-warning better, black unchanged; generated config bodies identical (the aggregator and gather headers change:
-regenerate those two after the merge); cf05 CUDA + CPU builds (WERROR), 57/57 boost, `--check-config` 9/9, the five
-C++ tools; check_js 29/29. Per-item reasoning, tests and verdicts: `~/gnss/builds/stage10/` (`triage.json`,
-`run{A,B,C}_results.json`).
-
-**What is left:**
-1. Re-bless the goldens after the merge, from a clean tree, naming the movers above. broker_onsky_l5, l5_holds and
-   e5a were already off their blessed digests at the base (step 0b's range model).
-2. `broker_onsky_{e5a,l5,b2a}_20260826` no longer replay: 1300–3400 transcript divergences each (the broker asks for
-   `/telescope/time0_ns` first; the 08-26 captures did not), the time anchor never resolves and dead reckoning never
-   runs. Their digests are deterministic and test almost nothing. Re-capture (fixtures/README.md) and retire them.
-3. KV's decisions, ~40, each with options and a recommendation: `~/gnss/builds/stage10/KV_DECISIONS.md` — config
-   and sky (joint-p2c-rotate, the B3I floor and C56–58, bds_b2a `rrate-feed-applied`, core pools, the shared
-   reference for L2C/L2OC/L3OC, the GLONASS daily TTL ...), broker behaviour, group delay (−TGD for L5, a DCB path
-   for L2C), replays, and the node C++ below. It includes, for #208's owner, the joint-feed warmup timed on wall time
-   (a replay under 240 s never runs the joint feed; longer ones switch it on at a load-dependent cycle).
-4. Node C++ for the next cycle: the gather's fleet DLL reads the PRN map from record slot 0 only (the Python reader
-   now takes the first filled slot); GnssFleetTrim's policy TTL does not disarm a silent chain; the GPU search
-   refine takes no `nh_phase`.
-
-Not part of the run, kept from the 10-17 notes: (g) cx19 drops packets at the distributor ring in bursts (645 `rx ring was full` warnings in its 13:48-18:32Z run,
-up to 478k per poll; ~100-1000/s steady after the 18:33Z cycle, the NIC counter flat, the other five at 0-20/s):
-pre-existing, not the 10-17 change; measure its lcore load and the recv1 reconnect bursts before blaming the
-search or the control path.
+### #192 residual — refine_peak_cuda takes no nh_phase (2026-11-21)
+**Open:** `refine_peak_cuda` takes no nh_phase (gnssSeedTransport.hpp; the CPU refine_peak does).
+**Closed 11-21:** `fe24af48b` (43 decisions), `13036dea8` (re-bless), `0aa92696c` (fixtures retired), `273f3cb16` (gather F1/F2); item (g) gone (CHORD_BUGLIST_CLOSED.md).
 
 ### #157 — `test_buffer_peek` fails its `peeks_won > 0` check under ThreadSanitizer (flaky under slowdown; found 2026-09-30)
 - **What:** under TSan's slowdown the worker thread wins every iteration, so `BOOST_CHECK(peeks_won > 0)`
@@ -1804,102 +1216,9 @@ search or the control path.
 - **Fix:** make the contention deterministic (a barrier so the peek goes first at least once), or check "not vacuous" some
   other way. Upstream test code.
 
-### #56 — transits confirmed; the residual is very likely GNSS we cannot see (see #129)
-**[archive + BRDC, 08-22/08-23]** Near-boresight transits are the mechanism, and the amplitude
-tracks how much of the tap's band the satellite actually lights. ⚠️ **The tap is NOT L5-only**:
-`gnss{0,1}_srch_tap/rf_stats` monitors 22 channels over **1166.8–1282.4 MHz** (L5/E5a/B2a ×7,
-E5b/B2b ×7, L2C ×1, B3I ×7, E6 ×6), and it publishes absolute `freq_ids`, so a clipping channel
-can be named. Every pass inside 2° of boresight, both days:
-
-| sat | sep | power vs day median | channels it lights |
-|---|---|---|---|
-| E6 | 0.26° | 4.9× | 20/22 |
-| C34 | 1.12° | 4.3× | 21/22 |
-| G9 | 1.21° | 3.5× | 8/22 |
-| C38 | 1.74° | 3.3× | 21/22 |
-| E3 | 1.99° | 2.4° → 2.4× | 20/22 |
-| G19 | 0.93° | 2.2× | **1/22** |
-| C19 | 1.15° | 2.0× | 21/22 |
-| G19 | 1.11° | **1.0× (none)** | **1/22** |
-
-**Seven of eight close passes raised the power 2.0–4.9×. The one that did not is a GPS Block IIR**
-— PRN 19 predates L5 and L2C, so of the 22 monitored channels it lights exactly one, legacy L2
-P(Y) at 1227.6 MHz, ~6.6 dB below L5. So "a satellite near boresight rails the array" holds for
-every satellite with real in-band content (7/7); the exception is the one class with almost none.
-⚠️ A first pass at this filtered satellites by *L5* capability and so wrongly excluded G19
-altogether. The correct model is "how many of the 22 monitored channels does it transmit in".
-
-**What is left is the residual: bursts of comparable amplitude with no satellite within 5°**
-(08-23 15:00 is the day's largest at 58.7 with the closest satellite 10.3° away; also 16:30,
-22:20; 08-22 17:40, 11:10, 15:00, 19:30, 16:30). Cross-correlating consecutive days cannot
-separate a solar from a sidereal repeat — the events are 12–20 min wide and the daily shift is
-only 3.93 min, so lag 0 (r 0.51) and lag −4 min (r 0.47) are indistinguishable.
-**The hypothesis under test is aeronautical.** 1166–1282 MHz sits inside the ARNS band
-(960–1215 MHz) shared with DME/TACAN and Link-16, whose emitters are orders of magnitude
-stronger than a GNSS satellite and need no boresight transit to swamp a sidelobe; aircraft
-schedules repeat near-daily with tens of minutes of jitter, which fits the archive better than
-either a solar or a sidereal repeat. **The discriminator is spectral, not geometric**: a GNSS
-transit spreads clip across the whole comb, DME occupies a single 1 MHz channel, and the tap
-gives per-channel clip with named frequencies. `fixtures/rail_aircraft.py` records taps +
-OpenSky aircraft + BRDC illuminators on one clock (it is also `rail_watch`'s replacement).
-⚠️ Concentration is only meaningful during a burst: at the ~5e-4 baseline clip a single channel
-holding the maximum is Poisson noise on a handful of samples, not a narrowband source.
-
-**[measured 2026-09-10, 180 samples over 3 h]** The recorder ran and the discriminator answered —
-**it is not DME, and it is not a transit.** Six bursts, clip median 1.83e-04 → max 6.38e-02.
-Mapped to real frequencies the repeated feature is a **flat-topped plateau ~12–15 MHz wide centred
-~1266–1268 MHz** (19:13:41, cx19.0: 1260.2→1275.8 MHz at 0.017/0.054/0.047/0.046/0.043/0.011); one
-event also lit 1199–1206 MHz. **L5/E5a (1166–1185) and L2C (1227.5) sat at the noise floor
-throughout.** DME is excluded twice over: ~1 MHz wide, and confined to 960–1215 MHz. The width and
-flat top match **B3I (1268.52 MHz)** — but the nearest BeiDou at the three worst bursts is
-**18.7°, 21.3°, 23.8°** against a 2.48° FWHM, and that separation *grows* while the clip stays
-high. So it is a broadband, band-selective emitter with no satellite within 18°.
-
-⚠️ **TWO ERRORS TO LEARN FROM, both the ORIGINAL #56 error repeated.** (1) The first read of this
-data called it DME because adjacent `clip_vec` entries were treated as adjacent in frequency —
-**they are 3.1 MHz apart**, the node holding every 16th `freq_id`, so the tap's 22 channels are
-four sparse per-band groups, not a comb. `rf_stats` publishes `freq_ids` (absolute) beside `chans`
-(local); **always map through it.** (2) `fixtures/rail_aircraft.py`'s `illuminates()` hard-codes
-**1176.45 MHz** capability, so its logged "nearest GNSS" scores a band that was dark in every one
-of these bursts — scoring by *nearest satellite* rather than *what transmits in the band that lit
-up*, which is precisely what produced the first wrong answer for this item.
-
-**[2026-09-11] THE ANSWER: WE CANNOT SEE THE BIRDS THAT WOULD DO THIS.** Both lit features land
-exactly on constellations the catalogue is blind to, confirmed against our own signal table:
-
-| observed | `gnssSignal.hpp` | why we could not see the source |
-|---|---|---|
-| peak **1202.5 MHz** | `GLO_L3OC` **1202.025** MHz, 10.23 Mcps | **no GLONASS anywhere** |
-| plateau **1260.2–1275.8 MHz** | `BDS_B3I` **1268.52** MHz → null-to-null **1258.3–1278.8** | **BDS-3 MEO C43–C46 invisible** |
-
-Three independent blind spots, any one of which is sufficient:
-1. **`gnss_ephemeris.parse_rinex_nav` is "G/E/C only"** by its own docstring. Today's
-   `BRDC00WRD` carries **273 GLONASS records, 22 QZSS, 40 NavIC, 1601 SBAS** — all discarded.
-   `glonass_freq_channels()` reads the R records for FDMA channel numbers and never for position,
-   so **there is no GLONASS propagator in the tree**: a GLONASS satellite cannot be placed at all.
-2. **The BRDC product itself omits BeiDou C05, C15–C18, C43–C46** — not "missing today", absent
-   from **every one of the last 12 daily files**. C43–C46 are BDS-3 **MEO**, which do pass
-   overhead at 49°N. (Raw-vs-parsed compared: the parser is not dropping them, they are not there.)
-3. **The B3I chain searches PRNs 19–42**, so C43–C46 are excluded by configuration even if the
-   ephemeris arrived — `/gnss{0,1}_b3i_n2assemble` and `_n2dual/commands`, 24 PRNs, on every node.
-
-⚠️ **CORRECTION, same day: only the GLONASS half survives.** A first pass claimed BDS-3 MEO
-C43–C46 were missing birds that could explain the 1268 MHz plateau. They are **SVN numbers, not
-PRNs** — IGS SINEX lists 40 currently-assigned BeiDou PRNs and BRDC carries 39 of them, so BeiDou
-coverage is essentially complete and no untracked BeiDou explains the plateau. What stands is the
-**1202.5 MHz** feature against `GLO_L3OC` at **1202.025 MHz**, where we have no positions at all.
-
-**So the 1268 MHz plateau is still unexplained**, and with the catalogue ruled out the **sidelobe
-hypothesis moves to the front**: the B3I chain was tracking strong satellites throughout both
-bursts (PRN 42 at A 222 during the 18:26 burst, PRN 34 at A 225 during 19:13) with the nearest
-BeiDou at 18.7–23.8°, which is sidelobe territory for these dishes. **Next test:** does burst
-amplitude track a strong B3I satellite's *sidelobe angle* rather than its boresight separation?
-Catalogue work is tracked as #129.
-
-⚠️ Limits: OpenSky serves live only without credentials, so the archived bins cannot be
-attributed to specific flights; Celestrak is unreachable from cf06; and GEO is geometrically
-impossible at el 81° from 49°N, which rules out the whole geostationary belt.
-**10-17:** #129 is closed — GLONASS positions exist now (`gnss_ephemeris.sat_pos_clk` for R records), so the 1202 MHz half is testable against real positions from the archive. Not run yet.
+### #56 residual — the 09-10/09-11 bursts were never checked against GuoWang passes (2026-11-21)
+**Open:** the 09-10/09-11 burst times (18:26, 19:13Z ...) were never checked against GuoWang TLE passes; one guowang_passes run settles it.
+**Closed 11-21:** superseded by #218: 37 of 43 10-26 bursts on DIGUI tracks, the N^2 stripes at 1194-1208/1250-1285 MHz on GuoWang passes (CHORD_BUGLIST_CLOSED.md).
 
 ### #94 — the shared-parameter estimators: 1 of 6 sites done
 S2 (the prior gauge) is built, armed, and its falsifier now passes on sky (closed file). The
@@ -1950,7 +1269,7 @@ satellite moves its own seed) and the node-side consensus cut the ±1 class, but
 
 
 
-### #165 — recv1's ConfigTracker exits when a sender reconnects with a different binary (2026-10-10)
+### #165 — recv1's ConfigTracker exits whenever an X-engine reconnects with a different config or binary, so every node cycle restarts recv1 (2026-10-10; widened 2026-11-21)
 **What [live 10-10/11]:** `ConfigInfo` carries the sender's version, commit and cmake settings; when a node
 reconnects on a new binary the receiver FATALs on the mismatch, so every binary rollout costs recv1 a restart and
 about a minute of N² gap — and every recv1 restart is a #164 exposure.
@@ -1960,95 +1279,27 @@ about a minute of N² gap — and every recv1 restart is a #164 exposure.
 **10-17 third recurrence:** 17:35:29Z, two minutes after cx51's #189 canary cycle (NRestarts 5).
 
 **10-17 evening:** two more, at the stage-2 canary (19:49:45Z) and the fleet cycle (20:03:06Z); NRestarts 8.
-
-### #164 — recv1 locks itself out through the bad-feed mask after a restart (2026-10-10)
-**What [live 10-10 15:46Z, ~4.5 h lost; 10-11 00:57Z, cleared 01:15Z]:** right after a recv1 restart the newest subset
-file holds no valid rows; bffs's power-outlier test sees `n_measured 0`, flags all 32 inputs, the bad list grows to
-113, the RFI mask goes to 100% and no valid row is written again: self-sustaining. Clearing it is a manual procedure
-(hold the cron, reset the list, restart; the 10-10 chord-merge memory note has it).
-**Standing check after any recv1 restart:** subset files ~3.1 GB = valid, ~350 MB = empty; `/var/lib/choco/bffs/run.json`
-power-outlier `n_measured` 32. **Fix (Jim):** bffs must keep the previous list when `n_measured == 0`. Ours: a line
-in `chain_health_cron` that reads the newest subset file's size.
-**10-12, the F-engine outage:** a dark F-engine is the same trigger. Our cron is held from 16:41Z (`#HOLD-fengine-off-
-20261012` in the crontab, backup `~/gnss/builds/crontab_20261012_before_fengine_off_hold.bak`), so our six stay on the
-85-input list; restore it at the return once bffs posts a list from valid data. cx47/cx52 still take bffs's list
-through choco and may lock out until Jim's fix is in.
+**11-21:** broader than the title said: configTracker.hpp FATALs on any change to an upstream's ConfigInfo (config or build) and on a failed fetch, so every X-engine cycle restarts recv1: 3 restarts at the 11-19 R2 cycle, 12 at the 11-20 calibration-mode revert. KV is raising it with Jim.
 
 ## Open — measured, real, and nobody's lever
 
 
 
-### #169 — node control-plane errors since the 10-11 00:55Z restart (2026-10-11)
-**What [live cx43, 00:56–02:46Z]:** 20 `Could not read FPGA controller … GET …/config failed`, 20 `Request failed with
-socket error`, 42 `trim EXPIRED with no /set_trim`, 134 `NIC dropped N packets … rx ring was full` (29671/16850 at
-start-up, ~1 packet/s since; `/metrics` `nic_rx_missed` +421/+171 in 6.5 min). The previous 13-h lifetime on
-04122d179 had 0/0/3/17. The DPDK lcores (5, 6, 7, 21, 22, 23) share no core with any stage. Confounds: the window-8
-binary (0011cf3b1), the #164 lockout and recv1 restart at 00:57–01:15Z, the F-engine's state.
-**Next:** re-count at the next quiet hour; if the expiries and the trickle persist, A/B one node on 04122d179.
-Also one corrupt-sequence packet on cx27 at 10-10 20:18:45Z from raw source ID 6, which is not an A, B or RFI board
-(formerly #174; one event, noted because #1750 stops kotekan on a capture fault).
-**10-17 recount (cx27/cx44, 75 min from the 12:56Z start, crs-control as the controller):** FPGA-controller read failures 0, socket errors 0 (both were chive); `trim EXPIRED` 55/84 and `NIC dropped … rx ring was full` 394/207 — higher than 10-11's 42/134 per 110 min, but the window holds two broker restarts, four node cycles and the #194 dark instances. Recount at a quiet hour before reading anything into it.
-
-### #163 — E6 peak sharpness fell 3.65 → 2.4 at the 10-07 F-engine restart while every other chain's rose (2026-10-08)
-Broker DLL q (2P/(E+L)) on strong satellites: gal_e6 3.5–4.5 for three weeks, 2.3–2.5 from the first post-restart data
-(10-08 00:27Z); over the same step gal_e5a 4.1 → 5.5, e5b 3.4 → 4.5, b3i 4.3 → 5.8, l5 4.0 → 5.3. E6 stays locked
-(disc ~0, prompt power 100–800× the floor on all 12 instances, hours-long ADR arcs), but sits near the viewer's
-2.2 lock line. Every node and GPU shows it in its own combiner. Not our code or config: cx19 on the pre-#1750
-binary (15:28Z) read the same. The F-engine came back with new gains (rail fraction 2.5× lower in every band),
-and dish work was under way that week, so the suspects are per-channel gain phases across 1278–1284 MHz or the
-dishes. A separate E6 cross-instance coherence loss from ~12Z 10-08 was #154's stale reference (fixed 10-09).
-**10-10: candidate cause = the 10-07 gain table, #167** (pol 1 at 0.12–0.27 LSB rms in the GNSS bands). Check the
-table before anything else. Next, when it settles: per-channel prompt phase across the E6 lobe
-from the gather stream (ragged = gains, smooth = delay), or the new gain table.
-**10-11: CAUSE FOUND — the channel weights ARE the gain table.** The combiner weights each channel by the
-F-engine digital gain: per-channel prompt amplitude against |g| has log-log slope 0.9–1.1 (r 0.91–0.98) on e6,
-e5a and e5b over all 12 instances, and nothing in the node normalises a channel by its noise. The sharpness of a
-3-channel (E6) or 5–7-channel (10.23 Mcps) comb correlation is set by the outer channels' weight, so q is a
-property of the gain profile across the lobe. `digitalgain_20261007T213936Z` (still live at 23:12Z) turned the
-E6 lobe from centre-notched to centre-peaked (centre/edge gain 0.60 → 1.59; the low edge at 1273.8 MHz now
-0.46 LSB rms on X and 0.18 on Y, i.e. mostly zeros) and deepened the centre notch everywhere else (e5a 0.57 →
-0.46, e5b 0.68 → 0.50, b3i 0.59 → 0.38). Less outer weight on E6: q 3.6–3.7 for the ten days before, 2.47–2.49
-since (hourly history from the rotated log); more outer weight elsewhere: their q rose. GPU1's E6 instances read
-0.1–0.5 above GPU0's because their comb phases land on higher-gain channels. Not phases: within an instance the
-channels agree to ~10°. It bites: the broker's 2.2 gates (`dll_quality_min`, `q_stall_bar`) now sit inside E6's
-working range. **Levers:** site — a flat or 09-25-style E6 profile and ≥3× on Y; ours — normalise each channel by
-its noise rms ahead of the despread so q no longer depends on the table (node change, every chain at once,
-judged in minutes); display — a per-band line, or one relative to the chain's noise-q floor (E6: floor 1.36,
-bright 2.5). Recipe in memory `chord-e6-q-drop-20261008`.
-**10-12: NOISE NORMALISATION LIVE (a79daf533 + af94d62db, cycles 00:10Z and 00:23Z).** `chan_noise_norm`: the
-assembler weights each covering channel by 1/rms of its own measured power before every cross-channel sum (record
-E/P/L, element blocks, the comb block), mean 1 over the frame's channels; the power is GnssChordVoltageTap's 1-s
-band-power pass, per (channel, input), averaged over the beam's own 32 inputs (`chan_noise_norm_elems`, the
-correlator's live tiles; the first cut averaged all 128 and the RFI antennas diluted it to ±10%). E6 weights now
-1.1–1.35 / 0.76–0.90 / ~1.0 across each instance's three channels. Per-instance q medians before → after: e6 2.40 →
-3.03 (fleet DLL 2.8–3.1 on every on-peak PRN), e5a 5.26 → 4.17, e5b 4.29 → 3.75, b3i 6.19 → 4.84, l5 4.0–5.0; R
-1.00/1.00 every band, 12 live, 0 CHAIN DIED, C/N0 unchanged. The amplitude-vs-gain slope does NOT move (the spectrum
-and taps endpoints are energy-normalised per channel, blind to a per-channel scalar): judge by q, not by it. The rest
-of the gap to 3.65 is the table's LEVEL, not its shape: Y at 0.18 lsb rms on the low edge is quantised away and no
-weight brings it back — that part waits on the F-engine gains KV has asked for. `/get_elem_cal` `chan_norm`
-reports on/applied/miss/w.
+### #169 residual — trim EXPIRED with no /set_trim on every node (2026-11-21)
+**Open:** trim EXPIRED with no /set_trim: cx43 1587, cx27 1277 in ~25 h (gw_1202 the largest share); satellites setting, or still the #169 symptom?.
+**Closed 11-21:** 0 FPGA-controller, socket, rx-ring or corrupt lines on cx43/cx27 since 11-20 01:55Z (CHORD_BUGLIST_CLOSED.md).
 
 ### #122 — the readback carries a chain-common offset on the non-primary bands
 **[live]** per-PRN means: bds_b2b −0.42, bds_b3i −0.40, gal_e6 +0.29, gal_e5a +0.20, gal_e5b
 +0.16, against gps_l2c −0.01 and bds_b2a +0.08. A per-chain constant the loop is not closing.
 b3i and e6 are, for the first time, two fresh bands to test the standing BeiDou offset against.
 
-### #124 — the joint state is band-scoped, but its safety labels are per-chain
-**[tree]** `band_id = "%.2fMHz" % (carrier_hz/1e6)`, so **gps_l5, gal_e5a and bds_b2a share one
-`1176.45MHz` joint state** — the one gal_e5a feeds. The withdrawal "never `joint-consume: slew`
-on a feeding chain" is enforced per chain, so adding a feed to gps_l5 or bds_b2a would silently
-close exactly the loop that withdrawal forbids. Absorbs the old A4 (DR chains have never consumed
-`slew`): the right experiment is on the bds_b2b/b3i twin, which shares no state with a feeder.
-
 ### Smaller, still true
-- **#14** acquire declines a blind Doppler grid: only a boost test; unverified.
+- **R09 as a noise probe** (K1B, no CDMA signals) logs ~30 `FADR BREAK glo_l2oc` lines a minute (2026-11-21 review).
 - **#37** GPS block map vs sky: the registry exists; the join to the beam maps does not.
 - **#40** the deep fold's rate search wrong-bins onto overlay sidebands — **demoted**: the coarse
   feed is now only the re-acquisition path. The fix is to retire the consumer (use phase
   accumulation for re-acquisition too), which needs a slip-recovery path first.
-- **#75** gal/bds have no independent clock: **[tree]** seven chains adopt (both Galileo chains
-  too, not just BeiDou — the old status line was wrong), bounded at 5.0 chips. PVT now solves 8
-  independent per-chain clocks and none of them is consumed.
 - **Record-format hygiene**: UTC is recomputed into every PRN row instead of the frame header;
   the combiner reads the prompt by raw index (`rec[3]`, `rec[4]`…) in C++ *and* Python. Do the
   index normalisation before anyone reorders a slot.
@@ -2072,8 +1323,8 @@ close exactly the loop that withdrawal forbids. Absorbs the old A4 (DR chains ha
   pointed at `~/gnss/builds/gather-2d852b79e`, deleted as cruft on 10-12 after checking only process
   argv, and the gather died at its next restart with the fleet blind at the broker for 6 min.
   Before deleting a build dir, list what every live kotekan has mapped (`/proc/<pid>/maps`).
-- **Stagger node rolls: one at a time costs nothing, all six costs ~30 minutes.** The standing
-  C++ trim lives on each node, so a single roll discards a twelfth of the fleet's trim state and
+- **Stagger node rolls: one at a time costs nothing, all eight at once costs ~30 minutes.** The
+  applied trim lives on each node, so a single roll discards a sixteenth of the fleet's trim state and
   ten combiners carry the measurement — nothing moves. Roll them together and every satellite's
   trim restarts from zero, the loop pins at the clamp for ~6 min and takes ~30 to settle.
 - **A pipeline fault scales with a command; a physical cause scales with a physical variable.**
@@ -2081,7 +1332,7 @@ close exactly the loop that withdrawal forbids. Absorbs the old A4 (DR chains ha
   new observable.
 - **Nothing is per-node or per-instance.** A per-instance quantity is a bug (this cost the
   frame-boundary carrier phase five weeks), and a per-GPU asymmetry is a bug until proven
-  otherwise (#114).
+  otherwise (#114, measured symmetric 11-21).
 - **An artifact nobody regenerates is a souvenir**, and an instrument nobody owns is dead within
   a fortnight (#56's `rail_watch`, #120's missing units).
 - **A gate vouches for what its fixture runs and nothing else.** #108's fix rode the fleet for
