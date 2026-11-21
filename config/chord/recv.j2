@@ -292,12 +292,35 @@ incoherent_snr_buffer:
     dimscalings: [65536, 1]
     metadata_pool: incoherent_power_pool
 
+# The samples around each candidate without a flag, as the search saw them and shifted by the
+# candidate's DM: 1.7 MB before compression, one file per candidate, numbered as "cutout" in
+# its line of candidates.jsonl counts them. A pulse is a column in the middle.
+incoherent_cutout_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 8
+    value_type: int8
+    extents: [6656, 256]
+    quantity_name: "incoherent_beam_cutout"
+    dimnames: ["F", "Trfi"]
+    dimscalings: [1, 256]
+    metadata_pool: incoherent_power_pool
+
+write_incoherent_cutouts:
+    kotekan_stage: hdf5FileWrite
+    log_level: warn
+    in_buf: incoherent_cutout_buffer
+    base_dir: /mnt/cs00/data/incoherent_beam_search/cutouts
+    acq_dir: true
+    file_name: cutout
+    prefix_hostname: false
+
 incoherent_beam_search:
     kotekan_stage: IncoherentBeamSearch
     cpu_affinity: [4,5,6,7,8,9,10,11]
     num_threads: 8
     in_buf: incoherent_power_buffer
     snr_buf: incoherent_snr_buffer
+    cutout_buf: incoherent_cutout_buffer
     freq_id_base: 1536
     num_local_freq: 6656
     num_feeds: num_elements

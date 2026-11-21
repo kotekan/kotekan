@@ -5,12 +5,13 @@ find_package(Boost REQUIRED COMPONENTS unit_test_framework filesystem)
 
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 
-# kotekanLoggingFixture.hpp includes kotekanLogging.hpp, which needs lib/core (for errors.h) and
-# external/fmt (for fmt.hpp), and not every test links a target that provides them -- test_Metadata
-# links only kotekan_metadata. Give every test in this directory kotekan_core_headers, which carries
-# kotekan_core's full set of header usage requirements: adding the include paths on their own would
-# hand the tests lib/core's headers without the compile definitions those headers branch on, e.g.
-# WITH_SSL in Config.hpp.
+# kotekanLoggingFixture.hpp includes kotekanLogging.hpp, which needs lib/core
+# (for errors.h) and external/fmt (for fmt.hpp), and not every test links a
+# target that provides them -- test_Metadata links only kotekan_metadata. Give
+# every test in this directory kotekan_core_headers, which carries
+# kotekan_core's full set of header usage requirements: adding the include paths
+# on their own would hand the tests lib/core's headers without the compile
+# definitions those headers branch on, e.g. WITH_SSL in Config.hpp.
 link_libraries(kotekan_core_headers)
 
 add_executable(test_truncate test_truncate.cpp)
@@ -23,35 +24,45 @@ add_executable(test_incoherent_search test_incoherent_search.cpp)
 target_link_libraries(test_incoherent_search PRIVATE kotekan_libs kotekan_utils)
 
 add_executable(test_synchronized_queue test_synchronized_queue.cpp)
-target_link_libraries(test_synchronized_queue PRIVATE pthread kotekan_libs kotekan_utils)
+target_link_libraries(test_synchronized_queue PRIVATE pthread kotekan_libs
+                                                      kotekan_utils)
 
 # frameID / modulo<int>: reduce-on-write, the 2^32 wrap that skips buffer slots
 add_executable(test_modulo test_modulo.cpp)
-target_link_libraries(test_modulo PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
+target_link_libraries(test_modulo PRIVATE libexternal kotekan_libs
+                                          kotekan_utils kotekan_core)
 
-# test_cuda_stream_assignment - stream-by-role and the pipeline's lock order. The functions under
-# test are header-only and call no CUDA, so this runs in the CPU-only builds; lib/gpu is named
-# explicitly because gpuCommand.hpp (for gpuCommandType) is only on an include path via kotekan_gpu,
-# and lib/ builds that target solely when a GPU backend is found.
+# test_cuda_stream_assignment - stream-by-role and the pipeline's lock order.
+# The functions under test are header-only and call no CUDA, so this runs in the
+# CPU-only builds; lib/gpu is named explicitly because gpuCommand.hpp (for
+# gpuCommandType) is only on an include path via kotekan_gpu, and lib/ builds
+# that target solely when a GPU backend is found.
 add_executable(test_cuda_stream_assignment test_cuda_stream_assignment.cpp)
-target_include_directories(test_cuda_stream_assignment PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/cuda
-                                                               ${KOTEKAN_SOURCE_DIR}/lib/gpu)
-target_link_libraries(test_cuda_stream_assignment PRIVATE pthread libexternal kotekan_libs
-                                                          kotekan_utils kotekan_core)
+target_include_directories(
+  test_cuda_stream_assignment PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/cuda
+                                      ${KOTEKAN_SOURCE_DIR}/lib/gpu)
+target_link_libraries(
+  test_cuda_stream_assignment PRIVATE pthread libexternal kotekan_libs
+                                      kotekan_utils kotekan_core)
 
-# test_gpu_memory_claims - the one-owner-per-region rule for named GPU memory: the policy function
-# AND its wiring in gpuDeviceInterface (owner scopes, thread attribution, arrays, views, the
-# declared-share exemption). lib/gpu is built only when a GPU backend is found and the CI boost jobs
-# are CPU-only, so gpuDeviceInterface.cpp is compiled into the test directly -- it depends on no
+# test_gpu_memory_claims - the one-owner-per-region rule for named GPU memory:
+# the policy function AND its wiring in gpuDeviceInterface (owner scopes, thread
+# attribution, arrays, views, the declared-share exemption). lib/gpu is built
+# only when a GPU backend is found and the CI boost jobs are CPU-only, so
+# gpuDeviceInterface.cpp is compiled into the test directly -- it depends on no
 # backend, only on kotekan_core.
-add_executable(test_gpu_memory_claims test_gpu_memory_claims.cpp
-                                      ${KOTEKAN_SOURCE_DIR}/lib/gpu/gpuDeviceInterface.cpp)
-target_include_directories(test_gpu_memory_claims PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/gpu)
-target_link_libraries(test_gpu_memory_claims PRIVATE pthread libexternal kotekan_libs kotekan_utils
-                                                     kotekan_core)
+add_executable(
+  test_gpu_memory_claims test_gpu_memory_claims.cpp
+                         ${KOTEKAN_SOURCE_DIR}/lib/gpu/gpuDeviceInterface.cpp)
+target_include_directories(test_gpu_memory_claims
+                           PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/gpu)
+target_link_libraries(
+  test_gpu_memory_claims PRIVATE pthread libexternal kotekan_libs kotekan_utils
+                                 kotekan_core)
 
 add_executable(test_stat_tracker test_stat_tracker.cpp)
-target_link_libraries(test_stat_tracker PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
+target_link_libraries(test_stat_tracker PRIVATE libexternal kotekan_libs
+                                                kotekan_utils kotekan_core)
 
 # needs MurmurHash3
 add_executable(test_hash test_hash.cpp)
@@ -59,60 +70,67 @@ target_link_libraries(test_hash PRIVATE libexternal kotekan_libs kotekan_utils)
 
 # test_updatequeue needs fmt
 add_executable(test_updatequeue test_updatequeue.cpp)
-target_link_libraries(test_updatequeue PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
+target_link_libraries(test_updatequeue PRIVATE libexternal kotekan_libs
+                                               kotekan_utils kotekan_core)
 
 # test_dataset_manager_rest needs fmt
 add_executable(test_dataset_manager_rest test_dataset_manager_rest.cpp)
-target_link_libraries(test_dataset_manager_rest PRIVATE libexternal kotekan_libs kotekan_utils
-                                                        kotekan_core)
+target_link_libraries(
+  test_dataset_manager_rest PRIVATE libexternal kotekan_libs kotekan_utils
+                                    kotekan_core)
 
 # test_dataset_manager needs fmt
 add_executable(test_dataset_manager test_dataset_manager.cpp)
-target_link_libraries(test_dataset_manager PRIVATE libexternal kotekan_libs kotekan_utils
-                                                   kotekan_core)
+target_link_libraries(test_dataset_manager PRIVATE libexternal kotekan_libs
+                                                   kotekan_utils kotekan_core)
 
 # test_ringbuffer
 add_executable(test_ringbuffer test_ringbuffer.cpp)
-target_link_libraries(test_ringbuffer PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
+target_link_libraries(test_ringbuffer PRIVATE libexternal kotekan_libs
+                                              kotekan_utils kotekan_core)
 
 # test_ringbuffer_read_without_claiming
-add_executable(test_ringbuffer_read_without_claiming test_ringbuffer_read_without_claiming.cpp)
-target_link_libraries(test_ringbuffer_read_without_claiming
-                      PRIVATE pthread libexternal kotekan_libs kotekan_utils kotekan_core)
+add_executable(test_ringbuffer_read_without_claiming
+               test_ringbuffer_read_without_claiming.cpp)
+target_link_libraries(
+  test_ringbuffer_read_without_claiming
+  PRIVATE pthread libexternal kotekan_libs kotekan_utils kotekan_core)
 
 # test_pipeline_graph - the graph model behind /pipeline_dot
 add_executable(test_pipeline_graph test_pipeline_graph.cpp)
-target_link_libraries(test_pipeline_graph PRIVATE libexternal kotekan_libs kotekan_utils
-                                                  kotekan_core)
+target_link_libraries(test_pipeline_graph PRIVATE libexternal kotekan_libs
+                                                  kotekan_utils kotekan_core)
 
-# test_numa_policy - NUMA placement of stages and buffers: which node a config block resolves to,
-# and the scoped memory policy that puts an object there
+# test_numa_policy - NUMA placement of stages and buffers: which node a config
+# block resolves to, and the scoped memory policy that puts an object there
 add_executable(test_numa_policy test_numa_policy.cpp)
-target_link_libraries(test_numa_policy PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
+target_link_libraries(test_numa_policy PRIVATE libexternal kotekan_libs
+                                               kotekan_utils kotekan_core)
 
-# test_buffer_peek - non-consuming newest-full-frame peek behind the /buffer_frame endpoint
+# test_buffer_peek - non-consuming newest-full-frame peek behind the
+# /buffer_frame endpoint
 add_executable(test_buffer_peek test_buffer_peek.cpp)
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries(
-        test_buffer_peek
-        PRIVATE pthread
-                libexternal
-                kotekan_libs
-                kotekan_utils
-                kotekan_core
-                -Wl,-all_load
-                kotekan_metadata)
+  target_link_libraries(
+    test_buffer_peek
+    PRIVATE pthread
+            libexternal
+            kotekan_libs
+            kotekan_utils
+            kotekan_core
+            -Wl,-all_load
+            kotekan_metadata)
 else()
-    target_link_libraries(
-        test_buffer_peek
-        PRIVATE pthread
-                libexternal
-                kotekan_libs
-                kotekan_utils
-                kotekan_core
-                -Wl,--whole-archive
-                kotekan_metadata
-                -Wl,--no-whole-archive)
+  target_link_libraries(
+    test_buffer_peek
+    PRIVATE pthread
+            libexternal
+            kotekan_libs
+            kotekan_utils
+            kotekan_core
+            -Wl,--whole-archive
+            kotekan_metadata
+            -Wl,--no-whole-archive)
 endif()
 
 # test_fmt
@@ -122,51 +140,62 @@ target_link_libraries(test_fmt PRIVATE kotekan_libs kotekan_utils)
 
 # test_restclient needs fmt
 add_executable(test_restclient test_restclient.cpp)
-target_link_libraries(test_restclient PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
+target_link_libraries(test_restclient PRIVATE libexternal kotekan_libs
+                                              kotekan_utils kotekan_core)
 
 add_executable(test_restserver_bind test_restserver_bind.cpp)
-target_link_libraries(test_restserver_bind PRIVATE libexternal kotekan_libs kotekan_utils
-                                                   kotekan_core)
+target_link_libraries(test_restserver_bind PRIVATE libexternal kotekan_libs
+                                                   kotekan_utils kotekan_core)
 
 # test_bip_buffer needs fmt
 add_executable(test_bip_buffer test_bip_buffer.cpp)
-target_link_libraries(test_bip_buffer PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
+target_link_libraries(test_bip_buffer PRIVATE libexternal kotekan_libs
+                                              kotekan_utils kotekan_core)
 
 # test_buffer_swap - frame transfer between buffers (safe_swap_frame)
 add_executable(test_buffer_swap test_buffer_swap.cpp)
-target_link_libraries(test_buffer_swap PRIVATE pthread libexternal kotekan_libs kotekan_utils
-                                               kotekan_core kotekan_metadata)
+target_link_libraries(
+  test_buffer_swap PRIVATE pthread libexternal kotekan_libs kotekan_utils
+                           kotekan_core kotekan_metadata)
 
 # test_bufferSend - tests for bufferSend stage
 add_executable(test_bufferSend test_bufferSend.cpp)
-target_link_libraries(test_bufferSend PRIVATE libexternal kotekan_stages kotekan_libs kotekan_utils
-                                              kotekan_core)
-target_include_directories(test_bufferSend PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
+target_link_libraries(
+  test_bufferSend PRIVATE libexternal kotekan_stages kotekan_libs kotekan_utils
+                          kotekan_core)
+target_include_directories(test_bufferSend
+                           PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
 
 # test_prometheus_metrics needs fmt and prometheusMetrics
 add_executable(test_prometheus_metrics test_prometheus_metrics.cpp)
-target_link_libraries(test_prometheus_metrics PRIVATE libexternal kotekan_libs kotekan_core)
+target_link_libraries(test_prometheus_metrics PRIVATE libexternal kotekan_libs
+                                                      kotekan_core)
 
 # test_config needs Config, json
 add_executable(test_config test_config.cpp)
-target_link_libraries(test_config PRIVATE libexternal kotekan_core kotekan_stages)
+target_link_libraries(test_config PRIVATE libexternal kotekan_core
+                                          kotekan_stages)
 
 # test_configTracker needs
 add_executable(test_configTracker test_configTracker.cpp)
-target_link_libraries(test_configTracker PRIVATE libexternal kotekan_core kotekan_stages
-                                                 kotekan_metadata kotekan_utils Boost::filesystem)
+target_link_libraries(
+  test_configTracker PRIVATE libexternal kotekan_core kotekan_stages
+                             kotekan_metadata kotekan_utils Boost::filesystem)
 
 # test_chime_stacking needs MurmurHash3 and VisUtil
 add_executable(test_chime_stacking test_chime_stacking.cpp)
-target_link_libraries(test_chime_stacking PRIVATE libexternal kotekan_utils kotekan_stages
-                                                  kotekan_core)
-target_include_directories(test_chime_stacking PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
+target_link_libraries(test_chime_stacking PRIVATE libexternal kotekan_utils
+                                                  kotekan_stages kotekan_core)
+target_include_directories(test_chime_stacking
+                           PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
 
 # test_rawFileWrite - tests for the rawFileWrite stage
 add_executable(test_rawFileWrite test_rawFileWrite.cpp)
-target_link_libraries(test_rawFileWrite PRIVATE libexternal kotekan_stages kotekan_libs
-                                                kotekan_utils kotekan_core)
-target_include_directories(test_rawFileWrite PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
+target_link_libraries(
+  test_rawFileWrite PRIVATE libexternal kotekan_stages kotekan_libs
+                            kotekan_utils kotekan_core)
+target_include_directories(test_rawFileWrite
+                           PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
 
 # source files for broker test
 add_executable(dataset_broker_producer dataset_broker_producer.cpp)
@@ -174,68 +203,85 @@ add_executable(dataset_broker_producer2 dataset_broker_producer2.cpp)
 add_executable(dataset_broker_consumer dataset_broker_consumer.cpp)
 
 # dataset_broker executables need fmt
-target_link_libraries(dataset_broker_producer2 PRIVATE libexternal kotekan_libs kotekan_utils
-                                                       kotekan_core)
-target_link_libraries(dataset_broker_producer PRIVATE libexternal kotekan_libs kotekan_utils
-                                                      kotekan_core)
-target_link_libraries(dataset_broker_consumer PRIVATE libexternal kotekan_libs kotekan_utils
-                                                      kotekan_core)
+target_link_libraries(
+  dataset_broker_producer2 PRIVATE libexternal kotekan_libs kotekan_utils
+                                   kotekan_core)
+target_link_libraries(
+  dataset_broker_producer PRIVATE libexternal kotekan_libs kotekan_utils
+                                  kotekan_core)
+target_link_libraries(
+  dataset_broker_consumer PRIVATE libexternal kotekan_libs kotekan_utils
+                                  kotekan_core)
 
 # Many tests now need the Cuda include directory for float16_t via visUtil.hpp
-target_include_directories(dataset_broker_producer2 PUBLIC . ${CUDA_INCLUDE_DIR}
-                                                           ${CUDA_INCLUDE_DIRS})
+target_include_directories(dataset_broker_producer2
+                           PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
 target_include_directories(dataset_broker_producer PUBLIC . ${CUDA_INCLUDE_DIR}
                                                           ${CUDA_INCLUDE_DIRS})
 target_include_directories(dataset_broker_consumer PUBLIC . ${CUDA_INCLUDE_DIR}
                                                           ${CUDA_INCLUDE_DIRS})
-target_include_directories(test_chime_stacking PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
-target_include_directories(test_stat_tracker PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
-target_include_directories(test_updatequeue PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
-target_include_directories(test_dataset_manager PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
-target_include_directories(test_dataset_manager_rest PUBLIC . ${CUDA_INCLUDE_DIR}
-                                                            ${CUDA_INCLUDE_DIRS})
+target_include_directories(test_chime_stacking PUBLIC . ${CUDA_INCLUDE_DIR}
+                                                      ${CUDA_INCLUDE_DIRS})
+target_include_directories(test_stat_tracker PUBLIC . ${CUDA_INCLUDE_DIR}
+                                                    ${CUDA_INCLUDE_DIRS})
+target_include_directories(test_updatequeue PUBLIC . ${CUDA_INCLUDE_DIR}
+                                                   ${CUDA_INCLUDE_DIRS})
+target_include_directories(test_dataset_manager PUBLIC . ${CUDA_INCLUDE_DIR}
+                                                       ${CUDA_INCLUDE_DIRS})
+target_include_directories(test_dataset_manager_rest
+                           PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
 
 # list test source files that need HDF5 here:
 if(HDF5_FOUND
    AND HighFive_FOUND
    AND HDF5Plugin_PLUGIN_DIR)
-    add_executable(test_transpose test_transpose.cpp)
-    target_link_libraries(test_transpose PRIVATE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES})
-    # test_transpose needs fmt and VisTranspose
-    target_link_libraries(test_transpose PRIVATE libexternal kotekan_stages kotekan_core
-                                                 kotekan_utils kotekan_metadata)
-    target_include_directories(test_transpose PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
-    target_include_directories(test_transpose SYSTEM PUBLIC ${CUDA_INCLUDE_DIR}
-                                                            ${CUDA_INCLUDE_DIRS})
+  add_executable(test_transpose test_transpose.cpp)
+  target_link_libraries(test_transpose PRIVATE ${HDF5_HL_LIBRARIES}
+                                               ${HDF5_LIBRARIES})
+  # test_transpose needs fmt and VisTranspose
+  target_link_libraries(
+    test_transpose PRIVATE libexternal kotekan_stages kotekan_core
+                           kotekan_utils kotekan_metadata)
+  target_include_directories(test_transpose
+                             PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
+  target_include_directories(test_transpose SYSTEM PUBLIC ${CUDA_INCLUDE_DIR}
+                                                          ${CUDA_INCLUDE_DIRS})
 endif()
 
 if(LAPACKE_FOUND AND BLAZE_FOUND)
-    add_executable(test_linearAlgebra test_linearAlgebra.cpp)
-    # CMAKE_DL_LIBS for the dlsym behind its allocation counting
-    target_link_libraries(test_linearAlgebra PRIVATE pthread libexternal kotekan_utils kotekan_core
-                                                     ${CMAKE_DL_LIBS} ${LAPACKE_LIBRARIES})
-    # The OpenBLAS API behind openblas_set_num_threads, as for the eigen stages
-    if(DEFINED OPENBLAS_EXTRA_LIB AND OPENBLAS_EXTRA_LIB)
-        target_link_libraries(test_linearAlgebra PRIVATE ${OPENBLAS_EXTRA_LIB})
-    endif()
-    target_include_directories(test_linearAlgebra PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
+  add_executable(test_linearAlgebra test_linearAlgebra.cpp)
+  # CMAKE_DL_LIBS for the dlsym behind its allocation counting
+  target_link_libraries(
+    test_linearAlgebra PRIVATE pthread libexternal kotekan_utils kotekan_core
+                               ${CMAKE_DL_LIBS} ${LAPACKE_LIBRARIES})
+  # The OpenBLAS API behind openblas_set_num_threads, as for the eigen stages
+  if(DEFINED OPENBLAS_EXTRA_LIB AND OPENBLAS_EXTRA_LIB)
+    target_link_libraries(test_linearAlgebra PRIVATE ${OPENBLAS_EXTRA_LIB})
+  endif()
+  target_include_directories(test_linearAlgebra PUBLIC . ${CUDA_INCLUDE_DIR}
+                                                       ${CUDA_INCLUDE_DIRS})
 
-    add_executable(test_eigenStages test_eigenStages.cpp)
-    target_link_libraries(test_eigenStages PRIVATE libexternal kotekan_stages kotekan_libs
-                                                   kotekan_utils kotekan_core)
-    target_include_directories(test_eigenStages PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
-                                                        ${KOTEKAN_SOURCE_DIR}/lib/testing)
+  add_executable(test_eigenStages test_eigenStages.cpp)
+  target_link_libraries(
+    test_eigenStages PRIVATE libexternal kotekan_stages kotekan_libs
+                             kotekan_utils kotekan_core)
+  target_include_directories(
+    test_eigenStages PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
+                             ${KOTEKAN_SOURCE_DIR}/lib/testing)
 endif()
 
 add_executable(test_DataType test_DataType.cpp)
 target_link_libraries(test_DataType kotekan_metadata libexternal)
 
-# test_frb1IntensityBound - the worst-case FRB1 intensity for given weights (header-only helper)
+# test_frb1IntensityBound - the worst-case FRB1 intensity for given weights
+# (header-only helper)
 add_executable(test_frb1IntensityBound test_frb1IntensityBound.cpp)
-target_include_directories(test_frb1IntensityBound PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
+target_include_directories(test_frb1IntensityBound
+                           PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
 target_link_libraries(test_frb1IntensityBound kotekan_metadata libexternal)
 
-# test_frbDishLayout - where the FRB1 kernels place the dishes on their grid (header-only helper)
+# test_frbDishLayout - where the FRB1 kernels place the dishes on their grid
+# (header-only helper)
 add_executable(test_frbDishLayout test_frbDishLayout.cpp)
 target_link_libraries(test_frbDishLayout PRIVATE kotekan_utils)
 
@@ -243,7 +289,8 @@ add_executable(test_Metadata test_Metadata.cpp)
 target_link_libraries(test_Metadata kotekan_metadata)
 
 add_executable(test_metadataObject test_metadataObject.cpp)
-target_link_libraries(test_metadataObject kotekan_metadata kotekan_utils libexternal)
+target_link_libraries(test_metadataObject kotekan_metadata kotekan_utils
+                      libexternal)
 
 add_executable(test_NDArray test_NDArray.cpp)
 target_link_libraries(test_NDArray libexternal kotekan_metadata)
@@ -256,46 +303,52 @@ target_link_libraries(test_div PRIVATE kotekan_utils)
 
 add_executable(test_timeUtil test_timeUtil.cpp)
 target_link_libraries(test_timeUtil PRIVATE kotekan_utils)
-target_compile_definitions(test_timeUtil PRIVATE TEST_SCRIPT_DIR="${PROJECT_BINARY_DIR}")
+target_compile_definitions(test_timeUtil
+                           PRIVATE TEST_SCRIPT_DIR="${PROJECT_BINARY_DIR}")
 
 add_custom_command(
-    OUTPUT ${PROJECT_BINARY_DIR}/timeUtil.py
-    DEPENDS ${PROJECT_SOURCE_DIR}/timeUtil.py
-    COMMAND ${CMAKE_COMMAND} ARGS -E copy ${PROJECT_SOURCE_DIR}/timeUtil.py
-            ${PROJECT_BINARY_DIR}/timeUtil.py
-    COMMENT "Copying timeUtil.py script into destination")
+  OUTPUT ${PROJECT_BINARY_DIR}/timeUtil.py
+  DEPENDS ${PROJECT_SOURCE_DIR}/timeUtil.py
+  COMMAND ${CMAKE_COMMAND} ARGS -E copy ${PROJECT_SOURCE_DIR}/timeUtil.py
+          ${PROJECT_BINARY_DIR}/timeUtil.py
+  COMMENT "Copying timeUtil.py script into destination")
 add_custom_target(
-    test_timeUtil_script ALL
-    DEPENDS ${PROJECT_BINARY_DIR}/timeUtil.py
-    COMMENT "Generating timeUtil.py script")
+  test_timeUtil_script ALL
+  DEPENDS ${PROJECT_BINARY_DIR}/timeUtil.py
+  COMMENT "Generating timeUtil.py script")
 
 # visFileData unit test + end-to-end writer test (HDF5 backend)
 if(HDF5_FOUND AND HighFive_FOUND)
-    add_executable(test_hdf5N2Write test_hdf5N2Write.cpp)
-    target_link_libraries(
-        test_hdf5N2Write
-        PRIVATE libexternal
-                kotekan_stages
-                kotekan_libs
-                kotekan_utils
-                kotekan_core
-                ${HDF5_HL_LIBRARIES}
-                ${HDF5_LIBRARIES}
-                HighFive::HighFive)
-    target_include_directories(
-        test_hdf5N2Write PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages ${KOTEKAN_SOURCE_DIR}/lib/utils
-                                 ${HDF5_INCLUDE_DIRS})
-    target_include_directories(test_hdf5N2Write PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
-    target_compile_definitions(test_hdf5N2Write
-                               PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/testdata")
+  add_executable(test_hdf5N2Write test_hdf5N2Write.cpp)
+  target_link_libraries(
+    test_hdf5N2Write
+    PRIVATE libexternal
+            kotekan_stages
+            kotekan_libs
+            kotekan_utils
+            kotekan_core
+            ${HDF5_HL_LIBRARIES}
+            ${HDF5_LIBRARIES}
+            HighFive::HighFive)
+  target_include_directories(
+    test_hdf5N2Write
+    PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages ${KOTEKAN_SOURCE_DIR}/lib/utils
+            ${HDF5_INCLUDE_DIRS})
+  target_include_directories(test_hdf5N2Write PUBLIC . ${CUDA_INCLUDE_DIR}
+                                                     ${CUDA_INCLUDE_DIRS})
+  target_compile_definitions(
+    test_hdf5N2Write
+    PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/testdata")
 endif()
 
 add_executable(test_Telescope test_Telescope.cpp)
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries(test_Telescope PRIVATE -Wl,-all_load kotekan_utils kotekan_testing)
+  target_link_libraries(test_Telescope PRIVATE -Wl,-all_load kotekan_utils
+                                               kotekan_testing)
 else()
-    target_link_libraries(test_Telescope PRIVATE -Wl,--whole-archive kotekan_utils kotekan_testing
-                                                 -Wl,--no-whole-archive)
+  target_link_libraries(
+    test_Telescope PRIVATE -Wl,--whole-archive kotekan_utils kotekan_testing
+                           -Wl,--no-whole-archive)
 endif()
 
 add_executable(test_CHORDTelescope test_CHORDTelescope.cpp)
@@ -303,188 +356,223 @@ target_link_libraries(test_CHORDTelescope PRIVATE kotekan_utils)
 
 # test_N2FrameDesc - unit tests for N2FrameDesc product list features
 add_executable(test_N2FrameDesc test_N2FrameDesc.cpp)
-target_link_libraries(test_N2FrameDesc PRIVATE kotekan_metadata kotekan_utils libexternal)
+target_link_libraries(test_N2FrameDesc PRIVATE kotekan_metadata kotekan_utils
+                                               libexternal)
 
-# test_NDArrayBufferConfig - config-driven NDArray frame descriptors and the `ndarray` buffer type
-# in bufferFactory
+# test_NDArrayBufferConfig - config-driven NDArray frame descriptors and the
+# `ndarray` buffer type in bufferFactory
 add_executable(test_NDArrayBufferConfig test_NDArrayBufferConfig.cpp)
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries(
-        test_NDArrayBufferConfig PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core
-                                         -Wl,-all_load kotekan_metadata)
+  target_link_libraries(
+    test_NDArrayBufferConfig
+    PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core -Wl,-all_load
+            kotekan_metadata)
 else()
-    target_link_libraries(
-        test_NDArrayBufferConfig
-        PRIVATE libexternal
-                kotekan_libs
-                kotekan_utils
-                kotekan_core
-                -Wl,--whole-archive
-                kotekan_metadata
-                -Wl,--no-whole-archive)
+  target_link_libraries(
+    test_NDArrayBufferConfig
+    PRIVATE libexternal
+            kotekan_libs
+            kotekan_utils
+            kotekan_core
+            -Wl,--whole-archive
+            kotekan_metadata
+            -Wl,--no-whole-archive)
 endif()
 
-# test_FrameDescSerialize - FrameDesc JSON serialization round-trip + adversarial input
+# test_FrameDescSerialize - FrameDesc JSON serialization round-trip +
+# adversarial input
 add_executable(test_FrameDescSerialize test_FrameDescSerialize.cpp)
-target_link_libraries(test_FrameDescSerialize PRIVATE libexternal kotekan_libs kotekan_core
-                                                      kotekan_metadata kotekan_utils)
+target_link_libraries(
+  test_FrameDescSerialize PRIVATE libexternal kotekan_libs kotekan_core
+                                  kotekan_metadata kotekan_utils)
 
 # test_N2Subset - tests for N2Subset stage
 add_executable(test_N2Subset test_N2Subset.cpp)
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries(
-        test_N2Subset
-        PRIVATE libexternal
-                kotekan_stages
-                kotekan_libs
-                kotekan_utils
-                kotekan_core
-                -Wl,-all_load
-                kotekan_metadata)
+  target_link_libraries(
+    test_N2Subset
+    PRIVATE libexternal
+            kotekan_stages
+            kotekan_libs
+            kotekan_utils
+            kotekan_core
+            -Wl,-all_load
+            kotekan_metadata)
 else()
-    target_link_libraries(
-        test_N2Subset
-        PRIVATE libexternal
-                kotekan_stages
-                kotekan_libs
-                kotekan_utils
-                kotekan_core
-                -Wl,--whole-archive
-                kotekan_metadata
-                -Wl,--no-whole-archive)
+  target_link_libraries(
+    test_N2Subset
+    PRIVATE libexternal
+            kotekan_stages
+            kotekan_libs
+            kotekan_utils
+            kotekan_core
+            -Wl,--whole-archive
+            kotekan_metadata
+            -Wl,--no-whole-archive)
 endif()
-target_include_directories(test_N2Subset PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
-                                                 ${KOTEKAN_SOURCE_DIR}/lib/utils)
+target_include_directories(
+  test_N2Subset PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
+                        ${KOTEKAN_SOURCE_DIR}/lib/utils)
 
 # test_N2AutoSpectrum - tests for N2AutoSpectrum stage
 add_executable(test_N2AutoSpectrum test_N2AutoSpectrum.cpp)
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries(
-        test_N2AutoSpectrum
-        PRIVATE libexternal
-                kotekan_stages
-                kotekan_libs
-                kotekan_utils
-                kotekan_core
-                -Wl,-all_load
-                kotekan_metadata)
+  target_link_libraries(
+    test_N2AutoSpectrum
+    PRIVATE libexternal
+            kotekan_stages
+            kotekan_libs
+            kotekan_utils
+            kotekan_core
+            -Wl,-all_load
+            kotekan_metadata)
 else()
-    target_link_libraries(
-        test_N2AutoSpectrum
-        PRIVATE libexternal
-                kotekan_stages
-                kotekan_libs
-                kotekan_utils
-                kotekan_core
-                -Wl,--whole-archive
-                kotekan_metadata
-                -Wl,--no-whole-archive)
+  target_link_libraries(
+    test_N2AutoSpectrum
+    PRIVATE libexternal
+            kotekan_stages
+            kotekan_libs
+            kotekan_utils
+            kotekan_core
+            -Wl,--whole-archive
+            kotekan_metadata
+            -Wl,--no-whole-archive)
 endif()
-target_include_directories(test_N2AutoSpectrum PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
-                                                       ${KOTEKAN_SOURCE_DIR}/lib/utils)
+target_include_directories(
+  test_N2AutoSpectrum PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
+                              ${KOTEKAN_SOURCE_DIR}/lib/utils)
 
 # test_TransposeBasebandArray - tests for TransposeBasebandArray stage
 add_executable(test_TransposeBasebandArray test_TransposeBasebandArray.cpp)
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries(
-        test_TransposeBasebandArray
-        PRIVATE libexternal
-                kotekan_stages
-                kotekan_libs
-                kotekan_utils
-                kotekan_core
-                -Wl,-all_load
-                kotekan_metadata)
+  target_link_libraries(
+    test_TransposeBasebandArray
+    PRIVATE libexternal
+            kotekan_stages
+            kotekan_libs
+            kotekan_utils
+            kotekan_core
+            -Wl,-all_load
+            kotekan_metadata)
 else()
-    target_link_libraries(
-        test_TransposeBasebandArray
-        PRIVATE libexternal
-                kotekan_stages
-                kotekan_libs
-                kotekan_utils
-                kotekan_core
-                -Wl,--whole-archive
-                kotekan_metadata
-                -Wl,--no-whole-archive)
+  target_link_libraries(
+    test_TransposeBasebandArray
+    PRIVATE libexternal
+            kotekan_stages
+            kotekan_libs
+            kotekan_utils
+            kotekan_core
+            -Wl,--whole-archive
+            kotekan_metadata
+            -Wl,--no-whole-archive)
 endif()
-target_include_directories(test_TransposeBasebandArray PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
-                                                               ${KOTEKAN_SOURCE_DIR}/lib/utils)
+target_include_directories(
+  test_TransposeBasebandArray PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
+                                      ${KOTEKAN_SOURCE_DIR}/lib/utils)
 
 # test_bufferBadInputs - tests for bufferBadInputs stage
 add_executable(test_bufferBadInputs test_bufferBadInputs.cpp)
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries(
-        test_bufferBadInputs
-        PRIVATE libexternal
-                kotekan_stages
-                kotekan_libs
-                kotekan_utils
-                kotekan_core
-                -Wl,-all_load
-                kotekan_metadata)
+  target_link_libraries(
+    test_bufferBadInputs
+    PRIVATE libexternal
+            kotekan_stages
+            kotekan_libs
+            kotekan_utils
+            kotekan_core
+            -Wl,-all_load
+            kotekan_metadata)
 else()
-    target_link_libraries(
-        test_bufferBadInputs
-        PRIVATE libexternal
-                kotekan_stages
-                kotekan_libs
-                kotekan_utils
-                kotekan_core
-                -Wl,--whole-archive
-                kotekan_metadata
-                -Wl,--no-whole-archive)
+  target_link_libraries(
+    test_bufferBadInputs
+    PRIVATE libexternal
+            kotekan_stages
+            kotekan_libs
+            kotekan_utils
+            kotekan_core
+            -Wl,--whole-archive
+            kotekan_metadata
+            -Wl,--no-whole-archive)
 endif()
-target_include_directories(test_bufferBadInputs PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
-                                                        ${KOTEKAN_SOURCE_DIR}/lib/utils)
+target_include_directories(
+  test_bufferBadInputs PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
+                               ${KOTEKAN_SOURCE_DIR}/lib/utils)
 
 # test_bufferRecv - tests for bufferRecv stage
 add_executable(test_bufferRecv test_bufferRecv.cpp)
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries(
-        test_bufferRecv
-        PRIVATE libexternal
-                kotekan_stages
-                kotekan_libs
-                kotekan_utils
-                kotekan_core
-                -Wl,-all_load
-                kotekan_metadata)
+  target_link_libraries(
+    test_bufferRecv
+    PRIVATE libexternal
+            kotekan_stages
+            kotekan_libs
+            kotekan_utils
+            kotekan_core
+            -Wl,-all_load
+            kotekan_metadata)
 else()
-    target_link_libraries(
-        test_bufferRecv
-        PRIVATE libexternal
-                kotekan_stages
-                kotekan_libs
-                kotekan_utils
-                kotekan_core
-                -Wl,--whole-archive
-                kotekan_metadata
-                -Wl,--no-whole-archive)
+  target_link_libraries(
+    test_bufferRecv
+    PRIVATE libexternal
+            kotekan_stages
+            kotekan_libs
+            kotekan_utils
+            kotekan_core
+            -Wl,--whole-archive
+            kotekan_metadata
+            -Wl,--no-whole-archive)
 endif()
-target_include_directories(test_bufferRecv PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
+target_include_directories(test_bufferRecv
+                           PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages)
 
-# test_upchannelizeReference - the serial float32 upchannelization reference. The reference lives in
-# lib/cuda, next to its only caller, but has no CUDA dependency of its own. Compile it directly
-# rather than linking kotekan_cuda, so these tests still build and run on a machine without CUDA.
-add_executable(test_upchannelizeReference test_upchannelizeReference.cpp
-                                          ${KOTEKAN_SOURCE_DIR}/lib/cuda/upchannelizeReference.cpp)
-target_include_directories(test_upchannelizeReference PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/cuda)
+# test_upchannelizeReference - the serial float32 upchannelization reference.
+# The reference lives in lib/cuda, next to its only caller, but has no CUDA
+# dependency of its own. Compile it directly rather than linking kotekan_cuda,
+# so these tests still build and run on a machine without CUDA.
+add_executable(
+  test_upchannelizeReference
+  test_upchannelizeReference.cpp
+  ${KOTEKAN_SOURCE_DIR}/lib/cuda/upchannelizeReference.cpp)
+target_include_directories(test_upchannelizeReference
+                           PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/cuda)
 
-add_executable(test_DtvRfiMask test_DtvRfiMask.cpp ${KOTEKAN_SOURCE_DIR}/lib/stages/DtvRfiMask.cpp)
-target_link_libraries(test_DtvRfiMask PRIVATE kotekan_core kotekan_metadata kotekan_utils
-                                              libexternal)
+add_executable(test_DtvRfiMask test_DtvRfiMask.cpp
+                               ${KOTEKAN_SOURCE_DIR}/lib/stages/DtvRfiMask.cpp)
+target_link_libraries(test_DtvRfiMask PRIVATE kotekan_core kotekan_metadata
+                                              kotekan_utils libexternal)
 
-add_executable(test_IncoherentBeamPower test_IncoherentBeamPower.cpp
-                                        ${KOTEKAN_SOURCE_DIR}/lib/stages/IncoherentBeamPower.cpp)
-target_link_libraries(test_IncoherentBeamPower PRIVATE kotekan_core kotekan_metadata kotekan_utils
-                                                       libexternal)
+add_executable(
+  test_IncoherentBeamPower
+  test_IncoherentBeamPower.cpp
+  ${KOTEKAN_SOURCE_DIR}/lib/stages/IncoherentBeamPower.cpp)
+target_link_libraries(
+  test_IncoherentBeamPower PRIVATE kotekan_core kotekan_metadata kotekan_utils
+                                   libexternal)
 
-add_executable(test_IncoherentBeamSearch test_IncoherentBeamSearch.cpp
-                                         ${KOTEKAN_SOURCE_DIR}/lib/stages/IncoherentBeamSearch.cpp)
-target_link_libraries(test_IncoherentBeamSearch PRIVATE kotekan_core kotekan_metadata kotekan_utils
-                                                        libexternal)
+add_executable(
+  test_IncoherentBeamSearch
+  test_IncoherentBeamSearch.cpp
+  ${KOTEKAN_SOURCE_DIR}/lib/stages/IncoherentBeamSearch.cpp)
+target_link_libraries(
+  test_IncoherentBeamSearch PRIVATE kotekan_core kotekan_metadata kotekan_utils
+                                    libexternal)
+# With HDF5 the test also writes the cutouts with hdf5FileWrite.
+if(HDF5_FOUND AND HighFive_FOUND)
+  target_sources(test_IncoherentBeamSearch
+                 PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages/hdf5FileWrite.cpp)
+  target_link_libraries(
+    test_IncoherentBeamSearch
+    PRIVATE kotekan_stages kotekan_libs ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES}
+            HighFive::HighFive)
+  target_include_directories(
+    test_IncoherentBeamSearch
+    PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages ${KOTEKAN_SOURCE_DIR}/lib/utils
+            ${HDF5_INCLUDE_DIRS})
+endif()
 
-add_executable(test_ProcessPacketMask test_ProcessPacketMask.cpp
-                                      ${KOTEKAN_SOURCE_DIR}/lib/stages/ProcessPacketMask.cpp)
-target_link_libraries(test_ProcessPacketMask PRIVATE kotekan_core kotekan_metadata kotekan_utils
-                                                     libexternal)
+add_executable(
+  test_ProcessPacketMask test_ProcessPacketMask.cpp
+                         ${KOTEKAN_SOURCE_DIR}/lib/stages/ProcessPacketMask.cpp)
+target_link_libraries(
+  test_ProcessPacketMask PRIVATE kotekan_core kotekan_metadata kotekan_utils
+                                 libexternal)

@@ -46,6 +46,8 @@ struct IncoherentCandidate {
     /// channel in samples since the first one
     double snr = 0;
     double dm = 0;
+    /// Index of dm in IncoherentSearchParams::dms
+    int dm_index = 0;
     int width = 0;
     int64_t sample = 0;
     /// Samples above threshold that were merged into the candidate
@@ -104,6 +106,10 @@ class IncoherentSearch {
 public:
     /// Samples per search pass
     static constexpr int chunk = 256;
+    /// Time samples in a cutout
+    static constexpr int cutout_samples = 256;
+    /// A stored sample is in units of 1 / sample_scale sigma of its channel: int8 reaches 4 sigma
+    static constexpr double sample_scale = 32.0;
 
     explicit IncoherentSearch(const IncoherentSearchParams& params);
 
@@ -116,6 +122,20 @@ public:
 
     /// Returns the candidates completed since the last call.
     std::vector<IncoherentCandidate> take_candidates();
+
+    /**
+     * @brief Copies the samples around a candidate as the search saw them, dedispersed at its DM.
+     *
+     * A sample is the channel's power less its running mean, in units of 1 / sample_scale of
+     * its sigma, limited to 3 sigma, less the average of the channels at that time; 0 where
+     * the channel was masked or the sample is not held.
+     *
+     * @param cand  A candidate of the last take_candidates(), before the next add_sample().
+     * @param out   [channel][cutout_samples]. Column k is the top channel's sample
+     *              cand.sample - cutout_samples / 2 + k, and in each channel the sample that
+     *              the candidate's DM delays to it.
+     */
+    void cutout(const IncoherentCandidate& cand, int8_t* out) const;
 
     /// Highest S/N of any DM and width since the last call, after the hold-off.
     double take_max_snr();
