@@ -213,18 +213,18 @@ e5a_rec_buf:
     frame_size: 36 * 44 * 4
 
 # GuoWang (1202.025 MHz, 22.975 MHz below the LO): DFT bins 50 to 54, frame positions 18 to 22,
-# the main lobe and part of the first sidelobes. gnss_gpu::frame_bytes(67 PRNs, 5 channels, 4 rows,
+# the main lobe and part of the first sidelobes. gnss_gpu::frame_bytes(69 PRNs, 5 channels, 4 rows,
 # 1 element).
 gw_epl_buf:
     kotekan_buffer: standard
     metadata_pool: gnss_pool
     num_frames: 8
-    frame_size: 634800
+    frame_size: 653744
 gw_rec_buf:
     kotekan_buffer: standard
     metadata_pool: gnss_pool
     num_frames: 64
-    frame_size: 67 * 44 * 4
+    frame_size: 69 * 44 * 4
 
 # BeiDou B2a pilot: the same channels again, dead-reckoned as E5a.
 # gnss_gpu::frame_bytes(31 PRNs, 12 channels, 4 rows, 1 element).
