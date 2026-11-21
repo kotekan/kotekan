@@ -2533,6 +2533,40 @@ def dr_eph_epoch(ctx):
     return t_age, ctx.utc0_sample0 + t_age
 
 
+def gw_handover(ctx):
+    """Clear a GuoWang code's per-satellite state when the table hands the code to another
+    satellite. A code is shared by satellites of one plane that are never in view together, so
+    what is keyed by PRN (b_sat, the joint states' rows, the KCOH rate, the model-untrusted
+    flag, the search's escape count) describes the satellite that flew the code last. The
+    satellite is the name of the table record covering now."""
+    g = ctx.dr_eph_mod.gpst_of_utc(dr_eph_epoch(ctx)[1])
+    names = ctx.dr_state.setdefault("gw_name", {})
+    for (c, prn), recs in (ctx.dr_state.get("eph") or {}).items():
+        if c != "W":
+            continue
+        name = None
+        for r in recs:
+            if r.get("t0_gpst", g) <= g <= r.get("t1_gpst", g):
+                name = r.get("name")
+                break
+        if name is None:
+            continue
+        old, names[prn] = names.get(prn), name
+        if old is None or old == name:
+            continue
+        ctx.bsat.forget(prn)
+        ctx.rx.forget((c, prn))
+        ctx.kcoh_rates.pop(prn, None)
+        ctx.dr_untrusted.pop(prn, None)
+        ctx.dr_bad.pop(prn, None)
+        ctx.cpt.escape.pop(prn, None)
+        ctx.cpt.escape_sign.pop(prn, None)
+        _log(
+            "GW-HANDOVER PRN %d: %s -> %s, its per-satellite state cleared"
+            % (prn, old, name)
+        )
+
+
 def _det_offset(ctx, prn, det):
     """One detection -> (d_i, cp_loc, t_i): the receiver-clock offset the solve takes the
     circular median of, the physical code phase it was built from, and the detection's time.
@@ -3304,6 +3338,7 @@ def stage_dead_reckon(ctx):
                     )
                 )
             # Birth, re-pin or slew every visible dead-reckoned satellite's seed.
+            gw_handover(ctx)
             dr_seed(ctx)
         # Hand a satellite back to the search once it is detected (the seed loop re-anchors it) or
         # its seed is gone. A model-primary PRN stays model-owned while detected: its detections
