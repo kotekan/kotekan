@@ -3942,14 +3942,15 @@
    "ref_input": 116,
    "drift_ns_s": -2.62,
    "note": "inferred satellite: theta and ppb on its TLE moved +29.985 s along track (fitted to the carrier). Corrected by hand 11-07: the earlier G2' 792 (11-06 12:43:28Z, 4006 frames over 8 s at 13.5 deg, 56/64 channels) was DIGUI-112's signal taken by the inferred satellite's +-45 s along-track search; 792 is DIGUI-112's code, found at 9.6 deg in this window",
-   "last_observed_utc": "2026-11-19T13:04:31Z",
-   "last_checked_utc": "2026-11-19T13:04:31Z",
-   "last_checked_sep_deg": 4.73,
-   "passes_found": 2,
+   "last_observed_utc": "2026-11-21T11:57:25Z",
+   "last_checked_utc": "2026-11-21T11:57:25Z",
+   "last_checked_sep_deg": 9.81,
+   "passes_found": 3,
    "passes_silent": 0,
    "passes": [
     ["2026-11-07T12:09:33Z", 2.18, true],
-    ["2026-11-19T13:04:31Z", 4.73, true]
+    ["2026-11-19T13:04:31Z", 4.73, true],
+    ["2026-11-21T11:57:25Z", 9.81, true]
    ]
   },
   "DIGUI-184": {
