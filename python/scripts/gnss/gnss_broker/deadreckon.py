@@ -2015,6 +2015,9 @@ def dr_seed(ctx):
                 or prn in ctx.probe_set
                 or prn in ctx.cp_held
                 or (prn in ctx.dr_untrusted and prn not in ctx.mp_flipped)
+                # a clock known only to more than half a chip (a GuoWang TLE record's library
+                # theta, clk_sigma_s): the search seeds it, or nothing does
+                or v.get("clk_sigma_s", 0.0) * ctx.args.chip_rate_hz > 0.5
             ):  # not this chain's to dead-reckon
                 continue
             if prn in ctx.seeds and prn not in ctx.dr_state["seeded"]:
@@ -3164,7 +3167,13 @@ def stage_dead_reckon(ctx):
             det_age = {}
             off_inputs = {}
             for prn, det in sorted(ctx.best.items()):
-                if ctx.drp.pd.get((ctx.drp.tag, prn)) is None:
+                _pv = ctx.drp.pd.get((ctx.drp.tag, prn))
+                if _pv is None:
+                    continue
+                # A satellite whose clock the model knows only to more than half a chip (a
+                # GuoWang TLE record's library theta, clk_sigma_s) would pull the solve off; its
+                # detection still seeds it.
+                if _pv.get("clk_sigma_s", 0.0) * ctx.args.chip_rate_hz > 0.5:
                     continue
                 d_i, cp_loc, t_i = _det_offset(ctx, prn, det)
                 det_age[prn] = ctx.drp.t_now_abs - t_i
