@@ -1137,7 +1137,7 @@ def test_v3_statistic_matches_the_reference(pipeline):
         for f in range(num_freq):
             if f not in bound:
                 # not evaluated: every word keeps it
-                assert pairs[f].tolist() == [0, 2 ** 64 - 1], f
+                assert pairs[f].tolist() == [0, 2**64 - 1], f
                 continue
             calibration = profiles[ids[f]]["fine_calibration"]
             want = fine_stat_v3(
