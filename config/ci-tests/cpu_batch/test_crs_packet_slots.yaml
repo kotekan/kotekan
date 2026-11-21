@@ -1,0 +1,65 @@
+---
+#
+# crsPacketGen -> udpPacketCheck in one process: the CRS headers, the 12-bit payload packing,
+# the per-ADC sample-counting seq_number, and the checker's seq_offset/seq_stride handling,
+# with injected packet loss and without a NIC. One ADC: the checker pins one destination port.
+#
+type: config
+log_level: INFO
+
+cpu_affinity: [0, 1]
+
+telescope:
+    name: fake
+
+# CRS packets: 64 byte headers and 4096 12-bit samples in 6144 payload bytes.
+header_size: 64
+header_slot: 128
+payload_size: 6144
+payload_slot: 6144
+packets_per_frame: 64
+buffer_depth: 4
+samples_per_packet: 4096
+dst_port: 10000
+
+header_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: packets_per_frame * header_slot
+payload_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: packets_per_frame * payload_slot
+
+gen:
+    kotekan_stage: crsPacketGen
+    header_buf: header_buffer
+    payload_buf: payload_buffer
+    src_mac: "30:c5:99:3f:09:1e"
+    dst_mac: "10:70:fd:53:05:06"
+    src_ip: 10.0.0.1
+    dst_ip: 10.0.0.2
+    src_port: 4000
+    num_adcs: 1
+    start_seq: 4096
+    tone_bin: [5]
+    tone_amplitude: [1000]
+    noise_rms: 20
+    # One injected gap of 2 packets per 100: 8 * 64 / 100 = 5 gaps, 10 packets.
+    drop_period: 100
+    drop_burst: 2
+    # Two passes over the ring: the second one takes the sequence-number-only path.
+    num_frames: 8
+
+check:
+    kotekan_stage: udpPacketCheck
+    header_buf: header_buffer
+    payload_buf: payload_buffer
+    seq_offset: 50
+    seq_stride: samples_per_packet
+    payload_check_interval: 0
+    report_interval: 4
+    num_frames: 8
+    max_lost_packets: 10
+
+log_config_usage: fatal_error

@@ -85,6 +85,7 @@ ktk_tristate_option(USE_DPDK "Build with DPDK libraries" AUTO)
 ktk_tristate_option(USE_FFTW "Build with FFTW" AUTO)
 ktk_tristate_option(USE_GDAL "Build GDAL output stages" AUTO)
 ktk_tristate_option(USE_HDF5 "Build HDF5 output stages" AUTO)
+ktk_tristate_option(USE_IBVERBS "Build the ibverbs raw packet UDP stages (libibverbs)" AUTO)
 ktk_tristate_option(USE_JULIA "Build Julia-based features" AUTO)
 ktk_tristate_option(USE_LAPACK_BLAZE
                     "Build with LAPACK Linear Algebra (OpenBLAS) and Blaze support" AUTO)

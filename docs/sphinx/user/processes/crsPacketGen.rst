@@ -1,0 +1,5 @@
+************
+crsPacketGen
+************
+
+.. doxygenclass:: crsPacketGen

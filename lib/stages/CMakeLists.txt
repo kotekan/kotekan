@@ -64,6 +64,8 @@ add_library(
     frbNetworkSend.cpp
     pulsarNetworkProcess.cpp
     bufferMerge.cpp
+    crsWindowAlign.cpp
+    crsHeaderGen.cpp
     bufferCopy.cpp
     bufferSwitch.cpp
     bufferDelay.cpp
