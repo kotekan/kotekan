@@ -480,6 +480,33 @@ def test_trk_consumers_read_trk():
     )
 
 
+def test_trk_slew_keeps_long_period():
+    """--dr-clock-long places the clock whole code periods beyond clk_now. A seed slewed from
+    TRK_STATE keeps those periods, as the legacy offset does: the joint offset is only defined
+    within one code period."""
+    saved = deadreckon.dr_clock_long_chips
+    deadreckon.dr_clock_long_chips = lambda ctx: -L
+    try:
+        rx = make_rx("fed")
+        jt = rx._joint[TRK_STATE]
+        bsat = {3: 0.37, 9: -0.21}
+        offs, clk_now, _l, _ = run_dr_seed(rx, "trk", bsat)
+    finally:
+        deadreckon.dr_clock_long_chips = saved
+    w3 = (
+        clk_now + rx.joint_clk_delta(jt.predicted(("G", 3)), REF, L, clk_now, REF, L)[0]
+    )
+    check(
+        offs.get(3) == (MODEL + w3 - L) % MOD - MODEL,
+        "PRN 3 (slewed from TRK_STATE) keeps the clock's -1 period (got %r, want %r)"
+        % (offs.get(3), (MODEL + w3 - L) % MOD - MODEL),
+    )
+    check(
+        offs.get(9) == (MODEL + clk_now - L + bsat[9]) % MOD - MODEL,
+        "PRN 9 (legacy offset) keeps it too (got %r)" % offs.get(9),
+    )
+
+
 def test_trk_slew_bound_falls_back():
     """A TRK offset beyond joint_slew_max_chips of the clock is refused per satellite and the
     seed takes the legacy offset, b_sat included, exactly as on the search path."""

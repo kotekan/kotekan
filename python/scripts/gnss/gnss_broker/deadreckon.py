@@ -2166,11 +2166,8 @@ def dr_seed(ctx):
             # joint state holds only satellites some chain detects.
             if ctx.drp.hold:
                 continue  # withheld: the clock is still the prime (stage_dead_reckon)
-            _leg_off = (
-                ctx.drp.clk_now
-                + dr_clock_long_chips(ctx)
-                + ctx.bsat.get(prn, ctx.drp.now_w)
-            )
+            _long = dr_clock_long_chips(ctx)
+            _leg_off = ctx.drp.clk_now + _long + ctx.bsat.get(prn, ctx.drp.now_w)
             _off = _leg_off
             _jr3, _w3, _tag3 = joint_read(ctx)
             # The joint is in reference chips (Receiver.joint_unit), converted into ours below as
@@ -2188,9 +2185,11 @@ def dr_seed(ctx):
             # carries this satellite's b_i, so an adopted offset is clk_now plus the wrapped
             # (clk + b_i - clk_now), with no b_sat in it, and b_sat cannot move the seed through
             # the bound either. A satellite the state does not hold, or one refused, keeps the
-            # legacy offset (b_sat included), as on the search-fed state.
+            # legacy offset (b_sat included), as on the search-fed state. Both keep the clock's
+            # whole long-code periods (--dr-clock-long): the joint offset is defined only within
+            # one code period.
             _drv3 = _trk3 and "slew" in ctx.joint_consume
-            _base3 = ctx.drp.clk_now if _drv3 else _leg_off
+            _base3 = ctx.drp.clk_now + _long if _drv3 else _leg_off
             # A seed rides clk + b_i only while b_i is settled (trk_unsettled); otherwise the
             # satellite keeps the legacy offset, as if the state did not hold it.
             _uns3 = (
