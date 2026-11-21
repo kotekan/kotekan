@@ -4,14 +4,14 @@
   /dtv_mask_enabled applies the DTV mask to N2 and /dtv_write_enabled sends the products to
   the recv node. Both start off.
   Only the mask is sent unless dtv_calibration_mode is set, which also sends the powers,
-  fine support and fine powers (dtv_shared.j2, which recv.j2 reads too).
+  fine support and fine powers (telescope.j2, which recv.j2 reads too).
   The detector zeroes the inputs flagged by bufferBadInputs, the RFI antennas too.
   Disable /rfi_first_stage_enabled for a DTV-only first-stage mask.
   Profiles bind by receiver_channel_id against each NUMA half's coarse_freq.
   Every bound channel must be calibrated; halves without matches emit zero masks/powers.
   See docs/sphinx/user/modules/pilotproxy.rst for bundle setup and runtime controls.
 -#}
-{% from "dtv_shared.j2" import dtv_blocks_per_frame, dtv_products, dtv_sent with context %}
+{% from "telescope.j2" import dtv_blocks_per_frame, dtv_products, dtv_sent with context %}
 
 # One frame per 8192-sample block: mask, target/lower/upper powers
 # (sums of 256 fine powers), per-frequency fine support, and the fine powers of the

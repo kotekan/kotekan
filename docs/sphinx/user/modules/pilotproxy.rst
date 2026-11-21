@@ -171,7 +171,7 @@ runtime, and both start off:
 
 ``dtv_calibration_mode`` (template only, default false) sets which products are
 sent: only the mask, or with it the powers, fine support and fine powers for
-calibration and debugging. ``config/chord/dtv_shared.j2`` holds the products'
+calibration and debugging. ``config/chord/telescope.j2`` holds the products'
 shapes and ports for both configs, so render ``config/chord/recv.j2`` with the
 same ``dtv_enabled`` and ``dtv_calibration_mode``.
 

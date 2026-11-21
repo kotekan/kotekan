@@ -45,7 +45,7 @@
 {% set stream_base_step = stream_base_step | default(0) %}
 {# The correlators and RfiMaskSum read the DTV-merged mask (dtv.j2), which is the SK mask
    while /dtv_mask_enabled is off. With dtv_enabled false they read the SK mask itself. #}
-{% from "dtv_shared.j2" import dtv_enabled with context %}
+{% from "telescope.j2" import dtv_enabled with context %}
 {% set n2k_rfi_name = "dtv_RFImask" if dtv_enabled else "rfi_RFImask" %}
 
 # The two NUMA halves. Each owns a NIC port, a GPU and a set of cores, and every per-half
