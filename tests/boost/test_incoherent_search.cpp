@@ -93,6 +93,9 @@ BOOST_AUTO_TEST_CASE(pulse_is_found_at_its_dm_and_time) {
     BOOST_CHECK(!c.undispersed);
     BOOST_CHECK_EQUAL(c.num_partners, 0);
     BOOST_CHECK(!c.one_band);
+    // The pulse fills the band: no part of it has much more S/N than the whole.
+    BOOST_CHECK_GT(c.part_ratio, 0.9);
+    BOOST_CHECK_LT(c.part_ratio, 1.15);
     BOOST_CHECK_GT(c.num_channels, 240);
     int filled = 0;
     for (float b : c.block_snr)
@@ -225,6 +228,8 @@ BOOST_AUTO_TEST_CASE(pulse_beside_a_burst_is_not_marked) {
     for (const IncoherentCandidate& c : cands) {
         if (c.dm == 100 && c.sample == 4200) {
             BOOST_CHECK(!c.undispersed);
+            // The pulse is in half of the band.
+            BOOST_CHECK_GT(c.part_ratio, 1.25);
             ++pulses;
         } else {
             marked += c.undispersed;

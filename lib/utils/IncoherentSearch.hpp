@@ -65,9 +65,16 @@ struct IncoherentCandidate {
     /// The candidate has two or more partners, and with them covers more than 50 DM units:
     /// interference, not a pulse.
     bool undispersed = false;
-    /// A description, not a verdict: 8 samples or wider, with more than 1.8 times its S/N in
-    /// one block. Faint interference often looks like this; so may a wide burst in a narrow band.
+    /// 8 samples or wider, with more than 0.8 times its S/N in one block. Interference a few MHz
+    /// wide looks like this; so may a wide burst in a narrow band.
     bool one_band = false;
+    /// The highest S/N of the candidate in a contiguous part of the band, of 2 to 16 sixteenths
+    /// of the channels with data, after the sum of every 8 adjacent channels over the window is
+    /// limited to 3 sigma, or to what a pulse in two sixteenths would give; and its ratio to the
+    /// S/N of the whole band from the same samples. The ratio is about 1 for noise, below 1 for
+    /// interference a few MHz wide, and above 1 for a pulse that fills part of the band.
+    float part_snr = 0;
+    float part_ratio = 0;
 };
 
 /**
@@ -202,6 +209,7 @@ private:
                        double& dm_range) const;
     int strongest_block(const Hit& hit) const;
     void band_occupancy(IncoherentCandidate& cand, const Hit& hit) const;
+    void band_parts(IncoherentCandidate& cand) const;
     const int8_t* row(int channel, int64_t sample) const {
         return &w[(size_t)channel * buffer_len + (size_t)(sample - base)];
     }

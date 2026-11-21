@@ -63,6 +63,9 @@ const double block_fraction = 0.5;
 // than one_band_width.
 const int one_band_width = 8;
 const double one_band_ratio = 0.8;
+// part_snr: adjacent channels with data in a bin, and the limit on a bin's sum in sigma
+const int part_bin = 8;
+const double part_clip = 3.0;
 // A running statistic is used after this many seconds of updates
 const double settle_s = 1.0;
 // A candidate is reported this many seconds after its first sample above threshold
@@ -482,6 +485,7 @@ void IncoherentSearch::close_events() {
         cand.one_band = cand.width >= one_band_width
                         && *std::max_element(cand.block_snr.begin(), cand.block_snr.end())
                                > one_band_ratio * cand.snr;
+        band_parts(cand);
         candidates.push_back(cand);
         e.reported = true;
     }
@@ -547,6 +551,92 @@ void IncoherentSearch::band_occupancy(IncoherentCandidate& cand, const Hit& hit)
         cand.block_snr[b] = n ? (float)(sum / std::sqrt((double)n * wd)) : 0.0f;
         cand.num_channels += n;
     }
+}
+
+// part_snr and part_ratio of a candidate with dm_index and sample set. Windows of every width
+// that start up to the width and 2 samples before the candidate and up to 2 after are tried.
+void IncoherentSearch::band_parts(IncoherentCandidate& cand) const {
+    const int32_t* const dl = &delay[(size_t)cand.dm_index * F];
+    const int wmax = widths.back();
+    const int span = 2 * wmax + 4;
+    const int64_t first = cand.sample - wmax - 2;
+    // For each bin of part_bin channels with data, the running sums over the span of the
+    // samples and of their number.
+    std::vector<int32_t> sum, num;
+    std::vector<int8_t> v(span);
+    int in_bin = 0;
+    for (int c = 0; c < F; ++c) {
+        bool data = false;
+        for (int k = 0; k < span; ++k) {
+            const int64_t s = first + k + dl[c];
+            v[k] = s >= base && s < ns ? *row(c, s) : 0;
+            data = data || v[k] != 0;
+        }
+        if (!data)
+            continue;
+        if (in_bin == 0) {
+            sum.resize(sum.size() + span + 1, 0);
+            num.resize(num.size() + span + 1, 0);
+        }
+        int32_t* const bs = &sum[sum.size() - span - 1];
+        int32_t* const bn = &num[num.size() - span - 1];
+        int32_t run = 0, count = 0;
+        for (int k = 0; k < span; ++k) {
+            run += v[k];
+            count += v[k] != 0;
+            bs[k + 1] += run;
+            bn[k + 1] += count;
+        }
+        in_bin = (in_bin + 1) % part_bin;
+    }
+    // A last bin with fewer channels is left out.
+    const int bins = (int)(sum.size() / (span + 1)) - (in_bin != 0);
+    const int parts = IncoherentCandidate::num_blocks;
+    cand.part_snr = 0;
+    cand.part_ratio = 0;
+    if (bins < parts)
+        return;
+    double full = 0, part = 0;
+    std::vector<double> cy(parts + 1, 0.0), cn(parts + 1, 0.0);
+    for (const int wd : widths) {
+        for (int o = wmax - wd; o <= wmax + 4; ++o) {
+            double total = 0, total_n = 0;
+            for (int b = 0; b < bins; ++b) {
+                const size_t at = (size_t)b * (span + 1) + o;
+                total += sum[at + wd] - sum[at];
+                total_n += num[at + wd] - num[at];
+            }
+            if (total_n == 0)
+                continue;
+            full = std::max(full, total / std::sqrt(total_n));
+            // A pulse with all its S/N in two of the parts has parts / 2 over the root of the
+            // number of bins times the S/N of the whole band in each bin: a bright pulse is not
+            // limited below that.
+            const double share = parts / 2 * total / std::sqrt(total_n * bins);
+            const double clip = std::max(part_clip * sample_scale, share);
+            double y = 0, yn = 0;
+            int edge = 1;
+            for (int b = 0; b < bins; ++b) {
+                const size_t at = (size_t)b * (span + 1) + o;
+                const double x = sum[at + wd] - sum[at];
+                const double n = num[at + wd] - num[at];
+                const double limit = clip * std::sqrt(n);
+                yn += n;
+                y += std::clamp(x, -limit, limit);
+                if (b + 1 == (int)((int64_t)edge * bins / parts)) {
+                    cy[edge] = y;
+                    cn[edge] = yn;
+                    ++edge;
+                }
+            }
+            for (int i = 0; i < parts; ++i)
+                for (int j = i + 2; j <= parts; ++j)
+                    if (cn[j] > cn[i])
+                        part = std::max(part, (cy[j] - cy[i]) / std::sqrt(cn[j] - cn[i]));
+        }
+    }
+    cand.part_snr = (float)(part / sample_scale);
+    cand.part_ratio = full > 0 ? (float)(part / full) : 0.0f;
 }
 
 int IncoherentSearch::strongest_block(const Hit& hit) const {

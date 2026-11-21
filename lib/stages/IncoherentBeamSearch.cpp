@@ -60,6 +60,10 @@ using kotekan::prometheus::Metrics;
  *    times its S/N, which is how interference a few MHz wide looks. A wide burst in a narrow
  *    band looks the same.
  *
+ * "part_snr" is the candidate's highest S/N in a contiguous part of the band and "part_ratio"
+ * its ratio to the whole band (IncoherentCandidate::part_snr): about 1 for noise, below 1 for
+ * interference a few MHz wide, above 1 for a pulse that fills part of the band.
+ *
  * Nothing acts on a candidate yet.
  *
  * With out_buf, every search pass also writes its dedispersed sums (IncoherentSearch::last_sums)
@@ -493,6 +497,8 @@ private:
                                    {"flags", flags},
                                    {"partners", c.num_partners},
                                    {"one_band", c.one_band},
+                                   {"part_snr", c.part_snr},
+                                   {"part_ratio", c.part_ratio},
                                    {"reported_unix", current_time()}};
             if (cutout >= 0)
                 line["cutout"] = cutout;
