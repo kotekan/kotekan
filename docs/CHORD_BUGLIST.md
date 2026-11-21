@@ -1132,6 +1132,20 @@ shifted). No live config sets `secondary_overlay` or `navwipe_bit_records`, so t
 The reference-weight defect is fixed (`978561481`, closed). Left from the same review: an element whose
 rho² exceeds 0.99 is dropped, so a very bright satellite's own cal can end with zero weights. Unmeasured.
 
+---
+
+## Open — bench or offline, no deployment at all
+
+### #236 — a 10 Hz carrier-phase pattern common to every satellite caps record coherence at ~0.946 (2026-11-21, paper item 5)
+**What [live]:** in a 120-s read-only capture of the gather's :11061 records (11-21 23:12-23:14Z, 12 instances,
+`~/gnss/fixtures/record_phase_1121/`, gnss_paper `86c957b`), the per-record prompt phase carries a 10.0 Hz pattern locked to
+F-engine time modulo 100 ms: 0.76 rad peak-to-peak, sharp in the last ~15 ms of each 100 ms, identical on every satellite of
+gps_l5 and gal_e5a. It sets the coherence ceiling: |r_1| saturates at 0.946 on the strong satellites, and |r_m| recovers at
+multiples of 100 ms rather than of a frame. Present on 10-12 at 0.36 rad. Not the frame boundary: that phase is continuous
+(lag-1 pairs across a boundary 0.945 against 0.946 inside).
+**Next:** a capture of a chain at another RF (gal_e6 or bds_b3i) says whether the pattern scales with frequency (a timing
+term) or not (a phase term); then look for a 100 ms period in the node or F-engine chain.
+
 ### #223 — GDV map, after a few days' soak: the day/night amplitude, direct surface evaluation, gps_l5 (2026-10-30, KV: "file the GDV questions as todo for once we've soaked a few days")
 Live since 10-30 17:41Z: config/gdvmap_taua_20261030.json, a per-band penalised (az, el) surface fitted on 66 h
 (builds/gdv_refit_1030/out/RESULTS.md), sampled into the broker's cells and read by the 2-deg kernel lookup. Open:
