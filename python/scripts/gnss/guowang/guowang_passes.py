@@ -112,6 +112,7 @@ def read_omm(path, ts, name_filter="DIGUI"):
     """EarthSatellite list from an OMM CSV, one per catalogue number, names containing
     name_filter ('' = all)."""
     from sgp4 import omm
+    from sgp4.api import Satrec
     from skyfield.api import EarthSatellite
 
     sats, seen = [], set()
@@ -121,7 +122,10 @@ def read_omm(path, ts, name_filter="DIGUI"):
             if f["NORAD_CAT_ID"] in seen or (name_filter and name_filter not in name):
                 continue
             seen.add(f["NORAD_CAT_ID"])
-            sat = EarthSatellite.from_omm(ts, f)
+            # What EarthSatellite.from_omm does, which skyfield before 1.50 lacks (Ubuntu's 1.48).
+            rec = Satrec()
+            omm.initialize(rec, f)
+            sat = EarthSatellite.from_satrec(rec, ts)
             sat.name = name
             sats.append(sat)
     return sats
