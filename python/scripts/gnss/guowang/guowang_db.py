@@ -268,10 +268,19 @@ def read_proposals(paths):
     return out
 
 
-def tle_catnums(path):
-    """{'DIGUI-nn': NORAD number} from a TLE file (name lines 'HULIANWANG DIGUI-nn')."""
+def element_catnums(path):
+    """{'DIGUI-nn': NORAD number} from an OMM CSV (names as guowang_passes.omm_name makes them)
+    or a TLE file (name lines 'HULIANWANG DIGUI-nn')."""
     out = {}
     if not path:
+        return out
+    if path.endswith(".csv"):
+        import csv
+
+        with open(path) as fh:
+            for row in csv.DictReader(fh):
+                name = row["OBJECT_NAME"].strip().replace("HULIANWANG ", "")
+                out[name.replace(" ", "-")] = int(row["NORAD_CAT_ID"])
         return out
     lines = open(path).read().splitlines()
     for k in range(len(lines) - 2):
@@ -280,12 +289,13 @@ def tle_catnums(path):
     return out
 
 
-def newest_tle(cache=os.path.expanduser("~/.cache/guowang")):
+def newest_elements(cache=os.path.expanduser("~/.cache/guowang")):
+    """The newest OMM CSV in the cache (gw_published_tle.py's gp_hulianwang_<stamp>.csv)."""
     try:
         names = sorted(
             f
             for f in os.listdir(cache)
-            if f.startswith("hulianwang_") and f.endswith(".tle")
+            if f.startswith("gp_hulianwang_") and f.endswith(".csv")
         )
     except OSError:
         return None
@@ -503,7 +513,7 @@ def cmd_update(a):
         db,
         passes,
         proposals,
-        tle_catnums(a.tle or newest_tle()),
+        element_catnums(a.elements or newest_elements()),
         a.silent_max_sep,
         load_floor(),
     )
@@ -648,8 +658,11 @@ def main():
         help="gw_reduce db_proposals.jsonl (repeatable)",
     )
     u.add_argument(
+        "--elements",
         "--tle",
-        help="TLE file for NORAD numbers (default: the newest ~/.cache/guowang file)",
+        dest="elements",
+        help="OMM CSV or TLE file for NORAD numbers (default: the newest ~/.cache/guowang OMM "
+        "file)",
     )
     u.add_argument("--silent-max-sep", type=float, default=SILENT_MAX_SEP_DEG)
     u.add_argument("--message-out", help="write a commit message here")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""gw_ephem_table.py (TLE -> table) and gnss_ephemeris's GuoWang records (table -> predict_all),
+"""gw_ephem_table.py (elements -> table) and gnss_ephemeris's GuoWang records (table -> predict_all),
 against skyfield's SGP4 directly, on DIGUI-79's pass of 2026-11-02 18:00Z (beam-dump window 4)."""
 
 import json
@@ -253,14 +253,14 @@ class TestTable(unittest.TestCase):
 
 
 class TestMain(unittest.TestCase):
-    def test_an_unreadable_extra_tle_still_writes_the_table(self):
+    def test_unreadable_extra_elements_still_write_the_table(self):
         skyfield()
         with tempfile.TemporaryDirectory() as d:
             tle, out = os.path.join(d, "gw.tle"), os.path.join(d, "gw.json")
             with open(tle, "w") as fh:
                 fh.write("\n".join(TLE) + "\n")
             gw.main(
-                ["--tle", tle, "--extra-tle", os.path.join(d, "none.tle")]
+                ["--elements", tle, "--extra-elements", os.path.join(d, "none.tle")]
                 + ["--hours", "0.1", "--out", out]
             )
             with open(out) as fh:
@@ -268,6 +268,33 @@ class TestMain(unittest.TestCase):
         self.assertEqual(doc["transit_deg"], 10.0)
         self.assertIn("transits", doc)
         self.assertIn("records", doc)
+
+
+class TestElements(unittest.TestCase):
+    def test_omm_and_tle_of_one_element_set_agree(self):
+        """An OMM CSV and the TLE it was exported from place the satellite alike, under the
+        catalogue's name with its spaces made hyphens, and the table reads either."""
+        from sgp4 import exporter
+        from sgp4.api import Satrec
+
+        ts, sat, site = skyfield()
+        fields = exporter.export_omm(Satrec.twoline2rv(TLE[1], TLE[2]), "HULIANWANG DIGUI 79")
+        with tempfile.TemporaryDirectory() as d:
+            csv_path, out = os.path.join(d, "gp_hulianwang_x.csv"), os.path.join(d, "gw.json")
+            with open(csv_path, "w") as fh:
+                fh.write(",".join(fields) + "\n" + ",".join(str(v) for v in fields.values()))
+                fh.write("\n")
+            (omm,) = gp.read_elements(csv_path, ts, "DIGUI")
+            gw.main(["--elements", csv_path, "--hours", "0.1", "--out", out])
+            with open(out) as fh:
+                doc = json.load(fh)
+        self.assertEqual(omm.name, "HULIANWANG DIGUI-79")
+        self.assertEqual(int(omm.model.satnum), 65311)
+        self.assertEqual(gp.batch(omm), "2025-187")
+        t = gp.ts_unix(ts, T_PASS)
+        d_km = omm.at(t).position.km - sat.at(t).position.km
+        self.assertLess(math.sqrt(sum(x * x for x in d_km)), 1e-3)
+        self.assertEqual(doc["elements"], csv_path)
 
 
 class TestDatabase(unittest.TestCase):
