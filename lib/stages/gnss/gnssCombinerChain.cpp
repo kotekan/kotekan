@@ -435,9 +435,13 @@ bool CombinerChain::ingest(const float* in, long long cur_hop) {
         acc_epow[p] += alpha * ((er * er + ei * ei) - acc_epow[p]);
         acc_lpow[p] += alpha * ((lr * lr + li * li) - acc_lpow[p]);
         acc_ppow[p] += alpha * ((gr * gr + gi * gi) - acc_ppow[p]);
-        acc_ee2[p] += alpha * (e_energy * e_energy - acc_ee2[p]);
-        acc_le2[p] += alpha * (l_energy * l_energy - acc_le2[p]);
-        acc_pe2[p] += alpha * (energy * energy - acc_pe2[p]);
+        // The energies only from records that ran, so the powers of a PRN that stops running
+        // decay to zero rather than holding their last ratio.
+        if (energy > 0.0) {
+            acc_ee2[p] += alpha * (e_energy * e_energy - acc_ee2[p]);
+            acc_le2[p] += alpha * (l_energy * l_energy - acc_le2[p]);
+            acc_pe2[p] += alpha * (energy * energy - acc_pe2[p]);
+        }
         acc_he[p] += alpha * (h_energy - acc_he[p]);
         acc_pe[p] += alpha * (energy - acc_pe[p]);
         acc_ar[p] += alpha * (ar - acc_ar[p]);
