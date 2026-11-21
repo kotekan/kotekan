@@ -303,13 +303,13 @@ incoherent_beam_search:
     num_feeds: num_elements
     dm_min: 3
     dm_knee: 100
-    # Candidates are listed from 6.5 sigma at every DM, to see the pulsars in the beam and
-    # what the flags in the candidate file take out; thermal noise alone gives about 50 a day.
-    # A candidate counts for a trigger from 7 sigma and from DM 100 (the default of
-    # trigger_min_dm). On the first nights about 85 a day passed, nearly all of them faint
-    # interference.
-    threshold: 6.5
-    trigger_min_snr: 7
+    # Candidates are listed from 6 sigma at every DM, to see the pulsars in the beam and
+    # what the flags in the candidate file take out; thermal noise alone gives about 1200 a
+    # day. A candidate counts for a trigger from 6.5 sigma and from DM 100 (the default of
+    # trigger_min_dm): about 180 a day on 2026-11-21, some 50 of them thermal noise and the
+    # rest faint interference.
+    threshold: 6
+    trigger_min_snr: 6.5
     # CHORD's static RFI mask, chord_util.rfi.BAD_FREQUENCIES["chord"] (bdfd697), with two
     # changes for a search for pulses: all of 1010-1130 MHz, where aircraft transmit in
     # pulses, in place of its two Mode S lines, and GNSS L1, which is above its data.
