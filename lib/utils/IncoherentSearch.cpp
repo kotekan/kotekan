@@ -24,6 +24,10 @@ const int mask_neighbours = 256;
 const double drift_threshold = 2.0;
 // Samples per block of the drift test
 const int drift_block = 64;
+// The tests of a channel see interference a few MHz wide only after tens of ms, and in its
+// strongest channels first. So a channel that fails a test takes mask_margin_channels on each
+// side with it, and a channel that becomes masked loses its last mask_margin_s too.
+const int mask_margin_channels = 2;
 // Updates of a running statistic before the update is clipped
 const int64_t unclipped_updates = 64;
 // An update of a running statistic is limited to this many sigma
@@ -71,12 +75,13 @@ IncoherentSearch::IncoherentSearch(const IncoherentSearchParams& params) :
     p(params), F(params.num_freq), D((int)params.dms.size()), W((int)widths.size()),
     a(params.sample_s / params.tau_s) {
     if (F <= 0 || D == 0 || p.sample_s <= 0 || p.tau_s <= 0 || p.thermal <= 0 || p.dfreq_mhz <= 0
-        || p.freq0_mhz <= 0)
+        || p.freq0_mhz <= 0 || p.mask_margin_s < 0)
         throw std::invalid_argument("IncoherentSearch: invalid parameters");
 
     holdoff = std::llround(p.holdoff_s / p.sample_s);
     min_count = std::llround(settle_s / p.sample_s);
     close_after = std::llround(close_after_s / p.sample_s);
+    mask_margin = std::llround(p.mask_margin_s / p.sample_s);
     ref_interval = std::max<int64_t>(1, std::llround(ref_interval_s / p.sample_s));
 
     mean.assign(F, 0.0);
@@ -86,6 +91,8 @@ IncoherentSearch::IncoherentSearch(const IncoherentSearchParams& params) :
     block_sum.assign(F, 0.0);
     drift.assign(F, 0.0);
     scratch.assign(F, 0.0f);
+    noisy.assign(F, 0);
+    was_used.assign(F, 0);
     state.assign(F, ChannelState::missing);
     band_ok.assign(F, 1);
     for (int c = 0; c < F; ++c) {
@@ -178,6 +185,7 @@ bool IncoherentSearch::add_sample(const float* power) {
         const double x = power[c];
         state[c] = ChannelState::missing;
         scratch[c] = 0;
+        noisy[c] = 0;
         // A channel that comes back from no data starts its statistics again: its level may
         // have changed (another set of feeds, a restarted node).
         if (!(x > 0)) {
@@ -196,11 +204,8 @@ bool IncoherentSearch::add_sample(const float* power) {
             scratch[c] = (float)std::clamp(d / sd, -sample_clip, sample_clip);
             const bool quiet = sd <= mask_threshold * ref[c] * p.thermal * mean[c];
             const bool steady = drift[c] <= drift_threshold;
+            noisy[c] = band_ok[c] && !(quiet && steady);
             state[c] = band_ok[c] && quiet && steady ? ChannelState::used : ChannelState::masked;
-            if (state[c] == ChannelState::used) {
-                zero_dm += scratch[c];
-                ++n_used;
-            }
         }
         // A variance of zero must stay free to grow.
         const double dc = count[c] >= unclipped_updates && sd > 0
@@ -210,6 +215,27 @@ bool IncoherentSearch::add_sample(const float* power) {
         mean[c] += weight * dc;
         var[c] += weight * (dc * dc - var[c]);
         ++count[c];
+    }
+    for (int c = 0; c < F; ++c) {
+        if (!noisy[c])
+            continue;
+        const int lo = std::max(0, c - mask_margin_channels);
+        const int hi = std::min(F - 1, c + mask_margin_channels);
+        for (int k = lo; k <= hi; ++k)
+            if (state[k] == ChannelState::used)
+                state[k] = ChannelState::masked;
+    }
+    // The stored samples that a sum has already taken stay in that sum.
+    const int64_t held = ns - base;
+    const int64_t margin = std::min(mask_margin, held);
+    for (int c = 0; c < F; ++c) {
+        if (was_used[c] && state[c] == ChannelState::masked)
+            std::memset(&w[(size_t)c * buffer_len + held - margin], 0, margin);
+        was_used[c] = state[c] == ChannelState::used;
+        if (was_used[c]) {
+            zero_dm += scratch[c];
+            ++n_used;
+        }
     }
     if (n_used)
         zero_dm /= n_used;
