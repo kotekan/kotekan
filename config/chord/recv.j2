@@ -231,8 +231,9 @@ hdf5_N2_write_subset:
 #     num_file_t: 20
 
 
-# DTV products, one file per received frame: one half's ~43 s. File numbers follow arrival
-# order; the coarse_freq and fpga_seq_num attributes identify the half and the window.
+# DTV products, 448 frames per file: 28 frames of ~43 s from each of the 16 halves, about 20
+# minutes. The frames are in arrival order; frame_metadata/COARSE_FREQ and
+# frame_metadata/FPGA_SEQ_NUM identify the half and the window of each.
 write_dtv:
 {% for p in dtv_sent %}
     {{ p[0] }}:
@@ -244,4 +245,6 @@ write_dtv:
         acq_dir: true
         file_name: dtv_{{ p[0] }}
         prefix_hostname: false
+        frames_per_file: 448
+        record_per_frame_metadata: true
 {% endfor %}

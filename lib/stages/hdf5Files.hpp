@@ -3,11 +3,17 @@
 
 #include "DataType.hpp" // for DataType, float16_t
 
+#include "json.hpp" // for json
+
 #include <array>                         // for array
 #include <chrono>                        // for system_clock
+#include <cstddef>                       // for size_t
 #include <highfive/H5DataType.hpp>       // for AtomicType, DataType, H5T_NATIVE_FLOAT
+#include <highfive/H5File.hpp>           // for File
 #include <highfive/bits/h5t_wrapper.hpp> // for h5t_copy, h5t_set_ebias, h5t_set_fields, h5t_se...
+#include <map>                           // for map
 #include <string>                        // for string
+#include <vector>                        // for vector
 
 namespace hdf5 {
 
@@ -62,6 +68,59 @@ std::string acq_dir_path(const std::string& base_dir, std::chrono::system_clock:
 inline bool is_time_axis(const std::string& dim_name) {
     return !dim_name.empty() && dim_name[0] == 'T';
 }
+
+/// The group hdf5FileWrite stores the per-frame metadata in (record_per_frame_metadata).
+constexpr const char* frame_metadata_group = "frame_metadata";
+
+/**
+ * @brief One value of a frame's metadata as it is stored per frame: a scalar or a
+ *        rectangular array of booleans, integers, floats or strings.
+ */
+struct FrameMetadataColumn {
+    enum Kind { Bool, Int, UInt, Float, String };
+    Kind kind = Int;
+    /// The shape of one frame's value, empty for a scalar.
+    std::vector<std::size_t> shape;
+    /// The elements in row-major order.
+    std::vector<nlohmann::json> values;
+    /// For strings, the length of the longest element, or the stored length of a file's column.
+    std::size_t width = 0;
+};
+
+/// The columns by dataset path inside the group: "KEY", or "KEY/SUBKEY" for a nested object.
+using FrameMetadataColumns = std::map<std::string, FrameMetadataColumn>;
+
+/**
+ * @brief Flatten the json of one frame's metadata into columns.
+ *
+ * Throws std::runtime_error for a value that cannot be a column: null, an empty array or
+ * object, a ragged array, or an array of mixed kinds.
+ */
+FrameMetadataColumns frame_metadata_columns(const nlohmann::json& metadata);
+
+/**
+ * @brief Create the empty datasets of @p columns in @p file.
+ *
+ * @return The columns of the file: @p columns with the stored string lengths.
+ */
+FrameMetadataColumns create_frame_metadata(HighFive::File& file, FrameMetadataColumns columns,
+                                           bool use_compression);
+
+/// Whether @p frame has the keys, kinds and shapes of @p file_columns, and strings that fit.
+bool frame_metadata_fits(const FrameMetadataColumns& file_columns,
+                         const FrameMetadataColumns& frame);
+
+/// Append @p frame, which must fit, as one row of every column.
+void append_frame_metadata(HighFive::File& file, const FrameMetadataColumns& file_columns,
+                           const FrameMetadataColumns& frame);
+
+/**
+ * @brief Read the per-frame metadata of @p file back, one json object per frame.
+ *
+ * Throws std::runtime_error if the columns disagree on the number of frames or hold a type
+ * that create_frame_metadata does not write.
+ */
+std::vector<nlohmann::json> read_frame_metadata(const HighFive::File& file);
 
 } // namespace hdf5
 
