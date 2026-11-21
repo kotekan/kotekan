@@ -88,6 +88,7 @@ class Receiver(object):
         # short-window donor clock.
         self._joint = {}  # JOINT_STATE / TRK_STATE -> a JointReceiverState, in
         # reference chips (JOINT_REF_RATE_HZ) whatever its feeders' chip rates
+        self._trk = {}  # chain -> _Shared ({prn: tracker code residual, s}, one cycle's)
 
     # -- the joint receiver state -----------------------------------------------------------
     def joint_receiver(self, band, code_len, chip_rate_hz, which=JOINT_STATE, **kw):
@@ -494,6 +495,22 @@ class Receiver(object):
         return d, d / r
 
     # -- internals ----------------------------------------------------------------------
+    def contribute_trk(self, chain, trk, t):
+        """Publish one cycle's tracker code residuals (trkresid.tracker_residuals), as
+        {prn: seconds}, for another chain's cross-band referee (trimarm.xband_judge)."""
+        res = {p: v["s"] for p, v in (trk or {}).items() if v.get("s") is not None}
+        with self._lock:
+            self._trk[chain] = _Shared(res, chain, len(res), t)
+
+    def trk(self, chain, max_age_s=120.0, t_now=None):
+        """`chain`'s newest tracker code residuals, {prn: seconds}, or None when it has
+        published none within max_age_s."""
+        with self._lock:
+            s = self._trk.get(chain)
+            if s is None or (t_now is not None and t_now - s.t > max_age_s):
+                return None
+            return dict(s.value)
+
     def _best(self, store, exclude, max_age_s, t_now, key2):
         with self._lock:
             best = None

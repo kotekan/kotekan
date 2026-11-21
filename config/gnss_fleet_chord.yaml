@@ -436,7 +436,8 @@ common:
 #   descriptor           the tracker code (gnssSignal.hpp; signal_by_name must resolve it)
 #   prns                 the boot PRN slots, PRN@k on an FDMA chain (k its frequency channel)
 #   dll-spacing-chips    the E/L tap offset from prompt in the signal's own (component) chips,
-#                        on the node's taps and in the broker's trim law
+#                        on the node's taps and in the broker's trim law; `fleet` derives it
+#                        from the channels the fleet holds (L2C's row, below)
 #   record-cp-mod-chips  record slot 2's modulus (GnssGpuRecordAssemble) for a baked code long
 #                        enough that a float32 phase over it loses precision: its primary length
 #   telem-rows           PRN rows on the telemetry wire
@@ -466,8 +467,12 @@ common:
 # The DLL spacing is set by the width of the correlation the fleet loop closes on, not by the
 # chip: E and L must straddle that correlation's mainlobe, inside its first null, or the
 # discriminator reverses sign off peak and the loop has stable false locks. 0.5 suits a chain
-# whose instances each despread a multi-channel comb (a chip-narrow correlation). The broker
-# takes its law's spacing from here and the taps come from the node configs, so after a change
+# whose instances each despread a multi-channel comb (a chip-narrow correlation). A chain whose
+# instances each hold one channel of a band narrower than its main lobe (L2C) closes instead on
+# the flat Dirichlet of the channels the fleet holds, which a node joining or leaving changes,
+# so its row says `fleet` and the generator and the broker both derive the spacing from the
+# fleet list (config/gnss_fleet.py Fleet.dll_spacing). The broker takes its law's spacing from
+# here and the taps come from the node configs, so after a change (a `fleet` row's included)
 # cycle the nodes before the broker and the taps lead the law.
 #
 # The telemetry rows are a wire capacity, not a PRN list: GnssTelemPack compacts rows onto the
@@ -584,18 +589,23 @@ chains:
     # and G22 excluded). CM, not CL: CM's 10230 chips / 20 ms fit the record geometry the
     # fleet runs, while CL's 767250 chips / 1.5 s need their own bring-up. Seeded from the
     # broker's model, like B3I and E6.
-    # DLL spacing: each instance despreads one 195 kHz channel, whose |sinc|^2 nulls at 2.6 CM
-    # chips, but the fleet loop sums the contiguous L2C channels coherently, an N-channel
-    # Dirichlet whose first null is 1/(NB): 0.52 CM chips for five channels (6284-6288), 0.44
-    # for six (6283 on cx47). 0.33 puts the six-channel taps at the level 0.4 gave five (|R|
-    # 0.28 of the peak), and five at 0.46; at 0.4 six channels put the taps at 0.09, beside the
-    # null (a q far higher than ~6 means the taps have landed in a null). Re-derive if the count
-    # of contiguous channels changes.
+    # DLL spacing, derived from the fleet (`fleet`): each instance despreads one 195 kHz
+    # channel, whose |sinc|^2 nulls at 2.6 CM chips, but the fleet loop sums the contiguous L2C
+    # channels coherently, an N-channel Dirichlet whose first null is 1/(NB), 2.62/N CM chips:
+    # 0.52 for five channels, 0.44 for six. The generator (the taps) and the broker (the trim
+    # law) both count N, the L2C channels the fleet's nodes hold (role off left out), and put
+    # the taps at 0.764 of that null, where the 09-08 e2e sweep found 0.4 good on five channels
+    # (|R| ~0.29 of the peak), rounded to 0.01 chip (config/gnss_fleet.py dirichlet_spacing):
+    # 0.33 for the eight nodes' six (6283-6288), 0.4 for five, 0.5 for four (6285-6288, cx42
+    # and cx47 off). Taps nearer the null read a q far above ~6 and lock falsely off peak. A
+    # node joining or leaving moves the spacing at the next regeneration, so cycle the nodes
+    # before the broker; channels with a gap are refused (their sum is no Dirichlet) and need a
+    # number here, picked by an e2e sweep, until the gap closes.
     - id: 9
       key: gps_l2c
       descriptor: GPS_L2C_CM
       prns: 1,3,4,5,6,7,8,9,10,11,12,13,14,15,17,18,20,21,23,24,25,26,27,28,29,30,31,32
-      dll-spacing-chips: 0.33
+      dll-spacing-chips: fleet
       telem-rows: 18
       proj-sys: G
       shared-ref-band: l2c
@@ -681,8 +691,10 @@ chains:
     # Every assigned slot is pinned (25 of 32), so the chain needs no live PRN reconfig (FDMA
     # refuses it); below-horizon slots serve as its noise probes. k from BRDC 2026-10-27.
     # DLL spacing: L2C's geometry per satellite (511 kcps BPSK, each lobe about six channels,
-    # one per instance, summed coherently by the fleet loop), so L2C's 0.33; first sky to
-    # confirm.
+    # one per instance, summed coherently by the fleet loop), so the six-channel 0.33; first
+    # sky to confirm. Written, not derived as L2C's: a slot's channel count depends on its k
+    # (six or seven on the eight nodes; four to six, most with a gap, with cx42 and cx47 off),
+    # so no one count sets the chain's spacing. Re-pick it when the node set changes.
     - id: 13
       key: glo_l2of
       descriptor: GLO_L2OF_MC

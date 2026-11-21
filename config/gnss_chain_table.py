@@ -47,6 +47,11 @@ KEYS = {
 }
 OPTIONAL = ("primary", "record-cp-mod-chips")
 PROJ_SYS = ("G", "E", "C", "R")
+#: The dll-spacing-chips that asks for the spacing derived from the fleet's channels of the
+#: chain (gnss_fleet.Fleet.dll_spacing), as `fleet` asks for derived endpoints in the chains
+#: yaml. A table read here keeps the word; gnss_fleet.Fleet.table() gives the rows with it
+#: resolved, which is what the node taps and the broker's trim law take.
+FLEET = "fleet"
 
 
 class TableError(ValueError):
@@ -152,8 +157,10 @@ def validate(table, descriptors=None):
         else:
             if not prns or len(set(prns)) != len(prns):
                 bad.append("%s: prns must be a non-empty list without repeats" % at)
-        if not (_num(r.dll_spacing_chips) and 0 < r.dll_spacing_chips <= 1):
-            bad.append("%s: dll-spacing-chips must be in (0, 1]" % at)
+        if r.dll_spacing_chips != FLEET and not (
+            _num(r.dll_spacing_chips) and 0 < r.dll_spacing_chips <= 1
+        ):
+            bad.append("%s: dll-spacing-chips must be in (0, 1], or %s" % (at, FLEET))
         if r.record_cp_mod_chips is not None and not (
             isinstance(r.record_cp_mod_chips, int) and r.record_cp_mod_chips > 0
         ):
@@ -170,7 +177,8 @@ def validate(table, descriptors=None):
 def dll_spacing_drift(table, have, where):
     """Lines for every chain in `have` ({chain key: dll spacing}) whose value is not its row's:
     the node taps and the broker's trim law must use one spacing (gen_chord_gnss_config.py
-    puts the row's on the taps, gnss_fleet.load_chains the row's on the broker)."""
+    puts the row's on the taps, gnss_fleet.load_chains the row's on the broker). Pass the
+    resolved table (gnss_fleet.Fleet.table()) when a row says `fleet`."""
     want = {r.key: r.dll_spacing_chips for r in table}
     return [
         "%s: %s dll spacing %s, the chains table says %s" % (where, c, v, want.get(c))

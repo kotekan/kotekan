@@ -2110,6 +2110,8 @@ def test_taps_take_the_tables_dll_spacing():
         print("  [SKIP] node config: no kotekan tree to render the base from")
         return
     rows = gnss_chain_table.load()
+    # L2C's row says `fleet`: the taps carry the spacing the fleet derives, the broker's too.
+    resolved = gnss_fleet.Fleet().table()
     signals = ["%s:%s" % (r.descriptor, r.prns) for r in rows[1:]]
     # The fleet's two lanes per slot: at four, every chain does not fit the synth axis.
     kw = dict(
@@ -2128,7 +2130,7 @@ def test_taps_take_the_tables_dll_spacing():
     drift = [
         ln
         for gpu in (0, 1)
-        for ln in gnss_chain_table.dll_spacing_drift(rows, taps[gpu], "gpu%d" % gpu)
+        for ln in gnss_chain_table.dll_spacing_drift(resolved, taps[gpu], "gpu%d" % gpu)
     ]
     check(drift == [], "every tap is its row's (%s)" % drift)
     i = next(k for k, r in enumerate(rows) if r.key == "glo_l2oc")
@@ -2140,7 +2142,7 @@ def test_taps_take_the_tables_dll_spacing():
     finally:
         g._CHAIN_ROWS[:] = []
     drift = gnss_chain_table.dll_spacing_drift(
-        rows, _inject_dll_spacing(cfg)[0], "gpu0"
+        resolved, _inject_dll_spacing(cfg)[0], "gpu0"
     )
     check(
         drift == ["gpu0: glo_l2oc dll spacing 0.45, the chains table says 0.4"],

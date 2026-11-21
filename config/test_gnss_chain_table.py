@@ -141,9 +141,9 @@ def test_dll_spacing_drift():
     t = repo()
     want = {r.key: r.dll_spacing_chips for r in t}
     check(ct.dll_spacing_drift(t, want, "node") == [], "the rows' own values agree")
-    got = ct.dll_spacing_drift(t, dict(want, gps_l2c=0.5), "node cx19")
+    got = ct.dll_spacing_drift(t, dict(want, glo_l2of=0.5), "node cx19")
     check(
-        got == ["node cx19: gps_l2c dll spacing 0.5, the chains table says 0.33"],
+        got == ["node cx19: glo_l2of dll spacing 0.5, the chains table says 0.33"],
         "a node tap off its row is named (%s)" % got,
     )
     got = ct.dll_spacing_drift(t, {"glo_l2oc": 0.5, "gal_e1c": 0.2}, "broker")

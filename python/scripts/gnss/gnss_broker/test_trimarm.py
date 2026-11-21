@@ -10,11 +10,12 @@ the probe-anchored floor.
 @author Keith Vanderlinde
 """
 
+import collections
 import sys
 import time
 import urllib.error
 
-from gnss_broker import combdll, iface, node_api, transport, trimarm
+from gnss_broker import combdll, iface, node_api, receiver, transport, trimarm
 
 
 _fails = []
@@ -43,6 +44,10 @@ def new_dls(hold=None):
         lobe_since={},
         lobe_release={},
         lobe_done={},
+        xref_since={},
+        xref_release={},
+        xref_done={},
+        xref_pool=collections.deque(),
     )
 
 
@@ -57,9 +62,14 @@ def run(
     trackers=("http://cx19:12048/gnss0_inject",),
     half=False,
     post_error=None,
+    xband=None,
+    trk=None,
+    rx=None,
 ):
     """Drive the stage once at cycle clock t0 (default: now); return (policy dict the gather
-    would receive, ctx). Pass `dls` to carry the loop state across cycles."""
+    would receive, ctx). Pass `dls` to carry the loop state across cycles. With `xband` (the
+    reference chain), `trk` (this cycle's residuals) and `rx` (holding the reference's), the
+    cross-band judge runs first, as fleetdll runs it before the arming stage."""
     sent = {}
 
     def fake_post(url, doc, timeout=None):
@@ -86,18 +96,23 @@ def run(
                 signal="gps_l5",
                 chip_rate_hz=chip_rate_hz,
                 fleet_trim_half_targets=half,
+                xband_referee=xband,
             ),
             dllp=_Obj(
                 fleet=fleet
                 if fleet is not None
-                else {p: {"present": True} for p in present}
+                else {p: {"present": True} for p in present},
+                trk=trk if trk is not None else {},
             ),
+            rx=rx,
             dls=dls if dls is not None else new_dls(hold),
             dr_state=dr_state,
             telem_chain="gps_l5",
             trackers=list(trackers),
             t0=time.time() if t0 is None else t0,
         )
+        if xband:
+            trimarm.xband_judge(ctx)
         trimarm.stage_fleet_trim_arming(ctx)
     finally:
         trimarm._post, trimarm._get = real_post, real_get
@@ -512,6 +527,91 @@ def main():
         "PRN 4's Python trim is dropped",
     )
     check(4 not in ctx.dls.hold, "and the floor row does not stamp its hold")
+
+    # 12. The cross-band referee (#201). glo_l2oc chips are 146.5 m (bar 73 m). Against
+    #     glo_l3oc, PRNs 1, 2, 4 sit at the pooled level (-37 m), PRN 6 one chip high (+109.5 m)
+    #     with a standing trim of 1.0, PRN 5 one chip high with a trim of 0.1 (not the loop's
+    #     offset), PRN 3 off but absent from the reference. Verdicts start once the pool holds
+    #     20 samples (the fourth cycle); PRN 6 is released 30 s later, stays released while its
+    #     trim reads 0.6, is re-armed once it reads ~0, and is not released again inside 300 s.
+    C = trimarm.C_M_S
+    rate = 2.046e6
+    rx = receiver.Receiver(log=lambda *a: None)
+    own_m = {1: -37.0, 2: -36.0, 3: 110.0, 4: -38.0, 5: 109.5, 6: 109.5}
+    present = (1, 2, 3, 4, 5, 6)
+
+    def xcycle(d, t, rb6, ref=True, own=None):
+        own = own or own_m
+        if ref:
+            rx.contribute_trk("glo_l3oc", {p: {"s": 0.0} for p in (1, 2, 4, 5, 6)}, t)
+        trk = {p: {"s": m / C} for p, m in own.items()}
+        d.readback[6] = {"trim_chips": rb6}
+        return run(
+            present=present,
+            dls=d,
+            t0=t,
+            chip_rate_hz=rate,
+            xband="glo_l3oc",
+            trk=trk,
+            rx=rx,
+        )
+
+    d = new_dls()
+    d.readback_ok = True
+    d.readback = {5: {"trim_chips": 0.1}}
+    armed6 = []
+    for t, rb6 in (
+        (1000.0, 1.0),
+        (1010.0, 1.0),
+        (1020.0, 1.0),
+        (1030.0, 1.0),
+        (1060.0, 1.0),
+        (1070.0, 0.6),
+        (1080.0, 0.01),
+    ):
+        pol, ctx = xcycle(d, t, rb6)
+        armed6.append(6 in (pol.get("armed") or []))
+    check(
+        armed6 == [True, True, True, True, False, False, True],
+        "PRN 6 armed until 30 s off, released, re-armed at trim ~0: %r" % armed6,
+    )
+    check(5 in (pol.get("armed") or []) and 5 not in d.xref_done, "PRN 5 (small trim) kept")
+    check(
+        "xref_off" not in ctx.dllp.trk[3] and 3 not in d.xref_since,
+        "PRN 3 (not in the reference) gets no verdict",
+    )
+    check(
+        abs(ctx.dllp.trk[6]["xref_m"] - 146.5) < 2.0 and ctx.dllp.trk[6]["xref_off"],
+        "PRN 6 reads one chip (%.1f m) off the level" % ctx.dllp.trk[6]["xref_m"],
+    )
+    check(
+        abs(ctx.dllp.trk[1]["xref_m"]) < 2.0 and not ctx.dllp.trk[1]["xref_off"],
+        "PRN 1 at the level",
+    )
+    held = []
+    for t in (1120.0, 1160.0, 1370.0, 1390.0):
+        pol, ctx = xcycle(d, t, 1.0)
+        held.append(6 in ctx.dls.held_off)
+    check(
+        held == [False, False, False, True],
+        "holdoff: not released again until 300 s after the re-arm: %r" % held,
+    )
+
+    # 13. A stale reference marks nothing: no contribution for 130 s, past XREF_REF_MAX_AGE_S.
+    d = new_dls()
+    xcycle(d, 5000.0, 1.0)
+    pol, ctx = xcycle(d, 5130.0, 1.0, ref=False)
+    check(
+        all("xref_off" not in v for v in ctx.dllp.trk.values()),
+        "stale reference: no verdicts",
+    )
+
+    # 14. The Receiver's residual store: newest per chain, refused past its age.
+    rx2 = receiver.Receiver(log=lambda *a: None)
+    rx2.contribute_trk("glo_l3oc", {7: {"s": 1e-7}, 8: {"s": None}}, 100.0)
+    check(rx2.trk("glo_l3oc", t_now=150.0) == {7: 1e-7}, "trk store keeps PRNs with s")
+    check(rx2.trk("glo_l3oc", max_age_s=30.0, t_now=150.0) is None, "trk store ages out")
+    check(rx2.trk("glo_l2oc", t_now=150.0) is None, "unknown chain: None")
 
     print("-" * 70)
     if _fails:

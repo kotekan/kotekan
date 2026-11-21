@@ -22,7 +22,11 @@ Derived from the list and nothing else:
     chain is never listed (L2C, L2OC) and gen_fleet.py --check compares the two;
   * the site scripts' host lists (`gnss_fleet.py hosts`, or hosts() from Python);
   * with the manifest's host flags, the GPU halves' hosts that serve their rows by chain
-    (host_bases), the chains yaml's `node-hosts: fleet`.
+    (host_bases), the chains yaml's `node-hosts: fleet`;
+  * a chains-table row's `dll-spacing-chips: fleet` (L2C's): the E/L spacing from the number
+    of the chain's channels the fleet holds, by the same covering rule (Fleet.dll_spacing),
+    one value for the node taps (gen_chord_gnss_config.py) and the broker's trim law
+    (load_chains).
 
     python3 config/gnss_fleet.py hosts            # the fleet's hosts, space-separated
     python3 config/gnss_fleet.py hosts --stock    # the stock reference hosts
@@ -34,6 +38,7 @@ the covering-channel computation (instances, expand_chains) and stage_chain impo
 chord_band_plan lazily.
 """
 import argparse
+import functools
 import operator
 import os
 import re
@@ -61,7 +66,8 @@ SITE_KEYS = (
 )
 #: role values. A node without `role` is "gnss".
 ROLES = ("gnss", "off")
-#: The value that asks for a derived endpoint list in the chains yaml.
+#: The value that asks for a derived endpoint list in the chains yaml (and, in a chains-table
+#: row, a derived dll-spacing-chips: gnss_chain_table.FLEET, the same word).
 FLEET = "fleet"
 #: Chains-yaml keys that may be `fleet`, and the node stage each one names. rest-url and
 #: combiner are single values; the rest are lists over the chain's instances.
@@ -84,6 +90,23 @@ HOST_FLAGS = {
     "record-host": ("n2assemble", "records"),
     "combine-host": ("n2combine", "combine"),
 }
+
+
+#: Where a derived (`fleet`) DLL spacing puts the E/L taps on the fleet's coherent sum, as a
+#: fraction of its first null. Each instance despreads one channel of width B; the fleet loop
+#: sums the N contiguous channels the fleet holds coherently, an N-channel Dirichlet whose first
+#: null is 1/(N B) of delay, chip_rate / (N B) chips. The fraction is the one the 09-08 e2e sweep
+#: validated on L2C: 0.4 CM chips on five 195.3125 kHz channels (q ~6 on peak, S-curve of the
+#: right sign from -0.83 to +0.67 chips, no false lock; |R| ~0.29 of the peak), 0.764 of the
+#: null. Taps nearer the null read a q far above ~6 and lock falsely off peak.
+DIRICHLET_TAP_FRACTION = 0.4 * 5 * 195312.5 / 511.5e3
+
+
+def dirichlet_spacing(n, chip_rate_hz, channel_hz):
+    """The E/L spacing, in chips at chip_rate_hz, that puts the taps at DIRICHLET_TAP_FRACTION
+    of the first null of n contiguous channels of width channel_hz summed coherently, rounded
+    to 0.01 chip: 0.33 for L2C's six, 0.4 for five, 0.5 for four."""
+    return round(DIRICHLET_TAP_FRACTION * chip_rate_hz / (n * channel_hz), 2)
 
 
 class FleetError(ValueError):
@@ -382,6 +405,12 @@ class Fleet:
         return out
 
     def _chain_gpus(self, host, row):
+        offs = self.offsets(host)
+        return sorted({offs.index(f % 16) for f in self._chain_channels(host, row)})
+
+    def _chain_channels(self, host, row):
+        """The freq_ids of the chain's covering channels the host holds, by the rule the
+        generator builds the chain with."""
         # Lazy: chord_band_plan imports the interface golden (gnss_broker.iface).
         if CONF not in sys.path:
             sys.path.insert(0, CONF)
@@ -407,8 +436,53 @@ class Fleet:
             cov = chain_covering_channels(
                 chans, signal_table()[row.descriptor], doppler, ks
             )
-        offs = self.offsets(host)
-        return sorted({offs.index(f % 16) for f in cov})
+        return cov
+
+    def chain_channels(self, row):
+        """The freq_ids of the chain's covering channels the fleet's hosts hold, ascending."""
+        return sorted({f for h in self.hosts for f in self._chain_channels(h, row)})
+
+    def dll_spacing(self, row):
+        """The chain's E/L tap spacing in its own chips: its row's number, or for a row that
+        says `fleet` the spacing derived from the fleet, dirichlet_spacing over the chain's
+        channels the fleet holds. A derived spacing needs those channels contiguous (a gap
+        makes the sum something other than a Dirichlet) and at least two of them, and is not
+        for an FDMA chain, whose slots each see their own set; each is refused here."""
+        if row.dll_spacing_chips != gnss_chain_table.FLEET:
+            return row.dll_spacing_chips
+        if CONF not in sys.path:
+            sys.path.insert(0, CONF)
+        from chord_band_plan import parse_slots, signal_table
+
+        at = "chains table row %s: dll-spacing-chips %s" % (row.key, FLEET)
+        if parse_slots(row.prns)[1]:
+            raise FleetError(
+                "%s: an FDMA chain's slots each sum their own channels, so no one count "
+                "sets its spacing; write a number" % at
+            )
+        fids = self.chain_channels(row)
+        if len(fids) < 2:
+            raise FleetError(
+                "%s: the fleet (%s) holds %s of its channels, and the fleet loop needs two"
+                % (at, " ".join(self.hosts), len(fids) or "none")
+            )
+        if fids != list(range(fids[0], fids[-1] + 1)):
+            raise FleetError(
+                "%s: the fleet's channels of it, %s, are not contiguous, so their sum is no "
+                "Dirichlet to derive a spacing from; write a number (an e2e sweep picks it) "
+                "until the gap closes" % (at, " ".join(map(str, fids)))
+            )
+        return dirichlet_spacing(
+            len(fids),
+            signal_table()[row.descriptor]["chip_rate_hz"],
+            float(self.site["fengine"]["channel_width_hz"]),
+        )
+
+    def table(self):
+        """The chains table with every `fleet` dll-spacing-chips resolved (dll_spacing): the
+        rows the node taps and the broker's trim law take their spacing from. Raises
+        FleetError when a `fleet` row cannot be derived from this node list."""
+        return [r._replace(dll_spacing_chips=self.dll_spacing(r)) for r in self.chains]
 
     def stage_url(self, host, gpu, chain, stage):
         tag = "" if stage == "srch_tap" else self.tracker_signals()[chain][1]
@@ -494,11 +568,13 @@ def expand_chains(cfg, fleet=None):
     return cfg
 
 
-def table_keys(cfg, table, where="the chains table"):
+def table_keys(cfg, table, where="the chains table", fleet=None):
     """A parsed chains yaml with each chain's dll-spacing set from its row of the chains table
     (the input is not modified): the spacing the node generator puts on the chain's taps, so
-    the trim law and the taps cannot disagree. A dll-spacing written in the yaml is refused,
-    as is a chain without a row (no node builds it)."""
+    the trim law and the taps cannot disagree. A row that says `fleet` takes the spacing
+    `fleet` (a Fleet, or a callable that builds one when a chain needs it) derives
+    (Fleet.dll_spacing), as the generator does; without `fleet` it is refused. A dll-spacing
+    written in the yaml is refused, as is a chain without a row (no node builds it)."""
     cfg = dict(cfg or {})
     if "dll-spacing" in (cfg.get("common") or {}):
         raise FleetError(
@@ -517,7 +593,17 @@ def table_keys(cfg, table, where="the chains table"):
         key = str(spec.get("signal", common_signal or name))
         if key not in rows:
             raise FleetError("chains.%s: %s has no row in %s" % (name, key, where))
-        spec["dll-spacing"] = rows[key].dll_spacing_chips
+        spacing = rows[key].dll_spacing_chips
+        if spacing == gnss_chain_table.FLEET:
+            if fleet is None:
+                raise FleetError(
+                    "chains.%s: %s's row in %s says dll-spacing-chips %s, and no fleet list "
+                    "was given to derive it from" % (name, key, where, FLEET)
+                )
+            if not isinstance(fleet, Fleet):
+                fleet = fleet()
+            spacing = fleet.dll_spacing(rows[key])
+        spec["dll-spacing"] = spacing
         chains[name] = spec
     cfg["chains"] = chains
     return cfg
@@ -525,8 +611,9 @@ def table_keys(cfg, table, where="the chains table"):
 
 def load_chains(path=None, fleet=None):
     """The chains yaml at `path`, parsed, expanded, and each chain's dll-spacing taken from the
-    chains table (table_keys). Without `fleet`, the fleet list, the chains table and the node
-    table are the ones beside the chains file (a checkout's config/), else this module's."""
+    chains table (table_keys), a `fleet` row's derived from the fleet (Fleet.dll_spacing).
+    Without `fleet`, the fleet list, the chains table and the node table are the ones beside
+    the chains file (a checkout's config/), else this module's."""
     path = path or CHAINS_YAML
     cfg = _load_yaml(path)
     d = os.path.dirname(os.path.abspath(path))
@@ -543,7 +630,11 @@ def load_chains(path=None, fleet=None):
             table = gnss_chain_table.load(man)
         except gnss_chain_table.TableError as e:
             raise FleetError("%s: %s" % (man, e))
-    return table_keys(expand_chains(cfg, fleet), table, "%s chains:" % man)
+    cfg = expand_chains(cfg, fleet)
+    if fleet is None:
+        # A `fleet` row's spacing: from the fleet list the table was read from.
+        fleet = functools.partial(Fleet, man)
+    return table_keys(cfg, table, "%s chains:" % man, fleet)
 
 
 def live_comb(host, port, science_band, timeout=4.0):
@@ -700,6 +791,19 @@ def main(argv=None):
                 )
             )
         print("stock: %s" % (" ".join(fl.stock) or "(none)"))
+        for r in fl.chains:
+            if r.dll_spacing_chips != gnss_chain_table.FLEET:
+                continue
+            try:
+                d = fl.dll_spacing(r)
+            except FleetError as err:
+                print("dll spacing %s: %s" % (r.key, err))
+                continue
+            fids = fl.chain_channels(r)
+            print(
+                "dll spacing %s: %s chips, from the fleet's %d channels %d-%d"
+                % (r.key, d, len(fids), fids[0], fids[-1])
+            )
         return 0
     if a.cmd == "combs":
         want = a.hosts or list(dict.fromkeys(fl.site_hosts + list(fl.slots)))

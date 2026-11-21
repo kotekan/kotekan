@@ -21,8 +21,9 @@ element lists are derived from it) and checks the file against the stock render
 (stock_parity.py), so a hand-edit, a changed base or a generator whose output moved all fail.
 It does the same for the aggregator's config, and checks the chains yaml against the fleet:
 every node endpoint key must be `fleet` (or null), and the chain instances the broker will
-derive must be exactly the chains each regenerated config builds. It prints a diff per
-mismatching node
+derive must be exactly the chains each regenerated config builds, and every tap's DLL spacing
+the one the broker's trim law will take (a `fleet` row's derived from this manifest's nodes).
+It prints a diff per mismatching node
 and exits 1 if any node differs, 2 if nothing could be compared (a missing base, a generator
 that cannot run, a crash here).
 
@@ -451,7 +452,7 @@ def check_chains(fleet, path=CHAINS):
                 "fleet list" % (where, k, str(v)[:60])
             )
     try:
-        gnss_fleet.table_keys(raw, fleet.chains)
+        gnss_fleet.table_keys(raw, fleet.chains, fleet=fleet)
     except gnss_fleet.FleetError as e:
         bad.append(str(e))
     common_signal = (raw.get("common") or {}).get("signal")
@@ -489,6 +490,49 @@ def check_chains(fleet, path=CHAINS):
                         % (c, k, host, " ".join(fleet.hosts))
                     )
     return bad
+
+
+def tap_spacings(text):
+    """{chain: {dll_spacing}} of the injectors in a generated node config: each cudaGnssInject
+    command's own dll_spacing, or its hosted rows' (--inject-host: the command's `chains:`,
+    by row name)."""
+    cfg = yaml.load(
+        _split_header(text)[1], Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+    )
+    out = {}
+    for stage in (cfg or {}).values():
+        if not isinstance(stage, dict):
+            continue
+        for c in stage.get("commands") or []:
+            if not isinstance(c, dict) or c.get("name") != "cudaGnssInject":
+                continue
+            rows = c["chains"].values() if "chains" in c else [c]
+            for r in rows:
+                chain = gnss_fleet.broker_chain_name(r["signal"])
+                out.setdefault(chain, set()).add(r["dll_spacing"])
+    return out
+
+
+def check_spacing(fleet, regen):
+    """Lines for every node whose taps carry another DLL spacing than the broker's trim law
+    will take (the fleet's chains table, a `fleet` row resolved from this manifest's node
+    list): the two must match. The generator derives a `fleet` row from its checkout's
+    manifest, so a manifest given here that lists other nodes shows up as drift."""
+    try:
+        table = fleet.table()
+    except gnss_fleet.FleetError as e:
+        return [str(e)]
+    out = []
+    for node, text in sorted(regen.items()):
+        taps = tap_spacings(text)
+        if not taps:
+            out.append(
+                "%s: its config has no cudaGnssInject to read a spacing from" % node
+            )
+        for chain, vals in sorted(taps.items()):
+            for v in sorted(vals):
+                out += gnss_chain_table.dll_spacing_drift(table, {chain: v}, node)
+    return out
 
 
 def check_instances(fleet, regen):
@@ -880,7 +924,11 @@ def main():
     # chain nobody reads.
     problems = list(comb_problems)
     if fleet_checks:
-        problems += check_chains(fleet, chains) + check_instances(fleet, regen)
+        problems += (
+            check_chains(fleet, chains)
+            + check_instances(fleet, regen)
+            + check_spacing(fleet, regen)
+        )
     else:
         sys.stderr.write("no %s beside the manifest: fleet checks skipped\n" % chains)
     # A role-off node's config goes, so nothing that lists the generated configs (node_up.sh,

@@ -213,6 +213,23 @@ def test_urls_match_the_readers():
         )
 
 
+def test_catnr_names_fetch_each_number():
+    r = Run({"tle_catnr_26407_27663.txt": 5.0}, GOOD)
+    try:
+        check(
+            r.urls
+            == [tle_refresh.CATNR_URL % "26407", tle_refresh.CATNR_URL % "27663"],
+            "a tle_catnr_ name fetches each number from the CATNR URL (%r)" % r.urls,
+        )
+        check(
+            tle_refresh.count_tles(r.body("tle_catnr_26407_27663.txt")) == 4
+            and r.rc == 0,
+            "the replies are joined into one file of whole sets",
+        )
+    finally:
+        r.close()
+
+
 def main():
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:
