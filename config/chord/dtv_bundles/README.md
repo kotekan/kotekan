@@ -1,6 +1,6 @@
 # DTV detector bundles
 
-Each directory is a PilotProxy runtime bundle, named `<purpose>-<first 8 digits of the sha256 of sha256sums.txt>`. Set `dtv_runtime_bundle_dir` in `pathfinder.j2` to the installed path of one directory. A bundle is never edited in place, so a new calibration gets a new directory. To make one, see `docs/RUNNING_THE_DETECTOR.md` in the [PilotProxy repository](https://github.com/WVURAIL/pilotproxy).
+Each directory is a PilotProxy runtime bundle, named `<purpose>-<first 8 digits of the sha256 of sha256sums.txt>`. Set `dtv_runtime_bundle_dir` in `dtv.j2` to the installed path of one directory. A bundle is never edited in place, so a new calibration gets a new directory. To make one, see `docs/RUNNING_THE_DETECTOR.md` in the [PilotProxy repository](https://github.com/WVURAIL/pilotproxy).
 
 | Bundle | Channels | Use |
 |---|---|---|
