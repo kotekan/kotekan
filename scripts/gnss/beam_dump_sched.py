@@ -3,17 +3,17 @@
 
 Each GPU of a GNSS instance built with --beam-dump-freq-ids carries a FrameWindowGate
 (gnss<g>_beamdump_gate) between cudaGnssBeamDump and its rawFileWrite. This tool plans the
-passes with python/scripts/gnss/guowang/guowang_passes.py (TLE group hulianwang, boresight
-separation) and arms every gate on the same seq window per pass, as scripts/gnss/viscap.py
+passes with python/scripts/gnss/guowang/guowang_passes.py (CelesTrak's OMM elements of every
+HULIANWANG object, boresight separation) and arms every gate on the same seq window per pass, as scripts/gnss/viscap.py
 does for the visibility capture; the seq clock is measured from the gates.
 
     beam_dump_sched.py plan [--hours 6] [--max-sep 6] [--length 80]      # the windows
     beam_dump_sched.py run  [--hours 6] [--max-sep 6] [--length 80] [--once]   # arm them in turn
     beam_dump_sched.py status | disarm
 
-A pass window is [tca - length/2, tca + length/2); overlapping windows are merged. --extra-tle adds
-the satellites of more TLE files (e.g. the inferred DIGUI-H sets of site/gw_hidden_tle.py), their
-windows widened by --extra-pad-s on each side for their larger timing error. Files land in
+A pass window is [tca - length/2, tca + length/2); overlapping windows are merged. --extra-elements
+adds the satellites of more element files (OMM CSV or TLE), their windows widened by
+--extra-pad-s on each side for a larger timing error. Files land in
 <record_dir>/beamdump on each node (default /tmp/gnss/beamdump), one per --beam-dump-frames-
 per-file frames, read with scripts/gnss/beam_dump_read.py. The nodes' own records are the
 chip reader's input; nothing here reads them.
@@ -86,7 +86,7 @@ def windows(a, t0, t1):
         pass
 
     args = P()
-    args.tle = a.tle
+    args.elements = a.elements
     args.fetch = a.fetch
     args.cache_dir = a.cache_dir
     args.name_filter = a.name_filter
@@ -95,11 +95,11 @@ def windows(a, t0, t1):
     args.coarse = 10.0
     args.near = a.max_sep
     _, passes, _, _, _ = gp.compute(args, t0, t1)
-    for path in a.extra_tle:
+    for path in a.extra_elements:
         if not os.path.exists(path):
-            print("extra TLE %s: missing, skipped" % path)
+            print("extra elements %s: missing, skipped" % path)
             continue
-        args.tle = path
+        args.elements = path
         _, more, _, _, _ = gp.compute(args, t0, t1)
         for p in more:
             p["pad"] = a.extra_pad_s
@@ -209,24 +209,30 @@ def main():
     )
     ap.add_argument("--once", action="store_true", help="arm the next window and exit")
     ap.add_argument(
-        "--tle", help="TLE file (default: the newest cached hulianwang group)"
+        "--elements",
+        "--tle",
+        dest="elements",
+        help="OMM CSV, or a TLE file (default: the newest cached OMM file)",
     )
     ap.add_argument(
-        "--fetch", action="store_true", help="refresh the TLE cache if older than 2 h"
+        "--fetch", action="store_true", help="refresh the element cache if older than 2 h"
     )
     ap.add_argument("--cache-dir", default=os.path.expanduser("~/.cache/guowang"))
     ap.add_argument("--name-filter", default="DIGUI")
     ap.add_argument(
+        "--extra-elements",
         "--extra-tle",
+        dest="extra_elements",
         action="append",
         default=[],
-        help="more satellites from this TLE file (repeatable); a missing file is skipped",
+        help="more satellites from this OMM CSV or TLE file (repeatable); a missing file is "
+        "skipped",
     )
     ap.add_argument(
         "--extra-pad-s",
         type=float,
         default=0.0,
-        help="s added to each side of the windows of the --extra-tle satellites",
+        help="s added to each side of the windows of the --extra-elements satellites",
     )
     ap.add_argument(
         "--skip-known",
