@@ -55,10 +55,11 @@ struct IncoherentCandidate {
     std::array<float, num_blocks> block_snr{};
     /// Channels with data along the dispersion curve
     int num_channels = 0;
-    /// Other candidates far away in DM that fit the same arrival without dispersion, with their
-    /// highest S/N in the same block as this one or the next
+    /// Other candidates more than 20 DM units away that fit the same arrival without dispersion,
+    /// with their highest S/N in the same block as this one or the next
     int num_partners = 0;
-    /// The candidate has two or more partners: interference, not a pulse.
+    /// The candidate has two or more partners, and with them covers more than 50 DM units:
+    /// interference, not a pulse.
     bool undispersed = false;
     /// A description, not a verdict: 8 samples or wider, with more than 1.8 times its S/N in
     /// one block. Faint interference often looks like this; so may a wide burst in a narrow band.
@@ -86,11 +87,12 @@ struct IncoherentCandidate {
  *
  * Interference in part of the band has no dispersion, and is found at every DM: at a higher DM
  * earlier at the top channel, by the sweep from its own frequency to the top. A pulse is found
- * at its own DM. A candidate is marked undispersed when two or more others, of at least half
- * its S/N, lie more than 50 DM units away at such times and have their highest S/N in the same
- * block of the band as it or the next: a pulse that arrives during interference has it
- * elsewhere. For that a candidate is reported only when the same arrival has been searched at
- * the highest DM: the sweep of the highest DM after it reached the top channel.
+ * at its own DM. A partner of a candidate is another one of at least half its S/N, more than
+ * 20 DM units away at such a time, with its highest S/N in the same block of the band or the
+ * next: a pulse that arrives during interference has it elsewhere. A candidate is marked
+ * undispersed when it has two or more partners and they cover, with it, more than 50 DM units.
+ * For that a candidate is reported only when the same arrival has been searched at the highest
+ * DM: the sweep of the highest DM after it reached the top channel.
  *
  * Widths of 1 to 16 samples are tried, in passes of `chunk` samples; the widths and the mask
  * thresholds are constants in the source.
@@ -171,7 +173,7 @@ private:
                    std::vector<Hit>& hits, double& max_snr);
     void merge_hits(const std::vector<Hit>& hits);
     void close_events();
-    int count_partners(const Event& e) const;
+    int count_partners(const Event& e, double& dm_range) const;
     int strongest_block(const Hit& hit) const;
     void band_occupancy(IncoherentCandidate& cand, const Hit& hit) const;
     const int8_t* row(int channel, int64_t sample) const {
