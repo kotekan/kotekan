@@ -479,7 +479,8 @@ target_link_libraries(test_ProcessPacketMask PRIVATE kotekan_core kotekan_metada
                                                      libexternal)
 
 if(FFTW_FOUND)
-    add_executable(test_fftwEngine test_fftwEngine.cpp ${KOTEKAN_SOURCE_DIR}/lib/stages/fftwEngine.cpp)
+    add_executable(test_fftwEngine test_fftwEngine.cpp
+                                   ${KOTEKAN_SOURCE_DIR}/lib/stages/fftwEngine.cpp)
     target_include_directories(test_fftwEngine SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(test_fftwEngine PRIVATE kotekan_core kotekan_metadata kotekan_utils
                                                   libexternal ${FFTW_LIBRARIES})
