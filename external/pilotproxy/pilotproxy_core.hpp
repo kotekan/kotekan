@@ -37,7 +37,7 @@ struct PilotProxyCore {
                                                    unsigned long long, unsigned long long*, int*,
                                                    int*, int*, unsigned long long*, int*);
     // fine decision v3: the statistic [n_peak, d_rho], decided by the consumer
-    void (*Compute_FineStatV3_U64)(void*, const std::int8_t*, int, int, unsigned long long*,
+    void (*Compute_FineStatV3_U64)(void*, const std::int8_t*, unsigned long long*,
                                    unsigned long long*, unsigned long long*, int*);
     void (*row_sums_i32)(const std::int8_t*, const std::int8_t*, int, int*);
     void (*fine_powers_u64)(const int*, int, unsigned long long (*)[256]);

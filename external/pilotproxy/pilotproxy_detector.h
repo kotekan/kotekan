@@ -578,9 +578,13 @@ int PilotProxy_Supports_FusedFineMaskV2(void);
  * gets the pair d_stat_out[2 b] = n_peak and d_stat_out[2 b + 1] = d_rho, with
  * num[bin] = 2 S_target[bin] and den[bin] = S_lo[bin] + S_up[bin]:
  *
- *     n_peak = max of num[bin] over the designated set
+ *     n_peak = max of num[bin] over all 256 bins
  *     d_rho  = den of zero-based rank PILOTPROXY_V3_RANK (63) over the 128 even
  *              bins, zeros included.
+ *
+ * There is no anchor or search width: the maximum takes every bin, so the
+ * padded bins catch a pilot between two independent bins, and the median takes
+ * the independent bins only.
  *
  * The consumer decides with pilotproxy_v3_keep() (pilotproxy_decision.h).
  * d_rho is zero only when at least half of the even bins have den = 0, and the
@@ -591,8 +595,6 @@ int PilotProxy_Supports_FusedFineMaskV2(void);
 void PilotProxy_Compute_FineStatV3_U64(
     void* handle,
     const InputType* w_in,
-    int anchor_bin,
-    int designated_half_width,
     unsigned long long* d_fine_power_out,
     unsigned long long* d_stat_out,
     unsigned long long* d_power_out,

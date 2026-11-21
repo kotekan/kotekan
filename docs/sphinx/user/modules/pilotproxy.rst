@@ -67,10 +67,11 @@ multiple of it. The ``decision_version`` of each bundle profile selects the
 test. All of the arithmetic is exact integer arithmetic, and the GPU result
 matches the CPU reference bit for bit.
 
-``fine_decision_v3`` takes the reference over the 128 even fine bins, the
-independent samples of the zero-padded transform, and makes no decision in the
-detector. For each block it writes ``dtv_stat``, the pair ``[n_peak, d_rho]``:
-the largest target power in the search and the median reference power. The
+``fine_decision_v3`` has no anchor or search width, and makes no decision in
+the detector. For each block it writes ``dtv_stat``, the pair
+``[n_peak, d_rho]``: the largest target power of all 256 fine bins and the
+median reference power of the 128 even bins, the independent samples of the
+zero-padded transform. Its profile takes only the threshold words. The
 consumer applies its own threshold word with ``pilotproxy_v3_keep`` in
 ``external/pilotproxy/pilotproxy_decision.h``, which keeps the block when
 ``n_peak * 2^16 <= word * d_rho`` and returns 1 to keep and 0 to flag, as the

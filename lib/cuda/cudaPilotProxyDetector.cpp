@@ -446,33 +446,29 @@ private:
             if (calibration_status == "calibrated" || calibration_status == "control") {
                 profile.fine_calibrated = true;
                 profile.control = calibration_status == "control";
-                require(calibration,
-                        {"anchor_bin", "designated_half_width", "cfar_multiplier_q16"});
-                profile.anchor_bin = read_integer<int>(calibration, "anchor_bin");
-                profile.designated_half_width =
-                    read_integer<int>(calibration, "designated_half_width");
+                require(calibration, {"cfar_multiplier_q16"});
                 profile.multiplier_q16 =
                     read_integer<unsigned long long>(calibration, "cfar_multiplier_q16");
                 if (profile.decision_v3) {
-                    // v3 fixes its reference bins, and its words are applied by DtvRfiMask
-                    if (calibration.contains("cfar_rank")
-                        || calibration.contains("bulk_mask_words_hex"))
-                        FATAL_ERROR("cudaPilotProxyDetector: fine_decision_v3 takes no cfar_rank "
-                                    "or bulk_mask_words_hex (physical channel {:d})",
-                                    profile.physical_channel);
-                    if (profile.anchor_bin < 0 || profile.anchor_bin >= fine_bins)
-                        FATAL_ERROR("cudaPilotProxyDetector: fine anchor_bin is out of range");
-                    if (profile.designated_half_width < 0
-                        || profile.designated_half_width >= fine_bins / 2)
-                        FATAL_ERROR(
-                            "cudaPilotProxyDetector: fine designated_half_width is out of range");
+                    // v3 searches every bin with the median of the even bins, and its words are
+                    // applied by DtvRfiMask
+                    for (const char* key : {"cfar_rank", "bulk_mask_words_hex", "anchor_bin",
+                                            "designated_half_width"})
+                        if (calibration.contains(key))
+                            FATAL_ERROR("cudaPilotProxyDetector: fine_decision_v3 takes no {:s} "
+                                        "(physical channel {:d})",
+                                        key, profile.physical_channel);
                     if (profile.multiplier_q16 == 0)
                         FATAL_ERROR(
                             "cudaPilotProxyDetector: fine cfar_multiplier_q16 must be positive");
                     bundle_profiles.push_back(profile);
                     continue;
                 }
-                require(calibration, {"cfar_rank", "bulk_mask_words_hex"});
+                require(calibration, {"anchor_bin", "designated_half_width", "cfar_rank",
+                                      "bulk_mask_words_hex"});
+                profile.anchor_bin = read_integer<int>(calibration, "anchor_bin");
+                profile.designated_half_width =
+                    read_integer<int>(calibration, "designated_half_width");
                 profile.cfar_rank = read_integer<int>(calibration, "cfar_rank");
                 if (profile.anchor_bin < 0 || profile.anchor_bin >= fine_bins)
                     FATAL_ERROR("cudaPilotProxyDetector: fine anchor_bin is out of range");
@@ -1178,8 +1174,7 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
         if (profile.decision_v3) {
             // the statistic of every v3 channel, the control too: DtvRfiMask decides
             state.core->Compute_FineStatV3_U64(
-                profile.detector_handle, weights, profile.anchor_bin, profile.designated_half_width,
-                state.fine_power_scratch,
+                profile.detector_handle, weights, state.fine_power_scratch,
                 reinterpret_cast<unsigned long long*>(stat_memory + 2 * channel.freq_index),
                 channel_powers, nullptr);
             if (const char* error = state.core->LastError(); error != nullptr && error[0] != '\0')

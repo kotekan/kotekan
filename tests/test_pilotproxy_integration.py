@@ -1110,6 +1110,8 @@ def test_v3_statistic_matches_the_reference(pipeline):
         calibration["decision_version"] = "fine_decision_v3"
         calibration.pop("bulk_mask_words_hex", None)
         calibration.pop("cfar_rank", None)
+        calibration.pop("anchor_bin", None)
+        calibration.pop("designated_half_width", None)
     num_freq = len(pipeline.generator["manual_freq_ids"])
     bound = bound_indices(pipeline)
     rows = len(bound)
@@ -1129,8 +1131,6 @@ def test_v3_statistic_matches_the_reference(pipeline):
         str(out / "dtv_fine_support_*.raw"), num_freq * 2 * 4
     )
     assert len(stats) == len(fines) == len(masks) == len(supports) > 0
-    ids = pipeline.generator["manual_freq_ids"]
-    profiles = {p["receiver_channel_id"]: p for p in pipeline.bundle["profiles"]}
     for stat, fine, mask, support in zip(stats, fines, masks, supports):
         pairs = stat.payload.view("<u8").reshape(num_freq, 2)
         fine = fine.payload.view("<u8").reshape(rows, 3, 256)
@@ -1139,12 +1139,7 @@ def test_v3_statistic_matches_the_reference(pipeline):
                 # not evaluated: every word keeps it
                 assert pairs[f].tolist() == [0, 2**64 - 1], f
                 continue
-            calibration = profiles[ids[f]]["fine_calibration"]
-            want = fine_stat_v3(
-                np.ascontiguousarray(fine[bound.index(f)]),
-                anchor_bin=calibration["anchor_bin"],
-                designated_half_width=calibration["designated_half_width"],
-            )
+            want = fine_stat_v3(np.ascontiguousarray(fine[bound.index(f)]))
             assert pairs[f].tolist() == [want.n_peak, want.d_rho], f
         # v3 makes no decision in the stage
         assert not mask.payload.any()

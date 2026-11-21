@@ -1149,8 +1149,8 @@ kernel_fused_fine(
     if (decision_version == 3) {
         /* Fine decision v3 writes the statistic and leaves the decision to the
          * consumer. d_rho is the median of den over the 128 even bins, rank 63
-         * by value with zeros included, and n_peak the largest num over the
-         * designated set. The rank is selected by counting, as for v1 and v2,
+         * by value with zeros included, and n_peak the largest num over all 256
+         * bins. The rank is selected by counting, as for v1 and v2,
          * and the lowest even bin holding the value represents it. */
         __shared__ unsigned long long s_peak[PILOTPROXY_BLOCK_THREADS];
         {
@@ -1174,11 +1174,7 @@ kernel_fused_fine(
         }
         {
             unsigned long long peak = 0ULL;
-            const int set_size = 2 * designated_half_width + 1;
-            for (int t = tid; t < set_size; t += blockDim.x) {
-                const int bin = (anchor_bin - designated_half_width + t
-                                 + PILOTPROXY_FINE_NUM_BINS)
-                                & (PILOTPROXY_FINE_NUM_BINS - 1);
+            for (int bin = tid; bin < PILOTPROXY_FINE_NUM_BINS; bin += blockDim.x) {
                 if (s_num[bin] > peak) {
                     peak = s_num[bin];
                 }
@@ -2120,7 +2116,7 @@ void PilotProxy_Compute_FusedFineMaskV2WithSupport_U64(
 }
 
 void PilotProxy_Compute_FineStatV3_U64(
-    void* handle, const InputType* w_in, int anchor_bin, int designated_half_width,
+    void* handle, const InputType* w_in,
     unsigned long long* d_fine_power_out, unsigned long long* d_stat_out,
     unsigned long long* d_power_out, int* d_row_sums_out)
 {
@@ -2136,15 +2132,6 @@ void PilotProxy_Compute_FineStatV3_U64(
     }
     if (d_stat_out == nullptr) {
         record_api_error("statistic output pointer is null.");
-        return;
-    }
-    if (anchor_bin < 0 || anchor_bin >= PILOTPROXY_FINE_NUM_BINS) {
-        record_api_error("anchor_bin must be in [0, 256).");
-        return;
-    }
-    if (designated_half_width < 0
-        || designated_half_width >= PILOTPROXY_FINE_NUM_BINS / 2) {
-        record_api_error("designated_half_width must be in [0, 128).");
         return;
     }
     if (h->detector_rows_per_block % PILOTPROXY_FINE_WINDOWS_PER_STREAM != 0) {
@@ -2179,8 +2166,7 @@ void PilotProxy_Compute_FineStatV3_U64(
         nullptr,
         nullptr,
         d_stat_out,
-        anchor_bin,
-        designated_half_width,
+        0, 0,  /* v3 searches every bin */
         0ULL, 0ULL, 0ULL, 0ULL, 0, 1ULL,
         3,
         num_streams,
