@@ -37,6 +37,9 @@ rung_day=
 trap 'stopping=1; for p in $shipper $runger; do kill -TERM "$p" 2>/dev/null; done' TERM
 mkdir -p "$ZST"
 log() { echo "== $(date -u +%FT%TZ) $*"; }
+# A glob of the stage overflows the argument list once a backlog holds ~30k files, and ls then
+# counts 0, so the count goes through find.
+nraw() { find "$STAGE" -maxdepth 1 -name '*.raw' | wc -l; }
 
 # The STAGE files the manifest records, less the newest by mtime and the highest-numbered.
 shippable() {
@@ -88,7 +91,7 @@ ship() {
         pace_ship "$size" "$t0"
         [ "$stopping" = 0 ] || break
     done
-    log "shipped $n file(s); $(ls "$STAGE"/*.raw 2>/dev/null | wc -l) in $STAGE, $(df -BG --output=avail "$STAGE" | tail -1 | tr -d ' G') GB free"
+    log "shipped $n file(s); $(nraw) in $STAGE, $(df -BG --output=avail "$STAGE" | tail -1 | tr -d ' G') GB free"
 }
 
 # Step 4: start the day's rung cut unless one is still running.
@@ -107,7 +110,7 @@ while [ "$stopping" = 0 ]; do
     rungs
     (trap 'stopping=1' TERM; ship) &
     shipper=$!
-    if [ "$(ls "$STAGE"/*.raw 2>/dev/null | wc -l)" -ge 2 ]; then
+    if [ "$(nraw)" -ge 2 ]; then
         log "compact $STAGE"
         "$PY" -u "$TOOL" compact --raw "$STAGE" --out "$ROOT" --newest-first \
             --readers "$READERS" --batch "$BATCH" --max-read-mbps "$MBPS" 2>&1
