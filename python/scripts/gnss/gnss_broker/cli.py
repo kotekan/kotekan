@@ -1940,6 +1940,18 @@ def build_parser(description):
         "and a recording made without the flag has no get_dll entries.",
     )
     ap.add_argument(
+        "--xband-referee",
+        default=None,
+        metavar="CHAIN",
+        help="judge this chain's tracker code residuals against CHAIN's, another chain of "
+        "this process on the same satellites at another signal (glo_l2oc against "
+        "glo_l3oc): a PRN more than half a chip from the pooled own-minus-reference "
+        "difference for 30 s has both trim loops released until its trim reads ~0, then "
+        "the loop restarts from the seed; its rows read prompt_lock false while the "
+        "difference stands. Needs --fleet-trim-readback to end a release before its "
+        "timeout. Constants XREF_* in trimarm.py; logged as XREF.",
+    )
+    ap.add_argument(
         "--n2-combiners",
         default="",
         help="a second population of combiner endpoints (comma list, {a..b} ranges, "

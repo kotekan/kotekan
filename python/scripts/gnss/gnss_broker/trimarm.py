@@ -57,6 +57,26 @@ LOBE_TRIM_FRAC = 0.25
 LOBE_RELEASED_CHIPS = 0.02
 LOBE_RELEASE_MAX_S = 60.0
 LOBE_HOLDOFF_S = 120.0
+# The cross-band referee (--xband-referee, #201). On a BOC chain the loop can settle on the side
+# peak about a chip from the main one and hold it with every row present, since the fast loop
+# gates on prompt power alone. The same satellite's tracker residual on another chain of this
+# process (the reference) does not move with it. Each cycle a PRN's own-minus-reference
+# residual, in metres, is taken against the pooled level of every PRN's difference over
+# XREF_POOL_S, the two signals' common bias; the level needs XREF_POOL_MIN samples and a
+# reference no older than XREF_REF_MAX_AGE_S. A PRN further than XREF_CHIP_FRAC of this
+# chain's chip from the level for XREF_HOLD_S, with a standing trim of at least
+# XREF_TRIM_CHIPS (smaller, releasing it would not move the tap), is released as a lobe is,
+# until the fast trim reads under LOBE_RELEASED_CHIPS (at most XREF_RELEASE_MAX_S), and not
+# released again for XREF_HOLDOFF_S.
+XREF_CHIP_FRAC = 0.5
+XREF_HOLD_S = 30.0
+XREF_TRIM_CHIPS = 0.25
+XREF_POOL_S = 1800.0
+XREF_POOL_MIN = 20
+XREF_REF_MAX_AGE_S = 120.0
+XREF_RELEASE_MAX_S = 90.0
+XREF_HOLDOFF_S = 300.0
+C_M_S = 299792458.0
 
 
 # The gather's REST family that says it takes a GPU half's target ({url, chain}) in /set_policy,
@@ -221,6 +241,118 @@ def lobe_referee(ctx, skip):
     return set(ctx.dls.lobe_release)
 
 
+def xband_judge(ctx):
+    """Mark this cycle's tracker residuals (ctx.dllp.trk) against the --xband-referee chain's:
+    xref_m, the own-minus-reference difference less the pooled level, and xref_off, true when
+    it is more than XREF_CHIP_FRAC of this chain's chip. Nothing is marked without a fresh
+    reference or before the pool holds XREF_POOL_MIN samples. Every PRN's difference goes
+    into the pool, so its median is the common bias while most samples sit on the main peak."""
+    ref = getattr(ctx.args, "xband_referee", None)
+    trk = ctx.dllp.trk or {}
+    if not ref or not trk:
+        return
+    got = ctx.rx.trk(ref, max_age_s=XREF_REF_MAX_AGE_S, t_now=ctx.t0)
+    if not got:
+        return
+    pool = ctx.dls.xref_pool
+    diff = {}
+    for p, v in trk.items():
+        if v.get("s") is not None and got.get(p) is not None:
+            diff[p] = (v["s"] - got[p]) * C_M_S
+            pool.append((ctx.t0, diff[p]))
+    while pool and ctx.t0 - pool[0][0] > XREF_POOL_S:
+        pool.popleft()
+    if len(pool) < XREF_POOL_MIN or not diff:
+        return
+    level = sorted(d for _, d in pool)[len(pool) // 2]
+    bar = XREF_CHIP_FRAC * C_M_S / ctx.args.chip_rate_hz
+    for p, d in diff.items():
+        trk[p]["xref_m"] = d - level
+        trk[p]["xref_off"] = abs(d - level) > bar
+    _log_rl(
+        "xref",
+        "XREF %s against %s: level %+.1f m over %d samples, bar %.0f m; %s"
+        % (
+            log_tag() or ctx.args.signal,
+            ref,
+            level,
+            len(pool),
+            bar,
+            " ".join("%d:%+.0f" % (p, d - level) for p, d in sorted(diff.items())),
+        ),
+        every_s=60.0,
+    )
+
+
+def xband_referee(ctx, skip):
+    """Start and end cross-band releases (XREF_*); return the PRNs released this cycle. Judges
+    the PRNs armed by the hold, as lobe_referee does. A cycle with no verdict for a PRN (no
+    fresh reference, or the reference does not track it) neither starts nor resets its
+    timer. `skip` (the slewing PRNs) are not judged."""
+    if not getattr(ctx.args, "xband_referee", None):
+        return set()
+    trk = (getattr(ctx.dllp, "trk", None) or {})
+    held = set(
+        p for p, t in ctx.dls.hold.items() if ctx.t0 - t < ctx.args.fleet_trim_hold_s
+    )
+    for p in list(ctx.dls.xref_since):
+        if p not in held or p in skip:
+            del ctx.dls.xref_since[p]
+    for p in sorted(held - set(skip)):
+        v = trk.get(p) or {}
+        if "xref_off" not in v:
+            continue
+        if v["xref_off"]:
+            ctx.dls.xref_since.setdefault(p, ctx.t0)
+        else:
+            ctx.dls.xref_since.pop(p, None)
+    for p, t in list(ctx.dls.xref_since.items()):
+        if ctx.t0 - t < XREF_HOLD_S or p in ctx.dls.xref_release:
+            continue
+        if ctx.t0 - ctx.dls.xref_done.get(p, float("-inf")) < XREF_HOLDOFF_S:
+            continue
+        fast = ctx.dls.readback.get(p, {}).get("trim_chips", 0.0)
+        trim = fast + ctx.dls.trim.get(p, 0.0)
+        off = (trk.get(p) or {}).get("xref_m", 0.0)
+        if abs(trim) < XREF_TRIM_CHIPS:
+            _log_rl(
+                "xref-small-%d" % p,
+                "XREF PRN %d: %+.0f m off %s for %.0f s, but its trim is %+.2f chips -- not "
+                "an offset the loop made, so not released"
+                % (p, off, ctx.args.xband_referee, ctx.t0 - t, trim),
+                every_s=600.0,
+            )
+            continue
+        del ctx.dls.xref_since[p]
+        ctx.dls.xref_release[p] = ctx.t0
+        _log(
+            "XREF RELEASE PRN %d: %+.0f m (%+.2f chips) off %s for %.0f s, trim %+.2f chips "
+            "-- both trim loops released until it reads ~0, then the loop restarts from the "
+            "seed"
+            % (
+                p,
+                off,
+                off * ctx.args.chip_rate_hz / C_M_S,
+                ctx.args.xband_referee,
+                ctx.t0 - t,
+                trim,
+            )
+        )
+    for p, t in list(ctx.dls.xref_release.items()):
+        rb = ctx.dls.readback.get(p)
+        erased = ctx.dls.readback_ok and (
+            rb is None or abs(rb["trim_chips"]) <= LOBE_RELEASED_CHIPS
+        )
+        if (ctx.t0 > t and erased) or ctx.t0 - t >= XREF_RELEASE_MAX_S:
+            del ctx.dls.xref_release[p]
+            ctx.dls.xref_done[p] = ctx.t0
+            _log(
+                "XREF RELEASE PRN %d: re-armed after %.0f s (%s)"
+                % (p, ctx.t0 - t, "trim ~0" if erased else "timed out")
+            )
+    return set(ctx.dls.xref_release)
+
+
 def stage_fleet_trim_arming(ctx):
     """Tell the gather which PRNs its C++ loop may actuate (--fleet-trim-url), with the loop
     constants, the probe-anchored floor and the tracker targets; then read its standing trims
@@ -232,10 +364,10 @@ def stage_fleet_trim_arming(ctx):
     and one released after it by both. After policy_ttl_s without a POST the controller
     disarms the chain, and the PRNs in dls.armed_last are driven by neither arm.
 
-    dls.held_off is the set neither loop trims this cycle (slewing seeds and lobe releases);
-    their Python trims are dropped here and codeloop.py does not integrate them. A PRN below
-    the probe floor is not armed either, but the Python DLL keeps integrating it unless it is
-    also held off (held off wins)."""
+    dls.held_off is the set neither loop trims this cycle (slewing seeds, lobe and cross-band
+    releases); their Python trims are dropped here and codeloop.py does not integrate them. A
+    PRN below the probe floor is not armed either, but the Python DLL keeps integrating it
+    unless it is also held off (held off wins)."""
     if ctx.args.fleet_trim_url:
         _now_present = [
             _p for _p in (ctx.dllp.fleet or {}) if ctx.dllp.fleet[_p].get("present")
@@ -265,7 +397,9 @@ def stage_fleet_trim_arming(ctx):
                 "until it arrives" % (_p, _g, SLEW_ARM_MAX_CHIPS),
                 every_s=60.0,
             )
-        ctx.dls.held_off = set(_slew) | lobe_referee(ctx, _slew)
+        ctx.dls.held_off = (
+            set(_slew) | lobe_referee(ctx, _slew) | xband_referee(ctx, _slew)
+        )
         for _p in ctx.dls.held_off:
             ctx.dls.trim.pop(_p, None)
         # Armed: present within the last fleet_trim_hold_s (cli.py), not held off and not

@@ -458,6 +458,9 @@ class FleetPublisher:
                     "trk_gdv_m": (_trk.get(prn) or {}).get("gdv_m"),
                     "trk_resid_sd_chips": (_trk.get(prn) or {}).get("sd"),
                     "trk_resid_n": (_trk.get(prn) or {}).get("n"),
+                    # --xband-referee: this residual minus the reference chain's, less their
+                    # pooled level (m); None without a verdict (trimarm.xband_judge)
+                    "trk_xref_m": (_trk.get(prn) or {}).get("xref_m"),
                     "trk_resid_age_s": (
                         None
                         if _trk.get(prn) is None
@@ -717,11 +720,16 @@ class FleetPublisher:
             #       (fleet.apply_presence). Immune to scintillation, but a chain without probes
             #       reports every row not present (UNANCHORED), leaving s4_raw to decide alone.
             # Blind is asserted only when both agree, so the flag never calls a satellite blind
-            # on one estimator's weakness.
+            # on one estimator's weakness. Separately, a chain with a cross-band referee
+            # (--xband-referee) reads unlocked while the referee puts the tap more than half a
+            # chip from the reference (trimarm.xband_judge): a side peak keeps both witnesses
+            # healthy.
             _s4 = row.get("s4_raw")
             _rayleigh = _s4 is not None and _s4 >= PROMPT_RAYLEIGH_S4
             row["prompt_rayleigh"] = _rayleigh
-            row["prompt_lock"] = not (_rayleigh and not row["fleet_present"])
+            row["prompt_lock"] = not (_rayleigh and not row["fleet_present"]) and not (
+                _trk.get(prn) or {}
+            ).get("xref_off")
             # cn0_coh_db is published unconditionally (an estimator's output is never destroyed:
             # a row that has had a model applied cannot be un-applied), with prompt_lock beside
             # it so consumers can decline it; gnss_observables carries the flag into the obs
