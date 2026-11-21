@@ -197,13 +197,14 @@
    "sep_deg": 1.44,
    "ref_input": 116,
    "drift_ns_s": 3.04,
-   "last_observed_utc": "2026-11-07T18:25:57Z",
-   "last_checked_utc": "2026-11-07T18:25:57Z",
-   "last_checked_sep_deg": 1.37,
-   "passes_found": 1,
+   "last_observed_utc": "2026-11-21T14:25:58Z",
+   "last_checked_utc": "2026-11-21T14:25:58Z",
+   "last_checked_sep_deg": 4.26,
+   "passes_found": 2,
    "passes_silent": 0,
    "passes": [
-    ["2026-11-07T18:25:57Z", 1.37, true]
+    ["2026-11-07T18:25:57Z", 1.37, true],
+    ["2026-11-21T14:25:58Z", 4.26, true]
    ]
   },
   "DIGUI-14": {
@@ -219,17 +220,18 @@
    "sep_deg": 0.93,
    "ref_input": 116,
    "drift_ns_s": -2.14,
-   "last_observed_utc": "2026-11-20T14:22:55Z",
-   "last_checked_utc": "2026-11-20T14:22:55Z",
-   "last_checked_sep_deg": 5.09,
-   "passes_found": 5,
+   "last_observed_utc": "2026-11-21T13:48:08Z",
+   "last_checked_utc": "2026-11-21T13:48:08Z",
+   "last_checked_sep_deg": 11.2,
+   "passes_found": 6,
    "passes_silent": 0,
    "passes": [
     ["2026-11-06T14:32:51Z", 5.56, true],
     ["2026-11-07T13:59:24Z", 0.86, true],
     ["2026-11-11T17:28:15Z", 5.17, true],
     ["2026-11-19T14:54:54Z", 1.36, true],
-    ["2026-11-20T14:22:55Z", 5.09, true]
+    ["2026-11-20T14:22:55Z", 5.09, true],
+    ["2026-11-21T13:48:08Z", 11.2, true]
    ]
   },
   "DIGUI-15": {
@@ -334,15 +336,16 @@
    "sep_deg": 1.06,
    "ref_input": 116,
    "drift_ns_s": 0.08,
-   "last_observed_utc": "2026-11-20T14:35:09Z",
-   "last_checked_utc": "2026-11-20T14:35:09Z",
-   "last_checked_sep_deg": 0.38,
-   "passes_found": 3,
+   "last_observed_utc": "2026-11-21T14:01:42Z",
+   "last_checked_utc": "2026-11-21T14:01:42Z",
+   "last_checked_sep_deg": 6.09,
+   "passes_found": 4,
    "passes_silent": 0,
    "passes": [
     ["2026-11-07T14:12:57Z", 4.55, true],
     ["2026-11-12T17:08:26Z", 4.11, true],
-    ["2026-11-20T14:35:09Z", 0.38, true]
+    ["2026-11-20T14:35:09Z", 0.38, true],
+    ["2026-11-21T14:01:42Z", 6.09, true]
    ]
   },
   "DIGUI-20": {
@@ -2043,14 +2046,15 @@
    "sep_deg": 3.01,
    "ref_input": 116,
    "drift_ns_s": 3.42,
-   "last_observed_utc": "2026-11-12T20:49:03Z",
-   "last_checked_utc": "2026-11-12T20:49:03Z",
-   "last_checked_sep_deg": 2.78,
-   "passes_found": 2,
+   "last_observed_utc": "2026-11-21T13:52:52Z",
+   "last_checked_utc": "2026-11-21T13:52:52Z",
+   "last_checked_sep_deg": 3.38,
+   "passes_found": 3,
    "passes_silent": 0,
    "passes": [
     ["2026-11-05T22:48:11Z", 5.48, true],
-    ["2026-11-12T20:49:03Z", 2.78, true]
+    ["2026-11-12T20:49:03Z", 2.78, true],
+    ["2026-11-21T13:52:52Z", 3.38, true]
    ]
   },
   "DIGUI-102": {
@@ -3643,22 +3647,25 @@
    "status": "transmitting",
    "catnum": 69574,
    "g2_phase": 728,
-   "theta_us": 302.0178,
-   "range_rate_m_s": 1068.14,
-   "replica_corr_ns": 28.766,
-   "carrier_minus_tle_ppb": -4.6,
-   "measured_utc": "2026-11-07T18:19:28Z",
-   "source": "2026-11-07 beam dump window 120 (gw_reduce, 36201 frames over 79 s)",
-   "sep_deg": 4.25,
+   "theta_us": 438.715,
+   "range_rate_m_s": 1341.45,
+   "replica": "stretched",
+   "orbit": "tle",
+   "carrier_minus_tle_ppb": -1.9,
+   "measured_utc": "2026-11-21T14:19:47Z",
+   "source": "2026-11-21 beam dump window 417 (gw_reduce, 38082 frames over 77 s)",
+   "sep_deg": 1.74,
    "ref_input": 116,
-   "drift_ns_s": 4.58,
-   "last_observed_utc": "2026-11-07T18:19:32Z",
-   "last_checked_utc": "2026-11-07T18:19:32Z",
-   "last_checked_sep_deg": 4.21,
-   "passes_found": 1,
+   "drift_ns_s": 1.9,
+   "note": "partial copy, 48/64 channels",
+   "last_observed_utc": "2026-11-21T14:19:47Z",
+   "last_checked_utc": "2026-11-21T14:19:47Z",
+   "last_checked_sep_deg": 1.74,
+   "passes_found": 2,
    "passes_silent": 0,
    "passes": [
-    ["2026-11-07T18:19:32Z", 4.21, true]
+    ["2026-11-07T18:19:32Z", 4.21, true],
+    ["2026-11-21T14:19:47Z", 1.74, true]
    ]
   },
   "DIGUI-172": {
@@ -3697,15 +3704,16 @@
    "sep_deg": 1.43,
    "ref_input": 116,
    "drift_ns_s": 1.75,
-   "last_observed_utc": "2026-11-19T15:01:12Z",
-   "last_checked_utc": "2026-11-19T15:01:12Z",
-   "last_checked_sep_deg": 3.64,
-   "passes_found": 3,
+   "last_observed_utc": "2026-11-21T13:54:19Z",
+   "last_checked_utc": "2026-11-21T13:54:19Z",
+   "last_checked_sep_deg": 9.17,
+   "passes_found": 4,
    "passes_silent": 0,
    "passes": [
     ["2026-11-07T14:05:42Z", 1.41, true],
     ["2026-11-12T17:01:08Z", 0.88, true],
-    ["2026-11-19T15:01:12Z", 3.64, true]
+    ["2026-11-19T15:01:12Z", 3.64, true],
+    ["2026-11-21T13:54:19Z", 9.17, true]
    ]
   },
   "DIGUI-174": {
