@@ -46,6 +46,8 @@ constexpr uint32_t MAX_BANDWIDTH = 56000000;
 const bladerf_channel RX_CH = BLADERF_CHANNEL_RX(0);
 /// Bytes per complex 8-bit sample.
 constexpr size_t BYTES_PER_SAMPLE = 2;
+// The most a read may start before the previous one ended, right after a dropout.
+constexpr uint64_t MAX_BACKSTEP_SAMPLES = 16;
 
 std::string version_string(const struct bladerf_version& v) {
     return fmt::format("{:d}.{:d}.{:d}", v.major, v.minor, v.patch);
@@ -565,6 +567,7 @@ void bladeRFInput::stream() {
     std::vector<int8_t> chunk(BYTES_PER_SAMPLE * _buffer_size);
     bool have_timestamp = false;
     uint64_t next_timestamp = 0;
+    bool after_gap = false;
     // The first reads after enabling RX can hold stale samples from the previous session,
     // followed by a jump in the timestamps, so they are discarded.
     uint64_t to_discard = _startup_discard;
@@ -653,29 +656,45 @@ void bladeRFInput::stream() {
                     return;
             }
         }
+        size_t skip = 0;
+        bool gap_now = false;
         if (meta.timestamp != next_timestamp) {
             if (meta.timestamp < next_timestamp) {
-                FATAL_ERROR("The bladeRF timestamp went back from {:d} to {:d}.", next_timestamp,
-                            meta.timestamp);
-                return;
+                // After a dropout the device can date the first read a few samples late, so the
+                // read after it starts before that one ended: its overlap is dropped. Any other
+                // step back means the counter cannot be trusted.
+                const uint64_t back = next_timestamp - meta.timestamp;
+                if (!after_gap || back > MAX_BACKSTEP_SAMPLES || back >= meta.actual_count) {
+                    FATAL_ERROR("The bladeRF timestamp went back from {:d} to {:d}.",
+                                next_timestamp, meta.timestamp);
+                    return;
+                }
+                WARN("The bladeRF timestamp went back {:d} samples after a dropout; dropping "
+                     "the overlap.",
+                     back);
+                skip = back;
+            } else {
+                const uint64_t gap = meta.timestamp - next_timestamp;
+                if (gap > _max_gap_fill) {
+                    FATAL_ERROR(
+                        "The bladeRF dropped {:d} samples at once, more than max_gap_fill_ms "
+                        "allows.",
+                        gap);
+                    return;
+                }
+                if (!write_samples(nullptr, gap))
+                    return;
+                n_dropped += gap;
+                n_discont++;
+                dropped_metric.inc(gap);
+                discont_metric.inc();
+                gap_now = true;
             }
-            const uint64_t gap = meta.timestamp - next_timestamp;
-            if (gap > _max_gap_fill) {
-                FATAL_ERROR("The bladeRF dropped {:d} samples at once, more than max_gap_fill_ms "
-                            "allows.",
-                            gap);
-                return;
-            }
-            if (!write_samples(nullptr, gap))
-                return;
-            n_dropped += gap;
-            n_discont++;
-            dropped_metric.inc(gap);
-            discont_metric.inc();
         }
-        if (!write_samples(chunk.data(), meta.actual_count))
+        if (!write_samples(chunk.data() + BYTES_PER_SAMPLE * skip, meta.actual_count - skip))
             return;
         next_timestamp = meta.timestamp + meta.actual_count;
+        after_gap = gap_now;
 
         const auto now = std::chrono::steady_clock::now();
         if (n_dropped > reported_dropped && now >= next_drop_report) {

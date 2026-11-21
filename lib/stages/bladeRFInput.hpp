@@ -42,7 +42,9 @@
  * Samples are read with timestamps (@c BLADERF_FORMAT_SC8_Q7_META). When the timestamps
  * show that the device dropped samples, the stage writes zeros in their place, so frame
  * @c k always holds samples @c k*N to @c (k+1)*N-1 of the stream, where N is the frame
- * length in samples. A gap longer than @c max_gap_fill_ms stops kotekan.
+ * length in samples. A gap longer than @c max_gap_fill_ms stops kotekan. After a dropout the
+ * device can date the first read up to a few samples late; the next read's overlap with it is
+ * dropped, and any other step back in the timestamps stops kotekan.
  *
  * This producer depends on ``libbladeRF`` 2.5 or later, and needs FPGA 0.15.1 or later
  * for correct timestamps with 8-bit samples.
