@@ -11,7 +11,8 @@ each decoded issue's arc in place of its TLE: ITRS position and velocity on a 10
 the broadcast orbit, and clk_s = af0 + offset, the broadcast bias being the sender's clock
 offset as GPS's af0 is, and offset (--clock-offset-us) one constant for the receiver. Satellites
 share codes, so each issue takes its shell, name and code fields from the TLE record of its PRN
-that flies where the issue puts it. A TLE segment is cut around the decoded arcs, so the TLE
+that flies where the issue puts it. The satellites outside the almanac (sender IDs 109 and up)
+send only fill pages, which are skipped. A TLE segment is cut around the decoded arcs, so the TLE
 still covers the rest of the pass. The output is rewritten (atomically) whenever an issue or the
 TLE table changes; the broker reloads it by mtime (gw-table).
 
@@ -76,6 +77,13 @@ def sender(w, recs):
         if d < best_d:
             best, best_d = r, d
     return best
+
+
+def is_fill(sf):
+    """True for a fill page, sent by the satellites outside the almanac in place of an
+    ephemeris: its last 24 bytes all read 0x2d + 8 (page - 1)."""
+    b = np.packbits(np.asarray(sf.payload, dtype=np.uint8)[: len(sf.payload) // 8 * 8])
+    return bool(np.all(b[-24:] == 0x2D + 8 * (sf.page - 1)))
 
 
 def nav_record(prn, eph, w, offset_s, step_s, like):
@@ -199,7 +207,8 @@ def main():
                     continue
                 seen.add((prn, sf.sow))
                 # The shell is the sender's, found once an issue is complete (nav_record).
-                ephs.setdefault(prn, gn.Ephemeris(shell=50)).add(sf)
+                if not is_fill(sf):
+                    ephs.setdefault(prn, gn.Ephemeris(shell=50)).add(sf)
                 if logf:
                     logf.write(
                         json.dumps(
