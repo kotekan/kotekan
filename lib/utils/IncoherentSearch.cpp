@@ -40,9 +40,13 @@ const double block_clip = 6.0;
 // A sample merges into a candidate within this many samples of it, plus the sweep between the
 // two DMs
 const int merge_slack = 20;
-// A candidate is undispersed when far_candidates others, each of at least far_fraction of its
-// S/N, lie more than far_dm from it in DM, fit the same arrival without dispersion, and have
-// their strongest block of channels within far_blocks of its own
+// A partner of a candidate is another one more than partner_dm from it in DM, of at least
+// far_fraction of its S/N, that fits the same arrival without dispersion and has its strongest
+// block of channels within far_blocks of the candidate's. A candidate is undispersed when it
+// has far_candidates partners and they cover, with it, more than far_dm in DM. A pulse's own
+// candidates at neighbouring DMs lie within partner_dm, and two pulsars in the beam within
+// far_dm of each other.
+const double partner_dm = 20.0;
 const double far_dm = 50.0;
 const double far_fraction = 0.5;
 const int far_candidates = 2;
@@ -440,8 +444,9 @@ void IncoherentSearch::close_events() {
         cand.width = widths[e.best.width_index];
         cand.sample = e.best.sample;
         cand.num_hits = e.num_hits;
-        cand.num_partners = count_partners(e);
-        cand.undispersed = cand.num_partners >= far_candidates;
+        double dm_range = 0;
+        cand.num_partners = count_partners(e, dm_range);
+        cand.undispersed = cand.num_partners >= far_candidates && dm_range > far_dm;
         band_occupancy(cand, e.best);
         cand.one_band = cand.width >= one_band_width
                         && *std::max_element(cand.block_snr.begin(), cand.block_snr.end())
@@ -457,23 +462,29 @@ void IncoherentSearch::close_events() {
                  events.end());
 }
 
-// The other events far away in DM that fit the same arrival without dispersion. The search
-// places such an arrival earlier at the top channel the higher the DM: by nothing when it is at
-// the top of the band, by the whole sweep between the two DMs when it is at the bottom. The
-// arrival is in one part of the band, so the others have their S/N where this event has it.
-int IncoherentSearch::count_partners(const Event& e) const {
+// The other events that fit the same arrival without dispersion, and in dm_range the range of
+// DM that they and this event cover. The search places such an arrival earlier at the top
+// channel the higher the DM: by nothing when it is at the top of the band, by the whole sweep
+// between the two DMs when it is at the bottom. The arrival is in one part of the band, so the
+// others have their S/N where this event has it.
+int IncoherentSearch::count_partners(const Event& e, double& dm_range) const {
     const double dm = p.dms[e.best.dm_index];
+    double lowest = 0, highest = 0; // of the partners' DMs, relative to this event's
     int n = 0;
     for (const Event& other : events) {
         const double ddm = p.dms[other.best.dm_index] - dm;
-        if (std::abs(ddm) <= far_dm || other.best.snr < far_fraction * e.best.snr
+        if (std::abs(ddm) <= partner_dm || other.best.snr < far_fraction * e.best.snr
             || std::abs(other.block - e.block) > far_blocks)
             continue;
         const int64_t earlier =
             ddm > 0 ? e.best.sample - other.best.sample : other.best.sample - e.best.sample;
-        if (earlier >= -merge_slack && earlier <= merge_slack + sweep_per_dm * std::abs(ddm))
-            ++n;
+        if (earlier < -merge_slack || earlier > merge_slack + sweep_per_dm * std::abs(ddm))
+            continue;
+        ++n;
+        lowest = std::min(lowest, ddm);
+        highest = std::max(highest, ddm);
     }
+    dm_range = highest - lowest;
     return n;
 }
 

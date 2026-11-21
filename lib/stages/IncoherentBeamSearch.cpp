@@ -50,9 +50,9 @@ using kotekan::prometheus::Metrics;
  *
  * The line's "flags" list every reason the candidate is not one to act on, and is empty when
  * there is none:
- *  - "undispersed": it is one of several far apart in DM that fit one arrival without
- *    dispersion, which is interference in part of the band ("partners" is their number). Such
- *    a candidate is in the file but is not counted or logged as one.
+ *  - "undispersed": it is one of several over a wide range of DM that fit one arrival without
+ *    dispersion, which is interference in part of the band ("partners" is the number of the
+ *    others). Such a candidate is in the file but is not counted or logged as one.
  *  - "low_dm": its DM is below trigger_min_dm.
  *  - "low_snr": its S/N is below trigger_min_snr.
  *

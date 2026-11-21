@@ -162,6 +162,22 @@ BOOST_AUTO_TEST_CASE(burst_without_dispersion_is_marked_at_every_dm) {
     BOOST_CHECK_GT(one_band, (int)cands.size() / 2);
 }
 
+BOOST_AUTO_TEST_CASE(burst_over_a_narrow_range_of_dm_is_marked_in_the_middle) {
+    // With trial DMs 50 to 140 no candidate near DM 95 has another more than 50 away. All are
+    // marked because each has partners, and with them covers more than 50.
+    IncoherentSearchParams p = burst_params();
+    while (p.dms.back() > 140)
+        p.dms.pop_back();
+    const std::vector<IncoherentCandidate> cands = run(p, {}, true);
+    BOOST_REQUIRE_GE(cands.size(), 8);
+    int middle = 0;
+    for (const IncoherentCandidate& c : cands) {
+        BOOST_CHECK(c.undispersed);
+        middle += c.dm > 90 && c.dm < 100;
+    }
+    BOOST_CHECK_GE(middle, 1);
+}
+
 BOOST_AUTO_TEST_CASE(pulse_beside_a_burst_is_not_marked) {
     // A pulse of about 12 sigma in the lower half of the band, 200 samples after the burst
     // began. The burst's candidates above DM 150 are placed before it, within the sweep
