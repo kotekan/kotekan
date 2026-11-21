@@ -1269,6 +1269,46 @@ def _joint_coast(ctx, ds, jrate, jlen):
     return delta, ext, age, rate
 
 
+def dr_joint_rate(ctx):
+    """The `joint-consume: rate` consumer for dead-reckon seeds on a chain with no (l-a) pool
+    of its own: the joint state's clk_rate as a fractional rate (l-a), or None when the state
+    is absent, under joint_min_sats or beyond joint_max_rate_ppm (the gates of main's consumer
+    for search seeds). Without it such a chain borrows another chain's (l-a), which expires
+    once that chain's pool stops updating (Receiver.code_bias)."""
+    jr, which, tag = joint_read(ctx)
+    unit = ctx.rx.joint_unit(which) if jr is not None else None
+    if unit is None or len(jr._idx) < ctx.args.joint_min_sats:
+        return None
+    la = jr.clk_rate / unit[0]
+    if abs(la) * 1e6 > ctx.args.joint_max_rate_ppm:
+        return None
+    _log_rl(
+        "jointrate-dr",
+        "dead-reckon: (l-a) %+.5f ppm from the JOINT%s state (l-a EMA says %+.5f)"
+        % (la * 1e6, tag, (ctx.cb.code_ema or 0.0) * 1e6),
+        every_s=60.0,
+    )
+    return la
+
+
+def dr_can_seed(ctx, prn):
+    """Can this chain dead-reckon prn: its clock is fresh (_dr_clock_local_fresh) and the
+    model's last prediction for prn carries a clock known to half a chip and is not marked
+    untrusted, as dr_seed tests before a birth. Elevation and detection are not
+    tested."""
+    if not ctx.dr_state or ctx.dr_state.get("clk") is None:
+        return False
+    if not _dr_clock_local_fresh(ctx) or ctx.drp.pd is None:
+        return False
+    v = ctx.drp.pd.get((ctx.drp.tag, prn))
+    return (
+        v is not None
+        and prn >= ctx.dr_min_prn
+        and prn not in ctx.dr_untrusted
+        and v.get("clk_sigma_s", 0.0) * ctx.args.chip_rate_hz <= 0.5
+    )
+
+
 def dr_joint_clk(ctx):
     """The `joint-consume: clk` consumer: move this cycle's clk_now onto the joint clock, or
     leave it.
@@ -2941,10 +2981,13 @@ def stage_dead_reckon(ctx):
                 ctx.dr_state["ax_off"] = _dax
             ctx.drp.la = ctx.cb.code_ema
             # A chain with no detections cannot measure (l-a): code_ema fills only from its own
-            # cp-fit pool. (l-a) is a property of the receiver clock, so take another in-process
-            # chain's from the Receiver, same band first. Without it every dead-reckon seed ships
-            # code_phase_rate 0 and the prompt walks out of the +-1-chip correlation window in
-            # minutes. A rate cannot step the seed.
+            # cp-fit pool. (l-a) is a property of the receiver clock, so take the joint state's
+            # (joint-consume rate), else another in-process chain's from the Receiver, same band
+            # first. Without it every dead-reckon seed ships code_phase_rate 0 and the prompt
+            # walks out of the +-1-chip correlation window in minutes. A rate cannot step the
+            # seed.
+            if ctx.drp.la is None and "rate" in ctx.joint_consume:
+                ctx.drp.la = dr_joint_rate(ctx)
             if ctx.drp.la is None:
                 _sh_cb = ctx.rx.code_bias(
                     ctx.band_id, exclude=ctx.chain_id, t_now=ctx.drp.now_w

@@ -14,6 +14,7 @@ so the error sustains itself. See `clockbias.py`.
 
 from gnss_broker.transport import _post, _log, _log_rl, axis_now, now_utc_s
 from gnss_broker.clockhealth import dr_solve_healthy
+from gnss_broker.deadreckon import dr_can_seed
 
 
 def stage_narrow_search(ctx):
@@ -21,7 +22,9 @@ def stage_narrow_search(ctx):
     the detectors.
 
     Doppler hints cover every up, capable PRN, with the narrow margin once the clock bias is
-    solved and not stale and the wide margin otherwise (see the module docstring)."""
+    solved and not stale and the wide margin otherwise (see the module docstring). With
+    --hint-skip-dr a PRN this chain can dead-reckon (deadreckon.dr_can_seed) gets none.
+    """
     if ctx.args.narrow_search and ctx.args.almanac and ctx.pred:
         margin = (
             ctx.args.search_margin_hz
@@ -34,6 +37,13 @@ def stage_narrow_search(ctx):
             if (ctx.up is None or p in ctx.up)
             and (ctx.capable is None or p in ctx.capable)
         ]
+        # --hint-skip-dr: the search is for satellites the model cannot seed. One left unhinted
+        # keeps its search seed while it holds lock and is dead-reckoned once that drops.
+        n_dr = 0
+        if getattr(ctx.args, "hint_skip_dr", False):
+            kept = [h for h in hints if not dr_can_seed(ctx, h["prn"])]
+            n_dr = len(hints) - len(kept)
+            hints = kept
         # NH alignment hint (--nh-hint). The acquire builds a full surface per overlay
         # alignment, so scanning all of them is most of a pass. nh is the overlay chip index
         # at transmit, so the ephemeris gives it outright (pred[3] is the range in m, pred[4]
@@ -185,7 +195,7 @@ def stage_narrow_search(ctx):
                     )
         _log_rl(
             "narrow",
-            "narrowed search: %d hints +-%d Hz (%s) -> %d/%d detectors"
+            "narrowed search: %d hints +-%d Hz (%s) -> %d/%d detectors%s"
             % (
                 len(hints),
                 int(margin),
@@ -198,5 +208,6 @@ def stage_narrow_search(ctx):
                 ),
                 pushed,
                 len(ctx.detectors),
+                "; %d dead-reckoned, not hinted" % n_dr if n_dr else "",
             ),
         )

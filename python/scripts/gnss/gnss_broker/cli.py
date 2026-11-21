@@ -918,6 +918,16 @@ def build_parser(description):
         "Needs --almanac.",
     )
     ap.add_argument(
+        "--hint-skip-dr",
+        action="store_true",
+        help="with --narrow-search, hint no PRN this chain can dead-reckon: its clock is "
+        "fresh and the model predicts the PRN with a clock known to half a chip (a "
+        "broadcast or decoded orbit, not a GuoWang catalogue record) and does not mark "
+        "it untrusted. The search then scans only the rest. The clock stays fresh only "
+        "from a source other than this chain's detections (joint-consume clk, or a "
+        "donor); otherwise hints return each time it goes stale. Off by default.",
+    )
+    ap.add_argument(
         "--search-margin-hz",
         type=float,
         default=500.0,
