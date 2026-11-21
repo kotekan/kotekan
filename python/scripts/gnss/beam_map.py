@@ -27,7 +27,9 @@ import numpy as np
 
 
 def load(paths, el_min):
-    """The present samples at or above el_min, as (const, prn, az, el, snr_db, cn0_coh_db)."""
+    """The present samples at or above el_min, as (satellite, az, el, snr_db, cn0_coh_db), the
+    satellite being (const, name) where the log names it (GuoWang) and (const, prn) where not.
+    """
     rows = []
     for path in paths:
         with open(path) as fh:
@@ -39,8 +41,7 @@ def load(paths, el_min):
                 if x > 0:
                     rows.append(
                         (
-                            r["const"],
-                            r["prn"],
+                            (r["const"], r.get("name") or r["prn"]),
                             r["az"],
                             r["el"],
                             10 * np.log10(x),
@@ -133,19 +134,19 @@ def main():
     ap.add_argument("--png", help="write a plot here")
     a = ap.parse_args()
     rows = load(a.logs, a.el_min)
-    cal = [r[5] - r[4] for r in rows if r[0] in "GEC" and r[5] is not None]
+    cal = [r[4] - r[3] for r in rows if r[0][0] in "GEC" and r[4] is not None]
     if a.const:
-        rows = [r for r in rows if r[0] in a.const]
+        rows = [r for r in rows if r[0][0] in a.const]
     if not rows:
         raise SystemExit("no present samples")
     npix = hp.nside2npix(a.nside)
     th, ph = hp.pix2ang(a.nside, np.arange(npix))
     el_pix = 90 - np.degrees(th)
     pix = hp.ang2pix(
-        a.nside, np.radians([90 - r[3] for r in rows]), np.radians([r[2] for r in rows])
+        a.nside, np.radians([90 - r[2] for r in rows]), np.radians([r[1] for r in rows])
     )
-    y = np.array([r[4] for r in rows])
-    n_sat = len({(r[0], r[1]) for r in rows})
+    y = np.array([r[3] for r in rows])
+    n_sat = len({r[0] for r in rows})
     if a.cn0:
         if not cal:
             raise SystemExit("no L5, E5a or B2a cn0_coh_db to calibrate against")
@@ -153,7 +154,7 @@ def main():
         m = median_map(pix, y + off, npix)
         what, label = "C/N0 (dB-Hz, SNR + %.1f dB)" % off, "C/N0 (dB-Hz)"
     else:
-        m, _ = fit([(r[0], r[1]) for r in rows], pix, y, npix, el_pix)
+        m, _ = fit([r[0] for r in rows], pix, y, npix, el_pix)
         what, label = "relative gain (dB)", "relative gain (dB)"
     print(
         "%d samples, %d satellites, nside %d; %s by elevation, median over seen pixels:"
