@@ -17,6 +17,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <json.hpp>
@@ -108,6 +109,7 @@ struct SearchPipeline {
                                {{"in_buf", "cutout"},
                                 {"base_dir", cutout_dir},
                                 {"file_name", "cutout"},
+                                {"time_in_file_name", true},
                                 {"prefix_hostname", false}}}};
         add_test_telescope_config(cfg);
         cfg["gps_time"] = {{"frame0_nano", 1767225600000000000}};
@@ -285,9 +287,18 @@ BOOST_AUTO_TEST_CASE(finds_a_pulse_and_restarts_after_a_jump) {
         BOOST_CHECK_GT(brightest_sum, 80); // 2 sigma in each of 64 channels
         p.cutout.mark_frame_empty("test", 0);
     }
-    // hdf5FileWrite numbers its files as the stage numbers the cutouts.
+    // hdf5FileWrite numbers its files as the stage numbers the cutouts, after the UTC time of
+    // the cutout's first sample: 5.12 us per FPGA sample from frame0_nano.
     if (p.writer) {
-        const std::string file = p.cutout_dir + "/cutout.00000000.h5";
+        const int64_t first_seq =
+            cands[0]["fpga_seq"].get<int64_t>()
+            - int64_t(SearchPipeline::cutout_samples / 2) * SearchPipeline::period;
+        const std::time_t seconds = 1767225600 + first_seq * 5120 / 1000000000;
+        std::tm utc{};
+        gmtime_r(&seconds, &utc);
+        char time_tag[32];
+        std::strftime(time_tag, sizeof(time_tag), "%Y%m%dT%H%M%S", &utc);
+        const std::string file = p.cutout_dir + "/cutout." + time_tag + ".00000000.h5";
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
         while (!std::filesystem::exists(file) && std::chrono::steady_clock::now() < deadline)
             std::this_thread::sleep_for(std::chrono::milliseconds(20));

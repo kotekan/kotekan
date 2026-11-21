@@ -293,8 +293,9 @@ incoherent_snr_buffer:
     metadata_pool: incoherent_power_pool
 
 # The samples around each candidate without a flag, as the search saw them and shifted by the
-# candidate's DM: 1.7 MB before compression, one file per candidate, numbered as "cutout" in
-# its line of candidates.jsonl counts them. A pulse is a column in the middle.
+# candidate's DM: 1.7 MB before compression, one file per candidate. A pulse is a column in
+# the middle. A file is cutouts/acq_<start of kotekan>/cutout.<UTC of its first sample>.<n>.h5
+# with n the "cutout" of the candidate's line in candidates.jsonl, counted from the start.
 incoherent_cutout_buffer:
     kotekan_buffer: ndarray
     num_frames: 8
@@ -312,6 +313,7 @@ write_incoherent_cutouts:
     base_dir: /mnt/cs00/data/incoherent_beam_search/cutouts
     acq_dir: true
     file_name: cutout
+    time_in_file_name: true
     prefix_hostname: false
 
 incoherent_beam_search:
