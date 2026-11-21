@@ -1006,7 +1006,7 @@ class GpsSkyResource(resource.Resource):
         # time they were computed (they are kept 1 h).
         self._glo_capable = None
         self._glo_capable_t = None
-        self._gw_tle = (None, {})  # (element path, {index: EarthSatellite}), see _gw_sats
+        self._gw_tle = (None, {})  # (element path, {index: EarthSatellite})
         self._last_compute = None  # monotonic s of last attempt
         self._refreshing = False
 
