@@ -1232,6 +1232,7 @@ about a minute of N² gap — and every recv1 restart is a #164 exposure.
 
 ### Smaller, still true
 - **R09 as a noise probe** (K1B, no CDMA signals) logs ~30 `FADR BREAK glo_l2oc` lines a minute (2026-11-21 review).
+- **Atmosphere applied twice in the resurvey tools** (gx10, 2026-11-21): gnss_resurvey.py and gnss_resid_vs_el.py subtract their own troposphere/Klobuchar from a code residual whose model (the broker's cp_predicted, --tropo saastamoinen, Klobuchar where coefficients exist) already carries them; right only for logs from before the broker modelled the atmosphere. Check before the next resurvey.
 - **sbas_l5 readback offset** +0.48 chip median (PRN 133 ~+1.5) on 11-21, outside #191's +-0.05 gate; no entry yet (stale sweep; glo_l2oc's -0.18 is #220's).
 - **#37** GPS block map vs sky: the registry exists; the join to the beam maps does not.
 - **#40** the deep fold's rate search wrong-bins onto overlay sidebands — **demoted**: the coarse
