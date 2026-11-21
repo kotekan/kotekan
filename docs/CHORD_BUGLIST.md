@@ -89,10 +89,6 @@ the aggregator and gather. #184–#187 below are what the removal left for later
 
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
 
-### #235 — tle_refresh.py is in no crontab: the DTV pass freeze's cx1.tle is 11 days old (2026-11-21, review)
-The viewer keeps its own TLE caches fresh, but `/var/tmp/kvand-dtvsteer/cx1.tle` (cf06, #231's `--pass-tle`) is refreshed by
-nothing, so the CHUANGXIN freeze windows drift as the TLE ages. Add a daily refresh, or point the watcher at a cache that has one.
-
 ### #233 — the viewer's metrics should be a Prometheus endpoint for the CHORD Grafana (2026-11-20, KV: "Ultimately we should be publishing all the viewer metrics to a prometheus endpoint so it can be scraped and viewed in our larger CHORD grafana setup")
 The /alerts panel (#171) is the stopgap. Serve the viewer's numbers (and the ALERT/heartbeat states) as /metrics in the
 Prometheus text format, so the site's Grafana scrapes and alerts on them.
@@ -115,7 +111,7 @@ watcher logs the TLE age at each freeze; refresh the file every week or two.
 built for MUOS: its 10 s update, 30 s rate and per-pass eigen start need checking against a LEO that
 crosses the sky in ~13 min. The other route is to project them out of the N2 from TLE directions, as
 the GuoWang lanes do (#190).
-**11-21:** the pass freeze is LIVE (kv/dtv `cd9eb77d2`; cf06 gnss-dtv-watch runs `--pass-tle`). Open: refresh `cx1.tle` (11 days old, no cron, see #235) and null the bursts (#190 tiers 2-3).
+**11-21:** the pass freeze is LIVE (kv/dtv `cd9eb77d2`; cf06 gnss-dtv-watch runs `--pass-tle`). cx1.tle refreshed by cron since 11-21 (#235, closed). Open: null the bursts (#190 tiers 2-3).
 
 ### #230 — no alert for the first GuoWang satellites at 1174.404 MHz: the filed odd 50° planes would land inside the L5 / E5a band, and railing will be the first sign (2026-11-07, KV: "our first indication will be railing at 1174, so maybe we should set up some sort of watch there, maybe flag as a todo, we can likely hand that to Jim to add to the Prometheus / grafana alerts")
 **What:** the ITU filing (CM20 2023) puts 216 more GuoWang satellites in 12 odd 50° planes at
@@ -219,10 +215,10 @@ satellites (#191 §6.2). gps_l2c does not, so it is unfed and stays `joint-sourc
 - decide whether GLONASS joins TRK_STATE with its own clock term (an inter-system bias state, which §6.2 ruled out
   for the per-signal offsets) or stays on search.
 Root-cause first: no calibration table (KV 10-24).
-
-### #210 residual — the L3OC bias table: monthly re-measure, R28 unmeasured, and the calibration-table rule (2026-11-21)
-**Open:** re-measure the L3OC table monthly or at a slot change; SVN 809 (R28) is unmeasured (0). The table is per-satellite: check it against KV's 10-24 rule on calibration tables before calling it the fix.
-**Closed 11-21:** `GLO_L3_BIAS_M` table (`5e9befd9c`), the ISB question moved to #220 (CHORD_BUGLIST_CLOSED.md).
+**11-21 (KV): #210's L3OC table is root-caused here, not kept as the fix.** `GLO_L3_BIAS_M` (`5e9befd9c`, per SVN:
+the two K2s transmit L3OC ~135-138 m early against the FDMA broadcast clock, three K1+/K1B ~41-44 m late) stays live as a
+stopgap, since pulling it puts R06/R08 ~4.6 chips off. Find where the term comes from (L3OC's own CDMA navigation-message
+clock, or a published C3 bias), then drop the table. Until then: R28 (SVN 809) unmeasured, re-measure at a slot change.
 
 ### #205 — GLONASS, the first night: what the two OC chains showed, kept as watch items (2026-10-18)
 **What [overnight 02:43-12:30Z, judged from broker.log, the obs rows and chain_health]:** (a) **R9 never acquires on
@@ -1038,7 +1034,7 @@ and the cube leg's unit. Until this is understood, stop the broker and gather by
   /var/tmp/gnss-logs/broker.log` at T+60 s = none; `screen -ls` shows `claude` and `screen -r claude` shows two
   windows, each at its session's prompt with a Remote Control URL. Then the VM half of this entry closes; what stays
   open is the target-stop propagation (journal access) and the cube target's enablement at the return.
-**11-21:** the cube fold was dead 11-14..11-21: the corrcal reboot killed the transient loop, and after its relaunch the loop skipped the fold because the stage glob overflowed ARG_MAX at ~30k files (kv/cube-glob `ce2ce04c6`, relaunched 03:03Z 11-21, folding 34k files newest first). Open: a durable unit (KV's call).
+**11-21:** the cube fold was dead 11-14..11-21: the corrcal reboot killed the transient loop, and after its relaunch the loop skipped the fold because the stage glob overflowed ARG_MAX at ~30k files (kv/cube-glob `ce2ce04c6`, relaunched 03:03Z 11-21, folding 34k files newest first). 11-21 14:09Z (KV go): durable user unit `~/.config/systemd/user/kvand-cube-staging.service` (ConditionHost corrcal, KillMode=mixed, Restart=on-failure), enabled in default.target.wants; it takes over at corrcal's next boot, since the running transient fold (3.5 d, one pass) must not be cut mid-fold.
 
 ## Open — the fix is in the NODE BINARY (queue for the next cycle)
 
