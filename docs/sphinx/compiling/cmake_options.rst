@@ -69,6 +69,8 @@ Core & Runtime Features
 - ``DPDK_EXTRA_STATS`` (``OFF``): Time the DPDK rx poll loop and export it as the
   ``kotekan_dpdk_rx_loop_*`` metrics; defines ``-DDPDK_EXTRA_STATS``. Costs two ``rdtsc`` per poll,
   so leave it off for production builds.
+- ``USE_IBVERBS`` (``AUTO``): Build the ibverbs raw packet UDP stages (``ibvUdpSend``,
+  ``ibvUdpRecv``) when ``libibverbs`` is discoverable via ``pkg-config``. See :doc:`ibverbs`.
 - ``USE_OPENSSL`` (``AUTO``): Link OpenSSL (libcrypto) for hashing support in the core. Combine with
   ``-DOPENSSL_ROOT_DIR=<path>`` for non-standard installations.
 - ``NO_MEMLOCK`` (``OFF``): Define ``WITH_NO_MEMLOCK`` to skip memory locking and related policy calls,

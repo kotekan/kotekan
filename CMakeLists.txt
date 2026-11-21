@@ -23,6 +23,7 @@ set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -Xcompiler -Wall")
 
 include(cmake/Features/FeatureGPU.cmake)
 include(cmake/Features/FeatureDPDK.cmake)
+include(cmake/Features/FeatureIbverbs.cmake)
 
 set(_ktk_airspy_reason "disabled")
 set(_ktk_airspy_enabled OFF)

@@ -251,6 +251,14 @@ target_link_libraries(test_Symbol libexternal kotekan_metadata)
 add_executable(test_div test_div.cpp)
 target_link_libraries(test_div PRIVATE kotekan_utils)
 
+# test_udp_packet - the on-wire header helpers and slot layout shared by the packet stages
+add_executable(test_udp_packet test_udp_packet.cpp)
+target_link_libraries(test_udp_packet PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
+
+# test_crs_packet - the CRS packet header and 12-bit sample packing
+add_executable(test_crs_packet test_crs_packet.cpp)
+target_link_libraries(test_crs_packet PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
+
 add_executable(test_timeUtil test_timeUtil.cpp)
 target_link_libraries(test_timeUtil PRIVATE kotekan_utils)
 target_compile_definitions(test_timeUtil PRIVATE TEST_SCRIPT_DIR="${PROJECT_BINARY_DIR}")
@@ -477,3 +485,20 @@ add_executable(test_ProcessPacketMask test_ProcessPacketMask.cpp
                                       ${KOTEKAN_SOURCE_DIR}/lib/stages/ProcessPacketMask.cpp)
 target_link_libraries(test_ProcessPacketMask PRIVATE kotekan_core kotekan_metadata kotekan_utils
                                                      libexternal)
+
+# test_crsWindowAlign - FFT window assembly from CRS header slots: alignment, loss, realignment
+add_executable(test_crsWindowAlign test_crsWindowAlign.cpp
+                                   ${KOTEKAN_SOURCE_DIR}/lib/stages/crsWindowAlign.cpp)
+target_link_libraries(test_crsWindowAlign PRIVATE kotekan_core kotekan_metadata kotekan_utils
+                                                  libexternal)
+
+# test_fEngineSimulate - the CPU reference F-engine's quantize and scale math
+if(FFTW_FOUND)
+    add_executable(test_fEngineSimulate test_fEngineSimulate.cpp
+                                        ${KOTEKAN_SOURCE_DIR}/lib/testing/fEngineSimulate.cpp)
+    target_include_directories(test_fEngineSimulate PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/testing
+                                                            ${KOTEKAN_SOURCE_DIR}/lib/stages)
+    target_include_directories(test_fEngineSimulate SYSTEM PRIVATE ${FFTW_INCLUDES})
+    target_link_libraries(test_fEngineSimulate PRIVATE kotekan_core kotekan_metadata kotekan_utils
+                                                       libexternal ${FFTW_LIBRARIES})
+endif()

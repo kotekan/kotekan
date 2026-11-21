@@ -34,6 +34,10 @@ add_library(
     testDataCheckExpected.cpp
     testDataGenQuad.cpp
     testDataGenFloat.cpp
+    udpPacketGen.cpp
+    udpPacketCheck.cpp
+    crsPacketGen.cpp
+    fEngineCheck.cpp
     testLostCountsGen.cpp
     testLostSamplesToPLMask.cpp
     testN2kGen.cpp
@@ -53,5 +57,13 @@ add_library(
     visTestPattern.cpp)
 
 target_include_directories(kotekan_testing PUBLIC .)
+
+if(FFTW_FOUND)
+    target_sources(kotekan_testing PRIVATE fEngineSimulate.cpp)
+    # fftwPlannerLock.hpp lives next to the other FFTW stages.
+    target_include_directories(kotekan_testing PRIVATE ../stages)
+    target_include_directories(kotekan_testing SYSTEM PRIVATE ${FFTW_INCLUDES})
+    target_link_libraries(kotekan_testing PRIVATE ${FFTW_LIBRARIES})
+endif()
 
 target_link_libraries(kotekan_testing PRIVATE libexternal kotekan_libs)

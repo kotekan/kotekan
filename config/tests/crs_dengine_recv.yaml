@@ -1,0 +1,90 @@
+---
+#
+# Receives the two ADC streams crs_dengine_sim.yaml sends: one ibvUdpRecv + udpPacketCheck
+# chain per UDP port (flow steering takes one port per receive stage).
+#
+# Needs CAP_NET_RAW on the kotekan binary after every build:
+#     sudo setcap cap_net_raw+ep <build>/kotekan/kotekan
+# and 2 * buffer_depth * 3 free 2 MB huge pages for the payload buffers. See
+# docs/sphinx/compiling/ibverbs.rst.
+#
+# Watch it with: curl -s localhost:12048/metrics | grep udp_packet_check
+#
+# The addresses below are the lab pair cobalt (sender) -> spark (receiver).
+#
+type: config
+log_level: INFO
+
+cpu_affinity: [2, 3, 4, 5]
+
+telescope:
+    name: fake
+
+interface: enp1s0f0np0
+dst_ip: 10.0.0.1
+
+header_size: 64
+header_slot: 128
+payload_size: 6144
+payload_slot: 6144
+packets_per_frame: 1024
+buffer_depth: 32
+samples_per_packet: 4096
+queue_depth: 8192
+poll_mode: busy
+
+# The CRS seq_number: offset 50 in the header slot, counting ADC samples.
+seq_offset: 50
+seq_stride: samples_per_packet
+payload_check_interval: 0
+report_interval: 2000
+num_frames: -1
+
+header_buffer_adc0:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: packets_per_frame * header_slot
+payload_buffer_adc0:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: packets_per_frame * payload_slot
+    use_hugepages: true
+    numa_node: 0
+header_buffer_adc1:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: packets_per_frame * header_slot
+payload_buffer_adc1:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: packets_per_frame * payload_slot
+    use_hugepages: true
+    numa_node: 0
+
+recv_adc0:
+    kotekan_stage: ibvUdpRecv
+    cpu_affinity: [2]
+    dst_port: 10000
+    header_buf: header_buffer_adc0
+    payload_buf: payload_buffer_adc0
+
+check_adc0:
+    kotekan_stage: udpPacketCheck
+    cpu_affinity: [3]
+    dst_port: 10000
+    header_buf: header_buffer_adc0
+    payload_buf: payload_buffer_adc0
+
+recv_adc1:
+    kotekan_stage: ibvUdpRecv
+    cpu_affinity: [4]
+    dst_port: 10001
+    header_buf: header_buffer_adc1
+    payload_buf: payload_buffer_adc1
+
+check_adc1:
+    kotekan_stage: udpPacketCheck
+    cpu_affinity: [5]
+    dst_port: 10001
+    header_buf: header_buffer_adc1
+    payload_buf: payload_buffer_adc1
