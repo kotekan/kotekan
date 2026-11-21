@@ -1774,12 +1774,13 @@ def gw_pages_for(ctx, prn, g, now):
     satellite the table record covering g names, no older than --gw-live-pages-max-age-s
     (age_s), else that record's own nav_pages (the table's, age-capped when written; age_s
     None). Never another record's: on a code two satellites share, the other record's pages
-    are the code-mate's."""
-    rec = None
-    for r in (ctx.dr_state.get("eph") or {}).get(("W", int(prn))) or []:
-        if r.get("t0_gpst", g) - 60 <= g <= r.get("t1_gpst", g) + 60:
-            rec = r
-            break
+    are the code-mate's. Where no record covers g, one within 60 s of it stands in."""
+    recs = (ctx.dr_state.get("eph") or {}).get(("W", int(prn))) or []
+    near = [
+        r for r in recs if r.get("t0_gpst", g) - 60 <= g <= r.get("t1_gpst", g) + 60
+    ]
+    covering = [r for r in near if r.get("t0_gpst", g) <= g <= r.get("t1_gpst", g)]
+    rec = (covering or near or [None])[0]
     if rec is None:
         return None
     live = gw_live_pages(ctx, now).get(rec.get("name"))

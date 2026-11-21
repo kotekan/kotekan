@@ -151,6 +151,26 @@ class TestLivePages(unittest.TestCase):
             dr.gw_pages_for(self._ctx(eph, max_age=600.0), 11, g, NOW)[0], LIVE
         )
 
+    def test_a_handover_takes_the_new_satellites_pages_at_once(self):
+        # The table hands code 11 over with one 10 s grid step between the records.
+        g = G0 + 100.0
+        eph = {
+            ("W", 11): [
+                _rec("DIGUI-11", g - 100, g + 100, TABLE),
+                _rec("DIGUI-99", g + 110, g + 500, MATE),
+            ]
+        }
+        c = self._ctx(eph)
+        _write(
+            self.path,
+            {"DIGUI-11": _entry(LIVE, NOW - 20.0), "DIGUI-99": _entry(MATE, NOW - 1.0)},
+            1000.0,
+        )
+        self.assertEqual(dr.gw_pages_for(c, 11, g + 120.0, NOW)[0], MATE)
+        self.assertEqual(dr.gw_pages_for(c, 11, g + 90.0, NOW)[0], LIVE)
+        # in the step between them, the first record within 60 s stands in
+        self.assertEqual(dr.gw_pages_for(c, 11, g + 105.0, NOW)[0], LIVE)
+
     def test_seed_pages_attach_refresh_and_drop_across_cycles(self):
         g = G0 + 100.0
         eph = {("W", 11): [_rec("DIGUI-11", g - 100, g + 100)]}
