@@ -1354,6 +1354,81 @@ class GpsSkyResource(resource.Resource):
         return json.dumps(out).encode("utf-8")
 
 
+class GpsFrontendResource(resource.Resource):
+    """``GET /gps_frontend`` -> the receiver front end's health, for the stream-health panel.
+
+    Reply::
+
+        {"ok": bool, "stage": name, "adc": <stage>/adcstat, "input": {metric: value},
+         "valve": {"dropped": n, "passed": n}, "telem_dropped": n}
+
+    read from the node's REST (--frontend-rest) in a worker thread at most every
+    ``REFRESH_S``: the input stage's /adcstat (rms, rail fraction), every metric labelled
+    with that stage (its dropped samples, discontinuities, stream restarts, reference lock),
+    and the frames the Valve and the telemetry packs dropped. kotekan exports a counter only
+    once it is nonzero, so an absent one reads 0. ``ok`` is false until a read succeeds.
+    """
+
+    isLeaf = True
+    REFRESH_S = 1.5
+
+    def __init__(self, rest, stage):
+        resource.Resource.__init__(self)
+        self._base = "http://" + rest
+        self._stage = stage
+        self._cache = {"ok": False}
+        self._t = 0.0
+        self._busy = False
+
+    def _read(self):
+        import re
+        import urllib.request as _u
+
+        with _u.urlopen("%s/%s/adcstat" % (self._base, self._stage), timeout=3) as r:
+            adc = json.loads(r.read())
+        with _u.urlopen(self._base + "/metrics", timeout=3) as r:
+            text = r.read().decode()
+        out = {
+            "ok": True,
+            "stage": self._stage,
+            "adc": adc,
+            "input": {},
+            "valve": {"dropped": 0, "passed": 0},
+            "telem_dropped": 0,
+        }
+        mine = 'stage_name="/%s"' % self._stage
+        for line in text.splitlines():
+            m = re.match(r"^(\w+)(?:\{([^}]*)\})?\s+(\S+)", line)
+            if not m:
+                continue
+            name, labels, value = m.group(1), m.group(2) or "", float(m.group(3))
+            if mine in labels:
+                out["input"][name] = value
+            elif name == "kotekan_valve_dropped_frames_total":
+                out["valve"]["dropped"] += value
+            elif name == "kotekan_valve_passed_frames_total":
+                out["valve"]["passed"] += value
+            elif name == "kotekan_gnss_telem_dropped_frames_total":
+                out["telem_dropped"] += value
+        return out
+
+    def _done(self, res):
+        self._cache = res
+        self._busy = False
+
+    def _err(self, failure):
+        self._cache = {"ok": False, "error": failure.getErrorMessage()}
+        self._busy = False
+
+    def render_GET(self, request):
+        request.responseHeaders.setRawHeaders("Content-Type", [b"application/json"])
+        if not self._busy and time.monotonic() - self._t > self.REFRESH_S:
+            self._busy = True
+            self._t = time.monotonic()
+            threads.deferToThread(self._read).addCallbacks(self._done, self._err)
+        return json.dumps(self._cache).encode("utf-8")
+
+
 class GpsTrackResource(resource.Resource):
     """``GET /gps_track?tag=E&prn=5`` -> GpsSkyResource.track(tag, prn): one satellite's path
     over +-1 h, fetched by the sky plot on hover. Computed in a worker thread and cached per
@@ -1815,6 +1890,18 @@ def main():
         "for the viewer panel; a file older than 120 s is dropped. Default: %(default)s",
     )
     gg.add_argument(
+        "--frontend-rest",
+        default="",
+        help="host:port of the node kotekan whose input stage feeds the receiver (e.g. "
+        "localhost:12048): its /adcstat and drop counters are served on /gps_frontend for "
+        "the stream-health panel. Empty (default) = off.",
+    )
+    gg.add_argument(
+        "--frontend-stage",
+        default="bladerf_input",
+        help="that input stage's name. Default: %(default)s",
+    )
+    gg.add_argument(
         "--gw-table",
         default=GpsSkyResource.GW_TABLE,
         help="the broker's GuoWang table (gw-table), for the hover paths of GuoWang satellites. "
@@ -1948,6 +2035,11 @@ def main():
         sky.GW_TABLE = args.gw_table
         root.putChild(b"gps_sky", sky)
         root.putChild(b"gps_track", GpsTrackResource(sky))
+        if args.frontend_rest:
+            root.putChild(
+                b"gps_frontend",
+                GpsFrontendResource(args.frontend_rest, args.frontend_stage),
+            )
         root.putChild(
             b"alerts",
             AlertsResource(
