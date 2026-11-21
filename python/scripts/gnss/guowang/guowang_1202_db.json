@@ -2359,13 +2359,14 @@
    "sep_deg": 2.96,
    "ref_input": 116,
    "drift_ns_s": -20.65,
-   "last_observed_utc": "2026-11-10T20:25:33Z",
-   "last_checked_utc": "2026-11-10T20:25:33Z",
-   "last_checked_sep_deg": 2.77,
-   "passes_found": 1,
+   "last_observed_utc": "2026-11-21T19:20:08Z",
+   "last_checked_utc": "2026-11-21T19:20:08Z",
+   "last_checked_sep_deg": 5.07,
+   "passes_found": 2,
    "passes_silent": 0,
    "passes": [
-    ["2026-11-10T20:25:33Z", 2.77, true]
+    ["2026-11-10T20:25:33Z", 2.77, true],
+    ["2026-11-21T19:20:08Z", 5.07, true]
    ]
   },
   "DIGUI-117": {
@@ -4268,7 +4269,7 @@
   },
   "DIGUI-198": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 100716,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-20T16:40:31Z",
@@ -4281,7 +4282,7 @@
   },
   "DIGUI-199": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 100717,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-20T16:29:35Z",
@@ -4294,7 +4295,7 @@
   },
   "DIGUI-200": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 100718,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-19T16:55:51Z",
@@ -4307,7 +4308,7 @@
   },
   "DIGUI-201": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 100719,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-20T12:13:04Z",
@@ -4321,7 +4322,7 @@
   },
   "DIGUI-202": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 100720,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-20T12:00:33Z",
@@ -4335,7 +4336,7 @@
   },
   "DIGUI-203": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 100721,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-19T12:19:29Z",
@@ -4571,7 +4572,7 @@
   },
   "DIGUI-215": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 100974,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-20T18:41:30Z",
@@ -4584,7 +4585,7 @@
   },
   "DIGUI-216": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 100975,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-20T18:36:28Z",
@@ -4597,7 +4598,7 @@
   },
   "DIGUI-217": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 100976,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-20T18:26:47Z",
@@ -4610,7 +4611,7 @@
   },
   "DIGUI-219": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 100978,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-12T21:09:53Z",
@@ -4623,7 +4624,7 @@
   },
   "DIGUI-220": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 100979,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-20T14:12:16Z",
@@ -4637,7 +4638,7 @@
   },
   "DIGUI-221": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 100980,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-20T14:05:05Z",
@@ -4652,7 +4653,7 @@
   },
   "DIGUI-224": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 101186,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-20T06:48:53Z",
@@ -4665,7 +4666,7 @@
   },
   "DIGUI-225": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 101187,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-20T06:40:01Z",
@@ -4678,7 +4679,7 @@
   },
   "DIGUI-226": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 101188,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-20T06:31:28Z",
@@ -4691,7 +4692,7 @@
   },
   "DIGUI-227": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 101189,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-19T07:05:57Z",
@@ -4705,7 +4706,7 @@
   },
   "DIGUI-228": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 101190,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-19T06:58:42Z",
@@ -4719,7 +4720,7 @@
   },
   "DIGUI-229": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 101191,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-20T02:21:28Z",
@@ -4734,7 +4735,7 @@
   },
   "DIGUI-230": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 101192,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-20T02:13:17Z",
@@ -4748,7 +4749,7 @@
   },
   "DIGUI-232": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 101320,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-13T03:26:35Z",
@@ -4761,7 +4762,7 @@
   },
   "DIGUI-233": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 101321,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-13T03:26:35Z",
@@ -4774,7 +4775,7 @@
   },
   "DIGUI-234": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 101322,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-13T03:26:35Z",
@@ -4787,7 +4788,7 @@
   },
   "DIGUI-235": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 101323,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-13T03:26:35Z",
@@ -4800,7 +4801,7 @@
   },
   "DIGUI-236": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 101324,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-13T03:26:35Z",
@@ -4813,7 +4814,7 @@
   },
   "DIGUI-237": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 101325,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-13T03:26:35Z",
@@ -4826,7 +4827,7 @@
   },
   "DIGUI-238": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 101326,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-13T03:26:35Z",
@@ -4839,7 +4840,7 @@
   },
   "DIGUI-239": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 101327,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-13T03:26:35Z",
@@ -4852,7 +4853,7 @@
   },
   "DIGUI-240": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 101328,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-13T03:26:35Z",
@@ -4865,7 +4866,7 @@
   },
   "JISHU-SHIYAN-4A": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 58691,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-20T16:29:35Z",
@@ -4878,7 +4879,7 @@
   },
   "JISHU-SHIYAN-7D": {
    "status": "no_transmission",
-   "catnum": null,
+   "catnum": 65620,
    "g2_phase": null,
    "last_observed_utc": null,
    "last_checked_utc": "2026-11-13T00:16:32Z",

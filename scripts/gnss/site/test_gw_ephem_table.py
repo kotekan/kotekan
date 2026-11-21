@@ -302,10 +302,12 @@ class TestDatabase(unittest.TestCase):
         db, unknown = gw.load_db()
         self.assertGreaterEqual(len(db), 13)
         self.assertEqual(db["DIGUI-79"][0], 2027)
-        self.assertAlmostEqual(db["DIGUI-79"][1], -16.55e-6, delta=0.2e-6)
+        # Library schema 3 (11-17): theta on UTC (schema 1's -16.55 us + the 9.81 us tag offset)
+        # and free of the unstretched-replica bias.
+        self.assertAlmostEqual(db["DIGUI-79"][1], -6.67e-6, delta=0.2e-6)
         self.assertTrue(all(0 <= ph < 2047 for ph, *_ in db.values()))
         self.assertTrue(all(th is not None and abs(th) < 1e-3 for _, th, *_ in db.values()))
-        self.assertAlmostEqual(unknown, -9.0e-6, delta=0.5e-6)
+        self.assertAlmostEqual(unknown, 0.74e-6, delta=0.5e-6)
 
     def test_an_unmeasured_epoch_takes_the_median(self):
         ts, sat, _ = skyfield()
