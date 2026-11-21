@@ -689,6 +689,52 @@ BOOST_AUTO_TEST_CASE(detection_phase_removes_the_anchor_at_every_doppler) {
     // +-4 kHz; the tolerance above is 3500x tighter.
 }
 
+// A bank holding the whole code (GPS_L5_Q_NH, the NH20 tiled in) reports its long phases with
+// n_nh = 1: cp_long is cp0 and cp_at_ref is cp0 re-advanced to the hop's last sample, both mod
+// the tiled length. A bank holding only the primary of an overlaid code, searched without
+// alignments, reports neither.
+BOOST_AUTO_TEST_CASE(detection_phase_whole_code_bank) {
+    const gnss::SignalDescriptor* tiled = gnss::signal_by_name("GPS_L5_Q_NH");
+    const gnss::SignalDescriptor* primary = gnss::signal_by_name("GPS_L5_Q");
+    BOOST_REQUIRE(tiled != nullptr && primary != nullptr);
+    constexpr double FS = 20.0e6;
+    constexpr double FOFF = 5.0e6;
+    constexpr int N = 10;
+    const int fft_len = 2 * N;
+    const long long snap_hop = 276480000000LL + 123457LL;
+    const long long S_snap = snap_hop * fft_len;
+    const double dop = 1500.0;
+    const double best_cp = 150137.0;
+    auto wrap = [](double x, double m) {
+        double r = std::fmod(x, m);
+        if (r > 0.5 * m)
+            r -= m;
+        if (r <= -0.5 * m)
+            r += m;
+        return r;
+    };
+
+    gnss::ChannelizedReplicaBank bank(*tiled, FS, FOFF, N, 4, dsp::Window::Hamming, {1});
+    const double L = (double)tiled->code_length;
+    const long long anchor = (long long)bank.repl_period_hops() * fft_len;
+    const gnss::DetectionPhase dp =
+        gnss::detection_phase(bank, best_cp, 0, 1, dop, snap_hop, anchor, FS, 0);
+    BOOST_TEST_MESSAGE("tiled: cp0 " << dp.cp0 << " cp_long " << dp.cp_long << " cp_at_ref "
+                                     << dp.cp_at_ref);
+    BOOST_REQUIRE_GE(dp.cp_long, 0.0);
+    BOOST_REQUIRE_GE(dp.cp_at_ref, 0.0);
+    BOOST_CHECK_LT(dp.cp_at_ref, L);
+    BOOST_CHECK_SMALL(wrap(dp.cp_long - dp.cp0, L), 1e-6);
+    BOOST_CHECK_SMALL(wrap(dp.cp_at_ref - bank.phase_from_arg(dp.cp0, S_snap, dop), L), 1e-4);
+
+    gnss::ChannelizedReplicaBank pbank(*primary, FS, FOFF, N, 4, dsp::Window::Hamming, {1});
+    const long long panchor = (long long)pbank.repl_period_hops() * fft_len;
+    const gnss::DetectionPhase dq =
+        gnss::detection_phase(pbank, 137.0, 0, 1, dop, snap_hop, panchor, FS, 0);
+    BOOST_CHECK_EQUAL(dq.cp_long, -1.0);
+    BOOST_CHECK_EQUAL(dq.cp_at_ref, -1.0);
+}
+
 // Doppler-hinted search: the broker sends the physical predicted Doppler, and
 // GnssChannelizedSearch scans a narrow grid around -hint because the r2c bank reports the
 // conjugate sign. A narrow grid around -true_dop must still detect and one around +true_dop must

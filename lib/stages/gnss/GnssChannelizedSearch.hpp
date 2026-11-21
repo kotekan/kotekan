@@ -42,6 +42,10 @@
  * changes the slot -> PRN map.
  *
  * @conf signal/sample_rate/spectrum_length/num_taps/pfb_window  As the F-engine.
+ * @conf input_type       String (default "real"). "real", or "complex" or "complex_int8" for
+ *                        I/Q input (gnss::Channelization::complex_input).
+ * @conf pfb_time_order   Bool (default false). The F-engine folds in time order, as fftwEngine
+ *                        does (gnss::Channelization::time_order_fold).
  * @conf f_offset         Double (default 0). Carrier frequency in the channelized spectrum, Hz
  *                        (bin f_offset / (sample_rate / fft_len)).
  * @conf channel_offset   Int (default 0). Global index of this subband's first channel, for

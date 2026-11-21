@@ -141,12 +141,15 @@ private:
     // slot's records since its last reset, so they read true running means from record 1.
     std::vector<double> acc_pow, acc_ar, acc_ai, acc_nchan;
     std::vector<double> acc_pow2; // <|A|^4>, for the noise-debiased incoherent significance
-    std::vector<double> acc_epow, acc_lpow; // <|E|^2>, <|L|^2> for the DLL disc
-    // Raw prompt power <|A|^2>, built like acc_epow/acc_lpow (no overlay wipe, no head/tail
-    // split), for the P in q = 2P/(E+L). acc_pow takes a straddle-immune form instead, whose
-    // segment split alone scales it by f^2+(1-f)^2 (0.5 at a mid-record boundary), so it cannot
-    // be compared with the unsegmented E and L. Published only.
-    std::vector<double> acc_ppow;
+    // Early, Late and prompt correlation powers <|G|^2> and replica energies <energy^2>, for
+    // the DLL disc and q = 2P/(E+L). Each power is <|G|^2>/<energy^2>, which equals
+    // <|G/energy|^2> at constant energy; per-record normalization would instead divide a record
+    // holding only a sliver of the code (GuoWang's 1 ms records against its half-zeroed 2 ms
+    // frame) by its small energy and swamp the mean with its noise. The prompt takes no overlay
+    // wipe and no head/tail split: acc_pow's straddle-immune form scales by f^2+(1-f)^2 (0.5 at
+    // a mid-record boundary), so it cannot be compared with the unsegmented E and L.
+    std::vector<double> acc_epow, acc_lpow, acc_ppow;
+    std::vector<double> acc_ee2, acc_le2, acc_pe2;
     // Boundary fraction f = <head energy>/<prompt energy>: where the code-period boundary sits
     // in the window (0 or 1 = at an edge). Diagnostic only.
     std::vector<double> acc_he, acc_pe;

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""gw_ephem_table.py (TLE -> table) and gnss_ephemeris's GuoWang records (table -> predict_all),
+"""gw_ephem_table.py (elements -> table) and gnss_ephemeris's GuoWang records (table -> predict_all),
 against skyfield's SGP4 directly, on DIGUI-79's pass of 2026-11-02 18:00Z (beam-dump window 4)."""
 
 import json
@@ -7,6 +7,7 @@ import math
 import os
 import sys
 import tempfile
+import time
 import unittest
 import zlib
 
@@ -157,9 +158,56 @@ class TestTable(unittest.TestCase):
         # the gap predicts nothing, so the broker drops the seed and seeds the next step afresh
         recs = [dict(r, sys="W", health=0) for r in steps]
         self.assertIsNone(ge.best_eph(recs, steps[3]["t1_gpst"] + 5.0))
-        self.assertIs(
-            ge.best_eph(recs, steps[3]["t1_gpst"] - 5.0)["clk_s"], steps[3]["clk_s"]
-        )
+        self.assertIs(ge.best_eph(recs, steps[3]["t1_gpst"] - 5.0)["clk_s"], steps[3]["clk_s"])
+
+    def test_sweep_order_tries_the_dense_middle_first_and_remembers(self):
+        thetas = [k * 1e-6 for k in range(-4, 5)]  # -4 .. +4 us
+        order = gw.prior_order(thetas, [-1.0, -1.2, -0.8, -1.1, 3.0])
+        self.assertEqual(round(order[0] * 1e6), -1)
+        self.assertEqual(sorted(order), thetas)
+        step_s = 30.0
+        now = 1000 * step_s
+        cyc = lambda n, s: 4e-6
+        # a new satellite: future steps take distinct thetas, densest first; a past step keeps the cycle's
+        so = gw.SweepOrder(order, {}, set(), {}, now, step_s, cycle_s=cyc)
+        self.assertAlmostEqual(so.theta_s("A", 999), 4e-6)
+        got = [round(so.theta_s("A", s) * 1e6, 4) for s in range(1002, 1011)]
+        # +4 is pending on step 999 (not yet judged), so it goes last and the next round starts over
+        self.assertEqual(got, [round(t * 1e6, 4) for t in order if t != 4e-6] + [round(order[0] * 1e6, 4)])
+        # a second run: the same steps keep their thetas
+        so2 = gw.SweepOrder(order, {}, set(), so.assign, now, step_s, cycle_s=cyc)
+        self.assertEqual([round(so2.theta_s("A", s) * 1e6, 4) for s in range(1002, 1011)], got)
+        # tried thetas go last; a judged step that was not tried frees its theta
+        tried = {"B": [-1.0, -2.0]}
+        judged = {("B", 1005)}
+        so3 = gw.SweepOrder(order, tried, judged, {"B": {"1005": 0.0}}, now, step_s)
+        first = [round(so3.theta_s("B", s) * 1e6, 4) for s in range(1010, 1017)]
+        self.assertNotIn(-1.0, first)
+        self.assertNotIn(-2.0, first)
+        self.assertIn(0.0, first)
+        # every theta used once: the next round starts again at the densest
+        self.assertEqual(round(so3.theta_s("B", 1017) * 1e6, 4), -1.0)
+
+    def test_live_pages_age_from_their_own_transmit_time(self):
+        now = 1793923300.0  # 2026-11-06 00:01:40 UTC
+        sow_now = (now + 4 - 1136073600) % 604800
+        pages = ["0" * 79] * 4
+        live = {
+            "FRESH": dict(nav_pages=pages, utc="2026-11-01T00:00:00Z",
+                          sow={str(k): sow_now - 100 - 3 * k for k in range(1, 5)}),
+            "STALE": dict(nav_pages=pages, utc="2026-11-06T00:01:00Z",
+                          sow={str(k): sow_now - 400 - 3 * k for k in range(1, 5)}),
+            "NOSOW": dict(nav_pages=pages, utc=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now - 60))),
+        }
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "live.json")
+            with open(path, "w") as fh:
+                json.dump(live, fh)
+            got = gw.load_live_pages(path, 180.0, now=now)
+        self.assertEqual(sorted(got), ["FRESH", "NOSOW"])
+        # the week boundary: SOW 604790 seen at SOW 20 of the next week is 30 s old
+        t = gw.page_tx_unix(604790, gw.BDT_EPOCH_UNIX + 1087 * 604800 + 20 - 4)
+        self.assertAlmostEqual(gw.BDT_EPOCH_UNIX + 1087 * 604800 + 20 - 4 - t, 30.0)
 
     def test_segments_merge_and_pad(self):
         unix = list(range(0, 100, 10))
@@ -205,14 +253,14 @@ class TestTable(unittest.TestCase):
 
 
 class TestMain(unittest.TestCase):
-    def test_an_unreadable_extra_tle_still_writes_the_table(self):
+    def test_unreadable_extra_elements_still_write_the_table(self):
         skyfield()
         with tempfile.TemporaryDirectory() as d:
             tle, out = os.path.join(d, "gw.tle"), os.path.join(d, "gw.json")
             with open(tle, "w") as fh:
                 fh.write("\n".join(TLE) + "\n")
             gw.main(
-                ["--tle", tle, "--extra-tle", os.path.join(d, "none.tle")]
+                ["--elements", tle, "--extra-elements", os.path.join(d, "none.tle")]
                 + ["--hours", "0.1", "--out", out]
             )
             with open(out) as fh:
@@ -222,17 +270,44 @@ class TestMain(unittest.TestCase):
         self.assertIn("records", doc)
 
 
+class TestElements(unittest.TestCase):
+    def test_omm_and_tle_of_one_element_set_agree(self):
+        """An OMM CSV and the TLE it was exported from place the satellite alike, under the
+        catalogue's name with its spaces made hyphens, and the table reads either."""
+        from sgp4 import exporter
+        from sgp4.api import Satrec
+
+        ts, sat, site = skyfield()
+        fields = exporter.export_omm(Satrec.twoline2rv(TLE[1], TLE[2]), "HULIANWANG DIGUI 79")
+        with tempfile.TemporaryDirectory() as d:
+            csv_path, out = os.path.join(d, "gp_hulianwang_x.csv"), os.path.join(d, "gw.json")
+            with open(csv_path, "w") as fh:
+                fh.write(",".join(fields) + "\n" + ",".join(str(v) for v in fields.values()))
+                fh.write("\n")
+            (omm,) = gp.read_elements(csv_path, ts, "DIGUI")
+            gw.main(["--elements", csv_path, "--hours", "0.1", "--out", out])
+            with open(out) as fh:
+                doc = json.load(fh)
+        self.assertEqual(omm.name, "HULIANWANG DIGUI-79")
+        self.assertEqual(int(omm.model.satnum), 65311)
+        self.assertEqual(gp.batch(omm), "2025-187")
+        t = gp.ts_unix(ts, T_PASS)
+        d_km = omm.at(t).position.km - sat.at(t).position.km
+        self.assertLess(math.sqrt(sum(x * x for x in d_km)), 1e-3)
+        self.assertEqual(doc["elements"], csv_path)
+
+
 class TestDatabase(unittest.TestCase):
     def test_every_satellite_has_a_phase_and_an_epoch(self):
         db, unknown = gw.load_db()
         self.assertGreaterEqual(len(db), 13)
         self.assertEqual(db["DIGUI-79"][0], 2027)
-        self.assertAlmostEqual(db["DIGUI-79"][1], -16.55e-6, delta=0.2e-6)
-        self.assertTrue(all(0 <= v[0] < 2047 for v in db.values()))
-        self.assertTrue(all(v[1] is not None and abs(v[1]) < 1e-3 for v in db.values()))
-        # the third element is the satellite's message pages (nav_pages) or None
-        self.assertTrue(all(len(v) == 3 for v in db.values()))
-        self.assertAlmostEqual(unknown, -9.0e-6, delta=0.5e-6)
+        # Library schema 3 (11-17): theta on UTC (schema 1's -16.55 us + the 9.81 us tag offset)
+        # and free of the unstretched-replica bias.
+        self.assertAlmostEqual(db["DIGUI-79"][1], -6.67e-6, delta=0.2e-6)
+        self.assertTrue(all(0 <= ph < 2047 for ph, *_ in db.values()))
+        self.assertTrue(all(th is not None and abs(th) < 1e-3 for _, th, *_ in db.values()))
+        self.assertAlmostEqual(unknown, 0.74e-6, delta=0.5e-6)
 
     def test_an_unmeasured_epoch_takes_the_median(self):
         ts, sat, _ = skyfield()

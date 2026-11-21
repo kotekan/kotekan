@@ -1191,6 +1191,21 @@
     "tdm_phase": 0,
     "time_multiplexed": false
    },
+   "GPS_L5_I_NH": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1176450000",
+    "chip_rate_hz": "10230000",
+    "code_length": 102300,
+    "code_period_s": "0.01",
+    "half_bandwidth_hz": "10230000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1186680000",
+    "occupied_lo_hz": "1166220000",
+    "secondary_length": 0,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
    "GPS_L5_Q": {
     "boc_m": 0,
     "boc_n": 0,

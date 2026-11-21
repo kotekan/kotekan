@@ -23,15 +23,17 @@
  *
  * Reads samples from an input buffer, FFTs them with FFTW, and writes the
  * resulting complex spectra into an output buffer. Each input frame must hold a
- * whole number of transforms, and an output frame is twice the input frame's size.
+ * whole number of transforms, and an output frame is twice the input frame's size
+ * (four times for @c complex_int8).
  *
- * Two input formats are supported, selectable via @c input_type:
+ * Three input formats are supported, selectable via @c input_type:
  *  - @c complex (default): packed int16 I/Q pairs. Each FFT consumes
  *    @c spectrum_length complex samples and emits @c spectrum_length complex
  *    bins. The output is fftshifted -- the two halves of the raw FFT are
  *    swapped (memcpy of @c spectrum_length/2 bins each way) so DC lands at
  *    index @c spectrum_length/2 and bins run monotonically from -Fs/2 up to
  *    +Fs/2.
+ *  - @c complex_int8: as @c complex, but packed int8 I/Q pairs.
  *  - @c real: packed int16 real samples. Each FFT consumes
  *    @c 2*spectrum_length real samples and emits @c spectrum_length complex
  *    bins (the first half of an r2c transform; Nyquist bin discarded). No
@@ -54,15 +56,18 @@
  *
  * @par Buffers
  * @buffer in_buf Input kotekan buffer.
- *     @buffer_format Array of @c int16_t (real samples, or interleaved I/Q pairs)
- *     @buffer_metadata none
+ *     @buffer_format Array of @c int16_t (real samples, or interleaved I/Q pairs), or of
+ *                    @c int8_t I/Q pairs for @c complex_int8
+ *     @buffer_metadata none, or GnssChanMetadata
  * @buffer out_buf Output kotekan buffer.
  *     @buffer_format Array of @c fftwf_complex
- *     @buffer_metadata none
+ *     @buffer_metadata none, or GnssChanMetadata: when both buffers carry it, each frame's
+ *                      @c sample_seq is copied across.
  *
  * @conf   spectrum_length  Int (default 128). Number of complex bins per output spectrum;
  *                          even for complex input.
- * @conf   input_type       String (default "complex"). One of "complex" or "real".
+ * @conf   input_type       String (default "complex"). One of "complex", "complex_int8" or
+ *                          "real".
  * @conf   num_taps         Int (default 1). Polyphase taps per channel; 1 is the plain FFT.
  * @conf   pfb_window       String (default "hamming"). Prototype window when num_taps > 1:
  *                          "rect", "hann", "hamming" or "blackman".
@@ -78,7 +83,11 @@ public:
     void main_thread() override;
 
 private:
-    /// Input buffer. Format depends on @c input_type (complex int16 pairs or real int16).
+    /// Transforms a frame of complex input (I/Q pairs of @p T) into fftshifted spectra.
+    template<typename T>
+    void complex_transforms(const T* in_local, int num_samples, fftwf_complex* out_local);
+
+    /// Input buffer. Format depends on @c input_type (complex int16 or int8 pairs, or real int16).
     Buffer* in_buf;
     /// Output buffer of @c fftwf_complex bins.
     Buffer* out_buf;
@@ -91,6 +100,8 @@ private:
     int _spectrum_length;
     /// Whether the input is real or complex.
     bool _real_input;
+    /// Whether complex input is int8 pairs rather than int16 pairs.
+    bool _int8_input = false;
 
     /// FFTW work buffers; @c real_samples is used in real mode, @c complex_samples in complex mode.
     float* real_samples;

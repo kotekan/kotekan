@@ -7,7 +7,8 @@
 #include "gnssChannelizedDespread.hpp" // for channelized_despread
 #include "gnssChannelizedReplica.hpp"  // for ChannelizedReplicaBank
 #include "gnssSignal.hpp"              // for signal_by_name
-#include "gpsL5Code.hpp"               // for L5_NH20 (overlay reference)
+#include "gpsL5Code.hpp"               // for L5_NH20, L5_NH10 (overlay references)
+#include "pfbPrototype.hpp"            // for fftwEngine's pfb_prototype, pfb_push, pfb_fold
 
 #include <algorithm>
 #include <boost/test/included/unit_test.hpp>
@@ -323,6 +324,128 @@ BOOST_AUTO_TEST_CASE(hoprate_matches_exact_pfb_chord_scale) {
     }
 }
 
+// ---- Channelizations other than the default ----
+namespace {
+
+// The conjugated channels `want` of a PFB that folds in time order, built from fftwEngine's own
+// prototype, push and fold and a direct DFT. Hop m ends at sample ws + (m + 1) * M - 1, and
+// sample(n) is input sample n as the type fftwEngine folds (float or complex<float>).
+template<typename T, typename Sample>
+std::vector<std::vector<cf>> time_order_pfb(Sample sample, long long ws, int M, int taps,
+                                            int n_hops, const std::vector<int>& want) {
+    const auto proto = pfb_prototype(M, taps, PfbWindow::Hamming);
+    std::vector<T> hist((size_t)M * taps, T{}), block((size_t)M), folded((size_t)M);
+    std::vector<std::vector<cf>> chan(want.size(), std::vector<cf>((size_t)n_hops));
+    for (int h = -(taps - 1); h < n_hops; ++h) {
+        for (int i = 0; i < M; ++i)
+            block[(size_t)i] = sample(ws + (long long)h * M + i);
+        pfb_push(hist.data(), block.data(), M, taps);
+        if (h < 0)
+            continue;
+        pfb_fold(hist.data(), proto.data(), M, taps, folded.data());
+        for (size_t ci = 0; ci < want.size(); ++ci) {
+            std::complex<double> acc = 0.0;
+            for (int i = 0; i < M; ++i)
+                acc += std::complex<double>(folded[(size_t)i])
+                       * std::polar(1.0, -2.0 * M_PI * want[ci] * i / M);
+            chan[ci][(size_t)h] = (cf)std::conj(acc);
+        }
+    }
+    return chan;
+}
+
+// The carrier phase and code chip of `bank`'s PRN slot 0 at input sample n, for a carrier at
+// f_hz and the code phase argument cp.
+struct SkySample {
+    const ChannelizedReplicaBank& bank;
+    double fs, f_hz, dop, cp;
+    std::complex<double> carrier(long long n) const {
+        const long double w = 2.0L * (long double)M_PI * (long double)(f_hz + dop) / fs;
+        return std::polar(1.0, (double)std::fmod(w * (long double)n, 2.0L * (long double)M_PI));
+    }
+    double chip(long long n) const {
+        const long double cps = bank.chip_rate_hz() / fs * (1.0 + dop / bank.carrier_hz());
+        const long double L = (long double)bank.code_length();
+        const long double ph = (long double)cp + (long double)n * cps;
+        return bank.code_chip(0, (double)(ph - std::floor(ph / L) * L));
+    }
+};
+
+} // namespace
+
+// I/Q samples through fftwEngine's PFB, as the bladeRF chain runs it: 122.88 MSPS, 64 channels
+// of 1.92 MHz, 1920 hops per millisecond. L5 lies 48.55 MHz below the tuned frequency, in the
+// upper half of the DFT bins. Both replica generators must give the conjugate of that
+// channelizer's output.
+BOOST_AUTO_TEST_CASE(iq_time_order_fold_matches_fftwengine_fold) {
+    const gnss::SignalDescriptor* sig = gnss::signal_by_name("GPS_L5_Q");
+    BOOST_REQUIRE(sig != nullptr);
+    const double fs = 122.88e6, f_off = 1176.45e6 - 1225.0e6;
+    gnss::Channelization chz{fs, 64, 4, dsp::Window::Hamming, true, true};
+    BOOST_CHECK_EQUAL(chz.fft_len(), 64);
+    BOOST_CHECK_CLOSE(chz.chan_freq(39), -48.0e6, 1e-9);
+    BOOST_CHECK_CLOSE(chz.chan_freq(31), 59.52e6, 1e-9);
+    gnss::ChannelizedReplicaBank bank(*sig, chz, f_off, {7});
+    BOOST_CHECK_EQUAL(bank.repl_period_hops(), 1920);
+
+    // The channels of the main lobe, 1176.45 +- 10.23 MHz, lowest first.
+    std::vector<int> want;
+    for (int k = 33; k <= 44; ++k)
+        want.push_back(k);
+    BOOST_TEST(bank.covering_bins(0.0, 0.0) == want, boost::test_tools::per_element());
+
+    const long long ws = 122880LL * 100000 + 640; // 100 s in, on a hop boundary
+    const int n_hops = 400;
+    for (double dop : {0.0, 2000.0, -3500.0}) {
+        const SkySample sky{bank, fs, f_off, dop, 4000.25};
+        const auto data =
+            time_order_pfb<cf>([&](long long n) { return (cf)(sky.chip(n) * sky.carrier(n)); }, ws,
+                               64, 4, n_hops, want);
+        const auto exact = bank.channels(0, ws, 4000.25, dop, n_hops);
+        const auto hop = bank.channels_hoprate(0, ws, 4000.25, dop, n_hops, want);
+        for (size_t ci = 0; ci < want.size(); ++ci) {
+            BOOST_CHECK_MESSAGE(rel_err(exact[(size_t)want[ci]], data[ci]) < 1e-5,
+                                "dop " << dop << " ch " << want[ci] << " channels() err "
+                                       << rel_err(exact[(size_t)want[ci]], data[ci]));
+            BOOST_CHECK_MESSAGE(rel_err(hop[ci], data[ci]) < 1e-5,
+                                "dop " << dop << " ch " << want[ci] << " hop-rate err "
+                                       << rel_err(hop[ci], data[ci]));
+        }
+    }
+}
+
+// Real samples through the same time-order fold, at the airspy geometry: 20 MSPS, 10 channels
+// of 1 MHz, 1000 hops per millisecond.
+BOOST_AUTO_TEST_CASE(real_time_order_fold_matches_fftwengine_fold) {
+    const gnss::SignalDescriptor* sig = gnss::signal_by_name("GPS_L1CA");
+    BOOST_REQUIRE(sig != nullptr);
+    const double fs = 20.0e6, f_off = 4.58e6;
+    gnss::Channelization chz{fs, 10, 4, dsp::Window::Hamming, false, true};
+    BOOST_CHECK_EQUAL(chz.fft_len(), 20);
+    gnss::ChannelizedReplicaBank bank(*sig, chz, f_off, {3});
+    BOOST_CHECK_EQUAL(bank.repl_period_hops(), 1000);
+
+    const std::vector<int> want = {3, 4, 5, 6};
+    const long long ws = 20000LL * 100000 + 200;
+    const int n_hops = 400;
+    for (double dop : {0.0, 2000.0, -3500.0}) {
+        const SkySample sky{bank, fs, f_off, dop, 300.5};
+        const auto data = time_order_pfb<float>(
+            [&](long long n) { return (float)(sky.chip(n) * sky.carrier(n).real()); }, ws, 20, 4,
+            n_hops, want);
+        const auto exact = bank.channels(0, ws, 300.5, dop, n_hops);
+        const auto hop = bank.channels_hoprate(0, ws, 300.5, dop, n_hops, want);
+        for (size_t ci = 0; ci < want.size(); ++ci) {
+            BOOST_CHECK_MESSAGE(rel_err(exact[(size_t)want[ci]], data[ci]) < 1e-5,
+                                "dop " << dop << " ch " << want[ci] << " channels() err "
+                                       << rel_err(exact[(size_t)want[ci]], data[ci]));
+            BOOST_CHECK_MESSAGE(rel_err(hop[ci], data[ci]) < 1e-5,
+                                "dop " << dop << " ch " << want[ci] << " hop-rate err "
+                                       << rel_err(hop[ci], data[ci]));
+        }
+    }
+}
+
 // ---- GLONASS FDMA: the per-PRN carrier offset ----
 // GLONASS L2OF satellites share one 511-chip code and are separated by carrier, satellite k at
 // 1246.0 + k*0.4375 MHz, so a satellite's identity is only its set_prn_freq_offsets() entry. These
@@ -599,6 +722,25 @@ BOOST_AUTO_TEST_CASE(sbas_l1_sym_is_two_ca_periods) {
             for (int i = 0; i < 1023; i += 31)
                 BOOST_REQUIRE_EQUAL((int)bank_sym.code_chip(0, (double)k * 1023 + i),
                                     (int)bank_l1.code_chip(0, (double)i));
+    }
+}
+
+// GPS_L5_I_NH tiles NH10 into the I5 code, one 10 ms CNAV symbol: period k is the I5 primary
+// times NH10[k], which the plain GPS_L5_I bank applies as its secondary.
+BOOST_AUTO_TEST_CASE(l5i_nh_is_the_i5_code_under_the_nh10) {
+    const gnss::SignalDescriptor* nh = gnss::signal_by_name("GPS_L5_I_NH");
+    BOOST_REQUIRE(nh != nullptr);
+    BOOST_CHECK_EQUAL(nh->code_length, 102300L);
+    BOOST_CHECK_EQUAL(nh->secondary_length, 0);
+    for (int prn : {1, 30}) {
+        auto bank_nh = make_bank("GPS_L5_I_NH", {prn});
+        auto bank_i = make_bank("GPS_L5_I", {prn});
+        BOOST_CHECK_EQUAL(bank_i.secondary_length(), 10);
+        for (int k = 0; k < 10; ++k)
+            for (int i = 0; i < 10230; i += 331)
+                BOOST_REQUIRE_EQUAL((int)bank_nh.code_chip(0, (double)k * 10230 + i),
+                                    (int)bank_i.code_chip(0, (double)i)
+                                        * (int)gps::L5_NH10[(size_t)k]);
     }
 }
 

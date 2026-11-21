@@ -75,9 +75,6 @@ _FROZEN = dict(
     # the floor is measured, not fixed; real detections sit far above the null's tail, and 3x falls
     # in that gap.
     coh_floor_margin=3.0,
-    # Fleet coherent: instances that must see a PRN before it is combined; below this the PRN keeps
-    # its single-instance coherent numbers.
-    coh_min_instances=3,
     # While no BRDC ephemeris is loaded (none fetched, cached or parseable), keep the dead-reckon
     # predict alive on this broker's own decoded ephemeris (decoded_eph.py, which reuses each
     # decoder's BRDC-validated propagator). sat_clk_s is the broadcast polynomial plus the
@@ -430,10 +427,6 @@ _FROZEN = dict(
     # (gain/leak x 0.25 = 1.25 chips at --dll-gain 0.25). A smaller leak lets it drive satellites
     # off peak.
     dll_leak_present=0.05,
-    # Fleet DLL: instances that must report the same window before their sum is used; below this the
-    # PRN falls back to the single --combiner discriminator, so a partly-down fleet degrades instead
-    # of stalling. Also the minimum sender count of the comb DLL and the telemetry C/N0 estimators.
-    dll_min_instances=2,
     # Hold the receiver-clock solve and its drift EMA while the newest telemetry hop has not
     # advanced for this many seconds, and drop raw_prev so no pair of solves is differenced across
     # the gap. With the F-engine stopped the detections freeze while the orbit model moves with the
@@ -547,10 +540,6 @@ _FROZEN = dict(
     # weighted median, and carrying at least 60% of the vote weight) before the common offset
     # resolves; until then 'apply' changes nothing.
     nh_joint_min_prns=3,
-    # --nh-joint: detections below this SNR do not vote (their phases carry ~2000-chip within-period
-    # residuals and drag the consensus off its inliers); they may still be applied to, which is the
-    # point of the joint fit.
-    nh_joint_min_snr=60.0,
     # A vote further than this from the circular weighted median is an outlier and does not count
     # toward resolution. True agreement is a few chips; the bar is loose on purpose (~0.15 code
     # periods at L5) so disagreement shows in the logged spread rather than as a silent exclusion.
@@ -927,6 +916,16 @@ def build_parser(description):
         "no chain hints scans nothing. The margin is --search-margin-hz once the bias is "
         "solved and fresh, --search-margin-wide-hz before that and while it is stale. "
         "Needs --almanac.",
+    )
+    ap.add_argument(
+        "--hint-skip-dr",
+        action="store_true",
+        help="with --narrow-search, hint no PRN this chain can dead-reckon: its clock is "
+        "fresh and the model predicts the PRN with a clock known to half a chip (a "
+        "broadcast or decoded orbit, not a GuoWang catalogue record) and does not mark "
+        "it untrusted. The search then scans only the rest. The clock stays fresh only "
+        "from a source other than this chain's detections (joint-consume clk, or a "
+        "donor); otherwise hints return each time it goes stale. Off by default.",
     )
     ap.add_argument(
         "--search-margin-hz",
@@ -1691,17 +1690,35 @@ def build_parser(description):
         "(docs/CHORD_GNSS_SHARED_DLL.md). An instance correlates only the channels "
         "its GPU holds, a small fraction of the band, so the broker sums the "
         "instances' raw Early/Prompt/Late powers per PRN over a common window "
-        "(pow_hop within dll_hop_window_s of the newest; this and dll_min_instances "
-        "are constants in cli.py _FROZEN) and forms one discriminator (E-L)/(E+L) "
-        "from the sums. The discriminator is non-coherent, so the sum needs no phase "
+        "(pow_hop within dll_hop_window_s of the newest, a constant in cli.py "
+        "_FROZEN; at least --dll-min-instances of them) and forms one discriminator "
+        "(E-L)/(E+L) from the sums. The discriminator is non-coherent, so the sum needs no phase "
         "alignment between instances, only the same window; it does need every "
         "instance despread at the same commanded phase, which one code loop (this "
         "broker's or the C++ fast loop's) provides. Presence (q and prompt power "
         "against the noise probes' floor) is judged on the sums. The list also feeds "
         "fleet_coherent and --element-poll, and names the record assemblers "
         "(n2combine -> n2assemble) that --post-sat-geometry posts to. A PRN seen by "
-        "fewer than dll_min_instances instances, or an empty list, falls back to "
+        "fewer than --dll-min-instances instances, or an empty list, falls back to "
         "--combiner's own discriminator, gated on lock_snr.",
+    )
+    ap.add_argument(
+        "--dll-min-instances",
+        type=int,
+        default=2,
+        help="fleet DLL: instances that must report the same window before their sum is "
+        "used; below this the PRN falls back to the single --combiner discriminator, so "
+        "a partly-down fleet degrades instead of stalling. Also the minimum sender count "
+        "of the comb DLL and the telemetry C/N0 estimators. 1 for a one-receiver "
+        "instrument, whose fleet is its one combiner. Default 2.",
+    )
+    ap.add_argument(
+        "--coh-min-instances",
+        type=int,
+        default=3,
+        help="fleet coherent: instances that must see a PRN before it is combined; below "
+        "this the PRN keeps its single-instance coherent numbers. 1 for a one-receiver "
+        "instrument. Default 3.",
     )
     ap.add_argument(
         "--dll-spacing",
@@ -2136,6 +2153,16 @@ def build_parser(description):
         "off.",
     )
     ap.add_argument(
+        "--nh-joint-min-snr",
+        type=float,
+        default=60.0,
+        help="--nh-joint: detections below this SNR do not vote (at CHORD their phases "
+        "carry ~2000-chip within-period residuals and drag the consensus off its "
+        "inliers); they may still be applied to, which is the point of the joint fit. "
+        "A single-antenna search on the overlaid code (GPS_L5_Q_NH) measures the "
+        "overlay directly, on a lower SNR scale. Default 60.",
+    )
+    ap.add_argument(
         "--cp-rate-model-primary",
         type=int,
         default=0,
@@ -2188,6 +2215,26 @@ def build_parser(description):
         "capture range (~0.4 chips). Needs --almanac and --time0-endpoint.",
     )
     ap.add_argument(
+        "--dr-clock-long",
+        action="store_true",
+        help="dead-reckoned seeds on a code longer than the solved clock's period (E5a's "
+        "100 ms CS100 against gps_l5's 1 ms clock) also carry the receiver clock's whole "
+        "code periods, from the clock-mod-epoch record (--nh-joint on a sibling chain) "
+        "resolved with the capture-time anchor to half its epoch. For a capture timed by "
+        "NTP rather than PPS, where the anchor alone puts the long code's segment off by "
+        "the host clock's error. Default off: the segment rides the anchor.",
+    )
+    ap.add_argument(
+        "--dr-drift-source",
+        default="solve",
+        choices=("solve", "bias"),
+        help="where the dead-reckon receiver clock gets its drift. solve (default): an "
+        "EMA of consecutive clock solves, bounded by dr_max_drift_chips_s for a "
+        "GPS-disciplined clock. bias: the solved clock-frequency bias, scaled to code "
+        "(bias x chip rate / carrier), for a free-running oscillator, whose clock walks "
+        "chips per second; until the bias is solved, as solve.",
+    )
+    ap.add_argument(
         "--dr-constellation",
         default="G",
         choices=("G", "E", "C", "R", "W"),
@@ -2231,6 +2278,15 @@ def build_parser(description):
         "ephemeris; the tracker then despreads noise there, and cross-correlation with "
         "the real satellites can make it look like a plausible satellite. --signal "
         "sets 19 for B1C, B2a and B2b.",
+    )
+    ap.add_argument(
+        "--freq-bias-adopt",
+        action="store_true",
+        help="take the receiver's clock-frequency bias from another chain in this process "
+        "(the shared Receiver, scaled to this chain's carrier) instead of solving it from "
+        "this chain's Doppler residuals. For a chain whose residuals do not measure the "
+        "receiver: LEO satellites (GuoWang), whose TLE Doppler is 10-25 ppb off and whose "
+        "Doppler moves 100 Hz/s, so a detection half a second old reads 50 Hz off.",
     )
     ap.add_argument(
         "--dr-clock-adopt-max-chips",

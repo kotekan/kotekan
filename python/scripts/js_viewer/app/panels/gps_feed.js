@@ -5,7 +5,8 @@
 //   * <combiner>/get_status     -> per-PRN metrics (signal_metrics)
 //   * <combiner>/get_elements   -> per-element gains (beam_summary)
 // into one row per satellite keyed "G12"/"E25"/"C19", and passes one receiver-wide get_rf
-// document through as gnss_rf. Panels subscribe with feed.on(cb) and re-render on every merged
+// document through as gnss_rf, and the viewer server's /gps_frontend (a single receiver's input
+// stage and drop counters, when it serves one) as frontend. Panels subscribe with feed.on(cb) and re-render on every merged
 // tick. The per-constellation visibility toggles live here too (persisted), so the sky and the
 // table agree.
 
@@ -323,8 +324,9 @@ export class GpsFeed {
         Promise.all([
             fetch("/gps_sky").then(r => r.ok ? r.json() : null).catch(() => null),
             rfP,
+            fetch("/gps_frontend").then(r => r.ok ? r.json() : null).catch(() => null),
             ...per_unit,
-        ]).then(([sky, gnss_rf, ...res]) => {
+        ]).then(([sky, gnss_rf, frontend, ...res]) => {
             this._inflight = false;
             // Hold the last good value per feed: one slow/failed poll must not
             // blank every |A| for a frame (that would look like a mass drop).
@@ -334,6 +336,7 @@ export class GpsFeed {
             // evict a good one, the same rule as `elem` below.
             if (gnss_rf && gnss_rf.instances
                 && Object.keys(gnss_rf.instances).length) last.gnss_rf = gnss_rf;
+            if (frontend && frontend.ok) last.frontend = frontend;
             // Stored per signal (keyed by combiner).
             const store = (last.units = last.units || {});
             units.forEach((u, i) => {
@@ -482,6 +485,7 @@ export class GpsFeed {
             vis: this.vis, chains: this.chains,
             signals: this.signals,
             gnss_rf: this._last.gnss_rf || null,      // receiver-wide RF health (get_rf)
+            frontend: this._last.frontend || null,    // the input stage's health (/gps_frontend)
         };
         for (const cb of this._listeners) {
             try { cb(payload); } catch (e) { console.error("gps feed listener:", e); }

@@ -14,6 +14,7 @@ Python: `/home/kvand/gnss/venv/bin/python` (numpy, scipy, skyfield). Run anythin
 | `guowang_search.py` | the code search on complex baseband (or stitched channels) |
 | `guowang_codes.py` | candidate code families (B3I, all B3I-structured codes, B1I, all B1I-structured, L3OC), the GuoWang 1202.025 MHz family found 2026-11-02 (`guowang_1202`, `guowang1202_all`, `GUOWANG_1202_G2P_PHASE`) and Berlekamp-Massey |
 | `guowang_db.py` | the 1202 satellite library `guowang_1202_db.json`: folds the beam-dump reductions in (status transmitting / no_transmission, last observed, pass history), no-sky periods, a one-line-per-satellite listing |
+| `guowang_1202_floor_replica.json` | the range rate of every theta `gw_reduce.py` measured before 2026-11-17, with its unstretched code replica; `guowang_db.py` corrects such a theta with it as it folds it in (library schema 3). Built once by `~/gnss/builds/gw1202/gw_replica_rates.py`; the fixed reducer writes the rate in each proposal |
 | `guowang_synth.py` | synthetic captures and the validation table |
 | `test_guowang.py` | checks (time conversion, codes against the repo's code checks, a short synthetic search) |
 

@@ -25,7 +25,8 @@ using gnss_cuda::cmulf;
 /// PHI = __half2 reads fp16 tables.
 /// ROT: the E and L rows are the prompt rotated by -+rot[b][ci] radians per channel instead of
 /// their own chip walks (see launch_waveform), and their energy rows equal the prompt's.
-template<int MAXT, class PHI = float2, bool ROT = false>
+/// IMAGE_A false skips the zero phiA of I/Q input (DespreadParams::complex_input).
+template<int MAXT, class PHI = float2, bool ROT = false, bool IMAGE_A = true>
 __global__ __launch_bounds__(MAXT) void
 gnss_waveform_kernel(const int8_t* __restrict__ code,
                      const gnss_cuda::DespreadJob* __restrict__ jobs, gnss_cuda::DespreadParams p,
@@ -44,8 +45,14 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
     // Hoisted as in the fused kernel: invariant across hops and trials.
     const int ks = (int)job.inv_cps;
     const float kf = (float)(job.inv_cps - ks);
+    const float inv_cps = (float)job.inv_cps;
     const PHI* phiA = (const PHI*)job.phiA + (size_t)ci * (p.Lf + 1);
     const PHI* phiB = (const PHI*)job.phiB + (size_t)ci * (p.Lf + 1);
+    __shared__ gnss_cuda::HopPhase sh_hp;
+    if (m == 0)
+        sh_hp = gnss_cuda::hop_phase_setup(job, p.fft_len, p.n_hops);
+    __syncthreads();
+    const gnss_cuda::HopPhase hp = sh_hp;
     float2 rotE = make_float2(1.f, 0.f), rotL = rotE;
     if (ROT) {
         float sr, cr;
@@ -68,32 +75,24 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
 
         // Code and carrier phase both come from host references at p.n0 (job.cp_ref and
         // job.ang0, reduced in long double), so the per-sample rates multiply only the
-        // intra-record offset dn, which is exact in double and at most ~3.4e7 samples at CHORD
-        // geometry. Taken from the absolute sample instead (n ~ 2e15 after days of uptime),
-        // n*cps reaches ~6e12 chips, where a double's ULP is ~1e-3 chips, and wc*n lands where
-        // the ULP is ~1 rad. The carrier error is constant within a record but changes whenever
-        // the Doppler is re-propagated, and per-record constants are what the cross-record
-        // estimators (deep fold, ADR, spectrum window sum) integrate.
-        const double dn = (double)((long long)mh * (long long)p.fft_len);
-        const double C_P = job.cp_ref + dn * job.cps;
-
-        // wc*dn <= ~7.8e7 rad has a 1.5e-8 rad ULP in double. Reduce before the float cast:
-        // a float's ULP at 7.8e7 is 8 rad.
-        const double ang = job.ang0 + fmod(job.wc * dn, 2.0 * M_PI);
-        float sn, cn;
-        sincosf((float)ang, &sn, &cn);
-        const float2 pa = make_float2(cn, sn);
-        const float2 pb = make_float2(cn, -sn);
+        // intra-record hop count. Taken from the absolute sample instead (n ~ 2e15 after days of
+        // uptime), n*cps reaches ~6e12 chips, where a double's ULP is ~1e-3 chips, and wc*n lands
+        // where the ULP is ~1 rad. The carrier error is constant within a record but changes
+        // whenever the Doppler is re-propagated, and per-record constants are what the
+        // cross-record estimators (deep fold, ADR, spectrum window sum) integrate.
+        int chip0[3];
+        float phi[3];
+        const float2 pa = gnss_cuda::hop_phase<ROT ? 1 : 3>(hp, mh, chip0, phi);
+        const float2 pb = make_float2(pa.x, -pa.y);
         const bool in_head = (mh < job.m_head);
 
         if (ROT) {
             // The prompt's walk alone, the same arithmetic as trial 0 below; E and L are its
             // per-channel rotations.
-            const double Cs[1] = {C_P};
             float2 sA[1], sB[1];
-            gnss_cuda::chip_gather3<PHI, 1>(job.inv_cps, job.code_offset, job.code_len,
-                                            job.n_chips, job.d_first, p.Lf, code, phiA, phiB, ks,
-                                            kf, Cs, sA, sB);
+            gnss_cuda::chip_gather3<PHI, 1, IMAGE_A>(inv_cps, job.code_offset, job.code_len,
+                                                     job.n_chips, job.d_first, p.Lf, code, phiA,
+                                                     phiB, ks, kf, chip0, phi, sA, sB);
             const float2 t1 = cmulf(pa, sA[0]);
             const float2 t2 = cmulf(pb, sB[0]);
             const float2 r = make_float2(0.5f * (t1.x + t2.x), 0.5f * (t1.y + t2.y));
@@ -110,10 +109,10 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
 
         // Trial order {P, E, L}, as in the fused kernel, so the arithmetic matches: the same
         // three code phases in the same order, one walk of the chip loop.
-        const double Cs[3] = {C_P, C_P - job.ds, C_P + job.ds};
         float2 sA[3], sB[3];
-        gnss_cuda::chip_gather3<PHI, 3>(job.inv_cps, job.code_offset, job.code_len, job.n_chips,
-                                        job.d_first, p.Lf, code, phiA, phiB, ks, kf, Cs, sA, sB);
+        gnss_cuda::chip_gather3<PHI, 3, IMAGE_A>(inv_cps, job.code_offset, job.code_len,
+                                                 job.n_chips, job.d_first, p.Lf, code, phiA, phiB,
+                                                 ks, kf, chip0, phi, sA, sB);
 #pragma unroll
         for (int tt = 0; tt < 3; ++tt) {
             const int t = (tt == 0) ? 1 : (tt == 1) ? 0 : 2;
@@ -240,25 +239,44 @@ int block_ceiling(const void* fn) {
     return cudaFuncGetAttributes(&at, fn) == cudaSuccess ? at.maxThreadsPerBlock : 256;
 }
 
-template<class PHI, bool ROT>
+template<class PHI, bool ROT, bool IMAGE_A>
 cudaError_t launch_waveform_t(const int8_t* code, const gnss_cuda::DespreadJob* jobs, dim3 grid,
                               int threads, const gnss_cuda::DespreadParams& p, const float* rot,
                               float2* wave, double* energy, cudaStream_t stream) {
     if (threads > 512) {
-        static const int k10 = block_ceiling((const void*)gnss_waveform_kernel<1024, PHI, ROT>);
+        static const int k10 =
+            block_ceiling((const void*)gnss_waveform_kernel<1024, PHI, ROT, IMAGE_A>);
         if (threads <= k10) {
-            gnss_waveform_kernel<1024, PHI, ROT>
+            gnss_waveform_kernel<1024, PHI, ROT, IMAGE_A>
                 <<<grid, threads, 0, stream>>>(code, jobs, p, rot, wave, energy);
             return cudaGetLastError();
         }
         threads = 512;
     }
-    static const int k5 = block_ceiling((const void*)gnss_waveform_kernel<512, PHI, ROT>);
+    static const int k5 = block_ceiling((const void*)gnss_waveform_kernel<512, PHI, ROT, IMAGE_A>);
     if (threads > k5)
         threads = k5;
-    gnss_waveform_kernel<512, PHI, ROT>
+    gnss_waveform_kernel<512, PHI, ROT, IMAGE_A>
         <<<grid, threads, 0, stream>>>(code, jobs, p, rot, wave, energy);
     return cudaGetLastError();
+}
+
+template<bool IMAGE_A>
+cudaError_t launch_waveform_a(const int8_t* code, const gnss_cuda::DespreadJob* jobs, dim3 grid,
+                              int threads, const gnss_cuda::DespreadParams& p, const float* rot,
+                              float2* wave, double* energy, cudaStream_t stream) {
+    // p.phi_half selects the __half2 gather (despite job.phiA/phiB's float2 type); the tables
+    // the jobs point at must already be half storage, which GnssCudaDespread::ensure_phi
+    // guarantees.
+    if (p.phi_half)
+        return rot ? launch_waveform_t<__half2, true, IMAGE_A>(code, jobs, grid, threads, p, rot,
+                                                               wave, energy, stream)
+                   : launch_waveform_t<__half2, false, IMAGE_A>(code, jobs, grid, threads, p, rot,
+                                                                wave, energy, stream);
+    return rot ? launch_waveform_t<float2, true, IMAGE_A>(code, jobs, grid, threads, p, rot, wave,
+                                                          energy, stream)
+               : launch_waveform_t<float2, false, IMAGE_A>(code, jobs, grid, threads, p, rot, wave,
+                                                           energy, stream);
 }
 
 } // namespace
@@ -275,18 +293,9 @@ cudaError_t launch_waveform(const int8_t* code, const DespreadJob* jobs, int n_j
         pow2 *= 2;
     threads = pow2;
     const dim3 grid(n_job, n_chan);
-    // p.phi_half selects the __half2 gather (despite job.phiA/phiB's float2 type); the tables
-    // the jobs point at must already be half storage, which GnssCudaDespread::ensure_phi
-    // guarantees.
-    if (p.phi_half)
-        return rot ? launch_waveform_t<__half2, true>(code, jobs, grid, threads, p, rot, wave,
-                                                      energy, stream)
-                   : launch_waveform_t<__half2, false>(code, jobs, grid, threads, p, rot, wave,
-                                                       energy, stream);
-    return rot ? launch_waveform_t<float2, true>(code, jobs, grid, threads, p, rot, wave, energy,
-                                                 stream)
-               : launch_waveform_t<float2, false>(code, jobs, grid, threads, p, rot, wave, energy,
-                                                  stream);
+    return p.complex_input
+               ? launch_waveform_a<false>(code, jobs, grid, threads, p, rot, wave, energy, stream)
+               : launch_waveform_a<true>(code, jobs, grid, threads, p, rot, wave, energy, stream);
 }
 
 void phi_to_half(const float2* src, void* dst, size_t n) {

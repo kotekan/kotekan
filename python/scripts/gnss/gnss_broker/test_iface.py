@@ -56,6 +56,19 @@ CPP_DOUBLES = (
 # `kotekan --interfaces-json` from a build at the pinned commit. A sync adds the new golden's
 # entry here; an unrecorded golden fails test_digests_are_the_ones_kotekan_served.
 KOTEKAN_SERVED = {
+    "fnv1a64:57742c014a405acb": {
+        "cube": "fnv1a64:9d8189ee49526cd3",
+        "enums": "fnv1a64:ce7f87e79a2838f6",
+        "gpu_chain": "fnv1a64:1f5f16e80dbb5c93",
+        "metadata": "fnv1a64:ff0b089558622884",
+        "record.chan": "fnv1a64:df5e8f24a8e017fe",
+        "record.cmb": "fnv1a64:e049ac69f9ee836a",
+        "record.elem": "fnv1a64:b61468c5a83782d3",
+        "record.row": "fnv1a64:436522cd6437ce2d",
+        "rest": "fnv1a64:29869239a9dce149",
+        "signals": "fnv1a64:2245a09f5a88a175",
+        "telem": "fnv1a64:4fc6ec77e47425b8",
+    },
     "fnv1a64:7dbdc9afed1b1906": {
         "cube": "fnv1a64:9d8189ee49526cd3",
         "enums": "fnv1a64:ce7f87e79a2838f6",
@@ -408,7 +421,7 @@ class TestCompare(unittest.TestCase):
 
     def test_an_extra_field_is_compatible(self):
         doc = golden_doc()
-        doc["sections"]["signals"]["GPS_L5_I_NH"] = dict(
+        doc["sections"]["signals"]["GPS_L5_Q_NH_COPY"] = dict(
             doc["sections"]["signals"]["GPS_L5_Q_NH"]
         )
         doc["sections"]["telem"]["TELEM_NEW"] = 1
@@ -419,7 +432,7 @@ class TestCompare(unittest.TestCase):
         self.assertEqual(c.state, iface.COMPATIBLE)
         self.assertEqual(
             sorted(iface.path_str(p) for p in c.extras),
-            ["signals/GPS_L5_I_NH", "telem/TELEM_NEW", "telem/frame_bytes/3"],
+            ["signals/GPS_L5_Q_NH_COPY", "telem/TELEM_NEW", "telem/frame_bytes/3"],
         )
         self.assertTrue(iface.summary(c).startswith("compatible (extra: "))
 

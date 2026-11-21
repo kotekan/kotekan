@@ -308,18 +308,7 @@ void cudaGnssInject::enqueue_row(Row& row, const cudaPipelineState& pipestate, l
     // deadline is tested on. apply_prn_swaps resets the state's per-slot seeds and trims; the
     // fold history of a swapped slot is reset below, through slot_gen, so the new satellite's
     // arc does not continue the old one's.
-    S.note_frame_hop(hop0_frame);
-    auto& FH = S.fold; // the re-pin fold history, shared by this command's instances
-    S.apply_prn_swaps((void*)stream);
-    {
-        std::lock_guard<std::mutex> lk(S.prn_mtx);
-        for (int p = 0; p < S.n_prn; ++p)
-            if (FH.slot_gen_seen[(size_t)p] != S.slot_gen[(size_t)p]) {
-                FH.slot_gen_seen[(size_t)p] = S.slot_gen[(size_t)p];
-                FH.dop_prev[(size_t)p] = 0.0;
-                FH.ok[(size_t)p] = 0;
-            }
-    }
+    S.begin_frame(hop0_frame, (void*)stream);
     // This row's control block in the stage, zeroed by execute().
     char* ctl_stage = _stage + (row.ctl_offset - _ctl_begin);
     auto* hdr = (gnss_gpu::FrameHdr*)ctl_stage;
@@ -356,109 +345,11 @@ void cudaGnssInject::enqueue_row(Row& row, const cudaPipelineState& pipestate, l
         const long long hop0 = hop0_frame + (long long)r * S.hops_per_record;
         const long long wstart = hop0 * (long long)S.fft_len;
 
-        std::vector<GnssCudaDespread::Spec> specs;
-        specs.reserve((size_t)S.n_prn);
         int n_psi_dark = 0;
         int* slot2spec = row.slot2spec + (size_t)r * S.n_prn;
-        for (int p = 0; p < S.n_prn; ++p) {
-            slot2spec[p] = -1;
-            // Identity first, before any `continue`: a slot with no seed still holds a
-            // satellite, and the assembler must see a PRN change even while the slot is dark,
-            // so it drops the old satellite's element cal rather than carry it to the new one.
-            pctl[(size_t)r * S.n_prn + p].prn = (uint16_t)S.prns[(size_t)p];
-            const auto& sd = seeds[(size_t)p];
-            if (!sd.have) {
-                // Seed gone (set, expired, never acquired): the replica phase history is
-                // meaningless across the gap, so drop it. The next record this PRN produces
-                // emits reanchored = 1 and the assembler breaks the arc.
-                FH.ok[(size_t)p] = 0;
-                continue;
-            }
-            // FDMA: a slot whose lobe has no channel on this GPU is dark here, as unseeded.
-            const bool fdma = !S.slot_covering.empty();
-            if (fdma && S.slot_covering[(size_t)p].empty()) {
-                FH.ok[(size_t)p] = 0;
-                continue;
-            }
-
-            // Propagate the seed to this record's window, with the fleet trim.
-            gnss::SeedState ss;
-            ss.cp_chips = sd.cp_chips;
-            ss.phase_ref_chips = sd.phase_ref_chips;
-            ss.doppler_hz = sd.doppler_hz;
-            ss.dop_rate = sd.dop_rate;
-            ss.cp_rate = sd.cp_rate;
-            ss.ref_hop = sd.ref_hop;
-            const gnss::SeedPropagation pr = gnss::propagate_seed(
-                *S.replica, ss, hop0, S.sample_rate, S.f_offset_hz, trim_now[(size_t)p]);
-
-            // Psi tables are built on the despread's builder thread and uploaded one per
-            // record: a slot whose tables are not on the device yet (first seed, a swap, a
-            // bucket past its grace) is dark this record exactly as a slot without a seed,
-            // and joins when they land. Asked here, before anything is written for the slot:
-            // no run, no job row, no fold history, slot2spec stays -1.
-            if (S.psi_synth && !S.despread->psi_ready(p, pr.doppler_hz, (void*)stream)) {
-                FH.ok[(size_t)p] = 0;
-                ++n_psi_dark;
-                continue;
-            }
-
-            GnssCudaDespread::Spec sp;
-            sp.p = p;
-            sp.doppler_hz = pr.doppler_hz;
-            sp.cp_seed = pr.cp;
-            sp.spacing_chips = S.dll_spacing;
-            sp.ctrim_hz = sd.ctrim_hz;
-            sp.covering = fdma ? S.slot_covering[(size_t)p] : S.covering;
-            // GuoWang data-sign wipe: the frame at this record's reference sample is the
-            // seed's frame at ref_hop plus the whole periods the phase advanced since (the
-            // phase at ref_hop is in [0, L)).
-            if (sd.nav_pages && sd.nav_frame_at_ref >= 0) {
-                sp.nav_pages = sd.nav_pages.get();
-                sp.nav_frame =
-                    sd.nav_frame_at_ref
-                    + (long long)std::floor(pr.phase_now / (double)S.replica->eff_code_length());
-            }
-
-            // PrnCtl, the gnssGpuChain.hpp contract the assembler reads. job0 indexes the 4 rows
-            // (E/P/L/P_HEAD) this spec occupies in the consumer's corr/energy arrays.
-            //
-            // Re-pin phase step: the replica's carrier phase is anchored absolutely,
-            // 2*pi*(f_offset + applied)*t_abs, so a change in the applied carrier since the
-            // previous record steps it by (applied - dop_prev)*t_abs cycles, many cycles at days
-            // of uptime. It is taken here, in the Doppler domain, where the difference keeps full
-            // precision (see PrnCtl::dcyc). Both terms use this record's t_abs: the step is the
-            // phase difference at this instant between the old and the new replica.
-            const double t_abs = (double)wstart / S.sample_rate;
-            const bool have_hist = FH.ok[(size_t)p] != 0;
-            // The applied carrier includes the broker's carrier trim: ctrim is part of the
-            // despread's reference frequency (ang0 and wc both take it), so a ctrim change steps
-            // the replica phase by dctrim*t_abs just as a Doppler change does.
-            const double applied = pr.doppler_hz + sd.ctrim_hz;
-            const double dcyc = have_hist ? (applied - FH.dop_prev[(size_t)p]) * t_abs : 0.0;
-            FH.dop_prev[(size_t)p] = applied;
-            FH.ok[(size_t)p] = 1;
-
-            gnss_gpu::PrnCtl& c = pctl[(size_t)r * S.n_prn + p];
-            c.run = 1;
-            c.reanchored = have_hist ? 3 : 1;
-            c.dcyc = dcyc;
-            c.job0 = (n_jobs_frame + (int)specs.size()) * gnss_gpu::ROWS_PLAIN;
-            c.fcar_report = (float)pr.doppler_hz;
-            c.n_owned = fdma ? (float)S.slot_covering[(size_t)p].size() : (float)S.n_chan;
-            c.cp_seed = pr.cp;
-            c.f_nco = sd.ctrim_hz;
-            c.chan_mask = fdma               ? S.slot_chan_mask[(size_t)p]
-                          : (S.n_chan >= 64) ? ~0ULL
-                                             : ((1ULL << S.n_chan) - 1ULL);
-            c.ctrim_hz = sd.ctrim_hz;
-            // carrier_offset: f_offset plus the slot's FDMA offset (GLONASS L2OF), the carrier
-            // the despread rotates to.
-            c.fcar = S.replica->carrier_offset(p) + pr.doppler_hz;
-
-            slot2spec[p] = (int)specs.size();
-            specs.push_back(sp);
-        }
+        const std::vector<GnssCudaDespread::Spec> specs =
+            S.record_specs(hop0, seeds, trim_now, n_jobs_frame, pctl + (size_t)r * S.n_prn,
+                           slot2spec, (void*)stream, n_psi_dark);
         if (r == 0) {
             n_active = (int)specs.size();
             n_psi_dark0 = n_psi_dark;
@@ -490,20 +381,7 @@ void cudaGnssInject::enqueue_row(Row& row, const cudaPipelineState& pipestate, l
         else if (!specs.empty())
             S.despread->enqueue_waveform(wstart, specs, d_jobs_r, d_wave, d_energy_r,
                                          (void*)stream);
-        // ang0 exists only once the despread has built the jobs, so this is a second pass
-        // over pctl. It is read from the despread's record of what it handed the kernel,
-        // not re-derived here.
-        for (const auto& sp2 : specs) {
-            gnss_gpu::PrnCtl& cc = pctl[(size_t)r * S.n_prn + sp2.p];
-            cc.ang0 = S.despread->last_ang0(sp2.p);
-            cc.phi_ddop = S.despread->last_phi_ddop(sp2.p);
-            // The rotation the kernel applied to its E trial this record, for the
-            // assembler to form the E and L rows under LANES_PROMPT (PrnCtl::rot). The
-            // stage is zeroed per frame, so a chain without the rotated path leaves 0.
-            if (const float* rot = S.despread->last_rot(sp2.p))
-                for (int c = 0; c < S.n_chan && c < gnss_gpu::MAX_ROT_CHAN; ++c)
-                    cc.rot[c] = rot[c];
-        }
+        S.record_built(specs, pctl + (size_t)r * S.n_prn);
         n_jobs_frame += (int)specs.size();
 
         if (!S.psi_synth)

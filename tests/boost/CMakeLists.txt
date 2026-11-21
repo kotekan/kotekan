@@ -78,6 +78,11 @@ target_link_libraries(test_gnss_interface PRIVATE libexternal kotekan_metadata k
 target_compile_definitions(test_gnss_interface
                            PRIVATE GNSS_SOURCE_DIR="${KOTEKAN_SOURCE_DIR}/lib/stages/gnss")
 
+# One satellite's data symbols demodulated against its pilot: compile the source directly.
+add_executable(test_gnss_nav_symbols test_gnss_nav_symbols.cpp
+                                     ../../lib/stages/gnss/gnssNavSymbols.cpp)
+target_include_directories(test_gnss_nav_symbols PRIVATE ../../lib/stages ../../lib/stages/gnss)
+
 # The shared element model's fleet-common phase pin: header-only, no Telescope/FFTW.
 add_executable(test_gnss_shared_pin test_gnss_shared_pin.cpp)
 target_include_directories(test_gnss_shared_pin PRIVATE ../../lib/stages ../../lib/stages/gnss)
@@ -179,6 +184,7 @@ if(FFTW_FOUND)
         ../../lib/stages/gnss/gnssChannelizedDespread.cpp
         ../../lib/stages/gnss/gnssBandPlan.cpp
         ../../lib/stages/dspPfbPrototype.cpp
+        ../../lib/utils/pfbPrototype.cpp
         ../../lib/stages/gnss/gpsCACode.cpp
         ../../lib/stages/gnss/gpsL1CCode.cpp
         ../../lib/stages/gnss/gpsL2CCode.cpp
@@ -197,7 +203,8 @@ if(FFTW_FOUND)
         ../../lib/stages/gnss/glonassL2OCCode.cpp
         ../../lib/stages/gnss/guowang1202Code.cpp)
     target_include_directories(test_gnss_channelized_replica PRIVATE ../../lib/stages
-                                                                     ../../lib/stages/gnss)
+                                                                     ../../lib/stages/gnss
+                                                                     ../../lib/utils)
     target_include_directories(test_gnss_channelized_replica SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(test_gnss_channelized_replica PRIVATE ${FFTW_LIBRARY} ${FFTWF_LIBRARY})
 

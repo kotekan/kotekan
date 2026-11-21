@@ -1,25 +1,30 @@
 #!/usr/bin/env python3
-"""GuoWang ephemeris table for the broker (#227): the satellites' TLEs propagated off the broker.
+"""GuoWang ephemeris table for the broker (#227): the satellites' elements propagated off the broker.
 
-GuoWang broadcasts no ephemeris, so its geometry comes from CelesTrak TLEs (group hulianwang)
-through SGP4. The broker runs on a free-threaded Python with no SGP4, so this job (the gnss
-venv, skyfield) propagates the satellites whose 1202 MHz code is known and writes, per pass that
+GuoWang broadcasts no ephemeris, so its geometry comes from CelesTrak's OMM elements of every
+HULIANWANG object (guowang_passes.OMM_URL, cached by gw_published_tle.py) through SGP4. The
+broker runs on a free-threaded Python with no SGP4, so this job (the gnss venv, skyfield)
+propagates the satellites whose 1202 MHz code is known and writes, per pass that
 comes within --sep-deg of the dish boresight, their ITRS position and velocity on a --step-s
 grid. gnss_ephemeris.load_gw_table reads the file and interpolates (cubic Hermite: a 10 s step
 is good to well under a metre), so predict_all, seeding, the PRN map and the element steering
-see GuoWang satellites as constellation W, PRN = G2' phase + 1. Some satellites share a G2'
-phase; where their segments overlap, the satellite closer to the boresight keeps the time
+see GuoWang satellites as constellation W, PRN = G2' phase + 1. The satellites of
+--extra-elements, if given, are tabled with the others.
+Some satellites share a G2' phase; where their segments overlap, the satellite closer to the boresight keeps the time
 (one_per_prn), so the broker sees one satellite per PRN at a time.
 
 The file also carries the passes within --transit-deg of the boresight of every DIGUI satellite,
-code known or not, and of the satellites in --extra-tle ("transits", keyed by catalogue number).
+code known or not, and of the other objects in the database ("transits", keyed by catalogue
+number); the others, below the shell or test satellites, are not known to transmit.
 Every broker chain adds them to its transit sky (sky.transit_sky): a GuoWang satellite in the
 beam rails the shared quantiser like any other bright satellite.
 
     gw_ephem_table.py [--hours 3] [--sep-deg 25] [--step-s 10] [--transit-deg 10]
-                      [--extra-tle PATH] [--out PATH] [--fetch]
+                      [--elements PATH] [--out PATH] [--fetch]
 
-Run every ~10 min (a pass is a few minutes; the file always covers the next --hours). The write
+Run every 2 min: the records carry the live nav pages for the gw_1202 data wipe, which expire
+after LIVE_PAGES_MAX_AGE_S. The geometry alone needs ~10 min (a pass is a few minutes; the file
+always covers the next --hours). The write
 is atomic; the broker keeps the last file it read. Passes by satellites whose code is not yet in
 the database are listed too ("unknown"), so the beam-dump schedule can target them.
 
@@ -28,9 +33,16 @@ the database are listed too ("unknown"), so the beam-dump schedule can target th
 between satellites while a slot pulls in +-0.5 chip, so their passes are cut into steps
 (sweep), each at one theta of --sweep-theta-us; a step on which the chain finds the satellite
 gives its theta (builds/gw1202/gw_sweep_harvest.py), which the sweep file then carries.
+Which theta a step tries (--sweep-order prior, the default): each satellite's next step takes
+the theta it has tried least (a step counts as tried when the harvest's steps.jsonl says the
+chain evaluated it in >= 3 cycles; steps already handed out and not yet judged count too), and
+among those the one where the known thetas are densest, so a new satellite tries the middle of
+the population first. Each step's theta is kept in assign.json beside the sweep file, so every
+run of this job gives a step the same theta. --sweep-order cycle is the older stateless cycle.
 """
 
 import argparse
+import calendar
 import json
 import math
 import os
@@ -49,8 +61,6 @@ import guowang_passes as gp  # noqa: E402
 
 SCHEMA = "chord-gnss-gw-ephem/0"
 DEFAULT_OUT = "/var/tmp/gnss-guowang/gw_ephem.json"
-# TLEs of the inferred uncatalogued GuoWang satellites, read for the transits when present.
-HIDDEN_TLE = os.path.join(gp.CACHE_DIR, "hidden_digui.tle")
 
 
 def short_name(name):
@@ -108,21 +118,64 @@ def state_grid(sat, ts, t0_gpst, n, step):
 
 
 def load_db(path=guowang_codes.GUOWANG_1202_DB):
-    """{name: (G2' phase, theta_s or None, nav_pages or None)} and theta_unknown_s, from the
-    satellite database; nav_pages are the four low-rate message pages (79 hex digits each) that
-    the broker ships with the seed for the data-sign wipe."""
+    """{name: (G2' phase, theta_s or None)} and theta_unknown_s, from the satellite database."""
     with open(path) as fh:
         d = json.load(fh)
+    live = load_live_pages()
     sats = {
         n: (
             s["g2_phase"],
             s["theta_us"] * 1e-6 if "theta_us" in s else None,
-            s.get("nav_pages"),
+            live.get(n, s.get("nav_pages")),
         )
         for n, s in d["satellites"].items()
         if s.get("g2_phase") is not None
     }
     return sats, d["theta_unknown_us"] * 1e-6
+
+
+LIVE_PAGES = "/home/kvand/gnss/builds/gw1202/nav_pages_live.json"
+# The echoed pages' live fields change every 12 s cycle, so the wipe's sign agreement falls with
+# the page's age (builds/gw1202/nav_predict_eval.py: 85 % at 12 s, 78 % at 2 min, 69 % at 5 min) and a
+# record's coherent gain 5(2p-1)^2 crosses 1 (no better than unpaged) at ~3.5 min: older pages cost.
+LIVE_PAGES_MAX_AGE_S = 180.0
+BDT_EPOCH_UNIX = 1136073600  # 2006-01-01 00:00:00 UTC
+BDT_MINUS_UTC_S = 4
+
+
+def page_tx_unix(sow, now):
+    """Unix time of a BDT second of week, in the week that puts it nearest before now."""
+    week = math.floor((now + BDT_MINUS_UTC_S - BDT_EPOCH_UNIX) / 604800.0)
+    t = BDT_EPOCH_UNIX + week * 604800 + sow - BDT_MINUS_UTC_S
+    if t > now + 300:
+        t -= 604800
+    return t
+
+
+def load_live_pages(path=LIVE_PAGES, max_age_s=LIVE_PAGES_MAX_AGE_S, now=None):
+    """{name: nav_pages} decoded live by the track-beam loop (gw_nav_live), no older than
+    max_age_s; they override the library's. A page's age runs from its own transmit time (the
+    entry's per-page BDT second of week; the oldest of the four counts), else from the loop's
+    decode stamp. Missing or unreadable file: nothing."""
+    try:
+        with open(path) as fh:
+            live = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    out = {}
+    now = time.time() if now is None else now
+    for n, e in live.items():
+        try:
+            sows = e.get("sow") or {}
+            if len(sows) == 4:
+                t = min(page_tx_unix(float(v), now) for v in sows.values())
+            else:
+                t = calendar.timegm(time.strptime(e["utc"], "%Y-%m-%dT%H:%M:%SZ"))
+        except (KeyError, ValueError, TypeError, AttributeError):
+            continue
+        if now - t <= max_age_s and len(e.get("nav_pages") or []) == 4:
+            out[n] = list(e["nav_pages"])
+    return out
 
 
 def build(
@@ -142,7 +195,8 @@ def build(
     or None)) that pass within sep_deg of the boresight above el_min in [t_start, t_end] (unix), and the passes
     of the others. A record's clk_s is -theta: the code starts theta after each UTC 2 ms
     boundary, so the broker's code-phase model takes it as the satellite clock; theta_unknown_s
-    where the satellite's is not measured."""
+    where the satellite's is not measured. The library's theta is referenced to UTC (schema 2),
+    so the receiver clock the chain adopts from GPS (--dr-clock-adopt) supplies our tag delay."""
     from skyfield.api import wgs84
 
     site = wgs84.latlon(gp.SITE["lat"], gp.SITE["lon"], elevation_m=gp.SITE["h"])
@@ -307,14 +361,84 @@ def load_sweep(path):
     }
 
 
-def sweep(records, names, thetas_s, step_s):
+def prior_order(thetas_s, prior_us, bw_us=1.5):
+    """The thetas (s), densest first under a Gaussian kernel (bw_us) over the known thetas
+    prior_us (us); ties go to the one nearer the median, then the lower. No prior: unchanged."""
+    if not prior_us:
+        return list(thetas_s)
+    med = sorted(prior_us)[len(prior_us) // 2]
+
+    def dens(t):
+        return sum(math.exp(-0.5 * ((t * 1e6 - p) / bw_us) ** 2) for p in prior_us)
+
+    return sorted(thetas_s, key=lambda t: (-round(dens(t), 9), abs(t * 1e6 - med), t))
+
+
+class SweepOrder:
+    """Per-satellite theta choice for the sweep steps (see the module doc). order_s: the thetas,
+    preferred first; tried: {name: [theta_us of tried steps]}; judged: {(name, step)} the harvest
+    has judged; assign: {name: {str(step): theta_us}} from earlier runs; now_gpst: GPST seconds
+    (steps are on the GPST grid). A step handed out but not judged is pending for pending_steps
+    steps after it, then dropped (it never ran). A past or current step with no assignment (it
+    ran before this order took over, or its satellite just joined) keeps cycle_s(name, step), the
+    stateless cycle's theta, which is what an earlier run published for it."""
+
+    def __init__(self, order_s, tried, judged, assign, now_gpst, step_s, cycle_s=None, keep_s=2 * 86400.0, pending_steps=120):
+        self.order = [round(t * 1e6, 4) for t in order_s]
+        self.rank = {t: k for k, t in enumerate(self.order)}
+        self.tried = {n: [round(t, 4) for t in ts] for n, ts in tried.items()}
+        self.judged = judged
+        self.now_step = math.floor(now_gpst / step_s)
+        old = self.now_step - keep_s / step_s
+        self.assign = {n: {k: v for k, v in m.items() if int(k) >= old} for n, m in assign.items()}
+        self.pending_steps = pending_steps
+        self.cycle_s = cycle_s
+
+    def theta_s(self, name, step):
+        m = self.assign.setdefault(name, {})
+        k = str(step)
+        if k not in m and self.cycle_s is not None and step <= self.now_step + 1:
+            m[k] = round(self.cycle_s(name, step) * 1e6, 4)
+        if k not in m:
+            uses = {}
+            for t in self.tried.get(name, ()):
+                uses[t] = uses.get(t, 0) + 1
+            for ks, t in m.items():
+                if (name, int(ks)) not in self.judged and int(ks) >= self.now_step - self.pending_steps:
+                    uses[t] = uses.get(t, 0) + 1
+            m[k] = min(self.order, key=lambda t: (uses.get(t, 0), self.rank[t]))
+        return m[k] * 1e-6
+
+
+def load_sweep_history(steps_path):
+    """({name: [theta_us tried]}, {(name, step) judged}) from the harvest's steps.jsonl."""
+    tried, judged = {}, set()
+    if not os.path.exists(steps_path):
+        return tried, judged
+    with open(steps_path) as fh:
+        for line in fh:
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            if not r.get("judged"):
+                continue
+            if r.get("step") is not None:  # early rows carry no step
+                judged.add((r["name"], int(r["step"])))
+            if r.get("n_eval", 0) >= 3:
+                tried.setdefault(r["name"], []).append(float(r["theta_us"]))
+    return tried, judged
+
+
+def sweep(records, names, thetas_s, step_s, chooser=None):
     """The records of the satellites in `names` cut into steps of step_s on the GPST grid, each
     step at its own clock: theta = thetas_s[(step index + crc32(name)) % len(thetas_s)], so every
     run of this job gives a step the same theta, and two satellites on one schedule are offset.
     A step keeps its grid points in [0, step_s - dt], so one grid step between steps has no
     record: the broker drops the seed there and seeds the next step afresh at its theta (a held
     seed would slew to the new code phase at 0.025 chips/s). A step needs two grid points.
-    step_s must be a multiple of the records' dt."""
+    step_s must be a multiple of the records' dt. chooser(name, step) -> theta_s, when given,
+    replaces the cycle (SweepOrder.theta_s); steps are visited in time order per record."""
     out = []
     for r in records:
         if r["name"] not in names:
@@ -331,7 +455,7 @@ def sweep(records, names, thetas_s, step_s):
         for s, js in sorted(steps.items()):
             if len(js) < 2:
                 continue
-            theta = thetas_s[(s + off) % len(thetas_s)]
+            theta = chooser(r["name"], s) if chooser else thetas_s[(s + off) % len(thetas_s)]
             out.append(
                 dict(
                     r,
@@ -376,13 +500,16 @@ def main(argv=None):
     )
     ap.add_argument("--transit-step-s", type=float, default=30.0, help="transit grid")
     ap.add_argument(
+        "--extra-elements",
         "--extra-tle",
-        default=HIDDEN_TLE if os.path.exists(HIDDEN_TLE) else None,
-        help="more GuoWang TLEs, for the transits only (default: %s if present)"
-        % HIDDEN_TLE,
+        dest="extra_elements",
+        help="more GuoWang satellites from this OMM CSV or TLE file, tabled and in the transits",
     )
     ap.add_argument(
-        "--tle", help="TLE file (default: the newest cached hulianwang group)"
+        "--elements",
+        "--tle",
+        dest="elements",
+        help="OMM CSV, or a TLE file (default: the newest cached OMM file)",
     )
     ap.add_argument(
         "--fetch", action="store_true", help="refresh the cache if older than 2 h"
@@ -399,19 +526,44 @@ def main(argv=None):
         default="-18,12,0.375",
         help="LO,HI,STEP: the thetas a sweep tries (0.375 us = 0.77 chip)",
     )
+    ap.add_argument(
+        "--sweep-order",
+        choices=("prior", "cycle"),
+        default="prior",
+        help="prior: per satellite, the least-tried theta, densest among the known thetas "
+        "first (state in assign.json beside --sweep); cycle: the stateless cycle",
+    )
     ap.add_argument("--cache-dir", default=gp.CACHE_DIR)
     ap.add_argument("--out", default=DEFAULT_OUT)
+    ap.add_argument(
+        "--site",
+        help="LAT,LON,H (deg, deg, m): the receiver, in place of CHORD's (guowang_passes.SITE)",
+    )
+    ap.add_argument(
+        "--boresight",
+        help="AZ,EL (deg): the boresight, in place of the dish's; 0,90 with --sep-deg 80 "
+        "tables an all-sky antenna's passes above 10 deg, the higher keeping a shared code",
+    )
+    ap.add_argument(
+        "--db", default=guowang_codes.GUOWANG_1202_DB, help="satellite database"
+    )
     a = ap.parse_args(argv)
+    if a.site:
+        lat, lon, h = (float(x) for x in a.site.split(","))
+        gp.SITE = dict(lat=lat, lon=lon, h=h)
+    if a.boresight:
+        az, el = (float(x) for x in a.boresight.split(","))
+        gp.BORESIGHT = dict(az=az, el=el)
     from skyfield.api import load
 
     ts = load.timescale(builtin=True)
-    tle = a.tle or (
-        gp.fetch_tle(a.cache_dir) if a.fetch else gp.newest_cache(a.cache_dir)
+    elements = a.elements or (
+        gp.fetch_omm(a.cache_dir) if a.fetch else gp.newest_cache(a.cache_dir)
     )
-    if not tle:
-        sys.exit("no TLE: give --tle or --fetch")
-    sats = gp.read_tle(tle, ts, "DIGUI")
-    db, theta_unknown_s = load_db()
+    if not elements:
+        sys.exit("no elements: give --elements or --fetch")
+    sats = gp.read_elements(elements, ts, "")
+    db, theta_unknown_s = load_db(a.db)
     # A missing or unreadable sweep file costs the sweep, not the table.
     implied = {}
     if a.sweep:
@@ -420,8 +572,17 @@ def main(argv=None):
         except Exception as e:
             print("%s: unreadable (%s); no sweep" % (a.sweep, e))
     now = time.time()
+    # The extra elements are optional: an unreadable file costs its satellites, not the table.
+    extra = []
+    if a.extra_elements:
+        try:
+            extra = gp.read_elements(a.extra_elements, ts, "")
+        except Exception as e:
+            print("%s: unreadable (%s); no extra satellites" % (a.extra_elements, e))
+    catalogued = {s.model.satnum for s in sats}
+    extra = [s for s in extra if s.model.satnum not in catalogued]
     records, unknown = build(
-        sats,
+        sats + extra,
         ts,
         now - 600.0,
         now + a.hours * 3600.0,
@@ -440,18 +601,44 @@ def main(argv=None):
     lo, hi, st = (float(x) for x in a.sweep_theta_us.split(","))
     thetas = [(lo + k * st) * 1e-6 for k in range(int(round((hi - lo) / st)) + 1)]
     swept = {n for n, (_, th) in implied.items() if th is None}
-    records = sweep(records, swept, thetas, a.sweep_step_s)
-    # The extra TLEs are optional: an unreadable file costs its satellites, not the table.
-    extra = []
-    if a.extra_tle:
+    # The prior order is optional: any failure falls back to the stateless cycle.
+    chooser, order_note = None, "cycle"
+    if a.sweep and a.sweep_order == "prior" and swept:
         try:
-            extra = gp.read_tle(a.extra_tle, ts, "")
+            sdir = os.path.dirname(os.path.abspath(a.sweep))
+            prior = [v[1] * 1e6 for v in db.values() if v[1] is not None]
+            prior += [v[1] * 1e6 for v in implied.values() if v[1] is not None]
+            tried, judged = load_sweep_history(os.path.join(sdir, "steps.jsonl"))
+            assign_path = os.path.join(sdir, "assign.json")
+            assign = {}
+            if os.path.exists(assign_path):
+                with open(assign_path) as fh:
+                    assign = json.load(fh)
+            order = SweepOrder(
+                prior_order(thetas, prior),
+                tried,
+                judged,
+                assign,
+                gnss_ephemeris.gpst_of_utc(now),
+                a.sweep_step_s,
+                cycle_s=lambda n, s: thetas[(s + zlib.crc32(n.encode())) % len(thetas)],
+            )
+            chooser = order.theta_s
+            order_note = "prior (%d known thetas, densest %+.3f us)" % (len(prior), order.order[0])
         except Exception as e:
-            print("%s: unreadable (%s); no extra satellites" % (a.extra_tle, e))
-    catalogued = {s.model.satnum for s in sats}
-    extra = [s for s in extra if s.model.satnum not in catalogued]
+            print("sweep order: prior unavailable (%s); stateless cycle" % e)
+    records = sweep(records, swept, thetas, a.sweep_step_s, chooser)
+    if chooser is not None:
+        try:
+            tmp = assign_path + ".tmp"
+            with open(tmp, "w") as fh:
+                json.dump(order.assign, fh, separators=(",", ":"), sort_keys=True)
+            os.replace(tmp, assign_path)
+        except Exception as e:
+            print("sweep order: assign.json not written (%s)" % e)
     tr = transits(
-        sats + extra,
+        [s for s in sats if "DIGUI" in s.name or short_name(s.name) in db]
+        + [s for s in extra if short_name(s.name) in db],
         ts,
         now - 600.0,
         now + a.hours * 3600.0,
@@ -461,8 +648,8 @@ def main(argv=None):
     doc = dict(
         schema=SCHEMA,
         created_unix=now,
-        tle=tle,
-        tle_mtime_unix=os.path.getmtime(tle),
+        elements=elements,
+        elements_mtime_unix=os.path.getmtime(elements),
         sep_deg=a.sep_deg,
         el_min_deg=a.el_min,
         step_s=a.step_s,
@@ -472,11 +659,12 @@ def main(argv=None):
             file=a.sweep,
             step_s=a.sweep_step_s,
             theta_us=[lo, hi, st],
+            order=order_note,
             names=sorted(swept),
         ),
         records=records,
         unknown=unknown,
-        extra_tle=a.extra_tle,
+        extra_elements=a.extra_elements,
         transit_deg=a.transit_deg,
         transits=tr,
     )
@@ -489,7 +677,7 @@ def main(argv=None):
         "%s: %d pass segment(s) of %d known satellite(s), %d sweep step(s) of %d implied "
         "one(s) and %d at a candidate theta, %d pass(es) of unknown ones, "
         "shared-prn overlap cut from %s, %d transit(s) within %g deg of %d satellite(s) "
-        "(%d extra), TLE %s"
+        "(%d extra), elements %s"
         % (
             a.out,
             sum(1 for r in records if r["name"] in db),
@@ -509,7 +697,7 @@ def main(argv=None):
             a.transit_deg,
             len(sats) + len(extra),
             len(extra),
-            tle,
+            elements,
         )
     )
 

@@ -63,8 +63,11 @@ add_library(
     gnss/guowang1202Nav.cpp
     gnss/gnssOverlay.cpp
     gnss/gnssChannelizedDespread.cpp
+    gnss/GnssQuantize44.cpp
     gnss/GnssCoherentCombiner.cpp
     gnss/gnssCombinerChain.cpp
+    gnss/GnssNavSymbols.cpp
+    gnss/gnssNavSymbols.cpp
     # The tracker -> broker telemetry transport, outside the FFTW block: the gather half runs on
     # the broker host, which has no F-engine, GPU or FFTW.
     gnss/GnssTelemPack.cpp
@@ -179,6 +182,12 @@ if(LIBAIRSPY_FOUND)
     endif()
 endif()
 
+if(LIBBLADERF_FOUND)
+    target_sources(kotekan_stages PRIVATE bladeRFInput.cpp)
+    target_include_directories(kotekan_stages SYSTEM PRIVATE ${LIBBLADERF_INCLUDE_DIR})
+    target_link_libraries(kotekan_stages PRIVATE ${LIBBLADERF_LIBRARIES})
+endif()
+
 if(FFTW_FOUND)
     target_sources(
         kotekan_stages
@@ -200,8 +209,10 @@ if(FFTW_FOUND)
     if(USE_CUDA)
         # gnssPsiTable.cpp builds the Psi tables for cudaGnssPsiSynth's kernels (it includes their
         # CUDA header), so it is compiled with its CUDA users.
-        target_sources(kotekan_stages PRIVATE gnss/cudaGnssChordTrack.cpp gnss/cudaGnssInject.cpp
-                                              gnss/gnssPsiTable.cpp gnss/gnssTrackChain.cpp)
+        target_sources(
+            kotekan_stages PRIVATE gnss/cudaGnssChordTrack.cpp gnss/cudaGnssInject.cpp
+                                   gnss/cudaGnssTrack.cpp gnss/gnssPsiTable.cpp
+                                   gnss/gnssTrackChain.cpp)
     endif()
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(kotekan_stages PRIVATE ${FFTW_LIBRARIES})

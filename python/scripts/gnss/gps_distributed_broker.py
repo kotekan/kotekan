@@ -1496,14 +1496,20 @@ def main(argv=None, rx=None, publisher=None):
                 if snr < args.acquire_snr:
                     continue
                 if prn not in best or snr > best[prn][0]:
+                    cp_long = float(d.get("code_phase_long_chips", -1.0))
+                    cp_at_ref = float(d.get("code_phase_at_ref_chips", -1.0))
+                    # The long phases count only at this chain's long code: a search on a code
+                    # with no overlay (L1 C/A) reports them mod its own period.
+                    if d.get("long_code_chips", LC_SEG * CODE_LEN) != LC_SEG * CODE_LEN:
+                        cp_long = cp_at_ref = -1.0
                     best[prn] = (
                         snr,
                         float(d["doppler_hz"]),
                         float(d["code_phase_chips"]),
                         int(d.get("ref_hop", 0)),
                         int(d.get("nh", -1)),
-                        float(d.get("code_phase_long_chips", -1.0)),
-                        float(d.get("code_phase_at_ref_chips", -1.0)),
+                        cp_long,
+                        cp_at_ref,
                     )
         _dets = merge_detections(_det_lists)
         if _dets:

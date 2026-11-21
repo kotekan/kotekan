@@ -15,6 +15,7 @@ const CONSTS = [
     {tag: "G", name: "GPS"},
     {tag: "E", name: "Galileo"},
     {tag: "C", name: "BeiDou"},
+    {tag: "W", name: "GuoWang"},
 ];
 // Friendly signal names keyed on the decode_health signal id.
 const SIG_NAME = {
@@ -23,6 +24,7 @@ const SIG_NAME = {
     GAL_E1B_INAV: "E1-B · I/NAV", GAL_E5AI_FNAV: "E5a-I · F/NAV", GAL_E5BI_INAV: "E5b-I · I/NAV",
     BDS_B1C_BCNAV1: "B1C-D · B-CNAV1", BDS_B2A_BCNAV2: "B2a-D · B-CNAV2",
     BDS_B2B_BCNAV3: "B2b-I · B-CNAV3",
+    GW_1202: "1202 MHz · low-rate",
 };
 
 function dot(color, title) {

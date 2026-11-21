@@ -11,6 +11,7 @@
 #include "Config.hpp"                 // for Config
 #include "GnssCudaDespread.hpp"       // for GnssCudaDespread
 #include "gnssChannelizedReplica.hpp" // for ChannelizedReplicaBank
+#include "gnssGpuChain.hpp"           // for PrnCtl
 #include "gnssHostRows.hpp"           // for RestVerb
 #include "guowang1202Nav.hpp"         // for Gw1202NavPages
 #include "kotekanLogging.hpp"         // for kotekanLogging
@@ -37,10 +38,16 @@ namespace gnss {
  * @conf n_elements      Int. Required, but only logged.
  * @conf samples_per_data_set Int. Hops per frame.
  * @conf hops_per_record Int. Hops per record; must divide samples_per_data_set.
- * @conf fft_length      Int. Real samples per hop.
- * @conf sample_rate     Double. Real sample rate, Hz.
- * @conf f_offset_hz     Double. Carrier offset from band centre, Hz (on CHORD, the carrier
- *                       itself).
+ * @conf fft_length      Int. Input samples per hop.
+ * @conf sample_rate     Double. Input sample rate, Hz.
+ * @conf input_type      String. "real", or "complex" or "complex_int8" for I/Q input
+ *                       (gnss::Channelization::complex_input). Default "real".
+ * @conf num_taps        Int. The F-engine's PFB taps per channel. Default 4.
+ * @conf pfb_window      String. The F-engine's PFB window. Default "hamming".
+ * @conf pfb_time_order  Bool. The F-engine folds in time order, as fftwEngine does
+ *                       (gnss::Channelization::time_order_fold). Default false.
+ * @conf f_offset_hz     Double. Carrier frequency at the F-engine's input, Hz: on CHORD the
+ *                       carrier itself, for I/Q input the carrier minus the tuned frequency.
  * @conf conjugate       Bool. Must be true: the F-engine output is conjugated, and
  *                       cudaGnssInject always conjugates the replica. Default true.
  * @conf dll_spacing     Double. Early/Late offset, chips.
@@ -193,6 +200,34 @@ public:
     /// being despread within a minute. The broker re-seeds every cycle, so this is many
     /// refreshes of margin.
     static constexpr double seed_ttl_s = 60.0;
+
+    // ---- One frame of records ----
+    // The command that owns the frame loop calls begin_frame once, then record_specs and
+    // record_built for each record in order, on the GPU thread.
+
+    /// Start the frame whose first hop is @p hop0_frame: note_frame_hop, apply_prn_swaps on
+    /// @p stream, and drop the fold history of any slot swapped since.
+    void begin_frame(long long hop0_frame, void* stream /*cudaStream_t*/);
+
+    /// The despread requests of the record window starting at hop @p hop0: one per slot with a
+    /// live seed, propagated to the window with its fleet trim (gnss::propagate_seed). Fills
+    /// the record's control rows @p pctl ([n_prn], zeroed by the caller) as gnssGpuChain.hpp
+    /// defines them, with each slot's rows starting @p jobs_before specs into the frame, and
+    /// advances the fold history.
+    ///
+    /// @p seeds and @p trim_now are the frame's snapshots. @p slot2spec, if not null, takes
+    /// each slot's index in the result, -1 for a slot left out. Under psi_synth a slot whose
+    /// tables are not on the device is left out and counted in @p n_psi_dark; @p stream is
+    /// GnssCudaDespread::psi_ready's.
+    std::vector<GnssCudaDespread::Spec> record_specs(long long hop0, const std::vector<Seed>& seeds,
+                                                     const std::vector<double>& trim_now,
+                                                     int jobs_before, gnss_gpu::PrnCtl* pctl,
+                                                     int* slot2spec, void* stream /*cudaStream_t*/,
+                                                     int& n_psi_dark);
+
+    /// After the despread has built the jobs of @p specs: copy what it handed the kernel
+    /// (ang0, the Phi staleness, the E rotation) into the record's control rows.
+    void record_built(const std::vector<GnssCudaDespread::Spec>& specs, gnss_gpu::PrnCtl* pctl);
 
     /// Snapshot the live trims, expiring any whose controller stopped posting.
     std::vector<double> snapshot_trims(std::vector<int>& expired);

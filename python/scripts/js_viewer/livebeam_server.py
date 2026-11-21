@@ -1006,7 +1006,7 @@ class GpsSkyResource(resource.Resource):
         # time they were computed (they are kept 1 h).
         self._glo_capable = None
         self._glo_capable_t = None
-        self._gw_tle = (None, {})  # (element path, {index: EarthSatellite}), see _gw_sats
+        self._gw_tle = (None, {})  # (element path, {index: EarthSatellite})
         self._last_compute = None  # monotonic s of last attempt
         self._refreshing = False
 
@@ -1236,34 +1236,22 @@ class GpsSkyResource(resource.Resource):
     # A TLE satellite stands in for a broker-sky satellite on the hover path only within this
     # angle of the broker's position for it now.
     TRACK_MATCH_DEG = 3.0
-    # The table gw_ephem_table.py writes (its DEFAULT_OUT; the broker's gw-table), which names
-    # the element file the broker's GuoWang sky was propagated from: "elements", CelesTrak's
-    # OMM CSV of every HULIANWANG object since 2026-11-21 ("tle", a TLE file, before).
+    # The table gw_ephem_table.py writes (its DEFAULT_OUT; the broker's gw-table, --gw-table),
+    # which names the element file the broker's GuoWang sky was propagated from ("elements";
+    # "tle" in a table written before OMM).
     GW_TABLE = "/var/tmp/gnss-guowang/gw_ephem.json"
 
     def _gw_sats(self):
         """{index: EarthSatellite} for every GuoWang satellite behind the broker's W sky,
         reloaded when the table names a new element file."""
+        from guowang import guowang_passes
         from skyfield.api import load
 
         with open(self.GW_TABLE) as f:
             doc = json.load(f)
         path = doc.get("elements") or doc["tle"]
         if self._gw_tle[0] != path:
-            if path.endswith(".csv"):
-                from sgp4 import omm
-                from sgp4.api import Satrec
-                from skyfield.api import EarthSatellite
-
-                ts = load.timescale()
-                sats = []
-                with open(path) as fh:
-                    for row in omm.parse_csv(fh):
-                        rec = Satrec()
-                        omm.initialize(rec, row)
-                        sats.append(EarthSatellite.from_satrec(rec, ts))
-            else:
-                sats = load.tle_file(path, reload=False)
+            sats = guowang_passes.read_elements(path, load.timescale(), "")
             self._gw_tle = (path, dict(enumerate(sats)))
         return self._gw_tle[1]
 
@@ -1361,6 +1349,81 @@ class GpsSkyResource(resource.Resource):
         if self._cache.get("error"):
             out["error"] = self._cache["error"]
         return json.dumps(out).encode("utf-8")
+
+
+class GpsFrontendResource(resource.Resource):
+    """``GET /gps_frontend`` -> the receiver front end's health, for the stream-health panel.
+
+    Reply::
+
+        {"ok": bool, "stage": name, "adc": <stage>/adcstat, "input": {metric: value},
+         "valve": {"dropped": n, "passed": n}, "telem_dropped": n}
+
+    read from the node's REST (--frontend-rest) in a worker thread at most every
+    ``REFRESH_S``: the input stage's /adcstat (rms, rail fraction), every metric labelled
+    with that stage (its dropped samples, discontinuities, stream restarts, reference lock),
+    and the frames the Valve and the telemetry packs dropped. kotekan exports a counter only
+    once it is nonzero, so an absent one reads 0. ``ok`` is false until a read succeeds.
+    """
+
+    isLeaf = True
+    REFRESH_S = 1.5
+
+    def __init__(self, rest, stage):
+        resource.Resource.__init__(self)
+        self._base = "http://" + rest
+        self._stage = stage
+        self._cache = {"ok": False}
+        self._t = 0.0
+        self._busy = False
+
+    def _read(self):
+        import re
+        import urllib.request as _u
+
+        with _u.urlopen("%s/%s/adcstat" % (self._base, self._stage), timeout=3) as r:
+            adc = json.loads(r.read())
+        with _u.urlopen(self._base + "/metrics", timeout=3) as r:
+            text = r.read().decode()
+        out = {
+            "ok": True,
+            "stage": self._stage,
+            "adc": adc,
+            "input": {},
+            "valve": {"dropped": 0, "passed": 0},
+            "telem_dropped": 0,
+        }
+        mine = 'stage_name="/%s"' % self._stage
+        for line in text.splitlines():
+            m = re.match(r"^(\w+)(?:\{([^}]*)\})?\s+(\S+)", line)
+            if not m:
+                continue
+            name, labels, value = m.group(1), m.group(2) or "", float(m.group(3))
+            if mine in labels:
+                out["input"][name] = value
+            elif name == "kotekan_valve_dropped_frames_total":
+                out["valve"]["dropped"] += value
+            elif name == "kotekan_valve_passed_frames_total":
+                out["valve"]["passed"] += value
+            elif name == "kotekan_gnss_telem_dropped_frames_total":
+                out["telem_dropped"] += value
+        return out
+
+    def _done(self, res):
+        self._cache = res
+        self._busy = False
+
+    def _err(self, failure):
+        self._cache = {"ok": False, "error": failure.getErrorMessage()}
+        self._busy = False
+
+    def render_GET(self, request):
+        request.responseHeaders.setRawHeaders("Content-Type", [b"application/json"])
+        if not self._busy and time.monotonic() - self._t > self.REFRESH_S:
+            self._busy = True
+            self._t = time.monotonic()
+            threads.deferToThread(self._read).addCallbacks(self._done, self._err)
+        return json.dumps(self._cache).encode("utf-8")
 
 
 class GpsTrackResource(resource.Resource):
@@ -1581,13 +1644,18 @@ class DecodeHealthResource(resource.Resource):
                 res["n_meas"] = len(meas)
                 res["smooth_s"] = self.pvt_smooth_s
                 res["min_el_deg"] = self.pvt_min_el_deg
-                # the per-satellite inputs, so the panel can show what the fit ate
+                # the per-satellite inputs, so the panel can show what the fit ate, each
+                # with its post-fit residual
+                post = _pvt.post_fit_m(meas, res)
                 res["meas"] = [
-                    {
-                        k: (round(v, 3) if isinstance(v, float) else v)
-                        for k, v in m.items()
-                    }
-                    for m in meas
+                    dict(
+                        {
+                            k: (round(v, 3) if isinstance(v, float) else v)
+                            for k, v in m.items()
+                        },
+                        post_m=None if p is None else round(p, 3),
+                    )
+                    for m, p in zip(meas, post)
                 ]
         except Exception as e:
             res = {"error": str(e)}
@@ -1824,6 +1892,24 @@ def main():
         "for the viewer panel; a file older than 120 s is dropped. Default: %(default)s",
     )
     gg.add_argument(
+        "--frontend-rest",
+        default="",
+        help="host:port of the node kotekan whose input stage feeds the receiver (e.g. "
+        "localhost:12048): its /adcstat and drop counters are served on /gps_frontend for "
+        "the stream-health panel. Empty (default) = off.",
+    )
+    gg.add_argument(
+        "--frontend-stage",
+        default="bladerf_input",
+        help="that input stage's name. Default: %(default)s",
+    )
+    gg.add_argument(
+        "--gw-table",
+        default=GpsSkyResource.GW_TABLE,
+        help="the broker's GuoWang table (gw-table), for the hover paths of GuoWang satellites. "
+        "Default: %(default)s",
+    )
+    gg.add_argument(
         "--pvt-obs-globs",
         default="",
         help="comma-separated globs of obs-log jsonl (code_resid_m + az/el) the PVT "
@@ -1948,8 +2034,14 @@ def main():
             glonass_sigids=_glo_sigids,
             broker=(args.kotekan_host, args.kotekan_rest_port),
         )
+        sky.GW_TABLE = args.gw_table
         root.putChild(b"gps_sky", sky)
         root.putChild(b"gps_track", GpsTrackResource(sky))
+        if args.frontend_rest:
+            root.putChild(
+                b"gps_frontend",
+                GpsFrontendResource(args.frontend_rest, args.frontend_stage),
+            )
         root.putChild(
             b"alerts",
             AlertsResource(

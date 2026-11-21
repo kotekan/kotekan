@@ -343,6 +343,23 @@ def stage_coast_drop(ctx):
                 ctx.hold.low_hits.pop(prn, None)
 
 
+def _dr_dop_rate(ctx, prn, v_dr):
+    """The dead-reckon model's Doppler rate (Hz/s, signed like doppler_hz) at its epoch: the
+    central difference of range rate over pd0/pd2 (2 s either side), else a forward difference
+    over pd/pd2 (pd0 is cached with pd and pd2, so this is rare: the rate 1 s after its epoch);
+    None without them."""
+    key = (ctx.args.dr_constellation, prn)
+    v2 = ctx.dr_pd2.get(key) if ctx.dr_pd2 else None
+    v0 = ctx.dr_pd0.get(key) if ctx.dr_pd0 else None
+    if v2 is not None and v0 is not None:
+        drr = (v2["range_rate_mps"] - v0["range_rate_mps"]) / 4.0
+    elif v2 is not None and v_dr is not None:
+        drr = (v2["range_rate_mps"] - v_dr["range_rate_mps"]) / 2.0
+    else:
+        return None
+    return ctx.args.doppler_sign * (-drr) / C_LIGHT * prn_carrier_hz(ctx.args, prn)
+
+
 def stage_detections_to_seeds(ctx):
     """1: DETECTIONS -> SEEDS. Turn this cycle's best detection per PRN into a tracker seed.
 
@@ -413,6 +430,14 @@ def stage_detections_to_seeds(ctx):
                 * (-v_dr["range_rate_mps"] / C_LIGHT * prn_carrier_hz(ctx.args, prn))
                 + ctx.cb.seed
             )
+            # The model is evaluated at the last dead-reckon pass (t_eph_age) and the seed is
+            # labelled at the detection's ref_hop, from which the tracker propagates it at its
+            # rate: forecast it to the label, or it runs rate x the gap off the sky (under 1 Hz for
+            # MEO satellites, ~100 Hz for LEO ones).
+            _rate = _dr_dop_rate(ctx, prn, v_dr)
+            _t_eph = ctx.drp.t_eph_age if ctx.drp is not None else None
+            if _rate is not None and _t_eph is not None:
+                seed_dop += _rate * (ref_hop / ctx.args.hops_per_sec - _t_eph)
             if _unt is not None:
                 _log_rl(
                     "dopkeep-%d" % prn,
@@ -532,34 +557,9 @@ def stage_detections_to_seeds(ctx):
         # Doppler-rate feed-forward (Hz/s, sign applied like doppler_hz). The tracker integrates it
         # in its NCO and the quadratic code term, never by retuning the replica, which would walk
         # the absolutely anchored code and carrier off peak.
-        v2_dr = ctx.dr_pd2.get((ctx.args.dr_constellation, prn)) if ctx.dr_pd2 else None
-        v0_dr = ctx.dr_pd0.get((ctx.args.dr_constellation, prn)) if ctx.dr_pd0 else None
-        if v2_dr is not None and v0_dr is not None:
-            # BRDC Doppler rate, central difference over the pd0/pd2 pair at now_w -/+ 2 s, so the
-            # rate is tagged at now_w.
-            seed.put(
-                "dop_model",
-                epoch=ref_hop,
-                doppler_rate_hz_s=(
-                    ctx.args.doppler_sign
-                    * (-(v2_dr["range_rate_mps"] - v0_dr["range_rate_mps"]) / 4.0)
-                    / C_LIGHT
-                    * prn_carrier_hz(ctx.args, prn)
-                ),
-            )
-        elif v_dr is not None and v2_dr is not None:
-            # Fallback when pd0 lacks the PRN (pd0 is cached with pd and pd2, so this is rare): a
-            # forward difference over [now_w, now_w + 2 s], i.e. the rate 1 s after its tag.
-            seed.put(
-                "dop_model",
-                epoch=ref_hop,
-                doppler_rate_hz_s=(
-                    ctx.args.doppler_sign
-                    * (-(v2_dr["range_rate_mps"] - v_dr["range_rate_mps"]) / 2.0)
-                    / C_LIGHT
-                    * prn_carrier_hz(ctx.args, prn)
-                ),
-            )
+        _rate = _dr_dop_rate(ctx, prn, v_dr)
+        if _rate is not None:
+            seed.put("dop_model", epoch=ref_hop, doppler_rate_hz_s=_rate)
         elif ctx.args.almanac and prn in ctx.pred:
             seed.put("dop_model", epoch=ref_hop, doppler_rate_hz_s=ctx.pred[prn][1])
         # A measured rate (fit_dop_rate) has the last word, as --seed-doppler det does, once it has

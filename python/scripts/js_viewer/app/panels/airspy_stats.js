@@ -2,18 +2,95 @@
 // spectral kurtosis and drop counters from the broker's get_rf, which the shared GpsFeed
 // already fetches (~1.5 s), so this panel adds no load.
 //
+// A single receiver whose viewer serves /gps_frontend (--frontend-rest) also gets a row for its
+// input stage: ADC rms and rail from its /adcstat, and the two places it loses data -- samples
+// the device dropped (zero-filled by the stage) and frames the Valve threw away because the GPU
+// chain fell behind -- as counts over the last FE_WINDOW_S, with run totals in the tooltips.
+//
 // Color language: green = healthy, amber = attention, red = data being lost.
+
+const FE_WINDOW_S = 15;
 
 export class AirspyStatsPanel {
     constructor({target, feed}) {
         this.el = document.getElementById(target);
         this._gnss = null;
+        this._fe = null;
+        this._fe_hist = [];  // {t, adc, vd, vp, td}: cumulative counters over the window
         feed.on(p => this._update(p));
     }
 
     _update(payload) {
         if (payload && payload.gnss_rf !== undefined) this._gnss = payload.gnss_rf;
-        if (this.el) this.el.innerHTML = this._gnss_block();
+        if (payload && payload.frontend) this._push_fe(payload.frontend);
+        if (this.el) this.el.innerHTML = this._frontend_block() + this._gnss_block();
+    }
+
+    // The input stage's counter named by suffix (kotekan_<stage>_dropped_samples_total, ...);
+    // kotekan exports a counter only once it is nonzero, so absent is 0.
+    _fe_count(suffix) {
+        for (const [k, v] of Object.entries(this._fe.input || {}))
+            if (k.endsWith(suffix)) return v;
+        return 0;
+    }
+
+    _push_fe(fe) {
+        this._fe = fe;
+        const now = performance.now() / 1000;
+        const pt = {t: now, adc: this._fe_count("_dropped_samples_total"),
+                    vd: fe.valve.dropped, vp: fe.valve.passed, td: fe.telem_dropped || 0};
+        const h = this._fe_hist;
+        if (h.length && pt.vp < h[h.length - 1].vp) h.length = 0;  // kotekan restarted
+        if (!h.length || h[h.length - 1].vp !== pt.vp) h.push(pt);
+        while (h.length > 2 && now - h[0].t > FE_WINDOW_S) h.shift();
+    }
+
+    _frontend_block() {
+        const fe = this._fe;
+        if (!fe) return "";
+        const h = this._fe_hist, a = h[0], b = h[h.length - 1];
+        const d = k => (a && b && b !== a) ? b[k] - a[k] : 0;
+        const green = "#3fb26f", amber = "#e8a13c", red = "#d64550", grey = "#8a8f98";
+        const cell = (v, color, tip) =>
+            `<div style="flex:0 0 5.5em;padding:.15em .5em;" title="${tip}">
+               <span style="font-size:1.05em;font-weight:600;color:${color};">${v}</span></div>`;
+        const adc = fe.adc || {};
+        const rms = Math.sqrt(((adc.rms_i || 0) ** 2 + (adc.rms_q || 0) ** 2) / 2);
+        const rail = (adc.railfrac || 0) * 100;
+        const adcTot = this._fe_count("_dropped_samples_total");
+        const disc = this._fe_count("_discontinuities_total");
+        const restarts = this._fe_count("_stream_restarts_total");
+        const pllKey = Object.keys(fe.input || {}).find(k => k.endsWith("_pll_locked"));
+        const pll = pllKey ? fe.input[pllKey] : null;
+        const vfrac = d("vd") + d("vp") > 0 ? d("vd") / (d("vd") + d("vp")) : 0;
+        const span = a && b ? Math.round(b.t - a.t) : 0;
+        const hdr = `<div style="display:flex;align-items:center;font-size:.72em;opacity:.6;">
+            <div style="flex:0 0 11em;padding:.1em .5em;">front end</div>
+            <div style="flex:0 0 5.5em;padding:.1em .5em;">rms</div>
+            <div style="flex:0 0 5.5em;padding:.1em .5em;">rail</div>
+            <div style="flex:0 0 5.5em;padding:.1em .5em;">ADC drop</div>
+            <div style="flex:0 0 5.5em;padding:.1em .5em;">valve drop</div>
+            <div style="flex:0 0 5.5em;padding:.1em .5em;">telem drop</div>
+            <div style="flex:0 0 5.5em;padding:.1em .5em;">ref</div></div>`;
+        return hdr + `<div style="display:flex;align-items:center;border-top:1px solid #f0f0f0;">
+            <div style="flex:0 0 11em;padding:.15em .5em;">${fe.stage}</div>`
+            + cell(rms.toFixed(1), rms < 10 || rms > 50 ? amber : green,
+                   `I ${(adc.rms_i || 0).toFixed(1)} / Q ${(adc.rms_q || 0).toFixed(1)} counts rms; `
+                   + `mean I ${(adc.mean_i || 0).toFixed(2)} Q ${(adc.mean_q || 0).toFixed(2)}`)
+            + cell(rail.toFixed(2) + "%", rail > 1 ? red : rail > 0.1 ? amber : green,
+                   "fraction of samples at the ADC rail")
+            + cell(d("adc").toLocaleString(), d("adc") > 0 ? red : adcTot > 0 ? amber : green,
+                   `samples the device dropped in the last ${span} s (zero-filled); run total `
+                   + `${adcTot.toLocaleString()} in ${disc} dropout(s), ${restarts} stream restart(s)`)
+            + cell((vfrac * 100).toFixed(2) + "%", d("vd") > 0 ? red : b && b.vd > 0 ? amber : green,
+                   `frames the Valve dropped in the last ${span} s: ${d("vd")} of `
+                   + `${d("vd") + d("vp")}; run total ${b ? b.vd : 0}`)
+            + cell(d("td").toLocaleString(), d("td") > 0 ? amber : green,
+                   `telemetry windows dropped in the last ${span} s; run total ${b ? b.td : 0}`)
+            + cell(pll === null ? "—" : pll ? "locked" : "UNLOCKED",
+                   pll === null ? grey : pll ? green : red,
+                   "the device's reference PLL (ref_in_freq)")
+            + `</div>`;
     }
 
     // The F-engine front end: one row per RF band, aggregated across the fleet's instances.

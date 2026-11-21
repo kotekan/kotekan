@@ -16,7 +16,9 @@
 #include <cstring>
 #include <cuda_runtime.h>
 #include <deque>
+#if defined(__F16C__) && defined(__AVX__)
 #include <immintrin.h>
+#endif
 #include <limits>
 #include <mutex>
 #include <pthread.h>
@@ -791,7 +793,7 @@ struct GnssCudaDespread::Impl {
                 const double delay_s = h_jobs[i].ds / cps / fs;
                 const double f_car = wc * fs / (2.0 * M_PI);
                 for (int ci = 0; ci < n_chan; ++ci) {
-                    const double f_c = (double)all_chans[(size_t)ci] * fs / bank.fft_len();
+                    const double f_c = bank.chan_freq(all_chans[(size_t)ci]);
                     h_rot[i * (size_t)n_chan + ci] = (float)(2.0 * M_PI * (f_c - f_car) * delay_s);
                     last_rot[(size_t)sp.p * n_chan + ci] = h_rot[i * (size_t)n_chan + ci];
                 }
@@ -985,6 +987,7 @@ GnssCudaDespread::despread_batch(const std::vector<Spec>& specs) {
     par.n_hops = im.n_hops;
     par.Lf = im.Lf;
     par.data_stride = im.n_hops; // packed per-record staging buffer
+    par.complex_input = im.bank.channelization().complex_input ? 1 : 0;
     ck(gnss_cuda::launch_despread(im.d_data, im.d_code, im.d_jobs, n_spec, im.n_chan, par,
                                   im.d_corr, im.d_energy, im.stream),
        "launch");
@@ -1041,6 +1044,7 @@ int GnssCudaDespread::enqueue_batch_nm(const void* d_frame, const void* d_chan_s
     // frame_chan_stride and elem_stride; data_stride does not apply.
     par.data_stride = im.n_hops;
     par.conj_data = conjugate ? 1 : 0;
+    par.complex_input = im.bank.channelization().complex_input ? 1 : 0;
 
     // The replicas are generated once and reused for all n_elem antennas, which is why this
     // path splits the fused kernel. Both launches are on one stream, so the correlator starts
@@ -1074,6 +1078,7 @@ int GnssCudaDespread::enqueue_waveform(long long window_start_sample,
     par.n_hops = im.n_hops;
     par.Lf = im.Lf;
     par.data_stride = im.n_hops;
+    par.complex_input = im.bank.channelization().complex_input ? 1 : 0;
 
     ck(gnss_cuda::launch_waveform(im.d_code, (gnss_cuda::DespreadJob*)d_jobs_slot, n_spec,
                                   im.n_chan, par, im.epl_rot ? im.d_rot : nullptr, (float2*)d_wave,

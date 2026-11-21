@@ -81,6 +81,7 @@ class Receiver(object):
         self._brdc = {}  # cache key -> the {"mod","eph","eph_t"} state dict
         self._code = {}  # (band, chain) -> _Shared (dimensionless l-a)
         self._dr = {}  # (band, chain) -> _Shared (chips, + drift in extra)
+        self._freq = {}  # chain -> _Shared (oscillator fractional frequency error)
         self._clkmod = {}  # chain -> _Shared (the receiver clock in seconds,
         # known mod extra["epoch_s"], e.g. the NH joint
         # fit's clock mod 20 ms): what extends a
@@ -313,6 +314,19 @@ class Receiver(object):
         across carriers carries exactly the tau_band offset (see dr_clock_any_band).
         """
         return self._best(self._code, exclude, max_age_s, t_now, key2=None)
+
+    def contribute_freq_bias(self, chain, frac, n_sats, t):
+        """Publish the oscillator's fractional frequency error: a chain's solved clock-frequency
+        bias over its carrier. Receiver-wide, like (l-a). freq_bias gives it to a chain with no
+        detections of its own, which on a free-running oscillator has no other way to know
+        its seeds' Doppler offset or its clock's drift."""
+        if frac is None:
+            return
+        with self._lock:
+            self._freq[chain] = _Shared(float(frac), chain, int(n_sats or 0), t)
+
+    def freq_bias(self, exclude=None, max_age_s=120.0, t_now=None):
+        return self._best(self._freq, exclude, max_age_s, t_now, key2=None)
 
     def contribute_dr_clock(
         self,

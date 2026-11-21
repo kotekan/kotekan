@@ -239,7 +239,9 @@ def stage_almanac_predict(ctx):
         # spread that one epoch shift explains is a stale sample-0 epoch on the nodes
         # (gnss_broker/timebase.py).
         timebase.observe(ctx, _log_rl)
-        _local_ok = len(resid) >= ctx.args.bias_min_sats
+        # --freq-bias-adopt: the bias is the receiver's, taken from the chain that solves it.
+        _adopt_fb = getattr(ctx.args, "freq_bias_adopt", False)
+        _local_ok = len(resid) >= ctx.args.bias_min_sats and not _adopt_fb
         if _local_ok:
             # The per-cycle median is quantized to the search's Doppler grid and jumps as the
             # detected set changes, while the true bias is a slow oscillator drift. The EMA
@@ -304,6 +306,9 @@ def stage_almanac_predict(ctx):
             ctx.cb.value = ctx.cb.ema
             # The seed consumers' bias; ClockBias.update_seed has the invariant.
             ctx.cb.update_seed(ctx.args.seed_bias_source)
+            ctx.rx.contribute_freq_bias(
+                ctx.chain_id, ctx.cb.ema / ctx.args.carrier_hz, len(resid), ctx.t0
+            )
             # Drift alarm on a satellite-scaled bar: the median's noise goes as 1/sqrt(n), so
             # the bar widens by sqrt(5/n) below 5 satellites. A real event (GPSDO unlock,
             # thermal) is large, sustained and hits every chain, so it still trips; a weak
@@ -350,17 +355,35 @@ def stage_almanac_predict(ctx):
                 ),
             )
         else:
-            # Log both counts, so a held or unsolved bias reads as too few satellites rather
-            # than a clock or front-end fault.
-            _log_rl(
-                "clkbias",
-                "clock-freq bias %s (%d sats < bias_min_sats %d: residual not "
-                "trusted)"
-                % (
-                    "held %+.0f Hz" % ctx.cb.value
-                    if ctx.cb.ema is not None
-                    else "UNSOLVED (wide margins)",
-                    len(resid),
-                    ctx.args.bias_min_sats,
-                ),
+            # A free-running oscillator (--dr-drift-source bias): a chain that cannot solve the
+            # bias takes another chain's, scaled to its own carrier, as does a chain told to.
+            _fb = (
+                ctx.rx.freq_bias(exclude=ctx.chain_id, t_now=ctx.t0)
+                if _adopt_fb or getattr(ctx.args, "dr_drift_source", "solve") == "bias"
+                else None
             )
+            if _fb is not None:
+                ctx.cb.ema = ctx.cb.value = _fb.value * ctx.args.carrier_hz
+                ctx.cb.meas_t = ctx.t0
+                ctx.cb.update_seed(ctx.args.seed_bias_source)
+                _log_rl(
+                    "clkbias-adopt",
+                    "clock-freq bias %+.1f Hz ADOPTED from '%s' (%d sats, %+.4f ppm)"
+                    % (ctx.cb.ema, _fb.src, _fb.weight, _fb.value * 1e6),
+                    every_s=60.0,
+                )
+            # Log both counts, so a held or unsolved bias reads as too few satellites rather
+            # than a clock or front-end fault. An adopted bias has its own line above.
+            if not _adopt_fb:
+                _log_rl(
+                    "clkbias",
+                    "clock-freq bias %s (%d sats < bias_min_sats %d: residual not "
+                    "trusted)"
+                    % (
+                        "held %+.0f Hz" % ctx.cb.value
+                        if ctx.cb.ema is not None
+                        else "UNSOLVED (wide margins)",
+                        len(resid),
+                        ctx.args.bias_min_sats,
+                    ),
+                )

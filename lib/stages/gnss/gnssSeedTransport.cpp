@@ -195,7 +195,10 @@ DetectionPhase detection_phase(const ChannelizedReplicaBank& bank, double best_c
     if (out.cp0 < 0.0)
         out.cp0 += L;
 
-    if (n_nh <= 1 || best_nh < 0)
+    // A bank with no separate overlay holds its whole code: a code with the overlay tiled in
+    // (GPS_L5_Q_NH, whose replica period spans the NH20) or one with no overlay at all. Its
+    // phases mod L are then the long ones, and the lift below is 0 mod L.
+    if (n_nh > 1 ? best_nh < 0 : bank.secondary_length() > 0)
         return out;
 
     // Long-code phase, mod n_nh*L: the phase a tracker despreading the overlaid code needs. A
@@ -252,7 +255,7 @@ DetectionPhase detection_phase(const ChannelizedReplicaBank& bank, double best_c
 }
 
 SeedPropagation propagate_seed(const ChannelizedReplicaBank& bank, const SeedState& sd,
-                               long long hop0, double sample_rate, double f_offset_hz,
+                               long long hop0, double sample_rate, double carrier_hz,
                                double trim_chips) {
     SeedPropagation out;
     const int fft_len = bank.fft_len();
@@ -269,7 +272,7 @@ SeedPropagation propagate_seed(const ChannelizedReplicaBank& bank, const SeedSta
         // divides by comb_mult). The two rates differ only when comb_mult > 1 (TDM and BOC).
         bank.eff_chip_rate() * (double)fft_len / sample_rate
         * (1.0 + bank.code_doppler_sign * sd.doppler_hz / bank.carrier_hz());
-    const double quad = 0.5 * (bank.chip_rate_hz() / f_offset_hz) * sd.dop_rate * dt * dt;
+    const double quad = 0.5 * (bank.chip_rate_hz() / carrier_hz) * sd.dop_rate * dt * dt;
 
     // The seed's phase_ref_chips is in component chips (CM chips for GPS_L2C_CM), the unit of
     // code_phase_chips, cp_at_ref and the broker (gnss_broker/fits.py seed_phase_at_ref).

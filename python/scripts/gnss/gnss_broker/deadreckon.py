@@ -297,7 +297,11 @@ def dr_clock_quality(ctx):
         if _cone is not None or _unread:
             ctx.dr_state.pop("raw_prev", None)
         prev_raw = ctx.dr_state.get("raw_prev")
-        if prev_raw is not None and 0.5 < ctx.drp.now_w - prev_raw[1] < 30.0:
+        if (
+            getattr(ctx.args, "dr_drift_source", "solve") == "solve"
+            and prev_raw is not None
+            and 0.5 < ctx.drp.now_w - prev_raw[1] < 30.0
+        ):
             d_est = (
                 ((ctx.drp.raw_clk - prev_raw[0] + ctx.code_len / 2) % ctx.code_len)
                 - ctx.code_len / 2
@@ -542,7 +546,15 @@ def dr_clock_hold(ctx):
     The contribution carries this cycle's stamp and held=True, so a consumer takes the value
     as valid at its own now rather than extrapolating it at its own rate (a cross-band
     consumer carries no drift and would use f_chip*(l-a)). raw_prev is dropped so no drift
-    pair straddles a held cycle."""
+    pair straddles a held cycle.
+
+    Under --dr-drift-source bias the drift is the measured oscillator offset, not solve noise,
+    and a free-running clock walks chips per second, so the hold propagates at it."""
+    if getattr(ctx.args, "dr_drift_source", "solve") == "bias":
+        ctx.dr_state["clk"] = (
+            ctx.dr_state["clk"]
+            + ctx.drp.drift * (ctx.drp.now_w - ctx.dr_state["clk_t"])
+        ) % ctx.code_len
     ctx.dr_state["clk_t"] = ctx.drp.now_w
     if ctx.dr_state.get("drift") is not None:
         ctx.dr_state["drift_t"] = ctx.drp.now_w
@@ -622,9 +634,22 @@ def _dr_clock_step_gate(ctx):
     _k = ctx.args.dr_clock_repin_solves
     _cand = ctx.dr_state.get("repin")
     _hop = _dr_clock_newest_hop(ctx)
+    # Solves agree after the candidate is carried to now at the drift.
     if (
         _cand is not None
-        and abs(((ctx.drp.raw_clk - _cand["v"] + L / 2) % L) - L / 2) <= _smax
+        and abs(
+            (
+                (
+                    ctx.drp.raw_clk
+                    - _cand["v"]
+                    - ctx.drp.drift * (ctx.drp.now_w - _cand["t"])
+                    + L / 2
+                )
+                % L
+            )
+            - L / 2
+        )
+        <= _smax
     ):
         if _hop is None or _cand.get("hop") is None or _hop > _cand["hop"]:
             _cand["n"] += 1
@@ -1242,6 +1267,46 @@ def _joint_coast(ctx, ds, jrate, jlen):
         ctx.code_len,
     )[0]
     return delta, ext, age, rate
+
+
+def dr_joint_rate(ctx):
+    """The `joint-consume: rate` consumer for dead-reckon seeds on a chain with no (l-a) pool
+    of its own: the joint state's clk_rate as a fractional rate (l-a), or None when the state
+    is absent, under joint_min_sats or beyond joint_max_rate_ppm (the gates of main's consumer
+    for search seeds). Without it such a chain borrows another chain's (l-a), which expires
+    once that chain's pool stops updating (Receiver.code_bias)."""
+    jr, which, tag = joint_read(ctx)
+    unit = ctx.rx.joint_unit(which) if jr is not None else None
+    if unit is None or len(jr._idx) < ctx.args.joint_min_sats:
+        return None
+    la = jr.clk_rate / unit[0]
+    if abs(la) * 1e6 > ctx.args.joint_max_rate_ppm:
+        return None
+    _log_rl(
+        "jointrate-dr",
+        "dead-reckon: (l-a) %+.5f ppm from the JOINT%s state (l-a EMA says %+.5f)"
+        % (la * 1e6, tag, (ctx.cb.code_ema or 0.0) * 1e6),
+        every_s=60.0,
+    )
+    return la
+
+
+def dr_can_seed(ctx, prn):
+    """Can this chain dead-reckon prn: its clock is fresh (_dr_clock_local_fresh) and the
+    model's last prediction for prn carries a clock known to half a chip and is not marked
+    untrusted, as dr_seed tests before a birth. Elevation and detection are not
+    tested."""
+    if not ctx.dr_state or ctx.dr_state.get("clk") is None:
+        return False
+    if not _dr_clock_local_fresh(ctx) or ctx.drp.pd is None:
+        return False
+    v = ctx.drp.pd.get((ctx.drp.tag, prn))
+    return (
+        v is not None
+        and prn >= ctx.dr_min_prn
+        and prn not in ctx.dr_untrusted
+        and v.get("clk_sigma_s", 0.0) * ctx.args.chip_rate_hz <= 0.5
+    )
 
 
 def dr_joint_clk(ctx):
@@ -1868,6 +1933,35 @@ def gw_nav_fields(ctx, v, prn, ref_hop, off_chips, shipped_phase_chips=None):
     return out
 
 
+def dr_clock_long_chips(ctx):
+    """--dr-clock-long: the whole code periods of the receiver clock beyond clk_now, for a
+    chain whose long code (lc_seg periods) is longer than the period its clock is solved over.
+
+    The clock is solved mod one code period, and the long code's segment otherwise rides the
+    capture-time anchor alone. That is right where sample 0 is PPS-timed (CHORD), but an
+    NTP-timed capture puts every segment off by the host clock's error: on the bladeRF, 27 ms
+    put E5a's CS100 28 chips off. The clock-mod-epoch record (the NH joint fit, mod 20 ms)
+    measures the clock within its epoch, and the anchor, trusted to half the epoch, picks
+    which epoch. 0 with the flag off, without a record, or on a code with no long
+    period."""
+    if not getattr(ctx.args, "dr_clock_long", False) or ctx.lc_seg <= 1:
+        return 0.0
+    rec = ctx.rx.clock_mod_epoch(min_epoch_s=0.0, t_now=ctx.t0)
+    if rec is None or ctx.drp.clk_now is None:
+        return 0.0
+    ep = float(rec.extra["epoch_s"])
+    t_s = ((float(rec.value) + ep / 2.0) % ep) - ep / 2.0
+    k = int(round((t_s * ctx.args.chip_rate_hz - ctx.drp.clk_now) / ctx.code_len))
+    _log_rl(
+        "clklong",
+        "dead-reckon: receiver clock %+.3f ms from '%s' (mod %.0f ms, nearest the anchor) -> "
+        "seeds carry %+d whole code period(s) beyond clk_now"
+        % (t_s * 1e3, rec.src, ep * 1e3, k),
+        every_s=300.0,
+    )
+    return k * ctx.code_len
+
+
 def dr_seed(ctx):
     """Birth, re-pin or slew the seed of every visible satellite this chain dead-reckons, and drop
     model-owned seeds that have set or whose satellite lacks the signal. Computes ctx.drp.clk_now.
@@ -1901,7 +1995,7 @@ def dr_seed(ctx):
         _log_rl(
             "drclk",
             "DRCLK clk_now %.3f chips drift %+.4f chips/s (la %+.4f ppm)"
-            % (ctx.drp.clk_now, ctx.dr_state.get("drift") or 0.0, ctx.drp.la * 1e6),
+            % (ctx.drp.clk_now, ctx.drp.drift, ctx.drp.la * 1e6),
             every_s=30.0,
         )
         # SEED-OFFSET summary: the joint offset against the legacy one (clk_now + b_sat) for every
@@ -1962,6 +2056,9 @@ def dr_seed(ctx):
                 or prn in ctx.probe_set
                 or prn in ctx.cp_held
                 or (prn in ctx.dr_untrusted and prn not in ctx.mp_flipped)
+                # a clock known only to more than half a chip (a GuoWang TLE record's library
+                # theta, clk_sigma_s): the search seeds it, or nothing does
+                or v.get("clk_sigma_s", 0.0) * ctx.args.chip_rate_hz > 0.5
             ):  # not this chain's to dead-reckon
                 continue
             if prn in ctx.seeds and prn not in ctx.dr_state["seeded"]:
@@ -2069,7 +2166,11 @@ def dr_seed(ctx):
             # joint state holds only satellites some chain detects.
             if ctx.drp.hold:
                 continue  # withheld: the clock is still the prime (stage_dead_reckon)
-            _leg_off = ctx.drp.clk_now + ctx.bsat.get(prn, ctx.drp.now_w)
+            _leg_off = (
+                ctx.drp.clk_now
+                + dr_clock_long_chips(ctx)
+                + ctx.bsat.get(prn, ctx.drp.now_w)
+            )
             _off = _leg_off
             _jr3, _w3, _tag3 = joint_read(ctx)
             # The joint is in reference chips (Receiver.joint_unit), converted into ours below as
@@ -2880,10 +2981,13 @@ def stage_dead_reckon(ctx):
                 ctx.dr_state["ax_off"] = _dax
             ctx.drp.la = ctx.cb.code_ema
             # A chain with no detections cannot measure (l-a): code_ema fills only from its own
-            # cp-fit pool. (l-a) is a property of the receiver clock, so take another in-process
-            # chain's from the Receiver, same band first. Without it every dead-reckon seed ships
-            # code_phase_rate 0 and the prompt walks out of the +-1-chip correlation window in
-            # minutes. A rate cannot step the seed.
+            # cp-fit pool. (l-a) is a property of the receiver clock, so take the joint state's
+            # (joint-consume rate), else another in-process chain's from the Receiver, same band
+            # first. Without it every dead-reckon seed ships code_phase_rate 0 and the prompt
+            # walks out of the +-1-chip correlation window in minutes. A rate cannot step the
+            # seed.
+            if ctx.drp.la is None and "rate" in ctx.joint_consume:
+                ctx.drp.la = dr_joint_rate(ctx)
             if ctx.drp.la is None:
                 _sh_cb = ctx.rx.code_bias(
                     ctx.band_id, exclude=ctx.chain_id, t_now=ctx.drp.now_w
@@ -2949,6 +3053,11 @@ def stage_dead_reckon(ctx):
                 # an unstamped drift gets one full lifetime from now, not forever
                 ctx.dr_state["drift_t"] = ctx.drp.now_w
             ctx.drp.drift = ctx.dr_state.get("drift")
+            _bias_drift = getattr(ctx.args, "dr_drift_source", "solve") == "bias"
+            if _bias_drift and ctx.cb.ema is not None:
+                # A free-running oscillator: the carrier bias is its frequency error, and the
+                # code clock runs off by the same fraction.
+                ctx.drp.drift = ctx.cb.ema * ctx.args.chip_rate_hz / ctx.args.carrier_hz
             if ctx.drp.drift is None:
                 ctx.drp.drift = ctx.args.chip_rate_hz * ctx.drp.la
             # The hop-axis epoch (#208): every model below is evaluated at _ep_w and labelled
@@ -3136,7 +3245,13 @@ def stage_dead_reckon(ctx):
             det_age = {}
             off_inputs = {}
             for prn, det in sorted(ctx.best.items()):
-                if ctx.drp.pd.get((ctx.drp.tag, prn)) is None:
+                _pv = ctx.drp.pd.get((ctx.drp.tag, prn))
+                if _pv is None:
+                    continue
+                # A satellite whose clock the model knows only to more than half a chip (a
+                # GuoWang TLE record's library theta, clk_sigma_s) would pull the solve off; its
+                # detection still seeds it.
+                if _pv.get("clk_sigma_s", 0.0) * ctx.args.chip_rate_hz > 0.5:
                     continue
                 d_i, cp_loc, t_i = _det_offset(ctx, prn, det)
                 det_age[prn] = ctx.drp.t_now_abs - t_i

@@ -1,0 +1,119 @@
+---
+##########################################
+#
+# bladerf_autocorr.yaml
+#
+# Streams 122.88 MSPS of 8-bit I/Q from a bladeRF 2.0 micro, centred on the
+# low GNSS band, channelizes it into 1024 channels of 120 kHz, and streams
+# the averaged power spectrum to the browser viewer.
+#
+# Author: Keith Vanderlinde
+#
+##########################################
+type: config
+# Logging level can be one of:
+# OFF, ERROR, WARN, INFO, DEBUG, DEBUG2 (case insensitive)
+# Note DEBUG and DEBUG2 require a build with (-DCMAKE_BUILD_TYPE=Debug)
+log_level: info
+
+instrument_name: bladerf
+
+# kotekan builds a telescope at startup; these stages do not use it. ICETelescope is
+# here only because it is always built.
+telescope:
+    name: ICETelescope
+    num_polarizations: 1
+    num_dishes: 1
+
+# Permit cross-origin REST access from the browser viewer, served on :8080.
+rest_server:
+    cors_allow_origins:
+        - "http://localhost:8080"
+        - "http://127.0.0.1:8080"
+
+# 2^20 samples, 8.5 ms at 122.88 MSPS.
+samples_per_data_set: 1048576
+# The Cortex-X925 cores on the gx10.
+cpu_affinity: [5, 6, 7, 8]
+num_elements: 1
+one: 1
+sizeof_float: 4
+
+# Read by both the bladeRF and the power stream for the viewer's frequency axis.
+sample_bw: 122.88 # MSPS; above 61.44 the bladeRF runs with OVERSAMPLE
+freq: 1225.       # MHz
+
+input_buf:
+    kotekan_buffer: ndarray
+    value_type: cint8
+    extents: [samples_per_data_set]
+    metadata_pool: none
+    num_frames: 32
+
+bladerf_input:
+    kotekan_stage: bladeRFInput
+    out_buf: input_buf
+    gain_mode: manual
+    # dB; ~22 counts RMS from a small GPS antenna on a few metres of cable,
+    # well clear of the board and the host.
+    gain: 45
+    # true puts +5 V on the RX port for an active antenna; never with a 50 ohm terminator.
+    bias_tee: false
+    # Both measured on the first unit at 122.88 MSPS (see bladeRFInput's docs).
+    force_filter_open: true
+    data_port_delay: 160 # 0xa0; libbladeRF's 0x50 sat at the edge of the data eye
+#    serial: ""             # uncomment & edit to pick a specific unit
+#    fpga_image: /usr/local/share/Nuand/bladeRF/images/hostedxA4-v0.16.0.rbf
+#    ref_in_freq: 10.       # MHz, to lock to a reference on REF IN
+
+# Stop kotekan if the device starts but never delivers, or stops delivering.
+input_monitor:
+    kotekan_stage: monitorBuffer
+    bufs: [input_buf]
+    timeout: 5
+    wait_for_first_frame: false
+
+spectrum_output:
+    spectrum_length: 1024
+    # 120000 spectra/s at 122.88 MSPS; 12000 makes 10 averaged spectra a second.
+    integration_length: 12000
+    power_integration_length: 64
+
+    post_fengine_buf:
+        kotekan_buffer: ndarray
+        value_type: cfloat32
+        extents: [samples_per_data_set]
+        metadata_pool: none
+        num_frames: 8
+
+    fengine:
+        kotekan_stage: fftwEngine
+        input_type: complex_int8
+        num_taps: 4
+        pfb_window: hamming
+        in_buf: input_buf
+        out_buf: post_fengine_buf
+
+    post_corr_buf:
+        kotekan_buffer: standard
+        metadata_pool: none
+        num_frames: 8
+        frame_size: ( spectrum_length + one ) * sizeof_float
+
+    xengine:
+        kotekan_stage: simpleAutocorr
+        in_buf: post_fengine_buf
+        out_buf: post_corr_buf
+
+    power_stream:
+        kotekan_stage: networkPowerStream
+        num_freq: 1024
+        samples_per_data_set: 64
+        destination_port: 23401
+        destination_ip: "127.0.0.1"
+        destination_protocol: TCP
+        in_buf: post_corr_buf
+
+# The browser viewer is a separate process; start it before or after kotekan
+# (see python/scripts/js_viewer/README.md):
+#   python3 python/scripts/js_viewer/livebeam_server.py

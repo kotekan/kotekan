@@ -1,0 +1,3707 @@
+{
+ "about": "Range rate (m/s, + receding) at the centre of the closest chunk of every theta gw_reduce.py measured with its unstretched floor replica (reductions before 2026-11-17, proposals without replica = 'stretched'), keyed '<sat as the proposal names it>|<measured_utc>', and replica_corr_ns, what guowang_db.py adds to such a theta: -0.5 ms x range rate / c + 30.547 ns x sign(range rate). basis 'summary': the reducer's own chunk centre and element set; 'summary ranges': a cubic through the reducer's chunk ranges; 'tle': the newest element set at or before measured_utc + 0.5 s. Built once by ~/gnss/builds/gw1202/gw_replica_rates.py (guowang_paper review/REPLY_GUOWANG_20261117c.md); it never grows: the fixed reducer writes range_rate_m_s in each proposal. sign_uncertain: the keys whose 'tle' rate is under 100 m/s (that basis is good to 9 m/s rms, 54 worst), so the sign of the half sample is not known; never adopted.",
+ "half_sample_ns": 30.5474,
+ "sign_uncertain": [
+  "DIGUI-H54-3|2026-11-03T15:23:18Z",
+  "DIGUI-H54-3|2026-11-10T13:23:21Z"
+ ],
+ "rates": {
+  "DIGUI-18|2026-11-02T19:57:08Z": {
+   "range_rate_m_s": 1123.99,
+   "basis": "summary",
+   "utc_centre": "19:57:08.371",
+   "tle": "hulianwang_20261102T171006Z.tle",
+   "replica_corr_ns": 28.673,
+   "windows": [
+    10
+   ],
+   "sep_deg": 0.86
+  },
+  "DIGUI-97|2026-11-02T19:23:51Z": {
+   "range_rate_m_s": -1309.91,
+   "basis": "summary",
+   "utc_centre": "19:23:51.337",
+   "tle": "hulianwang_20261102T171006Z.tle",
+   "replica_corr_ns": -28.363,
+   "windows": [
+    7
+   ],
+   "sep_deg": 2.54
+  },
+  "DIGUI-79|2026-11-02T18:00:45Z": {
+   "range_rate_m_s": 1137.42,
+   "basis": "summary",
+   "utc_centre": "18:00:45.232",
+   "tle": "hulianwang_20261102T171006Z.tle",
+   "replica_corr_ns": 28.65,
+   "windows": [
+    4
+   ],
+   "sep_deg": 0.82
+  },
+  "DIGUI-76|2026-11-02T17:47:40Z": {
+   "range_rate_m_s": 1044.09,
+   "basis": "summary",
+   "utc_centre": "17:47:40.100",
+   "tle": "hulianwang_20261102T171006Z.tle",
+   "replica_corr_ns": 28.806,
+   "windows": [
+    3
+   ],
+   "sep_deg": 5.8
+  },
+  "DIGUI-40|2026-11-02T17:39:45Z": {
+   "range_rate_m_s": -1187.02,
+   "basis": "summary",
+   "utc_centre": "17:39:45.766",
+   "tle": "hulianwang_20261102T171006Z.tle",
+   "replica_corr_ns": -28.568,
+   "windows": [
+    2
+   ],
+   "sep_deg": 3.55
+  },
+  "DIGUI-104|2026-11-02T19:36:26Z": {
+   "range_rate_m_s": -1182.07,
+   "basis": "summary",
+   "utc_centre": "19:36:26.647",
+   "tle": "hulianwang_20261102T171006Z.tle",
+   "replica_corr_ns": -28.576,
+   "windows": [
+    8
+   ],
+   "sep_deg": 3.82
+  },
+  "DIGUI-63|2026-11-02T19:04:01Z": {
+   "range_rate_m_s": -2860.57,
+   "basis": "summary",
+   "utc_centre": "19:04:01.539",
+   "tle": "hulianwang_20261102T171006Z.tle",
+   "replica_corr_ns": -25.776,
+   "windows": [
+    6
+   ],
+   "sep_deg": 1.26
+  },
+  "DIGUI-75|2026-11-02T18:13:08Z": {
+   "range_rate_m_s": 1249.58,
+   "basis": "summary",
+   "utc_centre": "18:13:08.840",
+   "tle": "hulianwang_20261102T171006Z.tle",
+   "replica_corr_ns": 28.463,
+   "windows": [
+    5
+   ],
+   "sep_deg": 5.37
+  },
+  "DIGUI-176|2026-11-02T20:03:23Z": {
+   "range_rate_m_s": 1161.51,
+   "basis": "summary",
+   "utc_centre": "20:03:23.887",
+   "tle": "hulianwang_20261102T171006Z.tle",
+   "replica_corr_ns": 28.61,
+   "windows": [
+    11
+   ],
+   "sep_deg": 2.17
+  },
+  "DIGUI-177|2026-11-02T19:50:41Z": {
+   "range_rate_m_s": 1104.95,
+   "basis": "summary",
+   "utc_centre": "19:50:41.908",
+   "tle": "hulianwang_20261102T171006Z.tle",
+   "replica_corr_ns": 28.705,
+   "windows": [
+    9
+   ],
+   "sep_deg": 3.17
+  },
+  "DIGUI-54|2026-11-02T21:33:12Z": {
+   "range_rate_m_s": -1211.22,
+   "basis": "summary",
+   "utc_centre": "21:33:12.603",
+   "tle": "hulianwang_20261103T054002Z.tle",
+   "replica_corr_ns": -28.527,
+   "windows": [
+    15
+   ],
+   "sep_deg": 3.08
+  },
+  "DIGUI-57|2026-11-02T21:20:33Z": {
+   "range_rate_m_s": -1293.11,
+   "basis": "summary",
+   "utc_centre": "21:20:33.727",
+   "tle": "hulianwang_20261103T074502Z.tle",
+   "replica_corr_ns": -28.391,
+   "windows": [
+    14
+   ],
+   "sep_deg": 2.37
+  },
+  "DIGUI-37|2026-11-02T21:08:15Z": {
+   "range_rate_m_s": -2848.44,
+   "basis": "summary",
+   "utc_centre": "21:08:15.362",
+   "tle": "hulianwang_20261103T054002Z.tle",
+   "replica_corr_ns": -25.797,
+   "windows": [
+    13
+   ],
+   "sep_deg": 3.19
+  },
+  "DIGUI-28|2026-11-02T23:02:04Z": {
+   "range_rate_m_s": -2877.72,
+   "basis": "summary",
+   "utc_centre": "23:02:04.989",
+   "tle": "hulianwang_20261103T054002Z.tle",
+   "replica_corr_ns": -25.748,
+   "windows": [
+    18
+   ],
+   "sep_deg": 5.96
+  },
+  "DIGUI-20|2026-11-02T23:13:00Z": {
+   "range_rate_m_s": -2839.59,
+   "basis": "summary",
+   "utc_centre": "23:13:00.349",
+   "tle": "hulianwang_20261103T054002Z.tle",
+   "replica_corr_ns": -25.811,
+   "windows": [
+    19
+   ],
+   "sep_deg": 4.38
+  },
+  "DIGUI-153|2026-11-02T23:17:29Z": {
+   "range_rate_m_s": -1319.24,
+   "basis": "summary",
+   "utc_centre": "23:17:29.707",
+   "tle": "hulianwang_20261103T013002Z.tle",
+   "replica_corr_ns": -28.347,
+   "windows": [
+    20
+   ],
+   "sep_deg": 3.07
+  },
+  "DIGUI-152|2026-11-02T23:29:43Z": {
+   "range_rate_m_s": -1207.5,
+   "basis": "summary",
+   "utc_centre": "23:29:43.669",
+   "tle": "hulianwang_20261102T171006Z.tle",
+   "replica_corr_ns": -28.534,
+   "windows": [
+    21
+   ],
+   "sep_deg": 2.12
+  },
+  "DIGUI-99|2026-11-03T00:03:01Z": {
+   "range_rate_m_s": 1196.34,
+   "basis": "summary",
+   "utc_centre": "00:03:01.164",
+   "tle": "hulianwang_20261103T013002Z.tle",
+   "replica_corr_ns": 28.552,
+   "windows": [
+    23
+   ],
+   "sep_deg": 3.28
+  },
+  "DIGUI-102|2026-11-02T23:50:45Z": {
+   "range_rate_m_s": 1139.22,
+   "basis": "summary",
+   "utc_centre": "23:50:45.525",
+   "tle": "hulianwang_20261103T013002Z.tle",
+   "replica_corr_ns": 28.647,
+   "windows": [
+    22
+   ],
+   "sep_deg": 1.71
+  },
+  "DIGUI-124|2026-11-03T01:26:47Z": {
+   "range_rate_m_s": -1239.33,
+   "basis": "summary",
+   "utc_centre": "01:26:47.995",
+   "tle": "hulianwang_20261103T074502Z.tle",
+   "replica_corr_ns": -28.48,
+   "windows": [
+    30
+   ],
+   "sep_deg": 1.75
+  },
+  "DIGUI-125|2026-11-03T01:14:07Z": {
+   "range_rate_m_s": -1328.9,
+   "basis": "summary",
+   "utc_centre": "01:14:07.526",
+   "tle": "hulianwang_20261103T013002Z.tle",
+   "replica_corr_ns": -28.331,
+   "windows": [
+    26
+   ],
+   "sep_deg": 3.67
+  },
+  "DIGUI-55|2026-11-03T01:47:43Z": {
+   "range_rate_m_s": 1087.74,
+   "basis": "summary",
+   "utc_centre": "01:47:43.183",
+   "tle": "hulianwang_20261103T074502Z.tle",
+   "replica_corr_ns": 28.733,
+   "windows": [
+    35
+   ],
+   "sep_deg": 2.41
+  },
+  "DIGUI-159|2026-11-03T03:23:32Z": {
+   "range_rate_m_s": -1256.84,
+   "basis": "summary",
+   "utc_centre": "03:23:32.231",
+   "tle": "hulianwang_20261103T033502Z.tle",
+   "replica_corr_ns": -28.451,
+   "windows": [
+    8
+   ],
+   "sep_deg": 0.62
+  },
+  "DIGUI-158|2026-11-03T03:35:48Z": {
+   "range_rate_m_s": -1181.47,
+   "basis": "summary",
+   "utc_centre": "03:35:48.164",
+   "tle": "hulianwang_20261103T074502Z.tle",
+   "replica_corr_ns": -28.577,
+   "windows": [
+    9
+   ],
+   "sep_deg": 4.61
+  },
+  "DIGUI-151|2026-11-03T03:43:43Z": {
+   "range_rate_m_s": 1070.88,
+   "basis": "summary",
+   "utc_centre": "03:43:43.630",
+   "tle": "hulianwang_20261103T074502Z.tle",
+   "replica_corr_ns": 28.761,
+   "windows": [
+    10
+   ],
+   "sep_deg": 3.9
+  },
+  "DIGUI-149|2026-11-03T03:56:21Z": {
+   "range_rate_m_s": 1169.85,
+   "basis": "summary",
+   "utc_centre": "03:56:21.960",
+   "tle": "hulianwang_20261103T013002Z.tle",
+   "replica_corr_ns": 28.596,
+   "windows": [
+    11
+   ],
+   "sep_deg": 1.48
+  },
+  "DIGUI-165|2026-11-03T05:06:28Z": {
+   "range_rate_m_s": -2832.13,
+   "basis": "summary",
+   "utc_centre": "05:06:28.008",
+   "tle": "hulianwang_20261103T054002Z.tle",
+   "replica_corr_ns": -25.824,
+   "windows": [
+    12
+   ],
+   "sep_deg": 4.09
+  },
+  "DIGUI-144|2026-11-03T05:13:27Z": {
+   "range_rate_m_s": -1311.11,
+   "basis": "summary",
+   "utc_centre": "05:13:27.691",
+   "tle": "hulianwang_20261103T013002Z.tle",
+   "replica_corr_ns": -28.361,
+   "windows": [
+    13
+   ],
+   "sep_deg": 3.31
+  },
+  "DIGUI-143|2026-11-03T05:26:35Z": {
+   "range_rate_m_s": -1233.66,
+   "basis": "summary",
+   "utc_centre": "05:26:35.339",
+   "tle": "hulianwang_20261103T074502Z.tle",
+   "replica_corr_ns": -28.49,
+   "windows": [
+    14
+   ],
+   "sep_deg": 2.26
+  },
+  "DIGUI-122|2026-11-03T05:41:11Z": {
+   "range_rate_m_s": 1070.59,
+   "basis": "summary",
+   "utc_centre": "05:41:11.445",
+   "tle": "hulianwang_20261103T074502Z.tle",
+   "replica_corr_ns": 28.762,
+   "windows": [
+    15
+   ],
+   "sep_deg": 4.12
+  },
+  "DIGUI-120|2026-11-03T05:53:29Z": {
+   "range_rate_m_s": 1188.43,
+   "basis": "summary",
+   "utc_centre": "05:53:29.978",
+   "tle": "hulianwang_20261103T074502Z.tle",
+   "replica_corr_ns": 28.565,
+   "windows": [
+    16
+   ],
+   "sep_deg": 0.98
+  },
+  "DIGUI-64|2026-11-03T06:34:40Z": {
+   "range_rate_m_s": 2725.79,
+   "basis": "summary",
+   "utc_centre": "06:34:40.675",
+   "tle": "hulianwang_20261103T054002Z.tle",
+   "replica_corr_ns": 26.001,
+   "windows": [
+    17
+   ],
+   "sep_deg": 0.93
+  },
+  "DIGUI-133|2026-11-03T07:23:23Z": {
+   "range_rate_m_s": -1237.05,
+   "basis": "summary",
+   "utc_centre": "07:23:23.098",
+   "tle": "hulianwang_20261103T013002Z.tle",
+   "replica_corr_ns": -28.484,
+   "windows": [
+    19
+   ],
+   "sep_deg": 1.34
+  },
+  "DIGUI-136|2026-11-03T07:10:38Z": {
+   "range_rate_m_s": -1317.82,
+   "basis": "summary",
+   "utc_centre": "07:10:38.099",
+   "tle": "hulianwang_20261103T013002Z.tle",
+   "replica_corr_ns": -28.35,
+   "windows": [
+    18
+   ],
+   "sep_deg": 4.08
+  },
+  "DIGUI-156|2026-11-03T07:50:14Z": {
+   "range_rate_m_s": 1143.01,
+   "basis": "summary",
+   "utc_centre": "07:50:14.885",
+   "tle": "hulianwang_20261103T033502Z.tle",
+   "replica_corr_ns": 28.641,
+   "windows": [
+    20
+   ],
+   "sep_deg": 1.0
+  },
+  "DIGUI-155|2026-11-03T08:02:11Z": {
+   "range_rate_m_s": 1200.54,
+   "basis": "summary",
+   "utc_centre": "08:02:11.021",
+   "tle": "hulianwang_20261103T033502Z.tle",
+   "replica_corr_ns": 28.545,
+   "windows": [
+    21
+   ],
+   "sep_deg": 4.13
+  },
+  "DIGUI-36|2026-11-03T08:39:16Z": {
+   "range_rate_m_s": 2735.74,
+   "basis": "summary",
+   "utc_centre": "08:39:16.644",
+   "tle": "hulianwang_20261103T054002Z.tle",
+   "replica_corr_ns": 25.985,
+   "windows": [
+    22
+   ],
+   "sep_deg": 3.42
+  },
+  "DIGUI-110|2026-11-03T09:06:57Z": {
+   "range_rate_m_s": -1327.94,
+   "basis": "summary",
+   "utc_centre": "09:06:57.966",
+   "tle": "hulianwang_20261103T074502Z.tle",
+   "replica_corr_ns": -28.333,
+   "windows": [
+    23
+   ],
+   "sep_deg": 5.39
+  },
+  "DIGUI-109|2026-11-03T09:20:33Z": {
+   "range_rate_m_s": -1264.46,
+   "basis": "summary",
+   "utc_centre": "09:20:33.297",
+   "tle": "hulianwang_20261103T013002Z.tle",
+   "replica_corr_ns": -28.439,
+   "windows": [
+    24
+   ],
+   "sep_deg": 0.82
+  },
+  "DIGUI-108|2026-11-03T09:32:13Z": {
+   "range_rate_m_s": -1167.2,
+   "basis": "summary",
+   "utc_centre": "09:32:13.913",
+   "tle": "hulianwang_20261103T013002Z.tle",
+   "replica_corr_ns": -28.601,
+   "windows": [
+    25
+   ],
+   "sep_deg": 5.3
+  },
+  "DIGUI-141|2026-11-03T09:40:06Z": {
+   "range_rate_m_s": 1078.55,
+   "basis": "summary",
+   "utc_centre": "09:40:06.150",
+   "tle": "hulianwang_20261103T013002Z.tle",
+   "replica_corr_ns": 28.749,
+   "windows": [
+    26
+   ],
+   "sep_deg": 3.63
+  },
+  "DIGUI-137|2026-11-03T09:52:48Z": {
+   "range_rate_m_s": 1165.54,
+   "basis": "summary",
+   "utc_centre": "09:52:48.381",
+   "tle": "hulianwang_20261103T013002Z.tle",
+   "replica_corr_ns": 28.603,
+   "windows": [
+    27
+   ],
+   "sep_deg": 1.61
+  },
+  "DIGUI-21|2026-11-03T10:44:09Z": {
+   "range_rate_m_s": 2762.61,
+   "basis": "summary",
+   "utc_centre": "10:44:09.768",
+   "tle": "hulianwang_20261103T074502Z.tle",
+   "replica_corr_ns": 25.94,
+   "windows": [
+    29
+   ],
+   "sep_deg": 5.4
+  },
+  "DIGUI-91|2026-11-03T11:03:33Z": {
+   "range_rate_m_s": -1355.44,
+   "basis": "summary",
+   "utc_centre": "11:03:33.730",
+   "tle": "hulianwang_20261103T074502Z.tle",
+   "replica_corr_ns": -28.287,
+   "windows": [
+    30
+   ],
+   "sep_deg": 5.6
+  },
+  "DIGUI-90|2026-11-03T11:16:13Z": {
+   "range_rate_m_s": -1257.92,
+   "basis": "summary",
+   "utc_centre": "11:16:13.570",
+   "tle": "hulianwang_20261103T074502Z.tle",
+   "replica_corr_ns": -28.449,
+   "windows": [
+    31
+   ],
+   "sep_deg": 0.57
+  },
+  "DIGUI-89|2026-11-03T11:28:54Z": {
+   "range_rate_m_s": -1167.65,
+   "basis": "summary",
+   "utc_centre": "11:28:54.752",
+   "tle": "hulianwang_20261103T074502Z.tle",
+   "replica_corr_ns": -28.6,
+   "windows": [
+    32
+   ],
+   "sep_deg": 5.14
+  },
+  "DIGUI-132|2026-11-03T11:37:12Z": {
+   "range_rate_m_s": 1065.55,
+   "basis": "summary",
+   "utc_centre": "11:37:12.951",
+   "tle": "hulianwang_20261103T013002Z.tle",
+   "replica_corr_ns": 28.77,
+   "windows": [
+    33
+   ],
+   "sep_deg": 4.48
+  },
+  "DIGUI-135|2026-11-03T11:49:55Z": {
+   "range_rate_m_s": 1155.28,
+   "basis": "summary",
+   "utc_centre": "11:49:55.182",
+   "tle": "hulianwang_20261103T013002Z.tle",
+   "replica_corr_ns": 28.621,
+   "windows": [
+    34
+   ],
+   "sep_deg": 1.14
+  },
+  "DIGUI-77|2026-11-03T13:12:53Z": {
+   "range_rate_m_s": -1284.01,
+   "basis": "summary",
+   "utc_centre": "13:12:53.360",
+   "tle": "hulianwang_20261103T054002Z.tle",
+   "replica_corr_ns": -28.406,
+   "windows": [
+    36
+   ],
+   "sep_deg": 1.7
+  },
+  "DIGUI-106|2026-11-03T13:46:43Z": {
+   "range_rate_m_s": 1147.68,
+   "basis": "summary",
+   "utc_centre": "13:46:43.361",
+   "tle": "hulianwang_20261103T013002Z.tle",
+   "replica_corr_ns": 28.633,
+   "windows": [
+    38
+   ],
+   "sep_deg": 0.57
+  },
+  "DIGUI-105|2026-11-03T13:59:26Z": {
+   "range_rate_m_s": 1215.17,
+   "basis": "summary",
+   "utc_centre": "13:59:26.347",
+   "tle": "hulianwang_20261103T054002Z.tle",
+   "replica_corr_ns": 28.521,
+   "windows": [
+    39
+   ],
+   "sep_deg": 5.1
+  },
+  "DIGUI-170|2026-11-03T15:03:12Z": {
+   "range_rate_m_s": -1336.17,
+   "basis": "summary",
+   "utc_centre": "15:03:12.978",
+   "tle": "hulianwang_20261103T033502Z.tle",
+   "replica_corr_ns": -28.319,
+   "windows": [
+    41
+   ],
+   "sep_deg": 5.21
+  },
+  "DIGUI-11|2026-11-03T15:09:46Z": {
+   "range_rate_m_s": -1282.97,
+   "basis": "summary",
+   "utc_centre": "15:09:46.236",
+   "tle": "hulianwang_20261103T054002Z.tle",
+   "replica_corr_ns": -28.408,
+   "windows": [
+    42
+   ],
+   "sep_deg": 2.0
+  },
+  "DIGUI-169|2026-11-03T15:15:52Z": {
+   "range_rate_m_s": -1246.22,
+   "basis": "summary",
+   "utc_centre": "15:15:52.525",
+   "tle": "hulianwang_20261103T033502Z.tle",
+   "replica_corr_ns": -28.469,
+   "windows": [
+    43
+   ],
+   "sep_deg": 0.47
+  },
+  "DIGUI-87|2026-11-03T15:30:06Z": {
+   "range_rate_m_s": 1066.93,
+   "basis": "summary",
+   "utc_centre": "15:30:06.149",
+   "tle": "hulianwang_20261103T074502Z.tle",
+   "replica_corr_ns": 28.768,
+   "windows": [
+    45
+   ],
+   "sep_deg": 5.93
+  },
+  "DIGUI-88|2026-11-03T15:43:03Z": {
+   "range_rate_m_s": 1132.36,
+   "basis": "summary",
+   "utc_centre": "15:43:03.857",
+   "tle": "hulianwang_20261103T074502Z.tle",
+   "replica_corr_ns": 28.659,
+   "windows": [
+    46
+   ],
+   "sep_deg": 0.81
+  },
+  "DIGUI-95|2026-11-03T15:55:34Z": {
+   "range_rate_m_s": 1243.37,
+   "basis": "summary",
+   "utc_centre": "15:55:34.092",
+   "tle": "hulianwang_20261102T171006Z.tle",
+   "replica_corr_ns": 28.474,
+   "windows": [
+    47
+   ],
+   "sep_deg": 5.5
+  },
+  "DIGUI-H54-3|2026-11-03T15:23:18Z": {
+   "range_rate_m_s": 50.23,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -8.247,
+   "replica_corr_ns": 30.464,
+   "windows": [
+    44
+   ],
+   "sep_deg": 12.82
+  },
+  "DIGUI-152|2026-11-03T22:56:18Z": {
+   "range_rate_m_s": -1351.32,
+   "basis": "summary",
+   "utc_centre": "22:56:18.478",
+   "tle": "hulianwang_20261104T043003Z.tle",
+   "replica_corr_ns": -28.294,
+   "windows": [
+    58,
+    59
+   ],
+   "sep_deg": 4.51
+  },
+  "DIGUI-96|2026-11-03T23:42:11Z": {
+   "range_rate_m_s": 1188.52,
+   "basis": "summary",
+   "utc_centre": "23:42:11.493",
+   "tle": "hulianwang_20261103T201503Z.tle",
+   "replica_corr_ns": 28.565,
+   "windows": [
+    61
+   ],
+   "sep_deg": 1.98
+  },
+  "DIGUI-150|2026-11-03T23:09:23Z": {
+   "range_rate_m_s": -1115.67,
+   "basis": "summary",
+   "utc_centre": "23:09:23.400",
+   "tle": "hulianwang_20261103T201503Z.tle",
+   "replica_corr_ns": -28.687,
+   "windows": [
+    60
+   ],
+   "sep_deg": 1.16
+  },
+  "DIGUI-123|2026-11-04T01:06:15Z": {
+   "range_rate_m_s": -1263.47,
+   "basis": "summary",
+   "utc_centre": "01:06:15.773",
+   "tle": "hulianwang_20261103T201503Z.tle",
+   "replica_corr_ns": -28.44,
+   "windows": [
+    63
+   ],
+   "sep_deg": 0.73
+  },
+  "DIGUI-53|2026-11-04T01:26:17Z": {
+   "range_rate_m_s": 1095.36,
+   "basis": "summary",
+   "utc_centre": "01:26:17.735",
+   "tle": "hulianwang_20261104T002002Z.tle",
+   "replica_corr_ns": 28.721,
+   "windows": [
+    64
+   ],
+   "sep_deg": 4.16
+  },
+  "DIGUI-52|2026-11-04T01:39:16Z": {
+   "range_rate_m_s": 1170.26,
+   "basis": "summary",
+   "utc_centre": "01:39:16.533",
+   "tle": "hulianwang_20261104T002002Z.tle",
+   "replica_corr_ns": 28.596,
+   "windows": [
+    65
+   ],
+   "sep_deg": 1.34
+  },
+  "DIGUI-157|2026-11-04T03:15:21Z": {
+   "range_rate_m_s": -1030.95,
+   "basis": "summary",
+   "utc_centre": "03:15:21.772",
+   "tle": "hulianwang_20261103T201503Z.tle",
+   "replica_corr_ns": -28.828,
+   "windows": [
+    67
+   ],
+   "sep_deg": 3.7
+  },
+  "DIGUI-148|2026-11-04T03:35:27Z": {
+   "range_rate_m_s": 1166.03,
+   "basis": "summary",
+   "utc_centre": "03:35:27.298",
+   "tle": "hulianwang_20261103T201503Z.tle",
+   "replica_corr_ns": 28.603,
+   "windows": [
+    68
+   ],
+   "sep_deg": 0.35
+  },
+  "DIGUI-86|2026-11-04T05:02:16Z": {
+   "range_rate_m_s": -2851.82,
+   "basis": "summary",
+   "utc_centre": "05:02:16.037",
+   "tle": "hulianwang_20261104T043003Z.tle",
+   "replica_corr_ns": -25.791,
+   "windows": [
+    70
+   ],
+   "sep_deg": 2.69
+  },
+  "DIGUI-142|2026-11-04T05:05:33Z": {
+   "range_rate_m_s": -1224.32,
+   "basis": "summary",
+   "utc_centre": "05:05:33.505",
+   "tle": "hulianwang_20261104T043003Z.tle",
+   "replica_corr_ns": -28.505,
+   "windows": [
+    71
+   ],
+   "sep_deg": 0.79
+  },
+  "DIGUI-121|2026-11-04T05:32:40Z": {
+   "range_rate_m_s": 1140.72,
+   "basis": "summary",
+   "utc_centre": "05:32:40.098",
+   "tle": "hulianwang_20261104T043003Z.tle",
+   "replica_corr_ns": 28.645,
+   "windows": [
+    72
+   ],
+   "sep_deg": 0.58
+  },
+  "DIGUI-119|2026-11-04T05:45:25Z": {
+   "range_rate_m_s": 1244.39,
+   "basis": "summary",
+   "utc_centre": "05:45:25.852",
+   "tle": "hulianwang_20261104T043003Z.tle",
+   "replica_corr_ns": 28.472,
+   "windows": [
+    73
+   ],
+   "sep_deg": 5.01
+  },
+  "DIGUI-65|2026-11-04T06:30:40Z": {
+   "range_rate_m_s": 2743.41,
+   "basis": "summary",
+   "utc_centre": "06:30:40.363",
+   "tle": "hulianwang_20261104T043003Z.tle",
+   "replica_corr_ns": 25.972,
+   "windows": [
+    74
+   ],
+   "sep_deg": 2.56
+  },
+  "DIGUI-134|2026-11-04T07:02:46Z": {
+   "range_rate_m_s": -1264.07,
+   "basis": "summary",
+   "utc_centre": "07:02:46.472",
+   "tle": "hulianwang_20261104T043003Z.tle",
+   "replica_corr_ns": -28.439,
+   "windows": [
+    75
+   ],
+   "sep_deg": 0.73
+  },
+  "DIGUI-163|2026-11-04T07:41:35Z": {
+   "range_rate_m_s": 1213.86,
+   "basis": "summary",
+   "utc_centre": "07:41:35.778",
+   "tle": "hulianwang_20261103T201503Z.tle",
+   "replica_corr_ns": 28.523,
+   "windows": [
+    76
+   ],
+   "sep_deg": 3.86
+  },
+  "DIGUI-118|2026-11-04T08:34:57Z": {
+   "range_rate_m_s": 2745.92,
+   "basis": "summary",
+   "utc_centre": "08:34:57.836",
+   "tle": "hulianwang_20261104T084002Z.tle",
+   "replica_corr_ns": 25.968,
+   "windows": [
+    77
+   ],
+   "sep_deg": 5.26
+  },
+  "DIGUI-H24-4|2026-11-04T08:52:33Z": {
+   "range_rate_m_s": -1229.1,
+   "basis": "summary ranges",
+   "utc_centre": "08:52:33.458",
+   "tle": "hidden_digui.tle",
+   "replica_corr_ns": -28.497,
+   "windows": [
+    78
+   ],
+   "sep_deg": 4.04
+  },
+  "DIGUI-139|2026-11-04T09:31:57Z": {
+   "range_rate_m_s": 1146.63,
+   "basis": "summary",
+   "utc_centre": "09:31:57.074",
+   "tle": "hulianwang_20261104T043003Z.tle",
+   "replica_corr_ns": 28.635,
+   "windows": [
+    81
+   ],
+   "sep_deg": 0.73
+  },
+  "DIGUI-H24-3|2026-11-04T09:05:03Z": {
+   "range_rate_m_s": -1205.87,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -7.654,
+   "replica_corr_ns": -28.536,
+   "windows": [
+    79
+   ],
+   "sep_deg": 1.4
+  },
+  "DIGUI-138|2026-11-04T09:44:55Z": {
+   "range_rate_m_s": 1264.4,
+   "basis": "summary",
+   "utc_centre": "09:44:55.915",
+   "tle": "hulianwang_20261104T043003Z.tle",
+   "replica_corr_ns": 28.439,
+   "windows": [
+    82
+   ],
+   "sep_deg": 5.7
+  },
+  "DIGUI-22|2026-11-04T10:29:11Z": {
+   "range_rate_m_s": 2758.46,
+   "basis": "summary",
+   "utc_centre": "10:29:11.203",
+   "tle": "hulianwang_20261104T043003Z.tle",
+   "replica_corr_ns": 25.947,
+   "windows": [
+    83
+   ],
+   "sep_deg": 3.93
+  },
+  "DIGUI-H54-4|2026-11-04T10:49:13Z": {
+   "range_rate_m_s": -1160.7,
+   "basis": "summary ranges",
+   "utc_centre": "10:49:13.332",
+   "tle": "hidden_digui.tle",
+   "replica_corr_ns": -28.612,
+   "windows": [
+    84
+   ],
+   "sep_deg": 4.19
+  },
+  "DIGUI-130|2026-11-04T11:29:10Z": {
+   "range_rate_m_s": 1141.51,
+   "basis": "summary",
+   "utc_centre": "11:29:10.964",
+   "tle": "hulianwang_20261104T043003Z.tle",
+   "replica_corr_ns": 28.644,
+   "windows": [
+    85
+   ],
+   "sep_deg": 0.68
+  },
+  "DIGUI-131|2026-11-04T11:41:52Z": {
+   "range_rate_m_s": 1215.29,
+   "basis": "summary",
+   "utc_centre": "11:41:52.608",
+   "tle": "hulianwang_20261104T043003Z.tle",
+   "replica_corr_ns": 28.521,
+   "windows": [
+    86
+   ],
+   "sep_deg": 4.92
+  },
+  "DIGUI-H84-4|2026-11-04T12:33:26Z": {
+   "range_rate_m_s": -1066.05,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -7.129,
+   "replica_corr_ns": -28.769,
+   "windows": [
+    87
+   ],
+   "sep_deg": 11.23
+  },
+  "DIGUI-H84-3|2026-11-04T12:45:55Z": {
+   "range_rate_m_s": -1190.1,
+   "basis": "summary ranges",
+   "utc_centre": "12:45:55.723",
+   "tle": "hidden_digui.tle",
+   "replica_corr_ns": -28.563,
+   "windows": [
+    88
+   ],
+   "sep_deg": 5.51
+  },
+  "DIGUI-H84-2|2026-11-04T12:58:51Z": {
+   "range_rate_m_s": -1423.38,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -7.429,
+   "replica_corr_ns": -28.173,
+   "windows": [
+    89
+   ],
+   "sep_deg": 2.25
+  },
+  "DIGUI-H84-1|2026-11-04T13:11:11Z": {
+   "range_rate_m_s": -1151.0,
+   "basis": "summary ranges",
+   "utc_centre": "13:11:11.796",
+   "tle": "hidden_digui.tle",
+   "replica_corr_ns": -28.628,
+   "windows": [
+    90
+   ],
+   "sep_deg": 5.41
+  },
+  "DIGUI-106|2026-11-04T13:13:01Z": {
+   "range_rate_m_s": 448.84,
+   "basis": "summary",
+   "utc_centre": "13:13:01.225",
+   "tle": "hulianwang_20261104T084002Z.tle",
+   "replica_corr_ns": 29.799,
+   "windows": [
+    90
+   ],
+   "sep_deg": 9.12
+  },
+  "DIGUI-H24-1|2026-11-04T13:18:58Z": {
+   "range_rate_m_s": 1040.98,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -7.194,
+   "replica_corr_ns": 28.811,
+   "windows": [
+    91
+   ],
+   "sep_deg": 4.28
+  },
+  "DIGUI-75|2026-11-04T13:17:47Z": {
+   "range_rate_m_s": -1027.84,
+   "basis": "summary",
+   "utc_centre": "13:17:47.235",
+   "tle": "hulianwang_20261104T104502Z.tle",
+   "replica_corr_ns": -28.833,
+   "windows": [
+    91
+   ],
+   "sep_deg": 8.39
+  },
+  "DIGUI-H24-9|2026-11-04T13:31:46Z": {
+   "range_rate_m_s": 1266.8,
+   "basis": "summary ranges",
+   "utc_centre": "13:31:46.725",
+   "tle": "hidden_digui.tle",
+   "replica_corr_ns": 28.435,
+   "windows": [
+    92
+   ],
+   "sep_deg": 1.22
+  },
+  "DIGUI-120|2026-11-05T00:58:37Z": {
+   "range_rate_m_s": -112.45,
+   "basis": "summary",
+   "utc_centre": "00:58:37.756",
+   "tle": "hulianwang_20261104T190503Z.tle",
+   "replica_corr_ns": -30.36,
+   "windows": [
+    114
+   ],
+   "sep_deg": 10.74
+  },
+  "DIGUI-51|2026-11-05T01:18:11Z": {
+   "range_rate_m_s": 1136.15,
+   "basis": "summary",
+   "utc_centre": "01:18:11.406",
+   "tle": "hulianwang_20261104T190503Z.tle",
+   "replica_corr_ns": 28.653,
+   "windows": [
+    115
+   ],
+   "sep_deg": 0.6
+  },
+  "DIGUI-50|2026-11-05T01:31:26Z": {
+   "range_rate_m_s": 1240.6,
+   "basis": "summary",
+   "utc_centre": "01:31:26.268",
+   "tle": "hulianwang_20261104T170013Z.tle",
+   "replica_corr_ns": 28.478,
+   "windows": [
+    116
+   ],
+   "sep_deg": 5.62
+  },
+  "DIGUI-146|2026-11-05T03:27:48Z": {
+   "range_rate_m_s": 1236.2,
+   "basis": "summary",
+   "utc_centre": "03:27:48.988",
+   "tle": "hulianwang_20261104T043003Z.tle",
+   "replica_corr_ns": 28.486,
+   "windows": [
+    120
+   ],
+   "sep_deg": 4.27
+  },
+  "DIGUI-84|2026-11-05T04:58:18Z": {
+   "range_rate_m_s": -2852.07,
+   "basis": "summary",
+   "utc_centre": "04:58:18.262",
+   "tle": "hulianwang_20261104T190503Z.tle",
+   "replica_corr_ns": -25.791,
+   "windows": [
+    121
+   ],
+   "sep_deg": 0.91
+  },
+  "DIGUI-137|2026-11-05T04:57:46Z": {
+   "range_rate_m_s": -448.53,
+   "basis": "summary",
+   "utc_centre": "04:57:46.386",
+   "tle": "hulianwang_20261104T190503Z.tle",
+   "replica_corr_ns": -29.799,
+   "windows": [
+    121
+   ],
+   "sep_deg": 8.09
+  },
+  "DIGUI-127|2026-11-05T05:24:46Z": {
+   "range_rate_m_s": 1237.77,
+   "basis": "summary",
+   "utc_centre": "05:24:46.142",
+   "tle": "hulianwang_20261105T053003Z.tle",
+   "replica_corr_ns": 28.483,
+   "windows": [
+    122
+   ],
+   "sep_deg": 5.04
+  },
+  "DIGUI-58|2026-11-05T06:26:44Z": {
+   "range_rate_m_s": 2740.93,
+   "basis": "summary",
+   "utc_centre": "06:26:44.854",
+   "tle": "hulianwang_20261105T053003Z.tle",
+   "replica_corr_ns": 25.976,
+   "windows": [
+    123
+   ],
+   "sep_deg": 2.66
+  },
+  "DIGUI-162|2026-11-05T07:21:33Z": {
+   "range_rate_m_s": 1205.15,
+   "basis": "summary",
+   "utc_centre": "07:21:33.650",
+   "tle": "hulianwang_20261105T053003Z.tle",
+   "replica_corr_ns": 28.537,
+   "windows": [
+    124
+   ],
+   "sep_deg": 2.9
+  },
+  "DIGUI-117|2026-11-05T08:20:02Z": {
+   "range_rate_m_s": 2762.93,
+   "basis": "summary",
+   "utc_centre": "08:20:02.898",
+   "tle": "hulianwang_20261105T053003Z.tle",
+   "replica_corr_ns": 25.939,
+   "windows": [
+    125
+   ],
+   "sep_deg": 5.14
+  },
+  "DIGUI-H24-4|2026-11-05T08:19:31Z": {
+   "range_rate_m_s": -690.33,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -6.903,
+   "replica_corr_ns": -29.396,
+   "windows": [
+    125
+   ],
+   "sep_deg": 12.56
+  },
+  "DIGUI-H24-2|2026-11-05T08:44:19Z": {
+   "range_rate_m_s": -1166.6,
+   "basis": "summary ranges",
+   "utc_centre": "08:44:19.705",
+   "tle": "hidden_digui.tle",
+   "replica_corr_ns": -28.602,
+   "windows": [
+    127
+   ],
+   "sep_deg": 0.36
+  },
+  "DIGUI-140|2026-11-05T09:24:04Z": {
+   "range_rate_m_s": 1336.83,
+   "basis": "summary",
+   "utc_centre": "09:24:04.755",
+   "tle": "hulianwang_20261105T053003Z.tle",
+   "replica_corr_ns": 28.318,
+   "windows": [
+    128
+   ],
+   "sep_deg": 4.41
+  },
+  "DIGUI-23|2026-11-05T10:25:14Z": {
+   "range_rate_m_s": 2743.85,
+   "basis": "summary",
+   "utc_centre": "10:25:14.057",
+   "tle": "hulianwang_20261105T053003Z.tle",
+   "replica_corr_ns": 25.971,
+   "windows": [
+    129
+   ],
+   "sep_deg": 3.57
+  },
+  "DIGUI-H54-2|2026-11-05T10:41:04Z": {
+   "range_rate_m_s": -1127.3,
+   "basis": "summary ranges",
+   "utc_centre": "10:41:04.487",
+   "tle": "hidden_digui.tle",
+   "replica_corr_ns": -28.667,
+   "windows": [
+    130
+   ],
+   "sep_deg": 0.75
+  },
+  "DIGUI-H54-1|2026-11-05T10:53:49Z": {
+   "range_rate_m_s": -1219.5,
+   "basis": "summary ranges",
+   "utc_centre": "10:53:49.570",
+   "tle": "hidden_digui.tle",
+   "replica_corr_ns": -28.514,
+   "windows": [
+    131
+   ],
+   "sep_deg": 5.69
+  },
+  "DIGUI-128|2026-11-05T11:21:14Z": {
+   "range_rate_m_s": 1261.17,
+   "basis": "summary",
+   "utc_centre": "11:21:14.156",
+   "tle": "hulianwang_20261105T053003Z.tle",
+   "replica_corr_ns": 28.444,
+   "windows": [
+    132
+   ],
+   "sep_deg": 4.57
+  },
+  "DIGUI-101|2026-11-05T22:48:07Z": {
+   "range_rate_m_s": 1039.6,
+   "basis": "summary",
+   "utc_centre": "22:48:07.002",
+   "tle": "hulianwang_20261106T063004Z.tle",
+   "replica_corr_ns": 28.814,
+   "windows": [
+    26
+   ],
+   "sep_deg": 5.51
+  },
+  "DIGUI-24|2026-11-05T22:50:17Z": {
+   "range_rate_m_s": -2842.3,
+   "basis": "summary",
+   "utc_centre": "22:50:17.948",
+   "tle": "hulianwang_20261106T063004Z.tle",
+   "replica_corr_ns": -25.807,
+   "windows": [
+    27
+   ],
+   "sep_deg": 3.6
+  },
+  "DIGUI-98|2026-11-05T23:13:47Z": {
+   "range_rate_m_s": 1223.17,
+   "basis": "summary",
+   "utc_centre": "23:13:47.108",
+   "tle": "hulianwang_20261105T053003Z.tle",
+   "replica_corr_ns": 28.507,
+   "windows": [
+    29
+   ],
+   "sep_deg": 4.88
+  },
+  "DIGUI-100|2026-11-05T23:01:07Z": {
+   "range_rate_m_s": 1149.27,
+   "basis": "summary",
+   "utc_centre": "23:01:07.436",
+   "tle": "hulianwang_20261106T063004Z.tle",
+   "replica_corr_ns": 28.631,
+   "windows": [
+    28
+   ],
+   "sep_deg": 0.63
+  },
+  "DIGUI-49|2026-11-06T01:10:43Z": {
+   "range_rate_m_s": 1198.05,
+   "basis": "summary",
+   "utc_centre": "01:10:43.592",
+   "tle": "hulianwang_20261106T063004Z.tle",
+   "replica_corr_ns": 28.549,
+   "windows": [
+    31
+   ],
+   "sep_deg": 4.16
+  },
+  "DIGUI-154|2026-11-06T03:06:50Z": {
+   "range_rate_m_s": 1236.52,
+   "basis": "summary",
+   "utc_centre": "03:06:50.289",
+   "tle": "hulianwang_20261106T063004Z.tle",
+   "replica_corr_ns": 28.485,
+   "windows": [
+    33
+   ],
+   "sep_deg": 4.07
+  },
+  "DIGUI-60|2026-11-06T06:22:54Z": {
+   "range_rate_m_s": 2757.47,
+   "basis": "summary",
+   "utc_centre": "06:22:54.137",
+   "tle": "hulianwang_20261106T063004Z.tle",
+   "replica_corr_ns": 25.948,
+   "windows": [
+    36
+   ],
+   "sep_deg": 4.15
+  },
+  "DIGUI-160|2026-11-06T07:00:01Z": {
+   "range_rate_m_s": 1171.98,
+   "basis": "summary",
+   "utc_centre": "07:00:01.270",
+   "tle": "hulianwang_20261106T063004Z.tle",
+   "replica_corr_ns": 28.593,
+   "windows": [
+    37
+   ],
+   "sep_deg": 1.33
+  },
+  "DIGUI-145|2026-11-06T09:03:29Z": {
+   "range_rate_m_s": 1251.16,
+   "basis": "summary",
+   "utc_centre": "09:03:29.670",
+   "tle": "hulianwang_20261106T190520Z.tle",
+   "replica_corr_ns": 28.461,
+   "windows": [
+    39
+   ],
+   "sep_deg": 4.12
+  },
+  "DIGUI-126|2026-11-06T05:03:58Z": {
+   "range_rate_m_s": 1218.42,
+   "basis": "summary",
+   "utc_centre": "05:03:58.432",
+   "tle": "hulianwang_20261106T063004Z.tle",
+   "replica_corr_ns": 28.515,
+   "windows": [
+    35
+   ],
+   "sep_deg": 3.84
+  },
+  "DIGUI-115|2026-11-06T08:17:02Z": {
+   "range_rate_m_s": 2766.43,
+   "basis": "summary",
+   "utc_centre": "08:17:02.597",
+   "tle": "hulianwang_20261106T063004Z.tle",
+   "replica_corr_ns": 25.934,
+   "windows": [
+    38
+   ],
+   "sep_deg": 2.85
+  },
+  "DIGUI-129|2026-11-06T11:00:11Z": {
+   "range_rate_m_s": 1205.16,
+   "basis": "summary",
+   "utc_centre": "11:00:11.095",
+   "tle": "hulianwang_20261106T190520Z.tle",
+   "replica_corr_ns": 28.537,
+   "windows": [
+    42
+   ],
+   "sep_deg": 3.26
+  },
+  "DIGUI-H54-9|2026-11-06T10:33:05Z": {
+   "range_rate_m_s": -1104.57,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -5.098,
+   "replica_corr_ns": -28.705,
+   "windows": [
+    41
+   ],
+   "sep_deg": 4.78
+  },
+  "DIGUI-25|2026-11-06T10:21:15Z": {
+   "range_rate_m_s": 2730.44,
+   "basis": "summary",
+   "utc_centre": "10:21:15.707",
+   "tle": "hulianwang_20261106T063004Z.tle",
+   "replica_corr_ns": 25.994,
+   "windows": [
+    40
+   ],
+   "sep_deg": 1.19
+  },
+  "DIGUI-H24-9|2026-11-06T12:25:25Z": {
+   "range_rate_m_s": 1926.17,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -5.239,
+   "replica_corr_ns": 27.335,
+   "windows": [
+    45
+   ],
+   "sep_deg": 14.59
+  },
+  "DIGUI-78|2026-11-06T12:23:42Z": {
+   "range_rate_m_s": -1250.2,
+   "basis": "summary",
+   "utc_centre": "12:23:42.492",
+   "tle": "hulianwang_20261106T063004Z.tle",
+   "replica_corr_ns": -28.462,
+   "windows": [
+    44
+   ],
+   "sep_deg": 1.0
+  },
+  "DIGUI-H24-9|2026-11-06T12:24:22Z": {
+   "range_rate_m_s": -143.37,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -5.24,
+   "replica_corr_ns": -30.308,
+   "windows": [
+    44
+   ],
+   "sep_deg": 14.68
+  },
+  "DIGUI-H84-8|2026-11-06T12:29:39Z": {
+   "range_rate_m_s": -1195.9,
+   "basis": "summary ranges",
+   "utc_centre": "12:29:39.847",
+   "tle": "hidden_digui.tle",
+   "replica_corr_ns": -28.553,
+   "windows": [
+    46
+   ],
+   "sep_deg": 3.28
+  },
+  "DIGUI-H84-9|2026-11-06T12:17:05Z": {
+   "range_rate_m_s": -1148.5,
+   "basis": "summary ranges",
+   "utc_centre": "12:17:05.878",
+   "tle": "hidden_digui.tle",
+   "replica_corr_ns": -28.632,
+   "windows": [
+    43
+   ],
+   "sep_deg": 2.13
+  },
+  "DIGUI-112|2026-11-06T12:43:59Z": {
+   "range_rate_m_s": 1071.56,
+   "basis": "summary",
+   "utc_centre": "12:43:59.972",
+   "tle": "hulianwang_20261106T190520Z.tle",
+   "replica_corr_ns": 28.76,
+   "windows": [
+    48
+   ],
+   "sep_deg": 3.36
+  },
+  "DIGUI-H84-7|2026-11-06T12:43:28Z": {
+   "range_rate_m_s": 1207.53,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -5.397,
+   "replica_corr_ns": 28.533,
+   "windows": [
+    48
+   ],
+   "sep_deg": 13.54
+  },
+  "DIGUI-H24-7|2026-11-06T12:50:15Z": {
+   "range_rate_m_s": 1242.2,
+   "basis": "summary ranges",
+   "utc_centre": "12:50:15.447",
+   "tle": "hidden_digui.tle",
+   "replica_corr_ns": 28.476,
+   "windows": [
+    49
+   ],
+   "sep_deg": 1.31
+  },
+  "DIGUI-H24-6|2026-11-06T13:02:54Z": {
+   "range_rate_m_s": 1310.6,
+   "basis": "summary ranges",
+   "utc_centre": "13:02:54.532",
+   "tle": "hidden_digui.tle",
+   "replica_corr_ns": 28.362,
+   "windows": [
+    51
+   ],
+   "sep_deg": 4.25
+  },
+  "DIGUI-74|2026-11-06T12:36:20Z": {
+   "range_rate_m_s": -1151.68,
+   "basis": "summary",
+   "utc_centre": "12:36:20.528",
+   "tle": "hulianwang_20261106T063004Z.tle",
+   "replica_corr_ns": -28.627,
+   "windows": [
+    47
+   ],
+   "sep_deg": 6.02
+  },
+  "DIGUI-94|2026-11-06T14:40:48Z": {
+   "range_rate_m_s": 1188.81,
+   "basis": "summary",
+   "utc_centre": "14:40:48.571",
+   "tle": "hulianwang_20261106T190520Z.tle",
+   "replica_corr_ns": 28.565,
+   "windows": [
+    57
+   ],
+   "sep_deg": 3.71
+  },
+  "DIGUI-175|2026-11-06T14:13:44Z": {
+   "range_rate_m_s": -1308.63,
+   "basis": "summary",
+   "utc_centre": "14:13:44.200",
+   "tle": "hulianwang_20261106T063004Z.tle",
+   "replica_corr_ns": -28.365,
+   "windows": [
+    53
+   ],
+   "sep_deg": 2.58
+  },
+  "DIGUI-16|2026-11-06T14:20:12Z": {
+   "range_rate_m_s": -1129.51,
+   "basis": "summary",
+   "utc_centre": "14:20:12.090",
+   "tle": "hulianwang_20261106T063004Z.tle",
+   "replica_corr_ns": -28.664,
+   "windows": [
+    54
+   ],
+   "sep_deg": 0.72
+  },
+  "DIGUI-H54-9|2026-11-06T14:20:51Z": {
+   "range_rate_m_s": -657.14,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -4.94,
+   "replica_corr_ns": -29.451,
+   "windows": [
+    54
+   ],
+   "sep_deg": 13.76
+  },
+  "DIGUI-H54-7|2026-11-06T14:47:02Z": {
+   "range_rate_m_s": 1362.59,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -5.239,
+   "replica_corr_ns": 28.275,
+   "windows": [
+    58
+   ],
+   "sep_deg": 2.28
+  },
+  "DIGUI-14|2026-11-06T14:32:46Z": {
+   "range_rate_m_s": -1133.42,
+   "basis": "summary",
+   "utc_centre": "14:32:46.226",
+   "tle": "hulianwang_20261106T190520Z.tle",
+   "replica_corr_ns": -28.657,
+   "windows": [
+    56
+   ],
+   "sep_deg": 5.57
+  },
+  "DIGUI-174|2026-11-06T14:26:33Z": {
+   "range_rate_m_s": -1054.72,
+   "basis": "summary",
+   "utc_centre": "14:26:33.604",
+   "tle": "hulianwang_20261106T190520Z.tle",
+   "replica_corr_ns": -28.788,
+   "windows": [
+    55
+   ],
+   "sep_deg": 2.86
+  },
+  "DIGUI-93|2026-11-06T14:28:01Z": {
+   "range_rate_m_s": 1160.93,
+   "basis": "summary",
+   "utc_centre": "14:28:01.265",
+   "tle": "hulianwang_20261106T190520Z.tle",
+   "replica_corr_ns": 28.611,
+   "windows": [
+    55
+   ],
+   "sep_deg": 8.62
+  },
+  "DIGUI-92|2026-11-06T14:53:15Z": {
+   "range_rate_m_s": 1158.72,
+   "basis": "summary",
+   "utc_centre": "14:53:15.534",
+   "tle": "hulianwang_20261106T190520Z.tle",
+   "replica_corr_ns": 28.615,
+   "windows": [
+    59
+   ],
+   "sep_deg": 1.66
+  },
+  "DIGUI-49|2026-11-07T00:37:19Z": {
+   "range_rate_m_s": 1079.94,
+   "basis": "summary",
+   "utc_centre": "00:37:19.180",
+   "tle": "hulianwang_20261107T073507Z.tle",
+   "replica_corr_ns": 28.746,
+   "windows": [
+    70
+   ],
+   "sep_deg": 2.54
+  },
+  "DIGUI-57|2026-11-07T00:49:26Z": {
+   "range_rate_m_s": 1197.07,
+   "basis": "summary",
+   "utc_centre": "00:49:26.514",
+   "tle": "hulianwang_20261107T073507Z.tle",
+   "replica_corr_ns": 28.551,
+   "windows": [
+    71
+   ],
+   "sep_deg": 3.88
+  },
+  "DIGUI-126|2026-11-07T04:30:33Z": {
+   "range_rate_m_s": 1079.31,
+   "basis": "summary",
+   "utc_centre": "04:30:33.223",
+   "tle": "hulianwang_20261106T190520Z.tle",
+   "replica_corr_ns": 28.747,
+   "windows": [
+    76
+   ],
+   "sep_deg": 2.79
+  },
+  "DIGUI-125|2026-11-07T04:43:00Z": {
+   "range_rate_m_s": 1173.47,
+   "basis": "summary",
+   "utc_centre": "04:43:00.648",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": 28.59,
+   "windows": [
+    77
+   ],
+   "sep_deg": 2.56
+  },
+  "DIGUI-155|2026-11-07T01:59:59Z": {
+   "range_rate_m_s": -1362.53,
+   "basis": "summary",
+   "utc_centre": "01:59:59.280",
+   "tle": "hulianwang_20261107T073507Z.tle",
+   "replica_corr_ns": -28.275,
+   "windows": [
+    73
+   ],
+   "sep_deg": 5.76
+  },
+  "DIGUI-154|2026-11-07T02:33:25Z": {
+   "range_rate_m_s": 1109.42,
+   "basis": "summary",
+   "utc_centre": "02:33:25.709",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": 28.697,
+   "windows": [
+    74
+   ],
+   "sep_deg": 2.5
+  },
+  "DIGUI-153|2026-11-07T02:46:28Z": {
+   "range_rate_m_s": 1364.5,
+   "basis": "summary",
+   "utc_centre": "02:46:28.324",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": 28.272,
+   "windows": [
+    75
+   ],
+   "sep_deg": 3.22
+  },
+  "DIGUI-167|2026-11-07T04:50:29Z": {
+   "range_rate_m_s": -2847.18,
+   "basis": "summary",
+   "utc_centre": "04:50:29.439",
+   "tle": "hulianwang_20261107T073507Z.tle",
+   "replica_corr_ns": -25.799,
+   "windows": [
+    78
+   ],
+   "sep_deg": 1.42
+  },
+  "DIGUI-105|2026-11-07T07:57:13Z": {
+   "range_rate_m_s": -1340.49,
+   "basis": "summary",
+   "utc_centre": "07:57:13.851",
+   "tle": "hulianwang_20261107T073507Z.tle",
+   "replica_corr_ns": -28.312,
+   "windows": [
+    83
+   ],
+   "sep_deg": 4.75
+  },
+  "DIGUI-62|2026-11-07T06:18:30Z": {
+   "range_rate_m_s": 2772.29,
+   "basis": "summary",
+   "utc_centre": "06:18:30.235",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": 25.924,
+   "windows": [
+    79
+   ],
+   "sep_deg": 5.89
+  },
+  "DIGUI-159|2026-11-07T06:52:25Z": {
+   "range_rate_m_s": 1236.52,
+   "basis": "summary",
+   "utc_centre": "06:52:25.647",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": 28.485,
+   "windows": [
+    82
+   ],
+   "sep_deg": 5.7
+  },
+  "DIGUI-161|2026-11-07T06:39:20Z": {
+   "range_rate_m_s": 1137.08,
+   "basis": "summary",
+   "utc_centre": "06:39:20.515",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": 28.651,
+   "windows": [
+    81
+   ],
+   "sep_deg": 0.62
+  },
+  "DIGUI-160|2026-11-07T06:26:37Z": {
+   "range_rate_m_s": 1061.2,
+   "basis": "summary",
+   "utc_centre": "06:26:37.152",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": 28.778,
+   "windows": [
+    80
+   ],
+   "sep_deg": 5.22
+  },
+  "DIGUI-128|2026-11-07T06:26:05Z": {
+   "range_rate_m_s": -578.06,
+   "basis": "summary",
+   "utc_centre": "06:26:05.275",
+   "tle": "hulianwang_20261106T190520Z.tle",
+   "replica_corr_ns": -29.583,
+   "windows": [
+    80
+   ],
+   "sep_deg": 9.04
+  },
+  "DIGUI-95|2026-11-07T09:53:20Z": {
+   "range_rate_m_s": -1338.63,
+   "basis": "summary",
+   "utc_centre": "09:53:20.212",
+   "tle": "hulianwang_20261107T073507Z.tle",
+   "replica_corr_ns": -28.315,
+   "windows": [
+    89
+   ],
+   "sep_deg": 4.35
+  },
+  "DIGUI-39|2026-11-07T08:12:30Z": {
+   "range_rate_m_s": 2772.99,
+   "basis": "summary",
+   "utc_centre": "08:12:30.558",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": 25.923,
+   "windows": [
+    85
+   ],
+   "sep_deg": 2.02
+  },
+  "DIGUI-145|2026-11-07T08:30:04Z": {
+   "range_rate_m_s": 1113.0,
+   "basis": "summary",
+   "utc_centre": "08:30:04.293",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": 28.691,
+   "windows": [
+    87
+   ],
+   "sep_deg": 2.45
+  },
+  "DIGUI-144|2026-11-07T08:42:22Z": {
+   "range_rate_m_s": 1206.46,
+   "basis": "summary",
+   "utc_centre": "08:42:22.239",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": 28.535,
+   "windows": [
+    88
+   ],
+   "sep_deg": 2.73
+  },
+  "DIGUI-H24-8|2026-11-07T08:15:28Z": {
+   "range_rate_m_s": -1352.24,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -4.872,
+   "replica_corr_ns": -28.292,
+   "windows": [
+    86
+   ],
+   "sep_deg": 3.87
+  },
+  "DIGUI-140|2026-11-07T08:16:56Z": {
+   "range_rate_m_s": 481.61,
+   "basis": "summary",
+   "utc_centre": "08:16:56.141",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": 29.744,
+   "windows": [
+    86
+   ],
+   "sep_deg": 10.1
+  },
+  "DIGUI-29|2026-11-07T10:17:07Z": {
+   "range_rate_m_s": 2726.57,
+   "basis": "summary",
+   "utc_centre": "10:17:07.408",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": 26.0,
+   "windows": [
+    93
+   ],
+   "sep_deg": 0.72
+  },
+  "DIGUI-93|2026-11-07T10:05:56Z": {
+   "range_rate_m_s": -1214.75,
+   "basis": "summary",
+   "utc_centre": "10:05:56.907",
+   "tle": "hulianwang_20261107T094003Z.tle",
+   "replica_corr_ns": -28.521,
+   "windows": [
+    91
+   ],
+   "sep_deg": 1.03
+  },
+  "DIGUI-H54-9|2026-11-07T09:59:41Z": {
+   "range_rate_m_s": -1196.3,
+   "basis": "summary ranges",
+   "utc_centre": "09:59:41.894",
+   "tle": "hidden_digui.tle",
+   "replica_corr_ns": -28.552,
+   "windows": [
+    90
+   ],
+   "sep_deg": 1.69
+  },
+  "DIGUI-H54-8|2026-11-07T10:12:21Z": {
+   "range_rate_m_s": -1088.56,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -4.421,
+   "replica_corr_ns": -28.732,
+   "windows": [
+    92
+   ],
+   "sep_deg": 3.52
+  },
+  "DIGUI-128|2026-11-07T10:14:28Z": {
+   "range_rate_m_s": 1158.44,
+   "basis": "summary",
+   "utc_centre": "10:14:28.864",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": 28.615,
+   "windows": [
+    92
+   ],
+   "sep_deg": 8.31
+  },
+  "DIGUI-74|2026-11-07T12:02:55Z": {
+   "range_rate_m_s": -1273.7,
+   "basis": "summary",
+   "utc_centre": "12:02:55.739",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": -28.423,
+   "windows": [
+    98
+   ],
+   "sep_deg": 0.76
+  },
+  "DIGUI-78|2026-11-07T11:50:18Z": {
+   "range_rate_m_s": -1355.19,
+   "basis": "summary",
+   "utc_centre": "11:50:18.374",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": -28.287,
+   "windows": [
+    96
+   ],
+   "sep_deg": 5.79
+  },
+  "DIGUI-136|2026-11-07T10:39:30Z": {
+   "range_rate_m_s": 1177.68,
+   "basis": "summary",
+   "utc_centre": "10:39:30.928",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": 28.583,
+   "windows": [
+    95
+   ],
+   "sep_deg": 1.97
+  },
+  "DIGUI-129|2026-11-07T10:26:46Z": {
+   "range_rate_m_s": 1082.53,
+   "basis": "summary",
+   "utc_centre": "10:26:46.306",
+   "tle": "hulianwang_20261107T012003Z.tle",
+   "replica_corr_ns": 28.742,
+   "windows": [
+    94
+   ],
+   "sep_deg": 3.33
+  },
+  "DIGUI-H54-7|2026-11-07T10:26:14Z": {
+   "range_rate_m_s": 1528.36,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -4.42,
+   "replica_corr_ns": 27.998,
+   "windows": [
+    94
+   ],
+   "sep_deg": 13.69
+  },
+  "DIGUI-81|2026-11-07T12:15:57Z": {
+   "range_rate_m_s": -1155.35,
+   "basis": "summary",
+   "utc_centre": "12:15:57.725",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": -28.62,
+   "windows": [
+    100
+   ],
+   "sep_deg": 5.06
+  },
+  "DIGUI-H84-6|2026-11-07T12:21:39Z": {
+   "range_rate_m_s": -942.82,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -4.421,
+   "replica_corr_ns": -28.975,
+   "windows": [
+    101
+   ],
+   "sep_deg": 7.41
+  },
+  "DIGUI-H84-8|2026-11-07T11:56:16Z": {
+   "range_rate_m_s": -1285.2,
+   "basis": "summary ranges",
+   "utc_centre": "11:56:16.022",
+   "tle": "hidden_digui.tle",
+   "replica_corr_ns": -28.404,
+   "windows": [
+    97
+   ],
+   "sep_deg": 3.27
+  },
+  "DIGUI-H84-7|2026-11-07T12:08:57Z": {
+   "range_rate_m_s": -1123.5,
+   "basis": "summary ranges",
+   "utc_centre": "12:08:57.959",
+   "tle": "hidden_digui.tle",
+   "replica_corr_ns": -28.674,
+   "windows": [
+    99
+   ],
+   "sep_deg": 2.15
+  },
+  "DIGUI-112|2026-11-07T12:10:33Z": {
+   "range_rate_m_s": 906.18,
+   "basis": "summary",
+   "utc_centre": "12:10:33.589",
+   "tle": "hulianwang_20261107T032504Z.tle",
+   "replica_corr_ns": 29.036,
+   "windows": [
+    99
+   ],
+   "sep_deg": 9.58
+  },
+  "DIGUI-14|2026-11-07T13:59:21Z": {
+   "range_rate_m_s": -1251.71,
+   "basis": "summary",
+   "utc_centre": "13:59:21.352",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": -28.46,
+   "windows": [
+    106
+   ],
+   "sep_deg": 0.93
+  },
+  "DIGUI-174|2026-11-07T13:53:04Z": {
+   "range_rate_m_s": -1300.61,
+   "basis": "summary",
+   "utc_centre": "13:53:04.955",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": -28.378,
+   "windows": [
+    105
+   ],
+   "sep_deg": 3.84
+  },
+  "DIGUI-110|2026-11-07T12:35:49Z": {
+   "range_rate_m_s": 1153.7,
+   "basis": "summary",
+   "utc_centre": "12:35:49.998",
+   "tle": "hulianwang_20261107T073507Z.tle",
+   "replica_corr_ns": 28.623,
+   "windows": [
+    103
+   ],
+   "sep_deg": 0.78
+  },
+  "DIGUI-H24-5|2026-11-07T12:42:04Z": {
+   "range_rate_m_s": 1330.7,
+   "basis": "summary ranges",
+   "utc_centre": "12:42:04.885",
+   "tle": "hidden_digui.tle",
+   "replica_corr_ns": 28.328,
+   "windows": [
+    104
+   ],
+   "sep_deg": 3.13
+  },
+  "DIGUI-H24-6|2026-11-07T12:29:30Z": {
+   "range_rate_m_s": 1204.4,
+   "basis": "summary ranges",
+   "utc_centre": "12:29:30.455",
+   "tle": "hidden_digui.tle",
+   "replica_corr_ns": 28.539,
+   "windows": [
+    102
+   ],
+   "sep_deg": 2.33
+  },
+  "DIGUI-73|2026-11-07T12:28:02Z": {
+   "range_rate_m_s": -689.92,
+   "basis": "summary",
+   "utc_centre": "12:28:02.794",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": -29.397,
+   "windows": [
+    102
+   ],
+   "sep_deg": 10.32
+  },
+  "DIGUI-92|2026-11-07T14:19:50Z": {
+   "range_rate_m_s": 1041.72,
+   "basis": "summary",
+   "utc_centre": "14:19:50.954",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": 28.81,
+   "windows": [
+    110
+   ],
+   "sep_deg": 4.98
+  },
+  "DIGUI-173|2026-11-07T14:05:38Z": {
+   "range_rate_m_s": -1227.6,
+   "basis": "summary",
+   "utc_centre": "14:05:38.001",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": -28.5,
+   "windows": [
+    107
+   ],
+   "sep_deg": 1.47
+  },
+  "DIGUI-91|2026-11-07T14:32:28Z": {
+   "range_rate_m_s": 1161.52,
+   "basis": "summary",
+   "utc_centre": "14:32:28.236",
+   "tle": "hulianwang_20261107T073507Z.tle",
+   "replica_corr_ns": 28.61,
+   "windows": [
+    112
+   ],
+   "sep_deg": 0.64
+  },
+  "DIGUI-19|2026-11-07T14:12:53Z": {
+   "range_rate_m_s": -1173.44,
+   "basis": "summary",
+   "utc_centre": "14:12:53.873",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": -28.59,
+   "windows": [
+    108
+   ],
+   "sep_deg": 4.58
+  },
+  "DIGUI-H54-7|2026-11-07T14:13:33Z": {
+   "range_rate_m_s": 1110.17,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -4.262,
+   "replica_corr_ns": 28.696,
+   "windows": [
+    108
+   ],
+   "sep_deg": 7.45
+  },
+  "DIGUI-H54-6|2026-11-07T14:26:13Z": {
+   "range_rate_m_s": 1254.32,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -4.562,
+   "replica_corr_ns": 28.455,
+   "windows": [
+    111
+   ],
+   "sep_deg": 2.46
+  },
+  "DIGUI-15|2026-11-07T14:24:53Z": {
+   "range_rate_m_s": -539.32,
+   "basis": "summary",
+   "utc_centre": "14:24:53.909",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": -29.648,
+   "windows": [
+    111
+   ],
+   "sep_deg": 10.51
+  },
+  "DIGUI-90|2026-11-07T14:45:05Z": {
+   "range_rate_m_s": 1243.93,
+   "basis": "summary",
+   "utc_centre": "14:45:05.979",
+   "tle": "hulianwang_20261107T073507Z.tle",
+   "replica_corr_ns": 28.473,
+   "windows": [
+    114
+   ],
+   "sep_deg": 5.86
+  },
+  "DIGUI-H54-5|2026-11-07T14:38:50Z": {
+   "range_rate_m_s": 1268.5,
+   "basis": "summary ranges",
+   "utc_centre": "14:38:50.085",
+   "tle": "hidden_digui.tle",
+   "replica_corr_ns": 28.432,
+   "windows": [
+    113
+   ],
+   "sep_deg": 3.15
+  },
+  "DIGUI-166|2026-11-07T16:21:43Z": {
+   "range_rate_m_s": 2756.17,
+   "basis": "summary",
+   "utc_centre": "16:21:43.849",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": 25.951,
+   "windows": [
+    117
+   ],
+   "sep_deg": 3.35
+  },
+  "DIGUI-H84-5|2026-11-07T16:22:55Z": {
+   "range_rate_m_s": 1343.09,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -4.262,
+   "replica_corr_ns": 28.307,
+   "windows": [
+    117
+   ],
+   "sep_deg": 4.05
+  },
+  "DIGUI-80|2026-11-07T16:29:16Z": {
+   "range_rate_m_s": 1128.99,
+   "basis": "summary",
+   "utc_centre": "16:29:16.834",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": 28.664,
+   "windows": [
+    118
+   ],
+   "sep_deg": 0.92
+  },
+  "DIGUI-171|2026-11-07T18:19:28Z": {
+   "range_rate_m_s": 1068.14,
+   "basis": "summary",
+   "utc_centre": "18:19:28.819",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": 28.766,
+   "windows": [
+    120
+   ],
+   "sep_deg": 4.25
+  },
+  "DIGUI-77|2026-11-07T16:41:47Z": {
+   "range_rate_m_s": 1236.52,
+   "basis": "summary",
+   "utc_centre": "16:41:47.069",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": 28.485,
+   "windows": [
+    119
+   ],
+   "sep_deg": 4.42
+  },
+  "DIGUI-11|2026-11-07T18:38:38Z": {
+   "range_rate_m_s": 1212.14,
+   "basis": "summary",
+   "utc_centre": "18:38:38.855",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": 28.526,
+   "windows": [
+    123
+   ],
+   "sep_deg": 4.16
+  },
+  "DIGUI-13|2026-11-07T18:25:51Z": {
+   "range_rate_m_s": 1130.5,
+   "basis": "summary",
+   "utc_centre": "18:25:51.885",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": 28.662,
+   "windows": [
+    121
+   ],
+   "sep_deg": 1.44
+  },
+  "DIGUI-170|2026-11-07T18:32:07Z": {
+   "range_rate_m_s": 1177.21,
+   "basis": "summary",
+   "utc_centre": "18:32:07.107",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": 28.584,
+   "windows": [
+    122
+   ],
+   "sep_deg": 0.95
+  },
+  "DIGUI-38|2026-11-07T20:37:34Z": {
+   "range_rate_m_s": -2850.25,
+   "basis": "summary",
+   "utc_centre": "20:37:34.834",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": -25.794,
+   "windows": [
+    127
+   ],
+   "sep_deg": 2.46
+  },
+  "DIGUI-40|2026-11-07T20:35:14Z": {
+   "range_rate_m_s": 1209.84,
+   "basis": "summary",
+   "utc_centre": "20:35:14.619",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": 28.53,
+   "windows": [
+    126
+   ],
+   "sep_deg": 3.17
+  },
+  "DIGUI-63|2026-11-07T18:44:13Z": {
+   "range_rate_m_s": -2843.48,
+   "basis": "summary",
+   "utc_centre": "18:44:13.099",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": -25.805,
+   "windows": [
+    124
+   ],
+   "sep_deg": 5.73
+  },
+  "DIGUI-169|2026-11-07T18:44:44Z": {
+   "range_rate_m_s": 1243.54,
+   "basis": "summary",
+   "utc_centre": "18:44:44.976",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": 28.473,
+   "windows": [
+    124
+   ],
+   "sep_deg": 6.19
+  },
+  "DIGUI-97|2026-11-07T22:19:22Z": {
+   "range_rate_m_s": 1109.67,
+   "basis": "summary",
+   "utc_centre": "22:19:22.244",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": 28.697,
+   "windows": [
+    1
+   ],
+   "sep_deg": 2.88
+  },
+  "DIGUI-104|2026-11-07T22:31:55Z": {
+   "range_rate_m_s": 1192.79,
+   "basis": "summary",
+   "utc_centre": "22:31:55.373",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": 28.558,
+   "windows": [
+    2
+   ],
+   "sep_deg": 3.45
+  },
+  "DIGUI-28|2026-11-07T22:42:14Z": {
+   "range_rate_m_s": -2858.42,
+   "basis": "summary",
+   "utc_centre": "22:42:14.620",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": -25.78,
+   "windows": [
+    3
+   ],
+   "sep_deg": 1.06
+  },
+  "DIGUI-54|2026-11-08T00:28:39Z": {
+   "range_rate_m_s": 1133.34,
+   "basis": "summary",
+   "utc_centre": "00:28:39.567",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": 28.657,
+   "windows": [
+    5
+   ],
+   "sep_deg": 2.94
+  },
+  "DIGUI-163|2026-11-08T01:39:21Z": {
+   "range_rate_m_s": -1420.68,
+   "basis": "summary",
+   "utc_centre": "01:39:21.141",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": -28.178,
+   "windows": [
+    6
+   ],
+   "sep_deg": 6.04
+  },
+  "DIGUI-152|2026-11-08T02:25:12Z": {
+   "range_rate_m_s": 1122.83,
+   "basis": "summary",
+   "utc_centre": "02:25:12.143",
+   "tle": "hulianwang_20261107T135004Z.tle",
+   "replica_corr_ns": 28.675,
+   "windows": [
+    7
+   ],
+   "sep_deg": 1.91
+  },
+  "DIGUI-138|2026-11-08T03:42:40Z": {
+   "range_rate_m_s": -1371.99,
+   "basis": "summary",
+   "utc_centre": "03:42:40.019",
+   "tle": "hulianwang_20261107T012003Z.tle",
+   "replica_corr_ns": -28.259,
+   "windows": [
+    9
+   ],
+   "sep_deg": 4.22
+  },
+  "DIGUI-165|2026-11-08T04:46:39Z": {
+   "range_rate_m_s": -2691.19,
+   "basis": "summary",
+   "utc_centre": "04:46:39.737",
+   "tle": "hulianwang_20261108T043005Z.tle",
+   "replica_corr_ns": -26.059,
+   "windows": [
+    11
+   ],
+   "sep_deg": 2.85
+  },
+  "DIGUI-131|2026-11-08T05:39:38Z": {
+   "range_rate_m_s": -1396.12,
+   "basis": "summary",
+   "utc_centre": "05:39:38.013",
+   "tle": "hulianwang_20261108T043005Z.tle",
+   "replica_corr_ns": -28.219,
+   "windows": [
+    12
+   ],
+   "sep_deg": 5.04
+  },
+  "DIGUI-64|2026-11-08T18:29:01Z": {
+   "range_rate_m_s": -2900.79,
+   "basis": "summary",
+   "utc_centre": "18:29:01.697",
+   "tle": "hulianwang_20261108T162809Z.tle",
+   "replica_corr_ns": -25.709,
+   "windows": [
+    14
+   ],
+   "sep_deg": 3.98
+  },
+  "DIGUI-50|2026-11-08T19:29:19Z": {
+   "range_rate_m_s": -1167.05,
+   "basis": "summary",
+   "utc_centre": "19:29:19.536",
+   "tle": "hulianwang_20261108T162809Z.tle",
+   "replica_corr_ns": -28.601,
+   "windows": [
+    15
+   ],
+   "sep_deg": 4.52
+  },
+  "DIGUI-36|2026-11-08T20:33:45Z": {
+   "range_rate_m_s": -2683.99,
+   "basis": "summary",
+   "utc_centre": "20:33:45.174",
+   "tle": "hulianwang_20261108T162809Z.tle",
+   "replica_corr_ns": -26.071,
+   "windows": [
+    17
+   ],
+   "sep_deg": 1.57
+  },
+  "DIGUI-146|2026-11-08T21:25:33Z": {
+   "range_rate_m_s": -1414.69,
+   "basis": "summary",
+   "utc_centre": "21:25:33.363",
+   "tle": "hulianwang_20261108T162809Z.tle",
+   "replica_corr_ns": -28.188,
+   "windows": [
+    19
+   ],
+   "sep_deg": 5.66
+  },
+  "DIGUI-103|2026-11-08T22:11:15Z": {
+   "range_rate_m_s": 1133.12,
+   "basis": "summary",
+   "utc_centre": "22:11:15.473",
+   "tle": "hulianwang_20261108T162809Z.tle",
+   "replica_corr_ns": 28.658,
+   "windows": [
+    20
+   ],
+   "sep_deg": 2.48
+  },
+  "DIGUI-21|2026-11-08T22:38:28Z": {
+   "range_rate_m_s": -2903.52,
+   "basis": "summary",
+   "utc_centre": "22:38:28.693",
+   "tle": "hulianwang_20261108T162809Z.tle",
+   "replica_corr_ns": -25.705,
+   "windows": [
+    21
+   ],
+   "sep_deg": 1.53
+  },
+  "DIGUI-56|2026-11-09T00:08:18Z": {
+   "range_rate_m_s": 1102.47,
+   "basis": "summary",
+   "utc_centre": "00:08:18.038",
+   "tle": "hulianwang_20261108T162809Z.tle",
+   "replica_corr_ns": 28.709,
+   "windows": [
+    23
+   ],
+   "sep_deg": 1.99
+  },
+  "DIGUI-53|2026-11-09T00:33:13Z": {
+   "range_rate_m_s": 1418.07,
+   "basis": "summary",
+   "utc_centre": "00:33:13.769",
+   "tle": "hulianwang_20261108T162809Z.tle",
+   "replica_corr_ns": 28.182,
+   "windows": [
+    24
+   ],
+   "sep_deg": 11.68
+  },
+  "DIGUI-150|2026-11-09T02:04:53Z": {
+   "range_rate_m_s": 1324.3,
+   "basis": "summary",
+   "utc_centre": "02:04:53.299",
+   "tle": "hulianwang_20261108T162809Z.tle",
+   "replica_corr_ns": 28.339,
+   "windows": [
+    26
+   ],
+   "sep_deg": 1.24
+  },
+  "DIGUI-151|2026-11-09T02:17:11Z": {
+   "range_rate_m_s": 1186.84,
+   "basis": "summary",
+   "utc_centre": "02:17:11.790",
+   "tle": "hulianwang_20261108T162809Z.tle",
+   "replica_corr_ns": 28.568,
+   "windows": [
+    27
+   ],
+   "sep_deg": 5.53
+  },
+  "DIGUI-122|2026-11-09T04:14:47Z": {
+   "range_rate_m_s": 1186.53,
+   "basis": "summary",
+   "utc_centre": "04:14:47.699",
+   "tle": "hulianwang_20261107T094003Z.tle",
+   "replica_corr_ns": 28.568,
+   "windows": [
+    31
+   ],
+   "sep_deg": 5.33
+  },
+  "DIGUI-86|2026-11-09T04:42:19Z": {
+   "range_rate_m_s": -2908.25,
+   "basis": "summary",
+   "utc_centre": "04:42:19.291",
+   "tle": "hulianwang_20261108T162809Z.tle",
+   "replica_corr_ns": -25.697,
+   "windows": [
+    32
+   ],
+   "sep_deg": 4.22
+  },
+  "DIGUI-158|2026-11-09T05:57:50Z": {
+   "range_rate_m_s": 1050.93,
+   "basis": "summary",
+   "utc_centre": "05:57:50.146",
+   "tle": "hulianwang_20261108T043005Z.tle",
+   "replica_corr_ns": 28.795,
+   "windows": [
+    33
+   ],
+   "sep_deg": 2.64
+  },
+  "DIGUI-66|2026-11-09T06:00:00Z": {
+   "range_rate_m_s": 2685.64,
+   "basis": "summary",
+   "utc_centre": "06:00:00.043",
+   "tle": "hulianwang_20261108T162809Z.tle",
+   "replica_corr_ns": 26.068,
+   "windows": [
+    34
+   ],
+   "sep_deg": 2.81
+  },
+  "DIGUI-157|2026-11-09T06:10:44Z": {
+   "range_rate_m_s": 1152.05,
+   "basis": "summary",
+   "utc_centre": "06:10:44.079",
+   "tle": "hulianwang_20261108T162809Z.tle",
+   "replica_corr_ns": 28.626,
+   "windows": [
+    35
+   ],
+   "sep_deg": 3.26
+  },
+  "DIGUI-143|2026-11-09T07:48:44Z": {
+   "range_rate_m_s": 1234.92,
+   "basis": "summary",
+   "utc_centre": "07:48:44.996",
+   "tle": "hulianwang_20261108T162809Z.tle",
+   "replica_corr_ns": 28.488,
+   "windows": [
+    37
+   ],
+   "sep_deg": 5.02
+  },
+  "DIGUI-H24-4|2026-11-09T07:59:23Z": {
+   "range_rate_m_s": -1073.49,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -2.917,
+   "replica_corr_ns": -28.757,
+   "windows": [
+    38
+   ],
+   "sep_deg": 11.31
+  },
+  "DIGUI-142|2026-11-09T08:01:06Z": {
+   "range_rate_m_s": 1320.18,
+   "basis": "summary",
+   "utc_centre": "08:01:06.130",
+   "tle": "hulianwang_20261108T162809Z.tle",
+   "replica_corr_ns": 28.346,
+   "windows": [
+    39
+   ],
+   "sep_deg": 1.17
+  },
+  "DIGUI-A82|2026-11-09T08:04:29Z": {
+   "range_rate_m_s": 2771.92,
+   "basis": "summary",
+   "utc_centre": "08:04:29.050",
+   "tle": "alm_extra.tle",
+   "replica_corr_ns": 25.924,
+   "windows": [
+    40
+   ],
+   "sep_deg": 0.24
+  },
+  "DIGUI-141|2026-11-09T08:13:31Z": {
+   "range_rate_m_s": 1195.75,
+   "basis": "summary",
+   "utc_centre": "08:13:31.961",
+   "tle": "hulianwang_20261106T190520Z.tle",
+   "replica_corr_ns": 28.553,
+   "windows": [
+    41
+   ],
+   "sep_deg": 5.77
+  },
+  "DIGUI-133|2026-11-09T09:45:25Z": {
+   "range_rate_m_s": 972.29,
+   "basis": "summary",
+   "utc_centre": "09:45:25.122",
+   "tle": "hulianwang_20261109T090809Z.tle",
+   "replica_corr_ns": 28.926,
+   "windows": [
+    42
+   ],
+   "sep_deg": 5.94
+  },
+  "DIGUI-134|2026-11-09T09:58:14Z": {
+   "range_rate_m_s": 1091.04,
+   "basis": "summary",
+   "utc_centre": "09:58:14.734",
+   "tle": "hulianwang_20261109T090809Z.tle",
+   "replica_corr_ns": 28.728,
+   "windows": [
+    43
+   ],
+   "sep_deg": 1.07
+  },
+  "DIGUI-22|2026-11-09T10:09:17Z": {
+   "range_rate_m_s": 2687.98,
+   "basis": "summary",
+   "utc_centre": "10:09:17.602",
+   "tle": "hulianwang_20261109T090809Z.tle",
+   "replica_corr_ns": 26.064,
+   "windows": [
+    44
+   ],
+   "sep_deg": 3.06
+  },
+  "DIGUI-132|2026-11-09T10:10:42Z": {
+   "range_rate_m_s": 1252.04,
+   "basis": "summary",
+   "utc_centre": "10:10:42.369",
+   "tle": "hulianwang_20261109T090809Z.tle",
+   "replica_corr_ns": 28.459,
+   "windows": [
+    45
+   ],
+   "sep_deg": 4.81
+  },
+  "DIGUI-H84-4|2026-11-09T11:39:43Z": {
+   "range_rate_m_s": -1920.47,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -2.166,
+   "replica_corr_ns": -27.344,
+   "windows": [
+    46
+   ],
+   "sep_deg": 9.56
+  },
+  "DIGUI-108|2026-11-09T11:54:15Z": {
+   "range_rate_m_s": 1057.29,
+   "basis": "summary",
+   "utc_centre": "11:54:15.769",
+   "tle": "hulianwang_20261109T090809Z.tle",
+   "replica_corr_ns": 28.784,
+   "windows": [
+    47
+   ],
+   "sep_deg": 2.06
+  },
+  "DIGUI-H84-3|2026-11-09T11:53:43Z": {
+   "range_rate_m_s": 909.05,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -2.465,
+   "replica_corr_ns": 29.031,
+   "windows": [
+    47
+   ],
+   "sep_deg": 14.39
+  },
+  "DIGUI-H24-3|2026-11-09T12:00:29Z": {
+   "range_rate_m_s": 1130.0,
+   "basis": "summary ranges",
+   "utc_centre": "12:00:29.733",
+   "tle": "hidden_digui.tle",
+   "replica_corr_ns": 28.663,
+   "windows": [
+    48
+   ],
+   "sep_deg": 1.12
+  },
+  "DIGUI-H54-4|2026-11-09T13:44:38Z": {
+   "range_rate_m_s": 1085.67,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -2.608,
+   "replica_corr_ns": 28.737,
+   "windows": [
+    51
+   ],
+   "sep_deg": 4.48
+  },
+  "DIGUI-11|2026-11-09T13:43:18Z": {
+   "range_rate_m_s": -1000.7,
+   "basis": "summary",
+   "utc_centre": "13:43:18.632",
+   "tle": "hulianwang_20261109T131809Z.tle",
+   "replica_corr_ns": -28.878,
+   "windows": [
+    51
+   ],
+   "sep_deg": 7.2
+  },
+  "DIGUI-89|2026-11-09T13:50:56Z": {
+   "range_rate_m_s": 1049.33,
+   "basis": "summary",
+   "utc_centre": "13:50:56.776",
+   "tle": "hulianwang_20261109T090809Z.tle",
+   "replica_corr_ns": 28.797,
+   "windows": [
+    52
+   ],
+   "sep_deg": 2.14
+  },
+  "DIGUI-H54-3|2026-11-09T13:57:16Z": {
+   "range_rate_m_s": 1162.1,
+   "basis": "summary ranges",
+   "utc_centre": "13:57:16.402",
+   "tle": "hidden_digui.tle",
+   "replica_corr_ns": 28.609,
+   "windows": [
+    53
+   ],
+   "sep_deg": 0.86
+  },
+  "DIGUI-87|2026-11-09T14:03:39Z": {
+   "range_rate_m_s": 1370.62,
+   "basis": "summary",
+   "utc_centre": "14:03:39.258",
+   "tle": "hulianwang_20261107T094003Z.tle",
+   "replica_corr_ns": 28.261,
+   "windows": [
+    54
+   ],
+   "sep_deg": 3.43
+  },
+  "DIGUI-H54-2|2026-11-09T14:10:05Z": {
+   "range_rate_m_s": 1569.69,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -2.607,
+   "replica_corr_ns": 27.929,
+   "windows": [
+    55
+   ],
+   "sep_deg": 6.51
+  },
+  "DIGUI-H84-4|2026-11-09T15:27:48Z": {
+   "range_rate_m_s": -910.95,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -2.008,
+   "replica_corr_ns": -29.028,
+   "windows": [
+    57
+   ],
+   "sep_deg": 28.05
+  },
+  "DIGUI-76|2026-11-09T15:47:50Z": {
+   "range_rate_m_s": 1267.55,
+   "basis": "summary",
+   "utc_centre": "15:47:50.155",
+   "tle": "hulianwang_20261109T131809Z.tle",
+   "replica_corr_ns": 28.433,
+   "windows": [
+    58
+   ],
+   "sep_deg": 3.34
+  },
+  "DIGUI-H84-2|2026-11-09T15:54:34Z": {
+   "range_rate_m_s": 1311.8,
+   "basis": "summary ranges",
+   "utc_centre": "15:54:34.906",
+   "tle": "hidden_digui.tle",
+   "replica_corr_ns": 28.36,
+   "windows": [
+    59
+   ],
+   "sep_deg": 1.27
+  },
+  "DIGUI-79|2026-11-09T16:00:50Z": {
+   "range_rate_m_s": 1131.34,
+   "basis": "summary",
+   "utc_centre": "16:00:50.002",
+   "tle": "hulianwang_20261109T131809Z.tle",
+   "replica_corr_ns": 28.661,
+   "windows": [
+    60
+   ],
+   "sep_deg": 2.37
+  },
+  "DIGUI-85|2026-11-09T16:13:24Z": {
+   "range_rate_m_s": 2694.75,
+   "basis": "summary",
+   "utc_centre": "16:13:24.180",
+   "tle": "hulianwang_20261109T131809Z.tle",
+   "replica_corr_ns": 26.053,
+   "windows": [
+    62
+   ],
+   "sep_deg": 5.15
+  },
+  "DIGUI-H84-1|2026-11-09T16:06:39Z": {
+   "range_rate_m_s": 1177.1,
+   "basis": "summary ranges",
+   "utc_centre": "16:06:39.304",
+   "tle": "hidden_digui.tle",
+   "replica_corr_ns": 28.584,
+   "windows": [
+    61
+   ],
+   "sep_deg": 5.08
+  },
+  "DIGUI-149|2026-11-10T01:56:26Z": {
+   "range_rate_m_s": 1161.47,
+   "basis": "summary",
+   "utc_centre": "01:56:26.441",
+   "tle": "hulianwang_20261109T213809Z.tle",
+   "replica_corr_ns": 28.61,
+   "windows": [
+    72
+   ],
+   "sep_deg": 4.31
+  },
+  "DIGUI-156|2026-11-10T05:50:27Z": {
+   "range_rate_m_s": 1350.29,
+   "basis": "summary",
+   "utc_centre": "05:50:27.418",
+   "tle": "hulianwang_20261109T213809Z.tle",
+   "replica_corr_ns": 28.295,
+   "windows": [
+    75
+   ],
+   "sep_deg": 2.21
+  },
+  "DIGUI-109|2026-11-10T07:20:39Z": {
+   "range_rate_m_s": -1270.7,
+   "basis": "summary",
+   "utc_centre": "07:20:39.413",
+   "tle": "hulianwang_20261110T055727Z.tle",
+   "replica_corr_ns": -28.428,
+   "windows": [
+    77
+   ],
+   "sep_deg": 3.39
+  },
+  "DIGUI-137|2026-11-10T07:52:52Z": {
+   "range_rate_m_s": 1170.66,
+   "basis": "summary",
+   "utc_centre": "07:52:52.693",
+   "tle": "hulianwang_20261109T213809Z.tle",
+   "replica_corr_ns": 28.595,
+   "windows": [
+    78
+   ],
+   "sep_deg": 4.4
+  },
+  "DIGUI-117|2026-11-10T08:00:08Z": {
+   "range_rate_m_s": 2684.13,
+   "basis": "summary",
+   "utc_centre": "08:00:08.272",
+   "tle": "hulianwang_20261109T213809Z.tle",
+   "replica_corr_ns": 26.071,
+   "windows": [
+    79
+   ],
+   "sep_deg": 1.98
+  },
+  "DIGUI-135|2026-11-10T09:49:58Z": {
+   "range_rate_m_s": 1163.28,
+   "basis": "summary",
+   "utc_centre": "09:49:58.195",
+   "tle": "hulianwang_20261109T213809Z.tle",
+   "replica_corr_ns": 28.607,
+   "windows": [
+    80
+   ],
+   "sep_deg": 3.87
+  },
+  "DIGUI-23|2026-11-10T10:05:21Z": {
+   "range_rate_m_s": 2689.81,
+   "basis": "summary",
+   "utc_centre": "10:05:21.822",
+   "tle": "hulianwang_20261110T055727Z.tle",
+   "replica_corr_ns": 26.061,
+   "windows": [
+    81
+   ],
+   "sep_deg": 3.42
+  },
+  "DIGUI-H84-2|2026-11-10T11:33:07Z": {
+   "range_rate_m_s": 165.55,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -1.488,
+   "replica_corr_ns": 30.271,
+   "windows": [
+    82
+   ],
+   "sep_deg": 14.66
+  },
+  "DIGUI-H24-2|2026-11-10T11:39:46Z": {
+   "range_rate_m_s": 1179.8,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -1.254,
+   "replica_corr_ns": 28.58,
+   "windows": [
+    83
+   ],
+   "sep_deg": 0.44
+  },
+  "DIGUI-79|2026-11-10T11:38:50Z": {
+   "range_rate_m_s": -1116.6,
+   "basis": "summary",
+   "utc_centre": "11:38:50.571",
+   "tle": "hulianwang_20261110T055727Z.tle",
+   "replica_corr_ns": -28.685,
+   "windows": [
+    83
+   ],
+   "sep_deg": 11.45
+  },
+  "DIGUI-105|2026-11-10T11:59:32Z": {
+   "range_rate_m_s": 1309.29,
+   "basis": "summary",
+   "utc_centre": "11:59:32.840",
+   "tle": "hulianwang_20261109T213809Z.tle",
+   "replica_corr_ns": 28.364,
+   "windows": [
+    86
+   ],
+   "sep_deg": 7.84
+  },
+  "DIGUI-106|2026-11-10T11:46:46Z": {
+   "range_rate_m_s": 1132.77,
+   "basis": "summary",
+   "utc_centre": "11:46:46.331",
+   "tle": "hulianwang_20261110T055727Z.tle",
+   "replica_corr_ns": 28.658,
+   "windows": [
+    84
+   ],
+   "sep_deg": 2.68
+  },
+  "DIGUI-H24-1|2026-11-10T11:52:34Z": {
+   "range_rate_m_s": 1356.3,
+   "basis": "summary ranges",
+   "utc_centre": "11:52:34.165",
+   "tle": "hidden_digui.tle",
+   "replica_corr_ns": 28.285,
+   "windows": [
+    85
+   ],
+   "sep_deg": 5.08
+  },
+  "DIGUI-H54-3|2026-11-10T13:23:21Z": {
+   "range_rate_m_s": 32.46,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -1.33,
+   "replica_corr_ns": 30.493,
+   "windows": [
+    87
+   ],
+   "sep_deg": 11.92
+  },
+  "DIGUI-88|2026-11-10T13:43:13Z": {
+   "range_rate_m_s": 1348.54,
+   "basis": "summary",
+   "utc_centre": "13:43:13.874",
+   "tle": "hulianwang_20261110T055727Z.tle",
+   "replica_corr_ns": 28.298,
+   "windows": [
+    88
+   ],
+   "sep_deg": 2.44
+  },
+  "DIGUI-H54-1|2026-11-10T13:49:24Z": {
+   "range_rate_m_s": 1304.8,
+   "basis": "summary ranges",
+   "utc_centre": "13:49:24.441",
+   "tle": "hidden_digui.tle",
+   "replica_corr_ns": 28.371,
+   "windows": [
+    89
+   ],
+   "sep_deg": 5.21
+  },
+  "DIGUI-75|2026-11-10T15:39:55Z": {
+   "range_rate_m_s": 1345.11,
+   "basis": "summary",
+   "utc_centre": "15:39:55.090",
+   "tle": "hulianwang_20261110T141727Z.tle",
+   "replica_corr_ns": 28.304,
+   "windows": [
+    92
+   ],
+   "sep_deg": 1.94
+  },
+  "DIGUI-18|2026-11-10T17:23:54Z": {
+   "range_rate_m_s": 1244.49,
+   "basis": "summary",
+   "utc_centre": "17:23:54.579",
+   "tle": "hulianwang_20261110T141727Z.tle",
+   "replica_corr_ns": 28.472,
+   "windows": [
+    95
+   ],
+   "sep_deg": 4.43
+  },
+  "DIGUI-H84-9|2026-11-10T15:45:57Z": {
+   "range_rate_m_s": 1290.4,
+   "basis": "summary ranges",
+   "utc_centre": "15:45:57.772",
+   "tle": "hidden_digui.tle",
+   "replica_corr_ns": 28.395,
+   "windows": [
+    93
+   ],
+   "sep_deg": 4.04
+  },
+  "DIGUI-84|2026-11-10T15:58:23Z": {
+   "range_rate_m_s": 2700.43,
+   "basis": "summary",
+   "utc_centre": "15:58:23.645",
+   "tle": "hulianwang_20261110T141727Z.tle",
+   "replica_corr_ns": 26.044,
+   "windows": [
+    94
+   ],
+   "sep_deg": 4.17
+  },
+  "DIGUI-176|2026-11-10T17:30:03Z": {
+   "range_rate_m_s": 1062.86,
+   "basis": "summary",
+   "utc_centre": "17:30:03.426",
+   "tle": "hulianwang_20261110T055727Z.tle",
+   "replica_corr_ns": 28.775,
+   "windows": [
+    96
+   ],
+   "sep_deg": 2.01
+  },
+  "DIGUI-175|2026-11-10T17:42:37Z": {
+   "range_rate_m_s": 1161.78,
+   "basis": "summary",
+   "utc_centre": "17:42:37.184",
+   "tle": "hulianwang_20261111T044815Z.tle",
+   "replica_corr_ns": 28.61,
+   "windows": [
+    98
+   ],
+   "sep_deg": 3.73
+  },
+  "DIGUI-58|2026-11-10T18:21:05Z": {
+   "range_rate_m_s": -2900.36,
+   "basis": "summary",
+   "utc_centre": "18:21:05.435",
+   "tle": "hulianwang_20261110T141727Z.tle",
+   "replica_corr_ns": -25.71,
+   "windows": [
+    99
+   ],
+   "sep_deg": 2.11
+  },
+  "DIGUI-116|2026-11-10T20:25:29Z": {
+   "range_rate_m_s": -2896.27,
+   "basis": "summary",
+   "utc_centre": "20:25:29.493",
+   "tle": "hulianwang_20261111T044815Z.tle",
+   "replica_corr_ns": -25.717,
+   "windows": [
+    103
+   ],
+   "sep_deg": 2.96
+  },
+  "DIGUI-99|2026-11-10T21:29:41Z": {
+   "range_rate_m_s": 1081.86,
+   "basis": "summary",
+   "utc_centre": "21:29:41.374",
+   "tle": "hulianwang_20261111T044815Z.tle",
+   "replica_corr_ns": 28.743,
+   "windows": [
+    105
+   ],
+   "sep_deg": 1.2
+  },
+  "DIGUI-102|2026-11-10T21:17:29Z": {
+   "range_rate_m_s": 1232.18,
+   "basis": "summary",
+   "utc_centre": "21:17:29.845",
+   "tle": "hulianwang_20261111T044815Z.tle",
+   "replica_corr_ns": 28.492,
+   "windows": [
+    104
+   ],
+   "sep_deg": 5.5
+  },
+  "DIGUI-96|2026-11-10T21:42:15Z": {
+   "range_rate_m_s": 1163.9,
+   "basis": "summary",
+   "utc_centre": "21:42:15.594",
+   "tle": "hulianwang_20261111T044815Z.tle",
+   "replica_corr_ns": 28.606,
+   "windows": [
+    106
+   ],
+   "sep_deg": 4.87
+  },
+  "DIGUI-24|2026-11-10T22:30:25Z": {
+   "range_rate_m_s": -2891.0,
+   "basis": "summary",
+   "utc_centre": "22:30:25.092",
+   "tle": "hulianwang_20261111T044815Z.tle",
+   "replica_corr_ns": -25.726,
+   "windows": [
+    107
+   ],
+   "sep_deg": 3.32
+  },
+  "DIGUI-55|2026-11-10T23:14:26Z": {
+   "range_rate_m_s": 965.86,
+   "basis": "summary",
+   "utc_centre": "23:14:26.706",
+   "tle": "hulianwang_20261111T044815Z.tle",
+   "replica_corr_ns": 28.937,
+   "windows": [
+    110
+   ],
+   "sep_deg": 6.09
+  },
+  "DIGUI-52|2026-11-10T23:39:25Z": {
+   "range_rate_m_s": 1375.8,
+   "basis": "summary",
+   "utc_centre": "23:39:25.583",
+   "tle": "hulianwang_20261111T044815Z.tle",
+   "replica_corr_ns": 28.253,
+   "windows": [
+    111
+   ],
+   "sep_deg": 4.16
+  },
+  "DIGUI-159|2026-11-11T00:50:18Z": {
+   "range_rate_m_s": -1155.94,
+   "basis": "summary",
+   "utc_centre": "00:50:18.607",
+   "tle": "hulianwang_20261111T044815Z.tle",
+   "replica_corr_ns": -28.62,
+   "windows": [
+    113
+   ],
+   "sep_deg": 4.3
+  },
+  "DIGUI-148|2026-11-11T01:35:31Z": {
+   "range_rate_m_s": 1139.64,
+   "basis": "summary",
+   "utc_centre": "01:35:31.776",
+   "tle": "hulianwang_20261111T044815Z.tle",
+   "replica_corr_ns": 28.647,
+   "windows": [
+    114
+   ],
+   "sep_deg": 3.0
+  },
+  "DIGUI-83|2026-11-11T04:23:30Z": {
+   "range_rate_m_s": -2898.66,
+   "basis": "summary",
+   "utc_centre": "04:23:30.186",
+   "tle": "hulianwang_20261111T044815Z.tle",
+   "replica_corr_ns": -25.713,
+   "windows": [
+    118
+   ],
+   "sep_deg": 5.07
+  },
+  "DIGUI-59|2026-11-11T05:52:04Z": {
+   "range_rate_m_s": 2699.26,
+   "basis": "summary",
+   "utc_centre": "05:52:04.453",
+   "tle": "hulianwang_20261111T044815Z.tle",
+   "replica_corr_ns": 26.046,
+   "windows": [
+    120
+   ],
+   "sep_deg": 1.01
+  },
+  "DIGUI-155|2026-11-11T05:28:52Z": {
+   "range_rate_m_s": 1084.93,
+   "basis": "summary",
+   "utc_centre": "05:28:52.447",
+   "tle": "hulianwang_20261111T044815Z.tle",
+   "replica_corr_ns": 28.738,
+   "windows": [
+    119
+   ],
+   "sep_deg": 1.23
+  },
+  "DIGUI-139|2026-11-11T07:32:09Z": {
+   "range_rate_m_s": 1367.51,
+   "basis": "summary",
+   "utc_centre": "07:32:09.731",
+   "tle": "hulianwang_20261111T044815Z.tle",
+   "replica_corr_ns": 28.267,
+   "windows": [
+    121
+   ],
+   "sep_deg": 3.39
+  },
+  "DIGUI-115|2026-11-11T07:57:12Z": {
+   "range_rate_m_s": 2706.6,
+   "basis": "summary",
+   "utc_centre": "07:57:12.550",
+   "tle": "hulianwang_20261111T044815Z.tle",
+   "replica_corr_ns": 26.033,
+   "windows": [
+    122
+   ],
+   "sep_deg": 4.09
+  },
+  "DIGUI-90|2026-11-11T08:43:00Z": {
+   "range_rate_m_s": -1156.09,
+   "basis": "summary",
+   "utc_centre": "08:43:00.533",
+   "tle": "hulianwang_20261110T055727Z.tle",
+   "replica_corr_ns": -28.619,
+   "windows": [
+    123
+   ],
+   "sep_deg": 4.12
+  },
+  "DIGUI-130|2026-11-11T09:29:20Z": {
+   "range_rate_m_s": 1353.72,
+   "basis": "summary",
+   "utc_centre": "09:29:20.601",
+   "tle": "hulianwang_20261111T044815Z.tle",
+   "replica_corr_ns": 28.29,
+   "windows": [
+    124
+   ],
+   "sep_deg": 2.57
+  },
+  "DIGUI-77|2026-11-11T10:39:38Z": {
+   "range_rate_m_s": -1184.44,
+   "basis": "summary",
+   "utc_centre": "10:39:38.897",
+   "tle": "hulianwang_20261111T110315Z.tle",
+   "replica_corr_ns": -28.572,
+   "windows": [
+    126
+   ],
+   "sep_deg": 5.5
+  },
+  "DIGUI-H24-9|2026-11-11T11:31:48Z": {
+   "range_rate_m_s": 1238.9,
+   "basis": "summary ranges",
+   "utc_centre": "11:31:48.477",
+   "tle": "hidden_digui.tle",
+   "replica_corr_ns": 28.481,
+   "windows": [
+    127
+   ],
+   "sep_deg": 3.91
+  },
+  "DIGUI-H54-3|2026-11-11T12:49:56Z": {
+   "range_rate_m_s": -113.53,
+   "basis": "tle",
+   "tle": "published_hulianwang_20261112T140213Z.tle",
+   "tle_age_d": -0.354,
+   "replica_corr_ns": -30.358,
+   "windows": [
+    130
+   ],
+   "sep_deg": 15.86
+  },
+  "DIGUI-169|2026-11-11T12:42:37Z": {
+   "range_rate_m_s": -1151.55,
+   "basis": "summary",
+   "utc_centre": "12:42:37.432",
+   "tle": "hulianwang_20261111T110315Z.tle",
+   "replica_corr_ns": -28.627,
+   "windows": [
+    129
+   ],
+   "sep_deg": 3.85
+  },
+  "DIGUI-177|2026-11-11T12:55:19Z": {
+   "range_rate_m_s": -1273.04,
+   "basis": "summary",
+   "utc_centre": "12:55:19.286",
+   "tle": "hulianwang_20261111T110315Z.tle",
+   "replica_corr_ns": -28.424,
+   "windows": [
+    131
+   ],
+   "sep_deg": 3.01
+  },
+  "DIGUI-95|2026-11-11T13:22:12Z": {
+   "range_rate_m_s": 1129.04,
+   "basis": "summary",
+   "utc_centre": "13:22:12.247",
+   "tle": "hulianwang_20261111T110315Z.tle",
+   "replica_corr_ns": 28.664,
+   "windows": [
+    132
+   ],
+   "sep_deg": 1.95
+  },
+  "DIGUI-H54-9|2026-11-11T13:28:33Z": {
+   "range_rate_m_s": 1219.6,
+   "basis": "summary ranges",
+   "utc_centre": "13:28:33.426",
+   "tle": "hidden_digui.tle",
+   "replica_corr_ns": 28.513,
+   "windows": [
+    133
+   ],
+   "sep_deg": 4.4
+  },
+  "DIGUI-74|2026-11-11T15:31:48Z": {
+   "range_rate_m_s": 1198.0,
+   "basis": "summary",
+   "utc_centre": "15:31:48.487",
+   "tle": "hulianwang_20261111T110315Z.tle",
+   "replica_corr_ns": 28.549,
+   "windows": [
+    139
+   ],
+   "sep_deg": 5.65
+  },
+  "DIGUI-78|2026-11-11T15:19:17Z": {
+   "range_rate_m_s": 1326.56,
+   "basis": "summary",
+   "utc_centre": "15:19:17.916",
+   "tle": "hulianwang_20261111T110315Z.tle",
+   "replica_corr_ns": 28.335,
+   "windows": [
+    137
+   ],
+   "sep_deg": 1.23
+  },
+  "DIGUI-H84-8|2026-11-11T15:25:08Z": {
+   "range_rate_m_s": 1156.3,
+   "basis": "summary ranges",
+   "utc_centre": "15:25:08.099",
+   "tle": "hidden_digui.tle",
+   "replica_corr_ns": 28.619,
+   "windows": [
+    138
+   ],
+   "sep_deg": 2.87
+  },
+  "DIGUI-16|2026-11-11T17:15:34Z": {
+   "range_rate_m_s": 1080.53,
+   "basis": "summary",
+   "utc_centre": "17:15:34.512",
+   "tle": "hulianwang_20261111T171817Z.tle",
+   "replica_corr_ns": 28.745,
+   "windows": [
+    142
+   ],
+   "sep_deg": 1.16
+  },
+  "DIGUI-174|2026-11-11T17:22:03Z": {
+   "range_rate_m_s": 1353.97,
+   "basis": "summary",
+   "utc_centre": "17:22:03.408",
+   "tle": "hulianwang_20261111T110315Z.tle",
+   "replica_corr_ns": 28.289,
+   "windows": [
+    143
+   ],
+   "sep_deg": 2.5
+  },
+  "DIGUI-14|2026-11-11T17:28:11Z": {
+   "range_rate_m_s": 1181.35,
+   "basis": "summary",
+   "utc_centre": "17:28:11.835",
+   "tle": "hulianwang_20261111T171817Z.tle",
+   "replica_corr_ns": 28.577,
+   "windows": [
+    144
+   ],
+   "sep_deg": 5.28
+  },
+  "DIGUI-60|2026-11-11T18:17:21Z": {
+   "range_rate_m_s": -2689.01,
+   "basis": "summary",
+   "utc_centre": "18:17:21.857",
+   "tle": "hulianwang_20261111T171817Z.tle",
+   "replica_corr_ns": -26.063,
+   "windows": [
+    145
+   ],
+   "sep_deg": 1.13
+  },
+  "DIGUI-19|2026-11-12T17:08:22Z": {
+   "range_rate_m_s": 1159.67,
+   "basis": "summary",
+   "utc_centre": "17:08:22.255",
+   "tle": "hulianwang_20261112T140815Z.tle",
+   "replica_corr_ns": 28.613,
+   "windows": [
+    148
+   ],
+   "sep_deg": 4.26
+  },
+  "DIGUI-173|2026-11-12T17:01:12Z": {
+   "range_rate_m_s": 1328.69,
+   "basis": "summary",
+   "utc_centre": "17:01:12.087",
+   "tle": "hulianwang_20261112T161537Z.tle",
+   "replica_corr_ns": 28.331,
+   "windows": [
+    147
+   ],
+   "sep_deg": 1.43
+  },
+  "DIGUI-62|2026-11-12T18:12:56Z": {
+   "range_rate_m_s": -2689.54,
+   "basis": "summary",
+   "utc_centre": "18:12:56.282",
+   "tle": "hulianwang_20261112T181815Z.tle",
+   "replica_corr_ns": -26.062,
+   "windows": [
+    149
+   ],
+   "sep_deg": 1.84
+  },
+  "DIGUI-53|2026-11-12T18:30:57Z": {
+   "range_rate_m_s": -1290.99,
+   "basis": "summary",
+   "utc_centre": "18:30:57.574",
+   "tle": "hulianwang_20261112T181815Z.tle",
+   "replica_corr_ns": -28.394,
+   "windows": [
+    150
+   ],
+   "sep_deg": 2.09
+  },
+  "DIGUI-52|2026-11-12T18:43:43Z": {
+   "range_rate_m_s": -1521.2,
+   "basis": "summary",
+   "utc_centre": "18:43:43.663",
+   "tle": "hulianwang_20261112T181815Z.tle",
+   "replica_corr_ns": -28.01,
+   "windows": [
+    151
+   ],
+   "sep_deg": 8.26
+  },
+  "DIGUI-43|2026-11-12T19:04:10Z": {
+   "range_rate_m_s": 1140.54,
+   "basis": "summary",
+   "utc_centre": "19:04:10.036",
+   "tle": "hulianwang_20261112T181815Z.tle",
+   "replica_corr_ns": 28.645,
+   "windows": [
+    154
+   ],
+   "sep_deg": 3.44
+  },
+  "DIGUI-38|2026-11-12T20:17:42Z": {
+   "range_rate_m_s": -2901.74,
+   "basis": "summary",
+   "utc_centre": "20:17:42.360",
+   "tle": "hulianwang_20261112T181815Z.tle",
+   "replica_corr_ns": -25.708,
+   "windows": [
+    156
+   ],
+   "sep_deg": 4.5
+  },
+  "DIGUI-151|2026-11-12T20:15:06Z": {
+   "range_rate_m_s": -1164.67,
+   "basis": "summary",
+   "utc_centre": "20:15:06.415",
+   "tle": "hulianwang_20261112T140815Z.tle",
+   "replica_corr_ns": -28.605,
+   "windows": [
+    155
+   ],
+   "sep_deg": 4.5
+  },
+  "DIGUI-100|2026-11-12T21:01:14Z": {
+   "range_rate_m_s": 1311.21,
+   "basis": "summary",
+   "utc_centre": "21:01:14.698",
+   "tle": "hulianwang_20261112T140815Z.tle",
+   "replica_corr_ns": 28.361,
+   "windows": [
+    158
+   ],
+   "sep_deg": 2.4
+  },
+  "DIGUI-101|2026-11-12T20:48:18Z": {
+   "range_rate_m_s": 1268.09,
+   "basis": "summary",
+   "utc_centre": "20:48:18.458",
+   "tle": "hulianwang_20261112T140815Z.tle",
+   "replica_corr_ns": 28.432,
+   "windows": [
+    157
+   ],
+   "sep_deg": 3.01
+  },
+  "DIGUI-29|2026-11-12T22:11:34Z": {
+   "range_rate_m_s": -2695.16,
+   "basis": "summary",
+   "utc_centre": "22:11:34.378",
+   "tle": "hulianwang_20261112T181815Z.tle",
+   "replica_corr_ns": -26.052,
+   "windows": [
+    160
+   ],
+   "sep_deg": 4.46
+  },
+  "DIGUI-122|2026-11-12T22:12:46Z": {
+   "range_rate_m_s": -1202.87,
+   "basis": "summary",
+   "utc_centre": "22:12:46.100",
+   "tle": "hulianwang_20261112T161537Z.tle",
+   "replica_corr_ns": -28.541,
+   "windows": [
+    160
+   ],
+   "sep_deg": 4.61
+  },
+  "DIGUI-50|2026-11-12T22:58:11Z": {
+   "range_rate_m_s": 1343.24,
+   "basis": "summary",
+   "utc_centre": "22:58:11.894",
+   "tle": "hulianwang_20261112T181815Z.tle",
+   "replica_corr_ns": 28.307,
+   "windows": [
+    164
+   ],
+   "sep_deg": 2.12
+  },
+  "DIGUI-51|2026-11-12T22:44:51Z": {
+   "range_rate_m_s": 1008.56,
+   "basis": "summary",
+   "utc_centre": "22:44:51.160",
+   "tle": "hulianwang_20261112T181815Z.tle",
+   "replica_corr_ns": 28.865,
+   "windows": [
+    163
+   ],
+   "sep_deg": 4.09
+  },
+  "DIGUI-146|2026-11-13T00:54:34Z": {
+   "range_rate_m_s": 1325.43,
+   "basis": "summary",
+   "utc_centre": "00:54:34.530",
+   "tle": "hulianwang_20261113T003316Z.tle",
+   "replica_corr_ns": 28.337,
+   "windows": [
+    167
+   ],
+   "sep_deg": 1.25
+  },
+  "DIGUI-141|2026-11-13T02:11:28Z": {
+   "range_rate_m_s": -1159.46,
+   "basis": "summary",
+   "utc_centre": "02:11:28.432",
+   "tle": "hulianwang_20261113T003316Z.tle",
+   "replica_corr_ns": -28.614,
+   "windows": [
+    168
+   ],
+   "sep_deg": 4.26
+  },
+  "DIGUI-72|2026-11-13T02:10:48Z": {
+   "range_rate_m_s": -2272.47,
+   "basis": "summary",
+   "utc_centre": "02:10:48.586",
+   "tle": "hulianwang_20261113T023823Z.tle",
+   "replica_corr_ns": -26.757,
+   "windows": [
+    168
+   ],
+   "sep_deg": 8.32
+  },
+  "DIGUI-127|2026-11-13T02:51:25Z": {
+   "range_rate_m_s": 1108.98,
+   "basis": "summary",
+   "utc_centre": "02:51:25.519",
+   "tle": "hulianwang_20261112T161537Z.tle",
+   "replica_corr_ns": 28.698,
+   "windows": [
+    171
+   ],
+   "sep_deg": 1.67
+  },
+  "DIGUI-166|2026-11-13T04:16:01Z": {
+   "range_rate_m_s": -2888.36,
+   "basis": "summary",
+   "utc_centre": "04:16:01.549",
+   "tle": "hulianwang_20261113T044319Z.tle",
+   "replica_corr_ns": -25.73,
+   "windows": [
+    174
+   ],
+   "sep_deg": 1.51
+  },
+  "DIGUI-132|2026-11-13T04:08:33Z": {
+   "range_rate_m_s": -1175.53,
+   "basis": "summary",
+   "utc_centre": "04:08:33.681",
+   "tle": "hulianwang_20261112T140815Z.tle",
+   "replica_corr_ns": -28.587,
+   "windows": [
+    173
+   ],
+   "sep_deg": 5.1
+  },
+  "DIGUI-130|2026-11-13T04:33:55Z": {
+   "range_rate_m_s": -995.33,
+   "basis": "summary",
+   "utc_centre": "04:33:55.836",
+   "tle": "hulianwang_20261113T003316Z.tle",
+   "replica_corr_ns": -28.887,
+   "windows": [
+    177
+   ],
+   "sep_deg": 5.61
+  },
+  "DIGUI-163|2026-11-13T04:34:51Z": {
+   "range_rate_m_s": 974.12,
+   "basis": "summary",
+   "utc_centre": "04:34:51.621",
+   "tle": "hulianwang_20261113T003316Z.tle",
+   "replica_corr_ns": 28.923,
+   "windows": [
+    177
+   ],
+   "sep_deg": 6.43
+  },
+  "DIGUI-63|2026-11-13T05:44:31Z": {
+   "range_rate_m_s": 2905.8,
+   "basis": "summary",
+   "utc_centre": "05:44:31.580",
+   "tle": "hulianwang_20261113T044319Z.tle",
+   "replica_corr_ns": 25.701,
+   "windows": [
+    180
+   ],
+   "sep_deg": 2.66
+  },
+  "DIGUI-160|2026-11-13T05:00:05Z": {
+   "range_rate_m_s": 1164.41,
+   "basis": "summary",
+   "utc_centre": "05:00:05.513",
+   "tle": "hulianwang_20261113T044319Z.tle",
+   "replica_corr_ns": 28.605,
+   "windows": [
+    179
+   ],
+   "sep_deg": 4.14
+  },
+  "DIGUI-162|2026-11-13T04:48:19Z": {
+   "range_rate_m_s": 1305.2,
+   "basis": "summary",
+   "utc_centre": "04:48:19.653",
+   "tle": "hulianwang_20261113T044319Z.tle",
+   "replica_corr_ns": 28.371,
+   "windows": [
+    178
+   ],
+   "sep_deg": 1.5
+  },
+  "DIGUI-138|2026-11-13T06:38:15Z": {
+   "range_rate_m_s": 1240.05,
+   "basis": "summary",
+   "utc_centre": "06:38:15.112",
+   "tle": "hulianwang_20261113T003316Z.tle",
+   "replica_corr_ns": 28.479,
+   "windows": [
+    181
+   ],
+   "sep_deg": 4.71
+  },
+  "DIGUI-20|2026-11-13T22:07:36Z": {
+   "range_rate_m_s": -2690.28,
+   "basis": "summary",
+   "utc_centre": "22:07:36.371",
+   "tle": "hulianwang_20261113T191823Z.tle",
+   "replica_corr_ns": -26.061,
+   "windows": [
+    229
+   ],
+   "sep_deg": 3.59
+  },
+  "DIGUI-121|2026-11-13T22:04:01Z": {
+   "range_rate_m_s": -1097.23,
+   "basis": "summary",
+   "utc_centre": "22:04:01.748",
+   "tle": "hulianwang_20261113T085315Z.tle",
+   "replica_corr_ns": -28.717,
+   "windows": [
+    228
+   ],
+   "sep_deg": 1.32
+  },
+  "DIGUI-119|2026-11-13T22:16:46Z": {
+   "range_rate_m_s": -1004.98,
+   "basis": "summary",
+   "utc_centre": "22:16:46.328",
+   "tle": "hulianwang_20261113T003316Z.tle",
+   "replica_corr_ns": -28.871,
+   "windows": [
+    230
+   ],
+   "sep_deg": 4.56
+  },
+  "DIGUI-49|2026-11-13T22:37:29Z": {
+   "range_rate_m_s": 1321.82,
+   "basis": "summary",
+   "utc_centre": "22:37:29.520",
+   "tle": "hulianwang_20261113T191823Z.tle",
+   "replica_corr_ns": 28.343,
+   "windows": [
+    231
+   ],
+   "sep_deg": 1.24
+  },
+  "DIGUI-25|2026-11-06T10:21:37Z": {
+   "range_rate_m_s": 3319.59,
+   "basis": "summary",
+   "utc_centre": "10:21:37.937",
+   "tle": "hulianwang_20261106T063004Z.tle",
+   "replica_corr_ns": 25.011,
+   "windows": [
+    112
+   ],
+   "sep_deg": 5.76
+  },
+  "DIGUI-26|2026-10-30T11:00:04Z": {
+   "range_rate_m_s": 2805.1,
+   "basis": "gw_win record centre",
+   "utc_centre": "11:00:04.011",
+   "tle": "hulianwang_20261030T220559Z.tle",
+   "replica_corr_ns": 25.869,
+   "windows": [
+    "2026-10-30 baseband dump chunk 52"
+   ],
+   "sep_deg": 0.13
+  }
+ }
+}

@@ -7,7 +7,7 @@
 //    the split's kernel timings
 // followed by a throughput bench. Exits 0 when every check passes.
 //
-//   ./cuda_gnss_despread_test [signal_name] [N] [n_hops] [cp_true]
+//   [GNSS_TEST_IQ=1] ./cuda_gnss_despread_test [signal_name] [N] [n_hops] [cp_true]
 
 #include "GnssCudaDespread.hpp"
 #include "cudaGnssChordDespread.hpp"
@@ -51,7 +51,10 @@ int main(int argc, char** argv) {
     // L1 C/A and CM runs take seconds; CL runs take minutes, because the CPU reference and the
     // bench walk CL's 1,534,500-chip combined code (75x CM's). The bench saturates the GPU, so
     // never run this beside a live node.
-    const double fs = 5.0e6, f_off = 1.25e6;
+    // GNSS_TEST_IQ runs the checks on I/Q input folded in time order (gnss::Channelization),
+    // with the carrier below the tuned frequency.
+    const bool iq = getenv("GNSS_TEST_IQ") != nullptr;
+    const double fs = 5.0e6, f_off = iq ? -1.25e6 : 1.25e6;
     const int N = (argc > 2) ? atoi(argv[2]) : 20;
     const int taps = 4;
     const int prn = 19;
@@ -73,11 +76,12 @@ int main(int argc, char** argv) {
     }
     const double cp_true =
         (argc > 4) ? atof(argv[4]) : ((sig->code_length > 1023) ? 5170.25 : 517.25);
-    gnss::ChannelizedReplicaBank bank(*sig, fs, f_off, N, taps, dsp::window_from_string("hamming"),
-                                      {prn});
+    gnss::ChannelizedReplicaBank bank(
+        *sig, gnss::Channelization{fs, N, taps, dsp::window_from_string("hamming"), iq, iq}, f_off,
+        {prn});
     // Window length: one code period by default; override for sub-period records (L2C CL).
     const int n_hops = (argc > 3) ? atoi(argv[3]) : bank.repl_period_hops(); // 125 @ L1/5MSPS
-    const int fft_len = 2 * N;
+    const int fft_len = bank.fft_len();
 
     const auto cover = bank.covering_bins(dop, 250000.0);
     const int n_chan = (int)cover.size();
@@ -202,6 +206,7 @@ int main(int argc, char** argv) {
     p.n_hops = n_hops;
     p.Lf = Lf;
     p.data_stride = n_hops;
+    p.complex_input = iq ? 1 : 0;
 
     float2* d_data;
     int8_t* d_code;
@@ -425,7 +430,7 @@ int main(int argc, char** argv) {
                 const double f_car = wc * fs / (2.0 * M_PI);
                 for (int b = 0; b < n_spec; ++b)
                     for (int c = 0; c < n_chan; ++c) {
-                        const double f_c = (double)cover[c] * fs / (double)fft_len;
+                        const double f_c = bank.chan_freq(cover[c]);
                         h_rot[(size_t)b * n_chan + c] =
                             (float)(2.0 * M_PI * (f_c - f_car) * delay_s);
                     }

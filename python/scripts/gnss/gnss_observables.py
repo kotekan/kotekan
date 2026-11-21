@@ -39,7 +39,13 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gnss_atmos
-from gnss_ephemeris import parse_rinex_nav, predict_all, gpst_of_utc, C_LIGHT
+from gnss_ephemeris import (
+    C_LIGHT,
+    gpst_of_utc,
+    load_gw_table,
+    parse_rinex_nav,
+    predict_all,
+)
 from gnss_brdc_supply import cached_brdc
 
 # The F-engine hop: an emit's epoch is frame0 + hop * SAMPLES_PER_HOP / SAMPLE_RATE_HZ.
@@ -189,6 +195,7 @@ def make_obs_writer(path_tmpl, label="", log=None):
 
 
 def main():
+    global SAMPLES_PER_HOP, SAMPLE_RATE_HZ
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -200,8 +207,14 @@ def main():
         default="G",
         choices=("G", "E", "C", "R", "S", "W"),
         help="RINEX constellation letter of the chain's satellites: selects their BRDC "
-        "records for the geometry and is written as each row's sys (W, GuoWang, has no BRDC: "
-        "the choice mirrors the signal table, no writer runs for it yet)",
+        "records for the geometry and is written as each row's sys (W, GuoWang, has no "
+        "BRDC: its geometry comes from --gw-table)",
+    )
+    ap.add_argument(
+        "--gw-table",
+        help="with --sys W, the broker's GuoWang table (gw-table): the geometry comes from "
+        "its decoded-ephemeris arcs (source nav), reread when the file changes; a row on a "
+        "TLE arc, kilometres off, carries none",
     )
     ap.add_argument(
         "--band",
@@ -234,7 +247,20 @@ def main():
         "Waited for at startup and re-read every 60 s; a changed value exits 3 so "
         "the supervisor restarts the writer on the new epoch.",
     )
+    ap.add_argument(
+        "--samples-per-hop",
+        type=int,
+        default=SAMPLES_PER_HOP,
+        help="ADC samples per F-engine hop (CHORD 16384, the bladeRF 64)",
+    )
+    ap.add_argument(
+        "--sample-rate-hz",
+        type=float,
+        default=SAMPLE_RATE_HZ,
+        help="ADC sample rate, Hz (CHORD 3.2e9, the bladeRF 122.88e6)",
+    )
     args = ap.parse_args()
+    SAMPLES_PER_HOP, SAMPLE_RATE_HZ = args.samples_per_hop, args.sample_rate_hz
 
     # Fatal rather than 0.0: a missing anchor is not a degraded mode, it is every code
     # residual silently null. A node that does not answer (the F-engine off) is waited for,
@@ -390,7 +416,18 @@ def main():
                 )
             except Exception:
                 cache_newer = False
-        if eph is None or now - eph_t > 7200 or stale_geom or cache_newer:
+        if args.sys == "W":
+            try:
+                m = os.path.getmtime(args.gw_table)
+                if m != eph_mtime:
+                    eph = {
+                        k: [r for r in v if r.get("source") == "nav"]
+                        for k, v in load_gw_table(args.gw_table).items()
+                    }
+                    eph_mtime = m
+            except (OSError, ValueError, KeyError, TypeError) as e:
+                print("GuoWang table unreadable (%s)" % e, file=sys.stderr)
+        elif eph is None or now - eph_t > 7200 or stale_geom or cache_newer:
             try:
                 # Read-only (gnss_brdc_supply.cached_brdc): the broker is the nav cache's one
                 # writer. An empty cache omits geometry; it never triggers a fetch.

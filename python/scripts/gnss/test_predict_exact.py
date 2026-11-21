@@ -132,6 +132,7 @@ def old_predict_all(
         )
         if e["sys"] == "W":
             out[key]["range_acc_mps2"] = range_acc
+            out[key]["clk_sigma_s"] = float(e.get("clk_sigma_s", 0.0))
     return out
 
 

@@ -1,5 +1,5 @@
 {
- "digest": "fnv1a64:7dbdc9afed1b1906",
- "kotekan_commit": "c5e1d987d4c5167d6cc87dd54862c4807231e89f",
+ "digest": "fnv1a64:57742c014a405acb",
+ "kotekan_commit": "47d45a77f0b9c1ffb69defe08d15bf4b7c22bea2",
  "source": "lib/stages/gnss/gnss_interface.json"
 }

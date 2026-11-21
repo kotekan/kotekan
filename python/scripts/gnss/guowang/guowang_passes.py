@@ -11,14 +11,18 @@ apart, the middle one closest and strongest).
     capture     proposed start times for a --length s capture centred on each train's best pass
     validate    observed burst list (burstspec RESULTS file) against the predictions
 
-TLEs: --tle FILE, else the newest cache in --cache-dir. --fetch downloads the group from CelesTrak
-into the cache, but only when the newest cache is older than 2 h: CelesTrak serves a GROUP once per
-2 h per client and answers sooner requests with an error, so a test download burns the slot.
-Refresh the TLEs the day before a capture; 1-2 day old TLEs are good to ~1 s along track.
+Elements: --elements FILE, else the newest cache in --cache-dir. They are CelesTrak's OMM (GP)
+records of every HULIANWANG object, as CSV: the TLE format cannot carry the six-digit catalogue
+numbers given since 2026-07-11, so the TLE group lacks every satellite catalogued after that date.
+--fetch downloads them into the cache, but only when the newest cache is older than 2 h: CelesTrak
+serves a query once per 2 h per client and answers sooner requests with an error, so a test
+download burns the slot. A TLE file still reads (--elements with any other extension), for the
+older captures. Refresh the elements the day before a capture; 1-2 day old ones are good to ~1 s
+along track.
 
     python guowang_passes.py passes --start 2026-10-29 --days 7
     python guowang_passes.py capture --start 2026-10-29 --days 7 --length 80
-    python guowang_passes.py validate --bursts .../RESULTS_burstspec_20261028.txt --tle .../g_hulianwang.tle
+    python guowang_passes.py validate --bursts .../RESULTS_burstspec_20261028.txt --elements .../g_hulianwang.tle
 
 Needs skyfield (the gnss venv: /home/kvand/gnss/venv/bin/python).
 """
@@ -38,11 +42,9 @@ F_B3 = 1268.52e6
 F_L3 = 1202.025e6
 SITE = dict(lat=49.3199845, lon=-119.62262691, h=528.4)
 BORESIGHT = dict(az=180.0, el=62.70)
-CELESTRAK = "https://celestrak.org/NORAD/elements/gp.php?GROUP=hulianwang&FORMAT=tle"
+# Every HULIANWANG object, DIGUI and JISHU SHIYAN, as OMM (GP) records in CSV.
+OMM_URL = "https://celestrak.org/NORAD/elements/gp.php?NAME=HULIANWANG&FORMAT=CSV"
 CACHE_DIR = os.path.expanduser("~/.cache/guowang")
-FALLBACK_TLE = (
-    "/home/kvand/gnss/builds/scratch_bak_20261023_gnssmain/emit1027/g_hulianwang.tle"
-)
 # Satellites seen NOT to transmit while inside the dish beam (10-26 subset archive + rail recorder;
 # burstspec1028 / tier2_1028): both from the first polar launch, 2024-240 (DIGUI-01..10). Later polar
 # satellites (DIGUI-59, -83, -115) do transmit. capture skips them unless --include-silent.
@@ -55,17 +57,20 @@ SUSPECT_BATCHES = {
 }
 
 
-# --------------------------------------------------------------------------- TLEs
+# --------------------------------------------------------------------------- elements
 
 
 def newest_cache(cache_dir):
-    files = sorted(glob.glob(os.path.join(cache_dir, "hulianwang_*.tle")))
+    """Path of the newest cached OMM file (gp_hulianwang_<stamp>.csv), or None."""
+    files = sorted(glob.glob(os.path.join(cache_dir, "gp_hulianwang_*.csv")))
     return files[-1] if files else None
 
 
-def fetch_tle(cache_dir, min_age_s=7200.0):
-    """Download the group into cache_dir/hulianwang_YYYYmmddTHHMMSSZ.tle unless the newest cache is
-    younger than min_age_s. Returns the path used."""
+def fetch_omm(cache_dir, min_age_s=7200.0):
+    """Download the OMM CSV into cache_dir/gp_hulianwang_YYYYmmddTHHMMSSZ.csv unless the newest
+    cache is younger than min_age_s. Returns the path used; a failed download keeps the newest
+    cache.
+    """
     os.makedirs(cache_dir, exist_ok=True)
     last = newest_cache(cache_dir)
     if last is not None and time.time() - os.path.getmtime(last) < min_age_s:
@@ -76,21 +81,59 @@ def fetch_tle(cache_dir, min_age_s=7200.0):
             file=sys.stderr,
         )
         return last
-    with urllib.request.urlopen(CELESTRAK, timeout=60) as r:
-        txt = r.read().decode("ascii", "replace")
-    if "1 " not in txt or "2 " not in txt:
-        raise RuntimeError("CelesTrak returned no TLEs: %r" % txt[:200])
+    try:
+        with urllib.request.urlopen(OMM_URL, timeout=60) as r:
+            txt = r.read().decode("utf-8", "replace")
+        if not txt.startswith("OBJECT_NAME,") or txt.count("\n") < 100:
+            raise RuntimeError("CelesTrak returned no OMM CSV: %r" % txt[:200])
+    except Exception as e:
+        if last is None:
+            raise
+        print("# fetch failed (%s); using %s" % (e, last), file=sys.stderr)
+        return last
     path = os.path.join(
-        cache_dir, time.strftime("hulianwang_%Y%m%dT%H%M%SZ.tle", time.gmtime())
+        cache_dir, time.strftime("gp_hulianwang_%Y%m%dT%H%M%SZ.csv", time.gmtime())
     )
-    with open(path, "w") as f:
+    with open(path + ".tmp", "w") as f:
         f.write(txt)
+    os.replace(path + ".tmp", path)
     print("# fetched %s" % path, file=sys.stderr)
     return path
 
 
+def omm_name(name):
+    """The catalogue's name with spaces after HULIANWANG made hyphens, as the TLE group wrote
+    them: 'HULIANWANG DIGUI 233' -> 'HULIANWANG DIGUI-233', 'HULIANWANG JISHU SHIYAN 8A' ->
+    'HULIANWANG JISHU-SHIYAN-8A'."""
+    return "HULIANWANG " + name.strip().replace("HULIANWANG ", "").replace(" ", "-")
+
+
+def read_omm(path, ts, name_filter="DIGUI"):
+    """EarthSatellite list from an OMM CSV, one per catalogue number, names containing
+    name_filter ('' = all)."""
+    from sgp4 import omm
+    from sgp4.api import Satrec
+    from skyfield.api import EarthSatellite
+
+    sats, seen = [], set()
+    with open(path) as fh:
+        for f in omm.parse_csv(fh):
+            name = omm_name(f["OBJECT_NAME"])
+            if f["NORAD_CAT_ID"] in seen or (name_filter and name_filter not in name):
+                continue
+            seen.add(f["NORAD_CAT_ID"])
+            # What EarthSatellite.from_omm does, which skyfield before 1.50 lacks (Ubuntu's 1.48).
+            rec = Satrec()
+            omm.initialize(rec, f)
+            sat = EarthSatellite.from_satrec(rec, ts)
+            sat.name = name
+            sats.append(sat)
+    return sats
+
+
 def read_tle(path, ts, name_filter="DIGUI"):
-    """EarthSatellite list, one per catalogue number, names containing name_filter ('' = all)."""
+    """EarthSatellite list from a TLE file (the older captures' element sets), one per catalogue
+    number, names containing name_filter ('' = all)."""
     from skyfield.api import EarthSatellite
 
     lines = [l.rstrip() for l in open(path).read().splitlines() if l.strip()]
@@ -107,6 +150,13 @@ def read_tle(path, ts, name_filter="DIGUI"):
         else:
             i += 1
     return sats
+
+
+def read_elements(path, ts, name_filter="DIGUI"):
+    """read_omm for a .csv file, read_tle for anything else."""
+    if path.endswith(".csv"):
+        return read_omm(path, ts, name_filter)
+    return read_tle(path, ts, name_filter)
 
 
 # --------------------------------------------------------------------------- geometry
@@ -343,17 +393,15 @@ def setup(args):
     from skyfield.api import load
 
     ts = load.timescale()
-    path = args.tle
+    path = args.elements
     if path is None:
-        path = (
-            fetch_tle(args.cache_dir)
-            if args.fetch
-            else (newest_cache(args.cache_dir) or FALLBACK_TLE)
-        )
-    sats = read_tle(path, ts, args.name_filter)
+        path = fetch_omm(args.cache_dir) if args.fetch else newest_cache(args.cache_dir)
+    if path is None:
+        sys.exit("no elements in %s: give --elements or --fetch" % args.cache_dir)
+    sats = read_elements(path, ts, args.name_filter)
     epochs = np.array([s.epoch.utc_datetime().timestamp() for s in sats])
     print(
-        "# TLE %s: %d objects matching %r, epochs %s .. %s"
+        "# elements %s: %d objects matching %r, epochs %s .. %s"
         % (path, len(sats), args.name_filter, iso(epochs.min()), iso(epochs.max()))
     )
     geo = Geometry(ts, az=args.az, el=args.el)
@@ -369,7 +417,7 @@ def compute(args, t0, t1):
     age = (t0 - epochs.max()) / 86400.0
     if age > 3:
         print(
-            "# WARNING: the window starts %.1f days after the newest TLE epoch: refresh (--fetch)"
+            "# WARNING: the window starts %.1f days after the newest element epoch: refresh (--fetch)"
             % age
         )
     tw = time.time()
@@ -714,18 +762,21 @@ def main(argv=None):
     )
     ap.add_argument("--days", type=float, default=1.0)
     ap.add_argument(
-        "--tle", help="TLE file (default: newest cache, else %s)" % FALLBACK_TLE
+        "--elements",
+        "--tle",
+        dest="elements",
+        help="OMM CSV, or a TLE file (default: the newest cached OMM file)",
     )
     ap.add_argument(
         "--fetch",
         action="store_true",
-        help="download the group into the cache if it is > 2 h old",
+        help="download the elements into the cache if they are > 2 h old",
     )
     ap.add_argument("--cache-dir", default=CACHE_DIR)
     ap.add_argument(
         "--name-filter",
         default="DIGUI",
-        help="substring of the TLE name ('' = every object in the file)",
+        help="substring of the satellite name ('' = every object in the file)",
     )
     ap.add_argument("--az", type=float, default=BORESIGHT["az"])
     ap.add_argument("--el", type=float, default=BORESIGHT["el"])
