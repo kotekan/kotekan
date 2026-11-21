@@ -23,6 +23,8 @@ that goes with it.
 
 | # | what it was | closed by | check |
 |---|---|---|---|
+| #122 | the readback carried a chain-common offset on the non-primary bands | `50fd24b46` (#191 0b, frame-0 GPST modulo the exact code period) | 11-21 median readback trims b2b -0.04, b3i -0.005, e6 +0.003, e5a -0.017, e5b -0.009, inside #191's +-0.05 |
+| #126 | the F-engine axis was drift-free but ~217 ms stale, usable only for labels | #208 `9f9808c7c` (ephemeris at the hop-axis epoch; `dr-fengine-axis: 1`) | the dead-reckon ephemeris runs on the F-engine axis since 10-19 |
 | #33 | the vector tracker | closed as built 2026-08-30 | `rrate-state`, `rrate-kcoh-feed` armed fleet-wide; `rrate-command` on 3 chains |
 | #35 | walkoff/trim links 3–7 | `d85644b7b` | railed fraction 3.6% → 0.03%, max \|trim\| 0.61 of a 3.0 clamp |
 | #36 | runtime PRN lists | — | `POST <ep>/set_prns`, scheduled `at_seq`/`at_hop` in `prnmap.py` |
@@ -129,6 +131,8 @@ that goes with it.
 
 | # | the premise | what killed it |
 |---|---|---|
+| #94 | the shared-parameter estimators: 1 of 6 sites done | 11-21 stale sweep: S1/S2 done, S3 gone (`529232899`), S1's rest is #191 step 3; folded into #191 |
+| #106 | the establishment excursion and its never-built pre-clamp instrument | 11-21 stale sweep: the excursion is #211's restart transient; the instrument could not size it (the disc saturates); folded into #211 |
 | #185 | the #98 relative integrity veto (600 s baseline) never ran: `_FROZEN` pinned its baseline to 0, and the dead arm was removed 10-13 | KV 11-21: not wanted; the absolute veto is what has always run |
 | #142 residual | the +1510 m L2C plateau and the 10,014-chip legacy clock offset seen during the pre-fix L2C losses | KV 11-21: won't pursue; the fix held through every transit since and both code paths have changed (evidence `fixtures/projtest/forensics/l2c/timeline.json`) |
 | #21/#26 | "Path B remains parked" | Path B **is** the production tracker: `no-path-a: true`, path A not instantiated, 17.712 → 2.512 ms/frame |

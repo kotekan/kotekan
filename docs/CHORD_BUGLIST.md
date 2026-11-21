@@ -184,6 +184,11 @@ band's learned tau and slews trackers that are on their peaks (TRKRES ~0) by a c
 B3I +12..20, E5b -2.6 chips); chains were ~100 m off for ~5 min. No slew while the joint state is unestablished and the
 tracker is proven on peak is the missing gate.
 
+**11-21 (stale sweep): #106 folded in here.** The establishment excursion still follows each broker restart: after
+11:56Z and 13:33Z, 3-4 gps_l5 PRNs sat at the trim clamp (now 1.47 chips, trimarm.py) from ~t+0.5 to t+5 min with mixed
+signs, settled by t+7. #106's missing instrument (the pre-clamp demand, gnssFleetDll.hpp) could not size it anyway: the
+discriminator saturates at +-1, so any offset past half the spacing reaches the same ceiling. The cause and the missing gate
+are this entry's.
 ### #219 — gps_l2c's code reads ~+4 m against gps_l5 on the same satellites, so L2C cannot join the tracker-fed joint state (#191 step 3) (2026-10-28, KV: "file discrete bugs for the L2C and GLONASS bias offsets")
 **What:** step 3 admits a chain's code to TRK_STATE only once its signal reads within ~1 m of GPS L5 on the same
 satellites (#191 §6.2). gps_l2c does not, so it is unfed and stays `joint-source: search`.
@@ -698,6 +703,10 @@ next broker restart:** E5a/E5b/E6/B2a standing trims +0.4 -> ~0 chip, `SEARCH-MO
 clock +0.31 chip at the bootstrap. Steps 2-4 above are unblocked with no bias state and no constant; the step-1(b)
 split-chain experiment (`fixtures/jointstate/split_draft/`) is not needed.
 
+**11-21 (stale sweep): #94 folded in here.** Of its six shared-parameter sites, S1 and S2 are done (`ff13934c8`,
+test_gauge_churn.py) and S3 died with the combiner's nh-assist (`529232899`, the broker's nh-joint does that job). S1's last
+piece is gps_l5 taking its clock level from the median (`joint-consume: rate,slew`), which is step 3 here. S4-S6 show no
+symptom. JOINT-CLK refusals 45 of 35,033 on 11-21 (39 % when #94 was written).
 ### #171 — the ALERT files reach no one (2026-10-09)
 **What [tree]:** `chain_health_cron.sh` (cf06, */15) and `elem_ref_cron.sh` (gnss, */5) write ALERT files that
 nothing reads or forwards; both faults they are built for (#159's lost sky, #154's mis-pins) were found by a person
@@ -1123,22 +1132,6 @@ shifted). No live config sets `secondary_overlay` or `navwipe_bit_records`, so t
 The reference-weight defect is fixed (`978561481`, closed). Left from the same review: an element whose
 rho² exceeds 0.99 is dropped, so a very bright satellite's own cal can end with zero weights. Unmeasured.
 
-### #126 — the F-engine axis is drift-free and ~217 ms stale, and only labels can use it
-Filed for years as "the 215 µs has never been decomposed"; **it was decomposed on 2026-08-17**,
-a day before the question was written down, and this list never absorbed it: total serve lag
-217 ms = ~105 ms window quantisation (`pow_hop` advances in 40960-hop steps) + ~100 ms pipeline
-+ 5 ms HTTP, and the 215 µs is that number's sub-millisecond residue. What is open is the fix,
-not the measurement. The axis is right for LABELS (a label and its phase are stamped at the same
-t, so staleness cancels) and wrong for an EPOCH (where staleness is the whole error) — which is
-why substituting it into the ephemeris measured 65× worse and was reverted.
-**Fix: serve the CURRENT F-engine hop beside `pow_hop` in the combiner status.** That removes the
-quantisation sawtooth and the pipeline term together, and unblocks both `--innov-dr-seeds` and
-the ephemeris epoch.
-
----
-
-## Open — bench or offline, no deployment at all
-
 ### #223 — GDV map, after a few days' soak: the day/night amplitude, direct surface evaluation, gps_l5 (2026-10-30, KV: "file the GDV questions as todo for once we've soaked a few days")
 Live since 10-30 17:41Z: config/gdvmap_taua_20261030.json, a per-band penalised (az, el) surface fitted on 66 h
 (builds/gdv_refit_1030/out/RESULTS.md), sampled into the broker's cells and read by the 2-deg kernel lookup. Open:
@@ -1203,49 +1196,14 @@ scratch_kv/cubefix/pedestal_variability.py, pedestal_lowenv.py.
 **Open:** the 09-10/09-11 burst times (18:26, 19:13Z ...) were never checked against GuoWang TLE passes; one guowang_passes run settles it.
 **Closed 11-21:** superseded by #218: 37 of 43 10-26 bursts on DIGUI tracks, the N^2 stripes at 1194-1208/1250-1285 MHz on GuoWang passes (CHORD_BUGLIST_CLOSED.md).
 
-### #94 — the shared-parameter estimators: 1 of 6 sites done
-S2 (the prior gauge) is built, armed, and its falsifier now passes on sky (closed file). The
-programme around it did not move: **S1** (the circular-median clock, whose docstring still names
-itself "THE DECAY ROOT") was supposed to be demoted to a cross-check once S2 landed and was not —
-legacy still owns the segment — and **S3–S6**, which are "state the membership-invariance property
-and write the test", are not started. There is no gauge/membership test among the 20 broker test
-files. Separately and not evidence against the gauge: the standing `SEED-OFFSET joint-vs-legacy`
-control reports **39% refusals** (936 of 2371) and nobody reads it.
-
-**10-13 (`ff13934c8`): S1 demoted; the S2 gauge's membership invariance is tested; S3–S6 are not.** S2 is what runs:
-every `joint_receiver()` constructs the prior gauge and seven of eight chains run `joint-consume: clk`, so
-`dr_joint_clk` sets the seeds' clock level from the joint state; the circular median keeps the long-code period, is the
-fallback on a refused joint clock, and gps_l5 (`rate,slew`) alone still flies it by manifest choice. `deadreckon.py`
-says so, and the 30-s `dead-reckon clock` line carries `(median: a cross-check, the adopted joint clock is the level;
-...)` or `(median: the level on this chain; ...)` per chain — prefix and the `drift ... integrity:` tail unchanged for
-`joint_latch_detect.py`. `gnss_broker/test_gauge_churn.py` states the property with the median gauge as control: a
-join or leave moves the prior gauge's clk < 0.06 chips in the following 90 s (median gauge 0.82 / 1.22), clk + b_i holds
-to 0.17 for every stayer, clk_rate < 0.001, and `gauge_mode="prior"` at all seven call sites. The S3 (combiner NH
-median), S4 (F-engine axis max over rows) and S5/S6 sites are population statistics with no level to pin; a churn test
-for them needs a different property (a bounded step per membership change) and is still open. The "39% refusals" above
-is not the SEED-OFFSET line (that line has no refusal in it; JOINT-CLK REFUSED ran ~31% on 10-12): re-attribute or drop.
-
-### #106 — the establishment excursion, and the one instrument that was never built
-The withdrawn freeze is correctly fenced (default 0.0, absent from the yaml). The cause is still
-unexplained and **[live]** still reproduces: after today's 13:36 broker restart the gps_l5
-readback walked 0.470 → 1.780 → 2.272 → 2.502 → 2.789 → **3.000 (the clamp) at t+5.5 min**, and
-recovered by t+7 min. What is missing is a number: the **pre-clamp** common-mode trim demand.
-Nothing exposes it — the clamp is applied inside the loop and only a rail counter escapes.
-**Fix: expose the pre-clamp demand per PRN in the FleetDll stat line, then read one restart.**
-Minutes, not a soak.
-
-⚠️ **Judge it on the right disturbance.** A *fleet-wide* node roll is the hardest reproduction
-(~30 min, clamp-pinned); a *single* node roll costs nothing measurable and cannot be used to
-provoke it — see the closed file for the measurement, and the standing traps for the operational
-rule. The other staleness note stands: the lobe-coherent combine made the discriminator ~1.5×
-steeper without the loop constants being retuned, which is the most likely reason the excursion
-still reaches the clamp at all.
-
 ### #97 residual — the source defect fires at its original rate
 **[live]** 44 `SOURCE PERIOD DISAGREES` in 57 minutes (~46/h, against the pre-fix 37–49/h), at
 snr 531 with a 0.0-chip within-period residual — so the search's period label is wrong on strong,
 clean detections. The command side is fixed (the label is now a fleet consensus, so no single
 satellite moves its own seed) and the node-side consensus cut the ±1 class, but not ±3/±6.
+**11-21 (stale sweep), still true:** 561 `SOURCE PERIOD DISAGREES` on 11-21 00:23-20:00Z, all gps_l5, ~29/h (12-37/h,
+rate-limited to one per PRN per minute); the offsets are now +1 (209), +2 (213), -2 (86), not +-3/+-6; 260 at snr >= 300 with a
+~0 residual.
 **Next: the per-detection `(nh, cp_long, snr)` stream against injection.** A node-side dig.
 
 ## Open — blocked upstream
@@ -1272,13 +1230,9 @@ about a minute of N² gap — and every recv1 restart is a #164 exposure.
 **Open:** trim EXPIRED with no /set_trim: cx43 1587, cx27 1277 in ~25 h (gw_1202 the largest share); satellites setting, or still the #169 symptom?.
 **Closed 11-21:** 0 FPGA-controller, socket, rx-ring or corrupt lines on cx43/cx27 since 11-20 01:55Z (CHORD_BUGLIST_CLOSED.md).
 
-### #122 — the readback carries a chain-common offset on the non-primary bands
-**[live]** per-PRN means: bds_b2b −0.42, bds_b3i −0.40, gal_e6 +0.29, gal_e5a +0.20, gal_e5b
-+0.16, against gps_l2c −0.01 and bds_b2a +0.08. A per-chain constant the loop is not closing.
-b3i and e6 are, for the first time, two fresh bands to test the standing BeiDou offset against.
-
 ### Smaller, still true
 - **R09 as a noise probe** (K1B, no CDMA signals) logs ~30 `FADR BREAK glo_l2oc` lines a minute (2026-11-21 review).
+- **sbas_l5 readback offset** +0.48 chip median (PRN 133 ~+1.5) on 11-21, outside #191's +-0.05 gate; no entry yet (stale sweep; glo_l2oc's -0.18 is #220's).
 - **#37** GPS block map vs sky: the registry exists; the join to the beam maps does not.
 - **#40** the deep fold's rate search wrong-bins onto overlay sidebands — **demoted**: the coarse
   feed is now only the re-acquisition path. The fix is to retire the consumer (use phase
