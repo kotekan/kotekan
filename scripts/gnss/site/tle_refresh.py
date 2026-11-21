@@ -8,7 +8,9 @@ gps_beamtrack.load_gps_satellites caches each Celestrak group as
 caller passes max_age_s. The viewer does; the broker's TLE fallbacks (the almanac without
 BRDC, the signal-capability gate without the IGS registry) and the offline tools do not, and
 the broker must not fetch at start, or a replay would depend on the day it ran. So this job
-re-fetches every tle_<GROUP>.txt in the cache older than TLE_MAX_AGE_S. A fetch that fails,
+re-fetches every tle_<GROUP>.txt in the cache older than TLE_MAX_AGE_S; a tle_catnr_<N>[_<N>...].txt
+holds those NORAD catalogue numbers instead, one fetch each (the DTV pass freeze's satellites,
+#235: TLE_CACHE=/var/tmp/kvand-dtvsteer/tle on cf06). A fetch that fails,
 or returns anything that does not parse as whole TLE sets, keeps the stale copy; a good one
 replaces it atomically, so a reader sees the old file or the new one.
 
@@ -32,11 +34,19 @@ MAX_AGE_S = float(os.environ.get("TLE_MAX_AGE_S", "259200"))
 # URL it was fetched from. tle_default.txt is a URL without a GROUP, which cannot be rebuilt.
 NAME_RE = re.compile(r"^tle_([A-Za-z0-9_-]+)\.txt$")
 URL = "https://celestrak.org/NORAD/elements/gp.php?GROUP=%s&FORMAT=tle"
+CATNR_URL = "https://celestrak.org/NORAD/elements/gp.php?CATNR=%s&FORMAT=tle"
 
 
 def fetch(url):
     with urllib.request.urlopen(url, timeout=30) as r:
         return r.read()
+
+
+def fetch_group(group):
+    """The body for one cache name: a Celestrak group, or catnr_<N>[_<N>...] fetched per number."""
+    if group.startswith("catnr_"):
+        return b"\n".join(fetch(CATNR_URL % n) for n in group.split("_")[1:])
+    return fetch(URL % group)
 
 
 def _checksum_ok(line):
@@ -78,7 +88,7 @@ def refresh(path, group, now):
     if age_s <= MAX_AGE_S:
         return True, "%s fresh (%.1f d)" % (group, age_d)
     try:
-        data = fetch(URL % group)
+        data = fetch_group(group)
     except Exception as e:
         return False, "%s FAILED (%s), kept the %.1f d old copy" % (group, e, age_d)
     n = count_tles(data)
