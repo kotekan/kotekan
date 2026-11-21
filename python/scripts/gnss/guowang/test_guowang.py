@@ -71,8 +71,9 @@ class CodeTest(unittest.TestCase):
 
     def test_guowang_1202(self):
         """The codes read off DIGUI-26 (dump 2026-10-30) and DIGUI-79 (beam dump 2026-11-02),
-        packed bits (1 = chip -1); every G2' phase gives a distinct code and the family labels
-        the known satellites."""
+        packed bits (1 = chip -1); every G2' phase gives a distinct code and the family labels a
+        phase with every satellite the library knows on it (a code is shared by several, and the
+        library grows), a phase nobody is known on with the phase alone."""
         want = {
             1213: "7c69ad3164f0c5f7e073030bd30ac1c3cac03395bccd8632a0787a16cca62e8a1ea8f4016d6a429f1eb1b2a16aeb7ca576b03305ef3fc9d0869bb8fe4f46eded1ba6b148894cce558333b0c73e868aa0cc2b004a36f31cbc251a2223192b369ead19916c55daa4a10a50d681bf27437beb4b5e11c2ba40bd2119f8fb7679256d3c5775342f7ed91af2516b712c5c3d559363b1a86974a0000bbcef916af0a4e95cf40308bb9d08a3a2bf6de97a96b008fc47ddaa3c82716108ef22ac70804fa1b8f95936595303201660f2a72d5b27cf4bf339dac26d5568062290f39ba72cb5ce4a834269849ad33173940ea2fad9e181da0961b1968134acfd1e4d5db08788",
             2027: "30746637c4100cc9ef44a13aa55326e5ad8ffe9420209355d5f157aae61c4dc0045fff7dd4d9c21fa44f60535f71e20444586c0ce5e5d95a41a924291e0db8a3991ea46130b182a1588593394ba87bd804c72e1c92ff12c43ea290d664342c276a11499724565eebb77b191f50d9df45aab08841fc12abdbf239ec00eee56fa49fc0aa548fea987cbce9974825226f1d582bdd3cc1025e3be939f61177d2b2f93f23811772705308a35708a45c6c672d3f4ad2a7da9f27ff40cd7a706736854f7d54b6f28141621c6f34f39c1c8aa2ec8fc23b0b7d0abd79c35c2babe06c5e9d76c2321356598c100638b5c87803439630586220048ca56b4ce774dec9cba5e8",
@@ -84,7 +85,12 @@ class CodeTest(unittest.TestCase):
         codes, labels = gc.guowang_1202_all()
         self.assertEqual(codes.shape, (2047, 2046))
         self.assertEqual(len({c.tobytes() for c in codes}), 2047)
-        self.assertEqual(labels[2027], "DIGUI-79/g2ph2027")
+        for ph, name in ((1213, "DIGUI-26"), (2027, "DIGUI-79")):
+            names, _, tail = labels[ph].rpartition("/")
+            self.assertEqual(tail, "g2ph%d" % ph)
+            self.assertIn(name, names.split("+"))
+        free = next(p for p in range(2047) if p not in gc.GUOWANG_1202_SATS_BY_PHASE)
+        self.assertEqual(labels[free], "g2ph%d" % free)
         self.assertTrue((codes[2027] == gc.guowang_1202(2027)).all())
         m2 = gc.guowang_g2prime(2047 + 11)
         self.assertTrue(
@@ -201,10 +207,10 @@ class SearchTest(unittest.TestCase):
 
 class DbTest(unittest.TestCase):
     @staticmethod
-    def window(start, end, sats):
+    def window(start, end, sats, lobe_channels=64):
         return dict(
             complete=True,
-            lobe_channels=64,
+            lobe_channels=lobe_channels,
             utc_start=start,
             utc_end=end,
             satellites=sats,
@@ -243,12 +249,26 @@ class DbTest(unittest.TestCase):
                 "12:31:20.000",
                 [dict(sat="DIGUI-1", detected=False, sep_min_window=0.5)],
             ),
+            self.window(
+                "2026-11-02T14:00:00.000Z",
+                "14:01:20.000",
+                [dict(sat="DIGUI-4", detected=False, sep_min_window=1.0)],
+                lobe_channels=56,
+            ),
+            self.window(
+                "2026-11-02T15:00:00.000Z",
+                "15:01:20.000",
+                [dict(sat="DIGUI-5", detected=False, sep_min_window=1.0)],
+                lobe_channels=0,
+            ),
         ]
         with tempfile.NamedTemporaryFile("w", suffix=".jsonl") as fh:
             fh.write("".join(json.dumps(r) + "\n" for r in logs))
             fh.flush()
             passes, skipped = gdb.read_passes(db, [fh.name], 4.0)
-        self.assertEqual(skipped, {"incomplete": 0, "no_sky": 1, "far_miss": 1})
+        self.assertEqual(skipped, {"incomplete": 1, "no_sky": 1, "far_miss": 1})
+        self.assertIn("DIGUI-4", passes)
+        self.assertNotIn("DIGUI-5", passes)
         gdb.update(db, passes, {}, {"DIGUI-2": 2})
         s = db["satellites"]
         self.assertNotIn("DIGUI-3", s)
@@ -267,14 +287,160 @@ class DbTest(unittest.TestCase):
         prop = dict(
             sat="DIGUI-2", g2_phase=20, theta_us=2.0, sep_deg=3.0, ref_input=116
         )
+        prop.update(replica="stretched", range_rate_m_s=1200.0)
         prop["measured_utc"] = "2026-11-02T14:00:38Z"
+        with self.assertRaises(ValueError):  # no tag offset for the reference input
+            gdb.update(json.loads(gdb.dumps(db)), later, {"DIGUI-2": [prop]}, {})
+        db["tag_early_us"] = {"116": 9.813}
         changes = gdb.update(db, later, {"DIGUI-2": [prop]}, {})
         e = s["DIGUI-2"]
         self.assertEqual((e["status"], e["g2_phase"]), ("transmitting", 20))
+        self.assertAlmostEqual(e["theta_us"], 11.813)
+        self.assertEqual((e["replica"], e["range_rate_m_s"]), ("stretched", 1200.0))
+        self.assertNotIn("replica_corr_ns", e)
         self.assertEqual((e["passes_found"], e["passes_silent"]), (1, 1))
         self.assertEqual(e["last_observed_utc"], "2026-11-02T14:00:40Z")
         self.assertTrue(any("no_transmission -> transmitting" in c for c in changes))
         self.assertEqual(json.loads(gdb.dumps(db)), db)
+
+    def test_verdict_newer_than_the_newest_pass(self):
+        db = {
+            "about": "",
+            "satellites": {
+                "DIGUI-1": dict(
+                    catnum=1,
+                    g2_phase=10,
+                    measured_utc="2026-11-02T10:00:40Z",
+                    sep_deg=1.0,
+                    passes=[["2026-11-02T10:00:40Z", 1.0, True]],
+                    status="transmitting",
+                ),
+            },
+            "verdicts": {
+                "DIGUI-1": [["2026-11-01T00:00:00Z", False, "clipping monitor"]]
+            },
+        }
+        gdb.update(db, {}, {}, {})
+        self.assertEqual(db["satellites"]["DIGUI-1"]["status"], "transmitting")
+        db["verdicts"]["DIGUI-1"].append(
+            ["2026-11-03T00:00:00Z", False, "clipping monitor"]
+        )
+        changes = gdb.update(db, {}, {}, {})
+        e = db["satellites"]["DIGUI-1"]
+        self.assertEqual(e["status"], "no_transmission")
+        self.assertEqual(e["last_checked_utc"], "2026-11-02T10:00:40Z")
+        self.assertIn("by clipping monitor", changes[0])
+        # a later beam-dump pass outranks the verdict
+        passes = {
+            "DIGUI-1": {"2026-11-04T10:00:40Z": ["2026-11-04T10:00:40Z", 1.0, True]}
+        }
+        gdb.update(db, passes, {}, {})
+        e = db["satellites"]["DIGUI-1"]
+        self.assertEqual(e["status"], "transmitting")
+        self.assertNotIn("status_basis", e)
+
+    def test_unstretched_replica_theta(self):
+        import json
+
+        db = {
+            "about": "",
+            "satellites": {},
+            "tag_early_us": {"116": 9.813},
+            "renamed": {"DIGUI-H1": "DIGUI-2"},
+        }
+
+        def prop(utc, sep, theta, **kw):
+            p = dict(sat="DIGUI-H1", g2_phase=20, theta_us=theta, sep_deg=sep)
+            p.update(ref_input=116, measured_utc=utc, **kw)
+            return {"DIGUI-H1": [p]}
+
+        first = prop("2026-11-02T14:00:38Z", 3.0, 2.0)
+        with self.assertRaises(ValueError):  # the old reducer's theta, no range rate
+            gdb.update(json.loads(gdb.dumps(db)), {}, first, {})
+        floor = {
+            "rates": {
+                "DIGUI-H1|2026-11-02T14:00:38Z": {"range_rate_m_s": 2997.92458},
+                "DIGUI-H1|2026-11-03T14:00:38Z": {"range_rate_m_s": 40.0},
+                "DIGUI-H1|2026-11-04T14:00:38Z": {"range_rate_m_s": -2997.92458},
+            },
+            "sign_uncertain": ["DIGUI-H1|2026-11-03T14:00:38Z"],
+        }
+        gdb.update(db, {}, first, {}, floor=floor)
+        e = db["satellites"]["DIGUI-2"]
+        # receding at 1e-5 c: -0.5 ms x 1e-5 = -5 ns, and half a sample (30.547 ns) up
+        self.assertAlmostEqual(e["replica_corr_ns"], 25.547, places=3)
+        self.assertAlmostEqual(e["theta_us"], 11.813 + 0.025547, places=4)
+        self.assertEqual(e["range_rate_m_s"], 2997.92458)
+        self.assertNotIn("replica", e)
+        before = gdb.dumps(db)
+        gdb.update(db, {}, first, {}, floor=floor)  # folded again: nothing moves
+        self.assertEqual(gdb.dumps(db), before)
+        # a closer pass with the sign of its range rate unknown is a pass, never the reference
+        gdb.update(db, {}, prop("2026-11-03T14:00:38Z", 1.0, 5.0), {}, floor=floor)
+        e = db["satellites"]["DIGUI-2"]
+        self.assertEqual(
+            (e["measured_utc"], e["passes_found"]), ("2026-11-02T14:00:38Z", 2)
+        )
+        # approaching: +5 ns, and half a sample down
+        gdb.update(db, {}, prop("2026-11-04T14:00:38Z", 0.5, 2.0), {}, floor=floor)
+        e = db["satellites"]["DIGUI-2"]
+        self.assertAlmostEqual(e["replica_corr_ns"], -25.547, places=3)
+        self.assertAlmostEqual(e["theta_us"], 11.813 - 0.025547, places=4)
+        # the fixed reducer's theta is taken as it is, and the correction's record goes
+        new = prop("2026-11-05T14:00:38Z", 0.2, 2.0, replica="stretched")
+        new["DIGUI-H1"][0]["range_rate_m_s"] = -800.0
+        gdb.update(db, {}, new, {}, floor=floor)
+        e = db["satellites"]["DIGUI-2"]
+        self.assertAlmostEqual(e["theta_us"], 11.813)
+        self.assertEqual((e["replica"], e["range_rate_m_s"]), ("stretched", -800.0))
+        self.assertNotIn("replica_corr_ns", e)
+        self.assertEqual(json.loads(gdb.dumps(db)), db)
+
+    def test_rejected_detection_and_entry_without_evidence(self):
+        db = {
+            "about": "",
+            "satellites": {
+                # credited with a code-mate's signal at 7.5 deg after a silent pass
+                "DIGUI-1": dict(
+                    g2_phase=10,
+                    theta_us=374.0,
+                    measured_utc="2026-11-02T10:00:40Z",
+                    sep_deg=7.5,
+                    ref_input=116,
+                    passes=[
+                        ["2026-11-01T10:00:00Z", 1.0, False],
+                        ["2026-11-02T10:00:40Z", 7.5, True],
+                    ],
+                    status="transmitting",
+                ),
+                # entered from a miss that a later no-sky period covers
+                "DIGUI-2": dict(
+                    passes=[["2026-11-02T12:30:00Z", 2.0, False]],
+                    status="no_transmission",
+                ),
+                # a hand entry: no passes
+                "DIGUI-3": dict(passes=[], status="no_transmission"),
+            },
+            "no_sky": [dict(start="2026-11-02T12:00:00Z", end=None)],
+            "rejected": {"DIGUI-1": [["2026-11-02T10:00:43Z", "DIGUI-9's signal"]]},
+        }
+        prop = dict(
+            sat="DIGUI-1", g2_phase=10, theta_us=374.0, sep_deg=7.5, ref_input=116
+        )
+        prop["measured_utc"] = "2026-11-02T10:00:38Z"
+        passes = {
+            "DIGUI-1": {"2026-11-02T10:00:40Z": ["2026-11-02T10:00:40Z", 7.5, True]}
+        }
+        changes = gdb.update(db, passes, {"DIGUI-1": [prop]}, {})
+        s = db["satellites"]
+        e = s["DIGUI-1"]
+        self.assertEqual((e["status"], e["g2_phase"]), ("no_transmission", None))
+        self.assertEqual(e["passes"], [["2026-11-01T10:00:00Z", 1.0, False]])
+        self.assertNotIn("theta_us", e)
+        self.assertNotIn("DIGUI-2", s)
+        self.assertEqual(s["DIGUI-3"]["status"], "no_transmission")
+        self.assertTrue(any("DIGUI-1: code G2' 10 withdrawn" in c for c in changes))
+        self.assertTrue(any("DIGUI-2: REMOVED" in c for c in changes))
 
     def test_no_sky_set_after_the_fact(self):
         db = {
