@@ -193,6 +193,9 @@ CombinerChain::CombinerChain(Config& config, const std::string& cfg_path, const 
     acc_epow.assign(_n_prn, 0.0);
     acc_lpow.assign(_n_prn, 0.0);
     acc_ppow.assign(_n_prn, 0.0);
+    acc_ee2.assign(_n_prn, 0.0);
+    acc_le2.assign(_n_prn, 0.0);
+    acc_pe2.assign(_n_prn, 0.0);
     acc_he.assign(_n_prn, 0.0);
     acc_pe.assign(_n_prn, 0.0);
     car_S.assign(_n_prn, {0.0, 0.0});
@@ -265,6 +268,7 @@ bool CombinerChain::ingest(const float* in, long long cur_hop) {
                 INFO("GnssCoherentCombiner: slot {:d} PRN {:d} -> {:d}: cold reset", p, last_prn[p],
                      prn);
                 acc_pow[p] = acc_pow2[p] = acc_epow[p] = acc_lpow[p] = acc_ppow[p] = 0.0;
+                acc_ee2[p] = acc_le2[p] = acc_pe2[p] = 0.0;
                 acc_he[p] = acc_pe[p] = acc_ar[p] = acc_ai[p] = acc_nchan[p] = 0.0;
                 n_slot[p] = 0;
                 car_S[p] = {0.0, 0.0};
@@ -352,9 +356,6 @@ bool CombinerChain::ingest(const float* in, long long cur_hop) {
         // apply unchanged. Zero means absent (cold cal or elem_sum off).
         const std::complex<double> A_sky(energy > 0.0 ? skr / energy : 0.0,
                                          energy > 0.0 ? ski / energy : 0.0);
-        const double e2 = e_energy > 0.0 ? (er * er + ei * ei) / (e_energy * e_energy) : 0.0;
-        const double l2 = l_energy > 0.0 ? (lr * lr + li * li) / (l_energy * l_energy) : 0.0;
-
         const double utc_p = *reinterpret_cast<const double*>(ref + RECORD_UTC_SLOT);
         const std::complex<double> A(ar, ai);
         // Incoherent power for the |A|^2 and |A|^4 moments (amp_snr, s4), in the first
@@ -431,9 +432,12 @@ bool CombinerChain::ingest(const float* in, long long cur_hop) {
         ++n_slot[p];
         acc_pow[p] += alpha * (p2 - acc_pow[p]);
         acc_pow2[p] += alpha * (p2 * p2 - acc_pow2[p]);
-        acc_epow[p] += alpha * (e2 - acc_epow[p]);
-        acc_lpow[p] += alpha * (l2 - acc_lpow[p]);
-        acc_ppow[p] += alpha * ((ar * ar + ai * ai) - acc_ppow[p]);
+        acc_epow[p] += alpha * ((er * er + ei * ei) - acc_epow[p]);
+        acc_lpow[p] += alpha * ((lr * lr + li * li) - acc_lpow[p]);
+        acc_ppow[p] += alpha * ((gr * gr + gi * gi) - acc_ppow[p]);
+        acc_ee2[p] += alpha * (e_energy * e_energy - acc_ee2[p]);
+        acc_le2[p] += alpha * (l_energy * l_energy - acc_le2[p]);
+        acc_pe2[p] += alpha * (energy * energy - acc_pe2[p]);
         acc_he[p] += alpha * (h_energy - acc_he[p]);
         acc_pe[p] += alpha * (energy - acc_pe[p]);
         acc_ar[p] += alpha * (ar - acc_ar[p]);
@@ -667,15 +671,16 @@ void CombinerChain::emit(float* out) {
         // the normalized early-minus-late discriminator, roughly linear in the code-phase
         // error within the correlator spacing. The broker closes the loop from these.
         {
-            const double e_pow = acc_epow[p] * inv;
-            const double l_pow = acc_lpow[p] * inv;
+            // Ratios of the EMAs, so the warm-up correction cancels.
+            const double e_pow = acc_ee2[p] > 0.0 ? acc_epow[p] / acc_ee2[p] : 0.0;
+            const double l_pow = acc_le2[p] > 0.0 ? acc_lpow[p] / acc_le2[p] : 0.0;
             rec[gnss::CMB_E_POW] = (float)e_pow;
             rec[gnss::CMB_L_POW] = (float)l_pow;
             rec[gnss::CMB_DLL_DISC] =
                 (e_pow + l_pow) > 0.0 ? (float)((e_pow - l_pow) / (e_pow + l_pow)) : 0.0f;
             // Fleet DLL (docs/CHORD_GNSS_SHARED_DLL.md): the prompt power, for the status
             // snapshot. E and L are in the record and P is not, so it is carried out here.
-            p_pow_out[p] = (float)(acc_ppow[p] * inv);
+            p_pow_out[p] = acc_pe2[p] > 0.0 ? (float)(acc_ppow[p] / acc_pe2[p]) : 0.0f;
             // Boundary fraction f (diagnostic; the inv normalization cancels in the ratio).
             rec[gnss::CMB_HEAD_FRAC] = acc_pe[p] > 0.0 ? (float)(acc_he[p] / acc_pe[p]) : 0.0f;
             // Shared carrier observable: the full-band residual carrier (Hz), which the
