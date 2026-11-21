@@ -11,7 +11,7 @@
 # Depth of the subset receive buffer, in accumulation bins. hdf5N2Write writes a whole file
 # when it finalizes it (late_frame_grace_seconds after its last frame) and takes no frames
 # meanwhile: ~90 s for a 40-bin, 20 GB file. At buffer_depth (4 bins) the buffer filled after
-# ~45 s and bufferRecv dropped the next 3-4 bins of every file. 16 bins (160 s) covers the
+# ~45 s and bufferRecv dropped the next 3-4 bins of every file. 16 bins (337 s) covers the
 # stall with margin, at ~0.7 GB per bin (recv1 has 1 TB).
 {% set subset_recv_depth = 16 %}
 
@@ -33,17 +33,9 @@
 
 
 # DTV detector products from the X-engine halves (dtv.j2): one frame of dtv_blocks_per_frame
-# 8192-sample blocks per half, over num_local_freq frequencies (telescope.j2, shared with
-# pathfinder.j2). Shapes and ports must match dtv.j2.
-{% from "telescope.j2" import num_local_freq %}
-{% set dtv_blocks_per_frame = 1024 %}
-{% set dtv_products = [
-    ("mask", "int8", num_local_freq ~ "", '"F"', "1", 11031),
-    ("powers", "uint64", num_local_freq ~ ", 3", '"F", "W"', "1, 1", 11033),
-    ("fine_support", "int32", num_local_freq ~ ", 2", '"F", "S"', "1, 1", 11035),
-    ("fine_powers", "uint64", "2, 3, 256", '"F", "W", "B"', "1, 1, 1", 11037),
-] %}
-{% set dtv_sent = dtv_products if dtv_calibration_mode|default(false) else dtv_products|selectattr("0", "equalto", "mask")|list %}
+# 8192-sample blocks per half. telescope.j2 holds the shapes and ports for both sides, and
+# dtv_enabled false leaves the DTV buffers and stages out.
+{% from "telescope.j2" import dtv_enabled, dtv_blocks_per_frame, dtv_sent with context %}
 
 ---
 {% include "common.j2" %}
@@ -130,7 +122,7 @@ bad_feed_mask_buffer:
 
 # DTV frames from all 16 halves share one buffer per product. Each half sends one frame per
 # ~43 s, so 32 frames cover two rounds while the writer catches up.
-{% for product, value_type, extents, dimnames, dimscalings, port in dtv_sent %}
+{% for product, value_type, extents, dimnames, dimscalings, port in dtv_sent if dtv_enabled %}
 dtv_{{ product }}_buffer:
     kotekan_buffer: ndarray
     num_frames: 32
@@ -171,6 +163,7 @@ buffer_recv_bad_feed_mask:
     buf: bad_feed_mask_buffer
     listen_port: 11029
 
+{% if dtv_enabled %}
 buffer_recv_dtv:
 {% for p in dtv_sent %}
     {{ p[0] }}:
@@ -179,6 +172,7 @@ buffer_recv_dtv:
         buf: dtv_{{ p[0] }}_buffer
         listen_port: {{ p[5] }}
 {% endfor %}
+{% endif %}
 
 # Live autocorrelation power vs frequency from the full N2 stream, for the
 # peek endpoint. num_pending_bins is left at its default (2).
@@ -233,6 +227,7 @@ hdf5_N2_write_subset:
 
 # DTV products, one file per received frame: one half's ~43 s. File numbers follow arrival
 # order; the coarse_freq and fpga_seq_num attributes identify the half and the window.
+{% if dtv_enabled %}
 write_dtv:
 {% for p in dtv_sent %}
     {{ p[0] }}:
@@ -245,3 +240,4 @@ write_dtv:
         file_name: dtv_{{ p[0] }}
         prefix_hostname: false
 {% endfor %}
+{% endif %}
