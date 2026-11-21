@@ -153,7 +153,7 @@ Pathfinder
 ----------
 
 ``config/chord/pathfinder.j2`` runs the detector and ``DtvRfiMask``, so every
-node needs the bundle, whose path ``pathfinder.j2`` sets. n2k reads
+node needs the bundle, whose path ``config/chord/dtv.j2`` sets. n2k reads
 ``dtv_RFImask``, so it waits for the detector even while the mask is off.
 Rendering ``pathfinder.j2`` and ``recv.j2`` with ``dtv_enabled: false`` leaves
 all of this out, and n2k reads the SK mask. Two switches can be changed at
