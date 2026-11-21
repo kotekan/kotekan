@@ -25,8 +25,8 @@
  * number changes when an entry point is added.
  */
 #define PILOTPROXY_CORE_VERSION_MAJOR 4
-#define PILOTPROXY_CORE_VERSION_MINOR 0
-#define PILOTPROXY_CORE_VERSION_PATCH 0
+#define PILOTPROXY_CORE_VERSION_MINOR 1
+#define PILOTPROXY_CORE_VERSION_PATCH 1
 
 /* ===========================================================================
  * ALGORITHM PARAMETERS
@@ -76,6 +76,10 @@
 #define PILOTPROXY_FINE_PAD_FACTOR 2
 #define PILOTPROXY_FINE_NUM_BINS \
     (PILOTPROXY_FINE_PAD_FACTOR * PILOTPROXY_FINE_WINDOWS_PER_STREAM)
+/* Zero-based rank of fine decision v3's reference: the median of the
+ * PILOTPROXY_FINE_NUM_BINS / PILOTPROXY_FINE_PAD_FACTOR even bins. */
+#define PILOTPROXY_V3_RANK \
+    ((PILOTPROXY_FINE_NUM_BINS / PILOTPROXY_FINE_PAD_FACTOR - 1) / 2)
 
 /**
  * Radix-2 stage count of the fine transform, log2(PILOTPROXY_FINE_NUM_BINS).

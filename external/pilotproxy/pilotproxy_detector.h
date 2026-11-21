@@ -571,6 +571,37 @@ void PilotProxy_Compute_FusedFineMaskV2WithSupport_U64(
 int PilotProxy_Supports_FusedFineMaskV2(void);
 
 /**
+ * @brief Form the statistic of fine decision v3 for every batch entry.
+ *
+ * The datapath and the fine powers are those of
+ * PilotProxy_Compute_FusedFineMask_U64. In place of a mask, each batch entry
+ * gets the pair d_stat_out[2 b] = n_peak and d_stat_out[2 b + 1] = d_rho, with
+ * num[bin] = 2 S_target[bin] and den[bin] = S_lo[bin] + S_up[bin]:
+ *
+ *     n_peak = max of num[bin] over the designated set
+ *     d_rho  = den of zero-based rank PILOTPROXY_V3_RANK (63) over the 128 even
+ *              bins, zeros included.
+ *
+ * The consumer decides with pilotproxy_v3_keep() (pilotproxy_decision.h).
+ * d_rho is zero only when at least half of the even bins have den = 0, and the
+ * block then has no decision. d_stat_out holds 2 * batch values. The
+ * acceptance test is equality with pilot_proxy.fine_decision.fine_stat_v3 over
+ * the same exact powers (tests/kernel/test_fine_stat_gpu.py).
+ */
+void PilotProxy_Compute_FineStatV3_U64(
+    void* handle,
+    const InputType* w_in,
+    int anchor_bin,
+    int designated_half_width,
+    unsigned long long* d_fine_power_out,
+    unsigned long long* d_stat_out,
+    unsigned long long* d_power_out,
+    int* d_row_sums_out);
+
+/** @brief Return 1 when the fine decision v3 entry point is available. */
+int PilotProxy_Supports_FineStatV3(void);
+
+/**
  * @brief Query the frozen fine-reduction geometry (128 / 2 / 256).
  *
  * @note Any parameter can be NULL if not needed.

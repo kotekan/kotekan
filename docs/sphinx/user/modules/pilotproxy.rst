@@ -67,6 +67,21 @@ multiple of it. The ``decision_version`` of each bundle profile selects the
 test. All of the arithmetic is exact integer arithmetic, and the GPU result
 matches the CPU reference bit for bit.
 
+``fine_decision_v3`` takes the reference over the 128 even fine bins, the
+independent samples of the zero-padded transform, and makes no decision in the
+detector. For each block it writes ``dtv_stat``, the pair ``[n_peak, d_rho]``:
+the largest target power in the search and the median reference power. The
+consumer applies its own threshold word with ``pilotproxy_v3_keep`` in
+``external/pilotproxy/pilotproxy_decision.h``, which keeps the block when
+``n_peak * 2^16 <= word * d_rho`` and returns 1 to keep and 0 to flag, as the
+RFI mask does. ``DtvRfiMask`` applies the profile's
+``power_limit_multiplier_q16``, or ``cfar_multiplier_q16`` when there is none.
+A row with ``d_rho = 0`` has no decision and is masked, and a row of
+``[0, 2^64 - 1]`` was not evaluated and is kept. A v3 channel's ``dtv_mask`` row
+stays 0 and its support ``(-1, -1)``. The knee word ``cfar_multiplier_q16`` is
+the default for a backend that has not set its own. ``dtv_mask_control`` masks
+the v3 control in ``DtvRfiMask``.
+
 ``dtv_fine_support`` records the validity of each test. A row of ``(1, n)`` is
 a valid test with ``n`` bulk bins. A row of ``(0, n)`` has too few usable bulk
 bins, and its mask of 0 does not mark the block as clean. A row of
@@ -249,7 +264,8 @@ it:
 * during the run, a ``coarse_freq`` change after binding, or a CUDA or
   detector error
 * in ``DtvRfiMask``, mismatched timestamps, frequencies, or layouts, a malformed
-  support row, or an unevaluated row for a required frequency
+  support row, an unevaluated row for a required frequency, or a
+  ``fine_decision_v3`` bundle without ``stat_buf``
 
 An uncalibrated channel must therefore be removed from the bundle or listed in
 ``dtv_permanent_mask_freq_ids`` before the run starts. A node with no bundle

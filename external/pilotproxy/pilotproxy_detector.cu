@@ -923,6 +923,7 @@ kernel_fused_fine(
     int*             __restrict__ MaskOut,
     int*             __restrict__ RankValidOut,
     int*             __restrict__ BulkCountOut,
+    unsigned long long* __restrict__ StatOut,
     int anchor_bin,
     int designated_half_width,
     unsigned long long bulk_mask_w0,
@@ -1145,6 +1146,63 @@ kernel_fused_fine(
     }
     __syncthreads();
 
+    if (decision_version == 3) {
+        /* Fine decision v3 writes the statistic and leaves the decision to the
+         * consumer. d_rho is the median of den over the 128 even bins, rank 63
+         * by value with zeros included, and n_peak the largest num over the
+         * designated set. The rank is selected by counting, as for v1 and v2,
+         * and the lowest even bin holding the value represents it. */
+        __shared__ unsigned long long s_peak[PILOTPROXY_BLOCK_THREADS];
+        {
+            int best = PILOTPROXY_FINE_NUM_BINS;
+            for (int i = tid * PILOTPROXY_FINE_PAD_FACTOR; i < PILOTPROXY_FINE_NUM_BINS;
+                 i += blockDim.x * PILOTPROXY_FINE_PAD_FACTOR) {
+                int c_lt = 0;
+                int c_eq = 0;
+                for (int j = 0; j < PILOTPROXY_FINE_NUM_BINS; j += PILOTPROXY_FINE_PAD_FACTOR) {
+                    if (s_den[j] < s_den[i]) {
+                        c_lt++;
+                    } else if (s_den[j] == s_den[i]) {
+                        c_eq++;
+                    }
+                }
+                if (c_lt <= PILOTPROXY_V3_RANK && PILOTPROXY_V3_RANK < c_lt + c_eq && i < best) {
+                    best = i;
+                }
+            }
+            s_int[tid] = best;
+        }
+        {
+            unsigned long long peak = 0ULL;
+            const int set_size = 2 * designated_half_width + 1;
+            for (int t = tid; t < set_size; t += blockDim.x) {
+                const int bin = (anchor_bin - designated_half_width + t
+                                 + PILOTPROXY_FINE_NUM_BINS)
+                                & (PILOTPROXY_FINE_NUM_BINS - 1);
+                if (s_num[bin] > peak) {
+                    peak = s_num[bin];
+                }
+            }
+            s_peak[tid] = peak;
+        }
+        __syncthreads();
+        if (tid == 0) {
+            int best = PILOTPROXY_FINE_NUM_BINS;
+            unsigned long long peak = 0ULL;
+            for (int i = 0; i < static_cast<int>(blockDim.x); ++i) {
+                if (s_int[i] < best) {
+                    best = s_int[i];
+                }
+                if (s_peak[i] > peak) {
+                    peak = s_peak[i];
+                }
+            }
+            StatOut[2 * static_cast<size_t>(b)] = peak;
+            StatOut[2 * static_cast<size_t>(b) + 1] = s_den[best];
+        }
+        return;
+    }
+
     const unsigned long long bulk_words[4] = {
         bulk_mask_w0, bulk_mask_w1, bulk_mask_w2, bulk_mask_w3};
     #define PILOTPROXY_BULK_BIT(i) \
@@ -1331,6 +1389,7 @@ struct PilotProxyHandle {
     bool       weights_cached; ///< Host cache validity for avoiding repeated uploads
     InputType  h_weight_cache[PILOTPROXY_WEIGHT_COUNT]; ///< Last packed weights supplied by caller
     cudaStream_t stream;   ///< Stream for all device work (0 = legacy default stream)
+    int*       d_completion; ///< [batch] block counters of the v3 entry
 };
 
 #if PILOTPROXY_USE_DP4A
@@ -1505,6 +1564,7 @@ static PilotProxyHandle* pilotproxy_create(
     h->d_weight_lanes = nullptr;
     h->weights_cached = false;
     h->stream = 0;
+    h->d_completion = nullptr;
 
     #if PILOTPROXY_USE_DP4A && !PILOTPROXY_USE_CONSTANT_WEIGHT_LANES
     if (!record_cuda_error(cudaMalloc(
@@ -1528,6 +1588,18 @@ static PilotProxyHandle* pilotproxy_create(
         return nullptr;
     }
     #endif
+
+    /* Allocated here, so that no compute entry allocates device memory. */
+    if (!record_cuda_error(cudaMalloc(
+            &h->d_completion,
+            static_cast<size_t>(batch) * sizeof(int)),
+            __FILE__,
+            __LINE__)) {
+        if (h->d_weights) cudaFree(h->d_weights);
+        if (h->d_weight_lanes) cudaFree(h->d_weight_lanes);
+        delete h;
+        return nullptr;
+    }
 
     return h;
 }
@@ -1644,6 +1716,10 @@ void PilotProxy_Destroy(void* handle)
     if (h->d_weight_lanes) {
         ok &= record_cuda_error(cudaFree(h->d_weight_lanes), __FILE__, __LINE__);
         h->d_weight_lanes = nullptr;
+    }
+    if (h->d_completion) {
+        ok &= record_cuda_error(cudaFree(h->d_completion), __FILE__, __LINE__);
+        h->d_completion = nullptr;
     }
     delete h;
     (void)ok;
@@ -1856,6 +1932,7 @@ void PilotProxy_Compute_FusedFine_U64(
         d_row_sums_out,
         NULL,            /* no decision epilogue */
         NULL, NULL,      /* no rank-support diagnostics */
+        NULL,            /* no statistic */
         0, 0, 0ULL, 0ULL, 0ULL, 0ULL, 0, 0ULL, 1,
         num_streams,
         h->detector_rows_per_block,
@@ -1965,6 +2042,7 @@ static void pilotproxy_compute_fused_fine_mask(
         d_mask_out,
         d_rank_valid_out,
         d_n_bulk_out,
+        nullptr,
         anchor_bin,
         designated_half_width,
         bulk_mask_words[0],
@@ -2039,6 +2117,85 @@ void PilotProxy_Compute_FusedFineMaskV2WithSupport_U64(
     pilotproxy_compute_fused_fine_mask(handle, w_in, anchor_bin, designated_half_width,
         bulk_mask_words, cfar_rank, multiplier_q16, d_fine_power_out, d_mask_out,
         d_rank_valid_out, d_n_bulk_out, d_power_out, d_row_sums_out, 2);
+}
+
+void PilotProxy_Compute_FineStatV3_U64(
+    void* handle, const InputType* w_in, int anchor_bin, int designated_half_width,
+    unsigned long long* d_fine_power_out, unsigned long long* d_stat_out,
+    unsigned long long* d_power_out, int* d_row_sums_out)
+{
+    clear_last_error();
+    PilotProxyHandle* h = static_cast<PilotProxyHandle*>(handle);
+    if (!h) {
+        record_api_error("handle is null.");
+        return;
+    }
+    if (d_fine_power_out == nullptr) {
+        record_api_error("fine power output pointer is null.");
+        return;
+    }
+    if (d_stat_out == nullptr) {
+        record_api_error("statistic output pointer is null.");
+        return;
+    }
+    if (anchor_bin < 0 || anchor_bin >= PILOTPROXY_FINE_NUM_BINS) {
+        record_api_error("anchor_bin must be in [0, 256).");
+        return;
+    }
+    if (designated_half_width < 0
+        || designated_half_width >= PILOTPROXY_FINE_NUM_BINS / 2) {
+        record_api_error("designated_half_width must be in [0, 128).");
+        return;
+    }
+    if (h->detector_rows_per_block % PILOTPROXY_FINE_WINDOWS_PER_STREAM != 0) {
+        record_api_error(
+            "detector_rows_per_block must be a multiple of the frozen "
+            "fxfft256 window count (128).");
+        return;
+    }
+    if (PILOTPROXY_FINE_WINDOWS_PER_STREAM % PILOTPROXY_BLOCK_THREADS != 0) {
+        record_api_error("block size must divide the window count.");
+        return;
+    }
+    if (!pilotproxy_upload_weights(h, w_in)) return;
+
+    const int num_streams =
+        h->detector_rows_per_block / PILOTPROXY_FINE_WINDOWS_PER_STREAM;
+    const size_t fine_bytes = static_cast<size_t>(h->batch)
+        * PILOTPROXY_NUM_WEIGHT_TERMS * PILOTPROXY_FINE_NUM_BINS
+        * sizeof(unsigned long long);
+    CUDA_CHECK(cudaMemsetAsync(d_fine_power_out, 0, fine_bytes, h->stream));
+    CUDA_CHECK(cudaMemsetAsync(
+        h->d_completion, 0, static_cast<size_t>(h->batch) * sizeof(int), h->stream));
+
+    dim3 grid(num_streams, h->batch, 1);
+    kernel_fused_fine<<<grid, PILOTPROXY_BLOCK_THREADS, 0, h->stream>>>(
+        h->d_in,
+        h->d_weights,
+        h->d_weight_lanes,
+        d_fine_power_out,
+        d_row_sums_out,
+        h->d_completion,  /* completion counter only: v3 writes no mask */
+        nullptr,
+        nullptr,
+        d_stat_out,
+        anchor_bin,
+        designated_half_width,
+        0ULL, 0ULL, 0ULL, 0ULL, 0, 1ULL,
+        3,
+        num_streams,
+        h->detector_rows_per_block,
+        h->batch);
+    CUDA_CHECK_LAST();
+    if (d_power_out != nullptr) {
+        if (!pilotproxy_reduce_frame_powers(h, d_fine_power_out, d_power_out)) return;
+    }
+    CUDA_CHECK_SYNC(h->stream);
+}
+
+int PilotProxy_Supports_FineStatV3(void)
+{
+    return 1;
 }
 
 int PilotProxy_Supports_FusedFineMaskV2(void)

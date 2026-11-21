@@ -126,6 +126,8 @@ public:
         unsigned long long multiplier_q16 = 0;
         // fine_decision_v2 compares the largest target bin with the median reference
         bool decision_v2 = false;
+        // fine_decision_v3 writes [n_peak, d_rho], and DtvRfiMask decides
+        bool decision_v3 = false;
         std::array<unsigned long long, 4> bulk_mask_words{{0, 0, 0, 0}};
         void* detector_handle =
             nullptr; // PilotProxy_Create handle (d_in = d_packed), if calibrated
@@ -424,12 +426,14 @@ private:
                 }
             }
             const std::string decision_version = calibration.value("decision_version", "");
-            if (decision_version != "fine_decision_v1" && decision_version != "fine_decision_v2")
+            if (decision_version != "fine_decision_v1" && decision_version != "fine_decision_v2"
+                && decision_version != "fine_decision_v3")
                 FATAL_ERROR("cudaPilotProxyDetector: unsupported fine "
                             "decision version for physical "
                             "channel {:d}",
                             profile.physical_channel);
             profile.decision_v2 = decision_version == "fine_decision_v2";
+            profile.decision_v3 = decision_version == "fine_decision_v3";
             if (calibration_status != "pending_campaign" && calibration_status != "calibrated"
                 && calibration_status != "control")
                 FATAL_ERROR("cudaPilotProxyDetector: unknown fine "
@@ -442,14 +446,34 @@ private:
             if (calibration_status == "calibrated" || calibration_status == "control") {
                 profile.fine_calibrated = true;
                 profile.control = calibration_status == "control";
-                require(calibration, {"anchor_bin", "designated_half_width", "cfar_rank",
-                                      "cfar_multiplier_q16", "bulk_mask_words_hex"});
+                require(calibration,
+                        {"anchor_bin", "designated_half_width", "cfar_multiplier_q16"});
                 profile.anchor_bin = read_integer<int>(calibration, "anchor_bin");
                 profile.designated_half_width =
                     read_integer<int>(calibration, "designated_half_width");
-                profile.cfar_rank = read_integer<int>(calibration, "cfar_rank");
                 profile.multiplier_q16 =
                     read_integer<unsigned long long>(calibration, "cfar_multiplier_q16");
+                if (profile.decision_v3) {
+                    // v3 fixes its reference bins, and its words are applied by DtvRfiMask
+                    if (calibration.contains("cfar_rank")
+                        || calibration.contains("bulk_mask_words_hex"))
+                        FATAL_ERROR("cudaPilotProxyDetector: fine_decision_v3 takes no cfar_rank "
+                                    "or bulk_mask_words_hex (physical channel {:d})",
+                                    profile.physical_channel);
+                    if (profile.anchor_bin < 0 || profile.anchor_bin >= fine_bins)
+                        FATAL_ERROR("cudaPilotProxyDetector: fine anchor_bin is out of range");
+                    if (profile.designated_half_width < 0
+                        || profile.designated_half_width >= fine_bins / 2)
+                        FATAL_ERROR(
+                            "cudaPilotProxyDetector: fine designated_half_width is out of range");
+                    if (profile.multiplier_q16 == 0)
+                        FATAL_ERROR(
+                            "cudaPilotProxyDetector: fine cfar_multiplier_q16 must be positive");
+                    bundle_profiles.push_back(profile);
+                    continue;
+                }
+                require(calibration, {"cfar_rank", "bulk_mask_words_hex"});
+                profile.cfar_rank = read_integer<int>(calibration, "cfar_rank");
                 if (profile.anchor_bin < 0 || profile.anchor_bin >= fine_bins)
                     FATAL_ERROR("cudaPilotProxyDetector: fine anchor_bin is out of range");
                 if (profile.designated_half_width < 0
@@ -528,6 +552,9 @@ private:
  * removed from the bundle or listed in permanent_mask_freq_ids. The profile's
  * decision_version selects the test: fine_decision_v1 ranks the bin ratios, and
  * fine_decision_v2 ranks the reference powers and compares the target powers with it.
+ * fine_decision_v3 makes no decision here: it writes its statistic to dtv_stat, and
+ * DtvRfiMask applies the word with pilotproxy_v3_keep (pilotproxy/pilotproxy_decision.h).
+ * A v3 channel's dtv_mask row stays 0 and its fine support (-1,-1).
  *
  * dtv_mask holds one byte per frequency (1 = reject). dtv_powers holds the target,
  * lower-reference, and upper-reference frame powers as uint64, each the sum of the
@@ -559,6 +586,13 @@ private:
  *   @gpu_mem_dim_name  [@c T][@c F][@c W]
  *   @gpu_mem_shape     [@c 1][@c num_frequencies][@c 3]
  *   @gpu_mem_metadata  @c chordMetadata
+ * @gpu_mem Output fine decision v3 statistic
+ *   @gpu_mem_buffer    @c standard
+ *   @gpu_mem_quantity  @c dtv_stat
+ *   @gpu_mem_type      @c uint64
+ *   @gpu_mem_dim_name  [@c T][@c F][@c S]
+ *   @gpu_mem_shape     [@c 1][@c num_frequencies][@c 2]
+ *   @gpu_mem_metadata  @c chordMetadata
  * @gpu_mem Output fine rank support (optional)
  *   @gpu_mem_buffer    @c standard
  *   @gpu_mem_quantity  @c dtv_fine_support
@@ -589,6 +623,11 @@ private:
  *                                  buffer (default "dtv_mask").
  * @conf dtv_powers_name            String. Base name of the powers output
  *                                  buffer (default "dtv_powers").
+ * @conf dtv_stat_name              String. Base name of the statistic output (default
+ *                                  "dtv_stat"). Rows [n_peak, d_rho] for fine_decision_v3
+ *                                  channels. A row the detector did not evaluate (another
+ *                                  version, unbound, or the detector off) holds
+ *                                  [0, 2^64 - 1], which every word keeps.
  * @conf dtv_fine_support_name      String. Optional int32[1,F,2] output (default empty).
  *                                  Columns are rank_valid and n_bulk. A row of (-1,-1)
  *                                  was not evaluated, (0,n) has insufficient rank
@@ -663,6 +702,7 @@ private:
     const std::string voltage_name;
     const std::string dtv_mask_name;
     const std::string dtv_powers_name;
+    const std::string dtv_stat_name;
     const std::string dtv_fine_support_name; // empty: no fine-support output
     const std::string dtv_fine_powers_name;  // empty: no fine-power output
     const int dtv_fine_powers_rows;          // R, 0 without fine powers
@@ -678,6 +718,7 @@ private:
     NDArrayRingBuffer<kotekan::int4x2_swapped_withoffset_t, 4> voltage;
     NDArrayBuffer<std::int8_t, 2> dtv_mask;
     NDArrayBuffer<std::uint64_t, 3> dtv_powers;
+    NDArrayBuffer<std::uint64_t, 3> dtv_stat;
     std::unique_ptr<NDArrayBuffer<std::int32_t, 3>> dtv_fine_support;
     std::unique_ptr<NDArrayRingBuffer<std::int8_t, 3>> bf_mask;
     std::int64_t bf_mask_lifetime_in_samples = 0;
@@ -719,6 +760,7 @@ cudaPilotProxyDetector::cudaPilotProxyDetector(kotekan::Config& config,
     voltage_name(config.get_default<std::string>(unique_name, "voltage_name", "voltage")),
     dtv_mask_name(config.get_default<std::string>(unique_name, "dtv_mask_name", "dtv_mask")),
     dtv_powers_name(config.get_default<std::string>(unique_name, "dtv_powers_name", "dtv_powers")),
+    dtv_stat_name(config.get_default<std::string>(unique_name, "dtv_stat_name", "dtv_stat")),
     dtv_fine_support_name(
         config.get_default<std::string>(unique_name, "dtv_fine_support_name", "")),
     dtv_fine_powers_name(config.get_default<std::string>(unique_name, "dtv_fine_powers_name", "")),
@@ -742,7 +784,10 @@ cudaPilotProxyDetector::cudaPilotProxyDetector(kotekan::Config& config,
              std::array<std::string, 2>{"T", "F"}, std::array<std::ptrdiff_t, 2>{1, 1}, *this),
     dtv_powers(dtv_powers_name, "dtv_powers", std::array<std::ptrdiff_t, 3>{1, num_frequencies, 3},
                std::array<std::string, 3>{"T", "F", "W"}, std::array<std::ptrdiff_t, 3>{1, 1, 1},
-               *this)
+               *this),
+    dtv_stat(dtv_stat_name, "dtv_stat", std::array<std::ptrdiff_t, 3>{1, num_frequencies, 2},
+             std::array<std::string, 3>{"T", "F", "S"}, std::array<std::ptrdiff_t, 3>{1, 1, 1},
+             *this)
 //
 {
     const auto permanent = config.get_default<nlohmann::json>(
@@ -769,6 +814,7 @@ cudaPilotProxyDetector::cudaPilotProxyDetector(kotekan::Config& config,
     voltage.register_consumer();
     dtv_mask.register_producer();
     dtv_powers.register_producer();
+    dtv_stat.register_producer();
     if (!dtv_fine_support_name.empty()) {
         dtv_fine_support = std::make_unique<NDArrayBuffer<std::int32_t, 3>>(
             dtv_fine_support_name, "dtv_fine_support",
@@ -998,10 +1044,12 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
     // Recover the absolute FPGA sequence and scale the singleton time axis by the block period.
     dtv_mask.set_metadata(in_metadata);
     dtv_powers.set_metadata(in_metadata);
+    dtv_stat.set_metadata(in_metadata);
     const std::ptrdiff_t block_start_sample = voltage.get_read_valid().begin();
     const std::int64_t block_seq = in_metadata->get_fpga_seq_num()
                                    + block_start_sample * in_metadata->get_time_downsampling_fpga();
-    for (const auto& metadata : {dtv_mask.get_metadata(), dtv_powers.get_metadata()}) {
+    for (const auto& metadata :
+         {dtv_mask.get_metadata(), dtv_powers.get_metadata(), dtv_stat.get_metadata()}) {
         metadata->set_fpga_seq_num(block_seq);
         metadata->set_time_downsampling_fpga(in_metadata->get_time_downsampling_fpga()
                                              * samples_per_detector_frame);
@@ -1034,6 +1082,7 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
 
     std::int8_t* const mask_memory = dtv_mask.get_ndarray().data();
     std::uint64_t* const powers_memory = dtv_powers.get_ndarray().data();
+    std::uint64_t* const stat_memory = dtv_stat.get_ndarray().data();
     const cudaStream_t kotekan_stream = device.getStream(cuda_stream_id);
     std::int32_t* const support_memory =
         dtv_fine_support ? dtv_fine_support->get_ndarray().data() : nullptr;
@@ -1051,6 +1100,12 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
         CHECK_CUDA_ERROR(cudaMemsetAsync(fine_powers_memory, 0,
                                          std::size_t(dtv_fine_powers_rows) * fine_row_bytes,
                                          kotekan_stream));
+    // [0, 2^64 - 1] marks a row with no v3 statistic, which every word keeps
+    CHECK_CUDA_ERROR(cudaMemsetAsync(stat_memory, 0xff,
+                                     std::size_t(num_frequencies) * 2 * sizeof(std::uint64_t),
+                                     kotekan_stream));
+    CHECK_CUDA_ERROR(cudaMemset2DAsync(stat_memory, 2 * sizeof(std::uint64_t), 0,
+                                       sizeof(std::uint64_t), num_frequencies, kotekan_stream));
     // (-1,-1) marks no fine decision for an unbound, permanently masked, or disabled frequency
     if (support_memory)
         CHECK_CUDA_ERROR(cudaMemsetAsync(support_memory, 0xff,
@@ -1120,6 +1175,22 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
         const std::int8_t* const weights = state.weights_for(profile);
         unsigned long long* const channel_powers =
             reinterpret_cast<unsigned long long*>(powers_memory + 3 * channel.freq_index);
+        if (profile.decision_v3) {
+            // the statistic of every v3 channel, the control too: DtvRfiMask decides
+            state.core->Compute_FineStatV3_U64(
+                profile.detector_handle, weights, profile.anchor_bin, profile.designated_half_width,
+                state.fine_power_scratch,
+                reinterpret_cast<unsigned long long*>(stat_memory + 2 * channel.freq_index),
+                channel_powers, nullptr);
+            if (const char* error = state.core->LastError(); error != nullptr && error[0] != '\0')
+                FATAL_ERROR("PilotProxy fine statistic failed for physical channel {:d}: {:s}",
+                            profile.physical_channel, error);
+            if (fine_powers_memory)
+                CHECK_CUDA_ERROR(cudaMemcpyAsync(fine_powers_memory + 3 * 256 * row,
+                                                 state.fine_power_scratch, fine_row_bytes,
+                                                 cudaMemcpyDeviceToDevice, kotekan_stream));
+            continue;
+        }
         // fine CFAR decision, with the frame powers saved for validation
         // without mask_control the control row keeps support (-1,-1), so DtvRfiMask never
         // clears channel 37

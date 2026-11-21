@@ -3,8 +3,11 @@
   and needs the bundle in dtv_runtime_bundle_dir (below).
   /dtv_mask_enabled applies the DTV mask to N2 and /dtv_write_enabled sends the products to
   the recv node. Both start off.
-  Only the mask is sent unless dtv_calibration_mode is set, which also sends the powers,
-  fine support and fine powers (telescope.j2, which recv.j2 reads too).
+  Only the mask and the fine_decision_v3 statistic [n_peak, d_rho] are sent unless
+  dtv_calibration_mode is set, which also sends the powers, fine support and fine powers
+  (telescope.j2, which recv.j2 reads too). A v3 bundle is decided in DtvRfiMask from the
+  statistic.
+  dtv_mask_control masks the control, channel 37, like a pilot (default: never masked).
   The detector zeroes the inputs flagged by bufferBadInputs, the RFI antennas too.
   Disable /rfi_first_stage_enabled for a DTV-only first-stage mask.
   Profiles bind by receiver_channel_id against each NUMA half's coarse_freq.
@@ -16,7 +19,7 @@
 {% set dtv_runtime_bundle_dir = "/usr/local/etc/kotekan/chord/dtv_bundles/pathfinder-commissioning-e2e90219" %}
 
 # One frame per 8192-sample block: mask, target/lower/upper powers
-# (sums of 256 fine powers), per-frequency fine support, and the fine powers of the
+# (sums of 256 fine powers), per-frequency fine support, the v3 statistic, and the fine powers of the
 # bound channels (a half binds one or two). NDArrayTimeConcat packs
 # dtv_blocks_per_frame blocks (~43 s) into one _concat frame, which is sent to the recv
 # node and written there as one file.
@@ -69,6 +72,7 @@ run_dtv_detector:
         out_buffers:
             host_dtv_mask: host_dtv_mask_buffer{{ n.sfx }}
             host_dtv_fine_support: host_dtv_fine_support_buffer{{ n.sfx }}
+            host_dtv_stat: host_dtv_stat_buffer{{ n.sfx }}
 {% if dtv_calibration_mode|default(false) %}
             host_dtv_powers: host_dtv_powers_buffer{{ n.sfx }}
             host_dtv_fine_powers: host_dtv_fine_powers_buffer{{ n.sfx }}
@@ -81,6 +85,7 @@ run_dtv_detector:
           dtv_mask_name: dtv_mask
           dtv_powers_name: dtv_powers
           dtv_fine_support_name: dtv_fine_support
+          dtv_stat_name: dtv_stat
 {% if dtv_calibration_mode|default(false) %}
           dtv_fine_powers_name: dtv_fine_powers
           dtv_fine_powers_rows: 2
@@ -88,6 +93,7 @@ run_dtv_detector:
           pilot_profiles_path: {{ dtv_runtime_bundle_dir }}/pilot_profiles.json
           weights_path: {{ dtv_runtime_bundle_dir }}/weights.bin
           bf_mask_name: bf_mask
+          mask_control: {{ dtv_mask_control|default(false)|lower }}
         - name: cudaSyncOutput
         - name: cudaOutputData
           gpu_mem: dtv_mask_buffer
@@ -95,6 +101,9 @@ run_dtv_detector:
         - name: cudaOutputData
           gpu_mem: dtv_fine_support_buffer
           out_buf: host_dtv_fine_support
+        - name: cudaOutputData
+          gpu_mem: dtv_stat_buffer
+          out_buf: host_dtv_stat
 {% if dtv_calibration_mode|default(false) %}
         - name: cudaOutputData
           gpu_mem: dtv_powers_buffer
@@ -106,7 +115,7 @@ run_dtv_detector:
 {% endfor %}
 
 # Blocks missing from a window are rows of 0xFF bytes: -1 masks and fine support,
-# the largest uint64 powers.
+# the largest uint64 powers and statistics.
 concat_dtv:
 {% for n in numa_halves %}
 {% for p in dtv_sent %}
@@ -180,6 +189,8 @@ merge_dtv_mask:
         rfi_buf: host_rfi_RFImask_buffer{{ n.sfx }}
         dtv_buf: host_dtv_mask_buffer{{ n.sfx }}
         fine_support_buf: host_dtv_fine_support_buffer{{ n.sfx }}
+        stat_buf: host_dtv_stat_buffer{{ n.sfx }}
+        mask_control: {{ dtv_mask_control|default(false)|lower }}
         out_buf: host_dtv_RFImask_buffer{{ n.sfx }}
         # switching the mask on is refused unless every calibrated channel is qualified
         pilot_profiles_path: {{ dtv_runtime_bundle_dir }}/pilot_profiles.json

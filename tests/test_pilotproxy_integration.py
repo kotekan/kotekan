@@ -336,6 +336,8 @@ def test_independent_detectors_share_gpu(pipeline):
     command.update(
         pilot_profiles_path="other/pilot_profiles.json",
         weights_path="other/weights.bin",
+        # every output region of a detector needs its own name on a shared GPU
+        dtv_stat_name="dtv_stat_other",
     )
     for product in ("mask", "powers"):
         name = f"dtv_{product}"
@@ -1096,3 +1098,54 @@ def test_archive_review_profiles_allow_permanent_reject_limit(pipeline):
     masks = reference.read_raw_frames(str(pipeline.directory / "out/dtv_mask_*.raw"), 4)
     assert len(masks) == pipeline.config["num_gen_frames"]
     assert all(not frame.payload.any() for frame in masks)
+
+
+def test_v3_statistic_matches_the_reference(pipeline):
+    """A fine_decision_v3 bundle writes [n_peak, d_rho] and leaves the decision to DtvRfiMask."""
+    from pilot_proxy.fine_decision import fine_stat_v3
+
+    pipeline.calibrate()
+    for profile in pipeline.bundle["profiles"]:
+        calibration = profile["fine_calibration"]
+        calibration["decision_version"] = "fine_decision_v3"
+        calibration.pop("bulk_mask_words_hex", None)
+        calibration.pop("cfar_rank", None)
+    num_freq = len(pipeline.generator["manual_freq_ids"])
+    bound = bound_indices(pipeline)
+    rows = len(bound)
+    add_output(pipeline, "stat", num_freq * 2 * 8)
+    add_output(pipeline, "fine_support", num_freq * 2 * 4)
+    add_output(pipeline, "fine_powers", rows * 3 * 256 * 8)
+    pipeline.detector["dtv_fine_powers_rows"] = rows
+    code, output = pipeline.run()
+    assert code == 0, output[-12000:]
+    out = pipeline.directory / "out"
+    stats = reference.read_raw_frames(str(out / "dtv_stat_*.raw"), num_freq * 2 * 8)
+    fines = reference.read_raw_frames(
+        str(out / "dtv_fine_powers_*.raw"), rows * 3 * 256 * 8
+    )
+    masks = reference.read_raw_frames(str(out / "dtv_mask_*.raw"), num_freq)
+    supports = reference.read_raw_frames(
+        str(out / "dtv_fine_support_*.raw"), num_freq * 2 * 4
+    )
+    assert len(stats) == len(fines) == len(masks) == len(supports) > 0
+    ids = pipeline.generator["manual_freq_ids"]
+    profiles = {p["receiver_channel_id"]: p for p in pipeline.bundle["profiles"]}
+    for stat, fine, mask, support in zip(stats, fines, masks, supports):
+        pairs = stat.payload.view("<u8").reshape(num_freq, 2)
+        fine = fine.payload.view("<u8").reshape(rows, 3, 256)
+        for f in range(num_freq):
+            if f not in bound:
+                # not evaluated: every word keeps it
+                assert pairs[f].tolist() == [0, 2 ** 64 - 1], f
+                continue
+            calibration = profiles[ids[f]]["fine_calibration"]
+            want = fine_stat_v3(
+                np.ascontiguousarray(fine[bound.index(f)]),
+                anchor_bin=calibration["anchor_bin"],
+                designated_half_width=calibration["designated_half_width"],
+            )
+            assert pairs[f].tolist() == [want.n_peak, want.d_rho], f
+        # v3 makes no decision in the stage
+        assert not mask.payload.any()
+        assert (support.payload.view("<i4") == -1).all()

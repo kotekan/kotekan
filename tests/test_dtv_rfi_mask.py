@@ -709,10 +709,11 @@ def test_chime_detector_is_diagnostic_in_each_numa_domain():
         added = set(domain) - set(base[f"numa_{numa}"])
         assert added == {
             f"host_dtv_mask_buffer_n{numa}",
+            f"host_dtv_stat_buffer_n{numa}",
             "run_dtv_detector",
             "write_dtv",
         }
-        assert list(domain["write_dtv"]) == ["mask"]
+        assert list(domain["write_dtv"]) == ["mask", "stat"]
 
 
 def test_chime_calibration_mode_writes_every_product():
@@ -730,6 +731,7 @@ def test_chime_calibration_mode_writes_every_product():
             "fine_support",
             "mask",
             "powers",
+            "stat",
         ]
         row = domain["write_dtv"]["fine_powers"]
         assert row["kotekan_stage"] == "hdf5FileWrite"

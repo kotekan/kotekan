@@ -45,6 +45,17 @@ host_dtv_fine_support_buffer:
     dimscalings: [8192, 1, 1]
     metadata_pool: main_pool
 
+# [n_peak, d_rho] of fine_decision_v3 channels, decided by DtvRfiMask
+host_dtv_stat_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: uint64
+    extents: [1, num_frequencies, 2]
+    quantity_name: "dtv_stat"
+    dimnames: ["T", "F", "S"]
+    dimscalings: [8192, 1, 1]
+    metadata_pool: main_pool
+
 ################################################################################
 
 # Stages
@@ -60,6 +71,7 @@ run_dtv_detector:
             host_dtv_mask: host_dtv_mask_buffer
             host_dtv_powers: host_dtv_powers_buffer
             host_dtv_fine_support: host_dtv_fine_support_buffer
+            host_dtv_stat: host_dtv_stat_buffer
         commands:
         - name: cudaPilotProxyDetector
           cuda_stream: 3
@@ -68,6 +80,7 @@ run_dtv_detector:
           dtv_mask_name: dtv_mask
           dtv_powers_name: dtv_powers
           dtv_fine_support_name: dtv_fine_support
+          dtv_stat_name: dtv_stat
           permanent_mask_freq_ids: {{ dtv_permanent_mask_freq_ids|default([]) }}
           pilot_profiles_path: {{ dtv_runtime_bundle_dir|default("data/pilotproxy_bundle") }}/pilot_profiles.json
           weights_path: {{ dtv_runtime_bundle_dir|default("data/pilotproxy_bundle") }}/weights.bin
@@ -85,6 +98,10 @@ run_dtv_detector:
           cuda_stream: 4
           gpu_mem: dtv_fine_support_buffer
           out_buf: host_dtv_fine_support
+        - name: cudaOutputData
+          cuda_stream: 4
+          gpu_mem: dtv_stat_buffer
+          out_buf: host_dtv_stat
 
 # This mask is opt-in. When it is enabled, both the correlation and the
 # valid-sample counts must use it.
@@ -112,6 +129,7 @@ run_combine_dtv_mask:
     rfi_buf: host_rfi_RFImask_buffer
     dtv_buf: host_dtv_mask_buffer
     fine_support_buf: host_dtv_fine_support_buffer
+    stat_buf: host_dtv_stat_buffer
     permanent_mask_freq_ids: {{ dtv_permanent_mask_freq_ids|default([]) }}
     require_fine_freq_ids: {{ dtv_require_fine_freq_ids|default([]) }}
     out_buf: host_dtv_RFImask_buffer
