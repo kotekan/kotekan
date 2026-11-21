@@ -56,7 +56,7 @@ struct IncoherentCandidate {
     /// Channels with data along the dispersion curve
     int num_channels = 0;
     /// Other candidates more than 20 DM units away that fit the same arrival without dispersion,
-    /// with their highest S/N in the same block as this one or the next
+    /// with their highest S/N in or beside a block where this one has half its own highest
     int num_partners = 0;
     /// The candidate has two or more partners, and with them covers more than 50 DM units:
     /// interference, not a pulse.
@@ -88,8 +88,9 @@ struct IncoherentCandidate {
  * Interference in part of the band has no dispersion, and is found at every DM: at a higher DM
  * earlier at the top channel, by the sweep from its own frequency to the top. A pulse is found
  * at its own DM. A partner of a candidate is another one of at least half its S/N, more than
- * 20 DM units away at such a time, with its highest S/N in the same block of the band or the
- * next: a pulse that arrives during interference has it elsewhere. A candidate is marked
+ * 20 DM units away at such a time, with its highest S/N in or beside a block of the band where
+ * the candidate has at least half its own highest: a pulse that arrives during interference
+ * has little S/N where the interference is. A candidate is marked
  * undispersed when it has two or more partners and they cover, with it, more than 50 DM units.
  * For that a candidate is reported only when the same arrival has been searched at the highest
  * DM: the sweep of the highest DM after it reached the top channel.
@@ -173,7 +174,9 @@ private:
                    std::vector<Hit>& hits, double& max_snr);
     void merge_hits(const std::vector<Hit>& hits);
     void close_events();
-    int count_partners(const Event& e, double& dm_range) const;
+    int count_partners(const Event& e,
+                       const std::array<float, IncoherentCandidate::num_blocks>& block_snr,
+                       double& dm_range) const;
     int strongest_block(const Hit& hit) const;
     void band_occupancy(IncoherentCandidate& cand, const Hit& hit) const;
     const int8_t* row(int channel, int64_t sample) const {
