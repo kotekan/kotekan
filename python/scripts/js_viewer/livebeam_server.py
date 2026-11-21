@@ -1006,7 +1006,7 @@ class GpsSkyResource(resource.Resource):
         # time they were computed (they are kept 1 h).
         self._glo_capable = None
         self._glo_capable_t = None
-        self._gw_tle = (None, {})  # (TLE path, {index: EarthSatellite}), see _gw_sats
+        self._gw_tle = (None, {})  # (element path, {index: EarthSatellite}), see _gw_sats
         self._last_compute = None  # monotonic s of last attempt
         self._refreshing = False
 
@@ -1237,22 +1237,33 @@ class GpsSkyResource(resource.Resource):
     # angle of the broker's position for it now.
     TRACK_MATCH_DEG = 3.0
     # The table gw_ephem_table.py writes (its DEFAULT_OUT; the broker's gw-table), which names
-    # the TLE file the broker's GuoWang sky was propagated from, and the hidden DIGUI TLEs it
-    # adds (guowang_passes.CACHE_DIR).
+    # the element file the broker's GuoWang sky was propagated from: "elements", CelesTrak's
+    # OMM CSV of every HULIANWANG object since 2026-11-21 ("tle", a TLE file, before).
     GW_TABLE = "/var/tmp/gnss-guowang/gw_ephem.json"
-    GW_HIDDEN_TLE = os.path.expanduser("~/.cache/guowang/hidden_digui.tle")
 
     def _gw_sats(self):
-        """{index: EarthSatellite} for every GuoWang TLE behind the broker's W sky, reloaded
-        when the table names a new file."""
+        """{index: EarthSatellite} for every GuoWang satellite behind the broker's W sky,
+        reloaded when the table names a new element file."""
         from skyfield.api import load
 
         with open(self.GW_TABLE) as f:
-            path = json.load(f)["tle"]
+            doc = json.load(f)
+        path = doc.get("elements") or doc["tle"]
         if self._gw_tle[0] != path:
-            sats = load.tle_file(path, reload=False)
-            if os.path.exists(self.GW_HIDDEN_TLE):
-                sats += load.tle_file(self.GW_HIDDEN_TLE, reload=False)
+            if path.endswith(".csv"):
+                from sgp4 import omm
+                from sgp4.api import Satrec
+                from skyfield.api import EarthSatellite
+
+                ts = load.timescale()
+                sats = []
+                with open(path) as fh:
+                    for row in omm.parse_csv(fh):
+                        rec = Satrec()
+                        omm.initialize(rec, row)
+                        sats.append(EarthSatellite.from_satrec(rec, ts))
+            else:
+                sats = load.tle_file(path, reload=False)
             self._gw_tle = (path, dict(enumerate(sats)))
         return self._gw_tle[1]
 
