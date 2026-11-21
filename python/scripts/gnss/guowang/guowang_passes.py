@@ -65,7 +65,8 @@ def newest_cache(cache_dir):
 
 def fetch_tle(cache_dir, min_age_s=7200.0):
     """Download the group into cache_dir/hulianwang_YYYYmmddTHHMMSSZ.tle unless the newest cache is
-    younger than min_age_s. Returns the path used."""
+    younger than min_age_s. Returns the path used; a failed download keeps the newest cache.
+    """
     os.makedirs(cache_dir, exist_ok=True)
     last = newest_cache(cache_dir)
     if last is not None and time.time() - os.path.getmtime(last) < min_age_s:
@@ -76,10 +77,16 @@ def fetch_tle(cache_dir, min_age_s=7200.0):
             file=sys.stderr,
         )
         return last
-    with urllib.request.urlopen(CELESTRAK, timeout=60) as r:
-        txt = r.read().decode("ascii", "replace")
-    if "1 " not in txt or "2 " not in txt:
-        raise RuntimeError("CelesTrak returned no TLEs: %r" % txt[:200])
+    try:
+        with urllib.request.urlopen(CELESTRAK, timeout=60) as r:
+            txt = r.read().decode("ascii", "replace")
+        if "1 " not in txt or "2 " not in txt:
+            raise RuntimeError("CelesTrak returned no TLEs: %r" % txt[:200])
+    except Exception as e:
+        if last is None:
+            raise
+        print("# fetch failed (%s); using %s" % (e, last), file=sys.stderr)
+        return last
     path = os.path.join(
         cache_dir, time.strftime("hulianwang_%Y%m%dT%H%M%SZ.tle", time.gmtime())
     )
