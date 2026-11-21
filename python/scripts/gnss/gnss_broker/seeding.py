@@ -32,6 +32,7 @@ from gnss_broker.signals import prn_carrier_hz
 from gnss_broker.sky import C_LIGHT
 from gnss_broker.transport import _log, _log_rl, axis_now
 from gnss_broker.clockhealth import dr_solve_healthy
+from gnss_broker.deadreckon import _in_transit_cone
 from gnss_broker.seed import Seed
 from gnss_broker.fits import (
     retag_seed_doppler,
@@ -349,7 +350,25 @@ def stage_detections_to_seeds(ctx):
     consume, via cp_to_seed_currency, refines it from the per-PRN fits, and applies the
     hold/escape policy that decides whether the detection may move a standing seed. An
     alias-bin detection is harmless (see the module docstring)."""
+    # A satellite near boresight leaks into every other PRN's search above --fit-min-snr. Those
+    # detections are false: read, they poison the cp-fit history (the flush cascade, #119),
+    # re-seed un-held PRNs and referee the holds. Inside the transit cone, where the receiver
+    # clock already ignores the search, only the transiting satellite's own detection is read and
+    # every other PRN keeps its seed or hold.
+    _cone = (
+        _in_transit_cone(ctx)
+        if getattr(ctx.args, "dr_clock_transit_freeze_deg", 0.0)
+        else None
+    )
     for prn, (snr, dop, cp, ref_hop, det_nh, cp_long, cp_at_ref) in ctx.best.items():
+        if _cone is not None and _cone[1] != (ctx.args.dr_constellation, prn):
+            _log_rl(
+                "transit-dets",
+                "BORESIGHT TRANSIT %s%d %.1f deg: the other PRNs' detections are ignored"
+                % (_cone[1][0], _cone[1][1], _cone[0]),
+                every_s=60.0,
+            )
+            continue
         v_dr = ctx.dr_pd.get((ctx.args.dr_constellation, prn)) if ctx.dr_pd else None
         if ctx.up is not None and prn not in ctx.up:
             # Accept it anyway if the dead-reckon BRDC sky has it above the mask: the almanac up-set
