@@ -189,6 +189,7 @@ def make_obs_writer(path_tmpl, label="", log=None):
 
 
 def main():
+    global SAMPLES_PER_HOP, SAMPLE_RATE_HZ
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -234,7 +235,20 @@ def main():
         "Waited for at startup and re-read every 60 s; a changed value exits 3 so "
         "the supervisor restarts the writer on the new epoch.",
     )
+    ap.add_argument(
+        "--samples-per-hop",
+        type=int,
+        default=SAMPLES_PER_HOP,
+        help="ADC samples per F-engine hop (CHORD 16384, the bladeRF 64)",
+    )
+    ap.add_argument(
+        "--sample-rate-hz",
+        type=float,
+        default=SAMPLE_RATE_HZ,
+        help="ADC sample rate, Hz (CHORD 3.2e9, the bladeRF 122.88e6)",
+    )
     args = ap.parse_args()
+    SAMPLES_PER_HOP, SAMPLE_RATE_HZ = args.samples_per_hop, args.sample_rate_hz
 
     # Fatal rather than 0.0: a missing anchor is not a degraded mode, it is every code
     # residual silently null. A node that does not answer (the F-engine off) is waited for,
