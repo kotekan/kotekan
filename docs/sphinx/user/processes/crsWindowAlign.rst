@@ -1,0 +1,5 @@
+**************
+crsWindowAlign
+**************
+
+.. doxygenclass:: crsWindowAlign

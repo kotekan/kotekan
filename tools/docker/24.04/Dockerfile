@@ -58,6 +58,7 @@ RUN apt-get update && \
         libfftw3-dev \
         libgdal-dev \
         libhdf5-dev \
+        libibverbs-dev \
         liblapack-dev \
         liblapacke-dev \
         liblz4-dev \

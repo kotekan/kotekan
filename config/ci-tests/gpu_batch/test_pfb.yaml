@@ -1,0 +1,14 @@
+---
+# Run just the PFB kernel test. Needs a CUDA build and a GPU.
+
+type: config
+log_level: INFO
+
+cpu_affinity: [0]
+
+telescope:
+    name: fake
+
+test_pfb:
+    kotekan_stage: testPfb
+log_config_usage: fatal_error

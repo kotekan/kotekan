@@ -1,0 +1,66 @@
+---
+#
+# Sends test packets at line rate with a raw packet QP: udpPacketGen -> ibvUdpSend.
+# Pair it with ibv_udp_recv.yaml on the receiving node; tests/ibverbs/run_line_rate.sh runs both:
+#
+#     tests/ibverbs/run_line_rate.sh localhost <build>/kotekan/kotekan config/tests/ibv_udp_recv.yaml \
+#         user@sender <build>/kotekan/kotekan config/tests/ibv_udp_send.yaml 60
+#
+# Needs CAP_NET_RAW on the kotekan binary after every build:
+#     sudo setcap cap_net_raw+ep <build>/kotekan/kotekan
+# and buffer_depth * 3 free 2 MB huge pages for the payload buffer. See docs/sphinx/compiling/ibverbs.rst.
+#
+# The addresses below are the lab pair cobalt (sender) -> spark (receiver).
+#
+type: config
+log_level: INFO
+
+cpu_affinity: [2, 3]
+
+telescope:
+    name: fake
+
+# The sending interface, its MAC and IP, and the receiving interface's MAC and IP.
+interface: ens2f0np0
+src_mac: "10:70:fd:53:05:06"
+src_ip: 10.0.0.2
+dst_mac: "30:c5:99:3f:09:1e"
+dst_ip: 10.0.0.1
+src_port: 4000
+dst_port: 4001
+
+# CRS-like packets: 64 byte headers and 6144 byte payloads, 6208 bytes on the wire.
+header_size: 64
+header_slot: 128
+payload_size: 6144
+payload_slot: 6144
+packets_per_frame: 1024
+buffer_depth: 32
+# Send work requests the QP holds: queue_depth / packets_per_frame frames are in flight.
+queue_depth: 8192
+
+header_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: packets_per_frame * header_slot
+payload_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: packets_per_frame * payload_slot
+    use_hugepages: true
+    numa_node: 0
+
+gen:
+    kotekan_stage: udpPacketGen
+    cpu_affinity: [2]
+    header_buf: header_buffer
+    payload_buf: payload_buffer
+    num_frames: -1
+
+send:
+    kotekan_stage: ibvUdpSend
+    cpu_affinity: [3]
+    header_buf: header_buffer
+    payload_buf: payload_buffer
+    # Packet pacing in kbit/s, 0 for the full link rate.
+    rate_limit_kbps: 0

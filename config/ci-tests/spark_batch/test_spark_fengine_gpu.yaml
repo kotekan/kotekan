@@ -1,0 +1,117 @@
+---
+#
+# The GPU F-engine chain in one process: crsPacketGen -> crsWindowAlign -> cudaSparkFEngine +
+# crsHeaderGen -> fEngineCheck, with the same signal, loss injection and expected output
+# as test_fengine_cpu.yaml. Needs a CUDA build on a DGX Spark.
+#
+type: config
+log_level: INFO
+
+cpu_affinity: [0, 1]
+
+telescope:
+    name: fake
+
+# Input CRS packets: 64 byte headers and 512 12-bit samples in 768 payload bytes.
+header_size: 64
+header_slot: 128
+payload_size: 768
+payload_slot: 768
+packets_per_frame: 32
+buffer_depth: 4
+samples_per_packet: 512
+
+# One FFT window is 16 packets; the output spectrum is 4096 bins in 4 packets.
+fft_length: 8192
+bins_per_packet: 1024
+noise_slots: 64
+
+src_mac: "30:c5:99:3f:09:1e"
+dst_mac: "10:70:fd:53:05:06"
+src_ip: 10.0.0.1
+dst_ip: 10.0.0.2
+src_port: 4000
+
+gen_header_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: packets_per_frame * header_slot
+gen_payload_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: packets_per_frame * payload_slot
+job_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: 48 + (fft_length / samples_per_packet) * 8
+noise_buffer:
+    kotekan_buffer: standard
+    num_frames: 1
+    frame_size: noise_slots * payload_slot
+out_payload_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: fft_length / 2
+out_header_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: ((fft_length / 2) / bins_per_packet) * header_slot
+
+gen:
+    kotekan_stage: crsPacketGen
+    header_buf: gen_header_buffer
+    payload_buf: gen_payload_buffer
+    num_adcs: 1
+    # 9 packets: not a multiple of fft_length, so the aligner discards up to seq 8192.
+    start_seq: 4608
+    # 5 cycles per packet lands on output bin 5 * 8192 / 512 = 80.
+    tone_bin: [5]
+    tone_amplitude: [1000]
+    # No noise: off-tone bins quantize to exactly 0x88.
+    noise_rms: 0
+    # One packet lost every 300: the first gap falls in output window 19.
+    drop_period: 300
+    drop_burst: 1
+    num_frames: 40
+
+align:
+    kotekan_stage: crsWindowAlign
+    header_buf: gen_header_buffer
+    payload_buf: gen_payload_buffer
+    job_buf: job_buffer
+    noise_buf: noise_buffer
+    noise_rms: 10
+    # The generator posts one frame at a time: 1 window frame + 1 posted + 2 slack = 4.
+    queue_depth: 32
+
+fengine:
+    kotekan_stage: cudaSparkFEngine
+    job_buf: job_buffer
+    payload_buf: gen_payload_buffer
+    noise_buf: noise_buffer
+    out_payload_buf: out_payload_buffer
+    gain: 8
+    fft_precision: fp32
+
+headers:
+    kotekan_stage: crsHeaderGen
+    job_buf: job_buffer
+    out_header_buf: out_header_buffer
+    dst_port: 11000
+
+check:
+    kotekan_stage: fEngineCheck
+    header_buf: out_header_buffer
+    payload_buf: out_payload_buffer
+    payload_size: bins_per_packet
+    payload_slot: bins_per_packet
+    tone_bin: 80
+    # round(gain * tone_amplitude / 2048) = round(8 * 1000 / 2048) = 4; a window with one
+    # noise-filled packet keeps round(4 * 15/16) = 4.
+    expected_real: 4
+    tolerance: 1
+    # Past window 19, so the injected loss is covered; 40 frames hold ~80 windows.
+    num_windows: 24
+    max_bad_windows: 2
+
+log_config_usage: fatal_error
