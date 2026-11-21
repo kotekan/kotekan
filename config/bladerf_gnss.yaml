@@ -154,7 +154,7 @@ gw_search:
                     613, 648, 665, 703, 729, 747, 779, 793, 831, 857, 894, 896, 906, 910, 916,
                     943, 1094, 1101, 1135, 1145, 1158, 1214, 1234, 1243, 1276, 1293, 1352, 1375,
                     1378, 1381, 1403, 1425, 1443, 1457, 1459, 1483, 1519, 1554, 1561, 1586, 1606,
-                    1611, 1676, 1696, 1836, 1891, 1897, 1923, 1941, 2028]
+                    1611, 1676, 1696, 1829, 1836, 1891, 1897, 1923, 1941, 1951, 2028]
     f_offset: -22.975e6
     n_channels: 64
     channel_ids: [32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
@@ -416,7 +416,7 @@ gw_assemble:
 gw_combine:
     kotekan_stage: GnssCoherentCombiner
     in_bufs: [gw_rec_buf]
-    n_prn: 67
+    n_prn: 69
     integration_length: 200
     record_export: 64
     navwipe_bit_records: 4
@@ -426,6 +426,6 @@ gw_combine:
 gw_symbols:
     kotekan_stage: GnssNavSymbols
     data_buf: gw_rec_buf
-    n_prn: 67
+    n_prn: 69
     symbol_records: 4
     periods_per_symbol: 2
