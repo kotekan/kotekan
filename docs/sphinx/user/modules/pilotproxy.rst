@@ -152,25 +152,28 @@ refuses to start with the mask on and a detect-only bundle.
 Pathfinder
 ----------
 
-``config/chord/pathfinder.j2`` always runs the detector and ``DtvRfiMask``, so
-every node needs the bundle (``dtv_runtime_bundle_dir``, as above). n2k always
-reads ``dtv_RFImask``, so it waits for the detector even while the mask is
-off. Two switches can be changed at runtime, and their config values set the
-state at startup (both default to false):
+``config/chord/pathfinder.j2`` runs the detector and ``DtvRfiMask``, so every
+node needs the bundle, whose path ``pathfinder.j2`` sets. n2k reads
+``dtv_RFImask``, so it waits for the detector even while the mask is off.
+Rendering ``pathfinder.j2`` and ``recv.j2`` with ``dtv_enabled: false`` leaves
+all of this out, and n2k reads the SK mask. Two switches can be changed at
+runtime, and both start off:
 
-``dtv_apply_mask``, endpoint ``/dtv_mask_enabled``
+``/dtv_mask_enabled``
     Apply the DTV mask to the visibilities. While off, ``DtvRfiMask`` copies
     the SK mask unchanged. With a detect-only bundle, the mask cannot be on at
     startup, and a POST that switches it on stops Kotekan. ``N2Accumulate`` records the fraction of each bin
     that the mask was on, which ``hdf5N2Write`` writes as
     ``frac_dtv_mask_enabled``.
 
-``dtv_write_enabled``, endpoint ``/dtv_write_enabled``
+``/dtv_write_enabled``
     Send the detector products to the recv node.
 
 ``dtv_calibration_mode`` (template only, default false) sets which products are
 sent: only the mask, or with it the powers, fine support and fine powers for
-calibration and debugging. Render ``config/chord/recv.j2`` with the same value.
+calibration and debugging. ``config/chord/dtv_shared.j2`` holds the products'
+shapes and ports for both configs, so render ``config/chord/recv.j2`` with the
+same ``dtv_enabled`` and ``dtv_calibration_mode``.
 
 The detector reads the bad feed mask ring of ``bufferBadInputs``, and a flagged
 input is packed as zero. ``bufferBadInputs`` also flags every element outside
@@ -196,7 +199,7 @@ apply the mask from the next frame, and ``false`` to stop. A nonzero
 that instrument time, in ``DtvRfiMask`` and in the recorded fraction. POST
 ``{"enabled": true}`` or ``{"enabled": false}`` to ``/dtv_write_enabled`` to
 start or stop sending; the change applies to whole frames. A restart returns
-both to their configured values. The ``DtvRfiMask`` log line ``DTV mask on``
+both to off. The ``DtvRfiMask`` log line ``DTV mask on``
 or ``off`` confirms a mask change.
 
 
@@ -278,6 +281,5 @@ Monitoring
   decided and recorded like a pilot, and its mask stays zero. Its fine support
   stays ``(-1, -1)``, so ``DtvRfiMask`` never clears it. Only channel 37 can
   have this status. Calibration uses it to set the noise floor. With the
-  detector's ``mask_control`` set (``dtv_mask_control`` in
-  ``config/chord/dtv.j2``), the control is masked like a pilot, so its false
+  detector's ``mask_control`` set, the control is masked like a pilot, so its false
   alarms show what the mask does to a channel without DTV.

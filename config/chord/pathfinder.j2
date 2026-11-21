@@ -43,9 +43,10 @@
 # or from a derived config; 1 already gives every pipeline its own disjoint triple (the base is a
 # pipeline INDEX), larger steps only spread them out.
 {% set stream_base_step = stream_base_step | default(0) %}
-{# Share the DTV-merged mask (dtv.j2) across correlators and RfiMaskSum. It is the SK mask
-   while /dtv_mask_enabled is off. #}
-{% set n2k_rfi_name = "dtv_RFImask" %}
+{# The correlators and RfiMaskSum read the DTV-merged mask (dtv.j2), which is the SK mask
+   while /dtv_mask_enabled is off. With dtv_enabled false they read the SK mask itself. #}
+{% from "dtv_shared.j2" import dtv_enabled with context %}
+{% set n2k_rfi_name = "dtv_RFImask" if dtv_enabled else "rfi_RFImask" %}
 
 # The two NUMA halves. Each owns a NIC port, a GPU and a set of cores, and every per-half
 # buffer and stage below loops over this table; a block that exists once per half is
@@ -967,8 +968,10 @@ run_recv_rfi_RFImask:
 {% endfor %}
 {#- DTV detector, mask and recording (dtv.j2). make install puts the bundles under
     <prefix>/etc/kotekan/chord/dtv_bundles. #}
-{% set dtv_runtime_bundle_dir = dtv_runtime_bundle_dir|default("/usr/local/etc/kotekan/chord/dtv_bundles/pathfinder-commissioning-e2e90219") %}
+{% if dtv_enabled %}
+{% set dtv_runtime_bundle_dir = "/usr/local/etc/kotekan/chord/dtv_bundles/pathfinder-commissioning-e2e90219" %}
 {% include "dtv.j2" %}
+{% endif %}
 
 {#- Incoherent-beam power for the pulse search on the recv node (incoherent.j2). #}
 {% include "incoherent.j2" %}
@@ -1126,7 +1129,9 @@ n2_accumulate:
     fringestop_updatable_config: /fringestop_enabled
     num_workers: 1
     rfi_first_stage_enabled_updatable_config: /rfi_first_stage_enabled
+{% if dtv_enabled %}
     dtv_mask_enabled_updatable_config: /dtv_mask_enabled
+{% endif %}
 {% for n in numa_halves %}
     accum_{{ n.id }}:
         kotekan_stage: N2Accumulate

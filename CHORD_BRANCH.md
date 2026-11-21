@@ -19,7 +19,7 @@ Base: `develop` at `ba9a1ac86` (#1915).
 | #1903 | `jbm/incoherent-search` | `a9a9b05fe` | 2026-11-17 | 2026-11-20 | Incoherent-beam pulse search: IncoherentBeamPower and IncoherentBeamSearch |
 | #1884 | `jbm/crs-wide-band` | `4dea22979` | 2026-11-11 | 2026-11-20 | CRS capture for a wider science band: frequencies per stream from the band, n2k kernel sizes, worker ring fill gauge |
 | #1918 | `jbm/rfi-frame-mask-exempt` | `668493edf` | 2026-11-19 | 2026-11-19 | RfiFrameMask: leave first-stage exempt channels unmasked |
-| #1919 | `jbm/chord-config-docs` | `408a29a67` | 2026-11-20 | 2026-11-20 | config/chord: controller full name, 4096 bins with fringestopping, second-stage RFI excision |
+| #1919 | `jbm/chord-config-docs` | `83c71a39e` | 2026-11-20 | 2026-11-21 | config/chord: controller full name, 4096 bins with fringestopping, second-stage RFI excision, DTV behind `dtv_enabled` |
 
 The PR branches carry the site config they need, so config/chord in `chord` is `develop` plus these heads.
 
