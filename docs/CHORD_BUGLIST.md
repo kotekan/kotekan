@@ -338,13 +338,6 @@ C++-taps arm or `PROMPT-CN0` from recorded taps — the gate covers the polled f
 fresh captures this entry waits for must be recorded with the gather GET order the replay asks for (or the replay made
 order-tolerant), or the comb-taps arm stays uncovered.
 
-### #185 — the #98 relative integrity veto never ran: `_FROZEN` pinned `integ-veto-baseline-s` to 0 over the yaml's 600 (2026-10-13)
-**What [tree]:** the chains yaml asked for the relative veto (`integ-veto-baseline-s: 600`, #98) but the broker's
-`_FROZEN` table overrode it to 0 on every chain, so only the absolute veto ever ran. Found by the removal pass, which
-deleted the dead relative arm and kept the absolute veto as it ran; the yaml key is gone.
-**Question:** is the relative veto wanted? If so it is new work (from git history, without the override), judged on a
-night's veto counts per chain against the absolute one; if not, close.
-
 ### #187 — clean-up that waits on the new binaries and the restarted broker (2026-10-13)
 **What [tree]:** (a) the generator still emits keys the C++ now reads only to refuse other values (cudaGnssInject
 `conjugate`, `phi_fp16`, `despread_max_chips`, `despread_chips_centered`, `trim_endpoint`; cudaCorrelatorDual
@@ -747,13 +740,6 @@ in the viewer would do.
 - Standing caveat, not a leftover: the search tap is single-element and unprojected, so #142/#152 stay necessary.
 Check: `[tree]` `grep -rn REC_PROJ_COST lib python` (one writer, one reader = the fold); `grep -n joint_sigma
 python/scripts/gnss/gnss_broker/*.py` (constant). `[live]` census `fixtures/tec_wander/out/transit_arcs_1002`.
-
-### #142 residual — two observations from the pre-fix L2C losses are still unexplained
-The fix (`ea9129b60`, closed) has held through seven transits. Two things seen during the old losses
-have no explanation, and with the losses gone they can be studied only in the archive: a repeatable
-+1510 m L2C code-residual plateau while the trackers were being dragged, and gps_l5's legacy clock
-~10,014 chips (≡ −216 mod 10230) off the joint clock at 09-27 21:03Z. Evidence
-`fixtures/projtest/forensics/l2c/timeline.json`.
 
 ### #144 residual — objects in no BRDC are still invisible to the transit sky
 The health and age gates are fixed (`aef331c10`, closed): the freezes and the railing veto read `sky.transit_sky`.

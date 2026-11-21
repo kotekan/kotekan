@@ -129,6 +129,8 @@ that goes with it.
 
 | # | the premise | what killed it |
 |---|---|---|
+| #185 | the #98 relative integrity veto (600 s baseline) never ran: `_FROZEN` pinned its baseline to 0, and the dead arm was removed 10-13 | KV 11-21: not wanted; the absolute veto is what has always run |
+| #142 residual | the +1510 m L2C plateau and the 10,014-chip legacy clock offset seen during the pre-fix L2C losses | KV 11-21: won't pursue; the fix held through every transit since and both code paths have changed (evidence `fixtures/projtest/forensics/l2c/timeline.json`) |
 | #21/#26 | "Path B remains parked" | Path B **is** the production tracker: `no-path-a: true`, path A not instantiated, 17.712 → 2.512 ms/frame |
 | #25 | per-subband archive | retired from the chains yaml (`809edf361`); superseded by the beam cube |
 | #40 | deep fold rate wrong-bins | demoted: the coarse feed is now only the re-acquisition path (see #40 in the open list) |
