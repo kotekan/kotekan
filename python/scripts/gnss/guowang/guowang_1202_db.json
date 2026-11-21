@@ -1083,14 +1083,15 @@
    "ref_input": 116,
    "drift_ns_s": -1.35,
    "note": "partial copy, 8/64 channels; timing residual 160 ns",
-   "last_observed_utc": "2026-11-07T00:49:30Z",
-   "last_checked_utc": "2026-11-07T00:49:30Z",
-   "last_checked_sep_deg": 3.82,
-   "passes_found": 2,
+   "last_observed_utc": "2026-11-21T20:16:18Z",
+   "last_checked_utc": "2026-11-21T20:16:18Z",
+   "last_checked_sep_deg": 2.96,
+   "passes_found": 3,
    "passes_silent": 0,
    "passes": [
     ["2026-11-02T21:20:38Z", 2.33, true],
-    ["2026-11-07T00:49:30Z", 3.82, true]
+    ["2026-11-07T00:49:30Z", 3.82, true],
+    ["2026-11-21T20:16:18Z", 2.96, true]
    ]
   },
   "DIGUI-58": {
