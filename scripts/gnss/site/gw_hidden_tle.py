@@ -175,7 +175,7 @@ def main():
     ref = gp.read_tle(a.ref, ts, "DIGUI")
     old = [s for s in ref if "DIGUI-H" in s.name]
     cat0 = [s for s in ref if "DIGUI-H" not in s.name]
-    now = {int(s.model.satnum): s for s in gp.read_tle(path, ts, "DIGUI")}
+    now = {int(s.model.satnum): s for s in gp.read_elements(path, ts, "DIGUI")}
     jd_fit = old[0].model.jdsatepoch + old[0].model.jdsatepochF
     print(
         "# 10-29 sets %s (fit epoch %s); catalogue now %s"

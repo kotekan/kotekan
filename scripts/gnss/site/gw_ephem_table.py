@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """GuoWang ephemeris table for the broker (#227): the satellites' TLEs propagated off the broker.
 
-GuoWang broadcasts no ephemeris, so its geometry comes from CelesTrak TLEs (group hulianwang)
-through SGP4. The broker runs on a free-threaded Python with no SGP4, so this job (the gnss
+GuoWang broadcasts no ephemeris, so its geometry comes from CelesTrak's elements (group
+hulianwang, OMM; guowang_passes) through SGP4. The broker runs on a free-threaded Python with no SGP4, so this job (the gnss
 venv, skyfield) propagates the satellites whose 1202 MHz code is known and writes, per pass that
 comes within --sep-deg of the dish boresight, their ITRS position and velocity on a --step-s
 grid. gnss_ephemeris.load_gw_table reads the file and interpolates (cubic Hermite: a 10 s step
@@ -54,8 +54,9 @@ HIDDEN_TLE = os.path.join(gp.CACHE_DIR, "hidden_digui.tle")
 
 
 def short_name(name):
-    """'HULIANWANG DIGUI-79' -> 'DIGUI-79', the key of the code database."""
-    return name.replace("HULIANWANG", "").strip()
+    """'HULIANWANG DIGUI-79' -> 'DIGUI-79', the key of the code database. The newest are named
+    'HULIANWANG DIGUI 233' in the catalogue."""
+    return name.replace("HULIANWANG", "").strip().replace("DIGUI ", "DIGUI-")
 
 
 def separation_deg(sat, site, t, bore, el_min=-90.0):
@@ -383,7 +384,9 @@ def main(argv=None):
         % HIDDEN_TLE,
     )
     ap.add_argument(
-        "--tle", help="TLE file (default: the newest cached hulianwang group)"
+        "--tle",
+        help="elements file, OMM if it ends in .json, else TLE (default: the newest cached "
+        "hulianwang group)",
     )
     ap.add_argument(
         "--fetch", action="store_true", help="refresh the cache if older than 2 h"
@@ -425,11 +428,11 @@ def main(argv=None):
 
     ts = load.timescale(builtin=True)
     tle = a.tle or (
-        gp.fetch_tle(a.cache_dir) if a.fetch else gp.newest_cache(a.cache_dir)
+        gp.fetch_omm(a.cache_dir) if a.fetch else gp.newest_cache(a.cache_dir)
     )
     if not tle:
-        sys.exit("no TLE: give --tle or --fetch")
-    sats = gp.read_tle(tle, ts, "DIGUI")
+        sys.exit("no elements: give --tle or --fetch")
+    sats = gp.read_elements(tle, ts, "DIGUI")
     db, theta_unknown_s = load_db(a.db)
     # A missing or unreadable sweep file costs the sweep, not the table.
     implied = {}
@@ -508,7 +511,7 @@ def main(argv=None):
         "%s: %d pass segment(s) of %d known satellite(s), %d sweep step(s) of %d implied "
         "one(s) and %d at a candidate theta, %d pass(es) of unknown ones, "
         "shared-prn overlap cut from %s, %d transit(s) within %g deg of %d satellite(s) "
-        "(%d extra), TLE %s"
+        "(%d extra), elements %s"
         % (
             a.out,
             sum(1 for r in records if r["name"] in db),
