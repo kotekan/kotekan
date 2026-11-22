@@ -61,7 +61,7 @@ gnss_pool:
     kotekan_metadata_pool: GnssChanMetadata
     # One per frame of every buffer that takes it (2544 with nine chains and four data
     # components).
-    num_metadata_objects: 3072
+    num_metadata_objects: 3200
 
 # ---- Front end ----
 input_buf:
@@ -306,8 +306,9 @@ e6_rec_buf:
     metadata_pool: gnss_pool
     num_frames: 64
     frame_size: 32 * 44 * 4 + 32 * 6 * 9 * 4
-# GPS L2C CM (1227.6 MHz, 2.6 MHz above the LO): DFT bins 1 and 2, frame positions 33 and 34; bin
-# 0 holds the LO's DC. gnss_gpu::frame_bytes(28 PRNs, 2 channels, 4 rows, 1 element).
+# GPS L2C CL and its CM data component (1227.6 MHz, 2.6 MHz above the LO): DFT bins 1 and 2,
+# frame positions 33 and 34; bin 0 holds the LO's DC. gnss_gpu::frame_bytes(28 PRNs, 2
+# channels, 4 rows, 1 element).
 l2c_epl_buf:
     kotekan_buffer: standard
     metadata_pool: gnss_pool
@@ -318,6 +319,16 @@ l2c_rec_buf:
     metadata_pool: gnss_pool
     num_frames: 64
     frame_size: 28 * 44 * 4 + 28 * 2 * 9 * 4
+l2cm_epl_buf:
+    kotekan_buffer: standard
+    metadata_pool: gnss_pool
+    num_frames: 8
+    frame_size: 136368
+l2cm_rec_buf:
+    kotekan_buffer: standard
+    metadata_pool: gnss_pool
+    num_frames: 64
+    frame_size: 28 * 44 * 4
 
 # 1207.14 MHz, 17.86 MHz below the LO: DFT bins 51 to 58, frame positions 19 to 26, the main
 # lobe's centre as on L5. Galileo E5b-Q, the same PRNs as E5a, and its I/NAV data component;
@@ -374,6 +385,7 @@ gputrack:
         b3i_epl_buf: b3i_epl_buf
         e6_epl_buf: e6_epl_buf
         l2c_epl_buf: l2c_epl_buf
+        l2cm_epl_buf: l2cm_epl_buf
         e5b_epl_buf: e5b_epl_buf
         e5bi_epl_buf: e5bi_epl_buf
         b2b_epl_buf: b2b_epl_buf
@@ -517,9 +529,10 @@ gputrack:
           gpu_mem_input: gnss_chan_frame
           gpu_mem_output: l2c_epl
           cuda_stream: 3
-          # CM, time-multiplexed with CL at 1.023 Mcps, so its correlation peak is +-0.5 CM chip
-          # wide: the taps sit at +-0.25. CHORD's PRN slots (the L2C-capable blocks).
-          signal: GPS_L2C_CM
+          # The CL pilot (1.5 s; the broker places the 20 ms segment from absolute time),
+          # time-multiplexed with CM at 1.023 Mcps, so its correlation peak is +-0.5 chip wide:
+          # the taps sit at +-0.25. CHORD's PRN slots (the L2C-capable blocks).
+          signal: GPS_L2C_CL
           prns: &l2c_prns [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18, 20, 21, 23, 24,
                            25, 26, 27, 28, 29, 30, 31, 32]
           f_offset_hz: 2.6e6
@@ -531,6 +544,10 @@ gputrack:
           set_trim_endpoint: /l2c_track/set_trim
           get_prns_endpoint: /l2c_track/get_prns
           set_prns_endpoint: /l2c_track/set_prns
+          # CM, the CNAV data component on the other chips: one 20 ms code, one symbol.
+          data:
+              signal: GPS_L2C_CM
+              gpu_mem_output: l2cm_epl
         - name: cudaGnssTrack
           gpu_mem_input: gnss_chan_frame
           gpu_mem_output: e5b_epl
@@ -607,6 +624,10 @@ gputrack:
         - name: cudaOutputData
           gpu_mem: l2c_epl
           out_buf: l2c_epl_buf
+          in_buf: q_valve_buf
+        - name: cudaOutputData
+          gpu_mem: l2cm_epl
+          out_buf: l2cm_epl_buf
           in_buf: q_valve_buf
         - name: cudaOutputData
           gpu_mem: e5b_epl
@@ -775,6 +796,19 @@ l2c_combine:
     n_prn: 28
     integration_length: 200
     record_export: 64
+# L2C-CM's CNAV symbols against CL, for nav_decode. CM and CL share the carrier phase.
+l2cm_assemble:
+    kotekan_stage: GnssGpuRecordAssemble
+    in_buf: l2cm_epl_buf
+    out_buf: l2cm_rec_buf
+    prns: *l2c_prns
+l2cm_symbols:
+    kotekan_stage: GnssNavSymbols
+    pilot_buf: l2c_rec_buf
+    data_buf: l2cm_rec_buf
+    n_prn: 28
+    symbol_records: 20
+    offset_deg: 0
 
 e5b_assemble:
     kotekan_stage: GnssGpuRecordAssemble
