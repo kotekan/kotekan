@@ -225,10 +225,10 @@ N_CHECK = len(H_BCNV3_IDX)  # 81
 N_VAR = 162
 
 
-def decode_nb_ldpc(syms):
-    """972 hard bits (0/1) -> (486 info bits, nerr) via the shared GF(64) NB-LDPC decoder.
-    nerr>=0 = decoded (0 = clean); -1 = failed to converge."""
-    return _NB.decode(H_BCNV3_IDX, H_BCNV3_ELE, N_CHECK, N_VAR, syms)
+def decode_nb_ldpc(syms, rel=None):
+    """972 hard bits (0/1), optionally their reliabilities -> (486 info bits, nerr) via the shared
+    GF(64) NB-LDPC decoder. nerr>=0 = decoded (0 = clean); -1 = failed to converge."""
+    return _NB.decode(H_BCNV3_IDX, H_BCNV3_ELE, N_CHECK, N_VAR, syms, rel)
 
 
 # ------------------------------------------------------------------ frame sync + CRC + parse
@@ -247,26 +247,26 @@ def check_crc(bits):
 
 
 def find_frames(symbols, prn):
-    """Scan a soft symbol stream (+~0 / -~1 bipolar) for PRN-preamble-aligned frames, both
-    polarities. Yields (start_index, polarity, info_bits[486], mestype, sow) per CRC-OK frame.
-    Steps by 1 (never jumps on a bare preamble; the CRC is the true filter)."""
+    """Scan a symbol stream (bit 0 >= 0, bit 1 < 0; hard +-1 or soft values) for PRN-preamble-
+    aligned frames, both polarities. Yields (start_index, polarity, info_bits[486], mestype, sow)
+    per CRC-OK frame. Every offset whose 22 sync symbols match exactly is tried (never jumps on a
+    bare preamble; the CRC is the true filter); soft values weight the LDPC's bits."""
     s = np.asarray(symbols, dtype=float)
     n = len(s)
-    pre = preamble_for(prn)
-    i = 0
-    while i + FRAME_SYMS <= n:
-        for pol in (1.0, -1.0):
-            hard = (pol * s[i : i + N_PRE] < 0).astype(np.int8)
-            if np.array_equal(hard, pre):
-                ldpc = (pol * s[i + LDPC_OFFSET : i + FRAME_SYMS] < 0).astype(np.uint8)
-                bits, nerr = decode_nb_ldpc(ldpc)
-                if nerr >= 0:
-                    lb = [int(b) for b in bits]
-                    ok, mt, sow = check_crc(lb)
-                    if ok:
-                        yield i, int(pol), lb, mt, sow
-                        break
-        i += 1
+    if n < FRAME_SYMS:
+        return
+    pre = 1.0 - 2.0 * preamble_for(prn)
+    hard = np.where(s < 0, -1.0, 1.0)
+    c = np.correlate(hard[: n - FRAME_SYMS + N_PRE], pre, "valid")
+    for i in np.nonzero(np.abs(c) == N_PRE)[0]:
+        pol = 1.0 if c[i] > 0 else -1.0
+        seg = pol * s[i + LDPC_OFFSET : i + FRAME_SYMS]
+        bits, nerr = decode_nb_ldpc((seg < 0).astype(np.uint8), np.abs(seg))
+        if nerr >= 0:
+            lb = [int(b) for b in bits]
+            ok, mt, sow = check_crc(lb)
+            if ok:
+                yield int(i), int(pol), lb, mt, sow
 
 
 # ------------------------------------------------------------------ ephemeris (Message Type 10)

@@ -134,6 +134,8 @@ class TestDistinctCounts(unittest.TestCase):
 
     def test_seen_slots_pruned_with_the_emit_cache(self):
         for mod, cls, _n in self.CASES:
+            if cls is bcnav3_predictor.Bcnav3Predictor:
+                continue  # counts frames by SOW, not by slot: test_bcnav3_sow_counted_once
             with self.subTest(cls=cls.__name__):
                 pred = cls()
                 pred._decode = lambda prn, st: None
@@ -150,6 +152,27 @@ class TestDistinctCounts(unittest.TestCase):
                 for k in names:
                     self.assertNotIn(-1, getattr(st, k))
                     self.assertIn(10 ** 9, getattr(st, k))
+
+
+class TestBcnav3Sow(unittest.TestCase):
+    def test_bcnav3_sow_counted_once(self):
+        # the same frame found in two overlapping emits counts once; old SOWs are forgotten
+        pred = bcnav3_predictor.Bcnav3Predictor()
+        st = bcnav3_predictor._PrnState()
+        frame = ([0] * 486, 1000, 10)
+        with mock.patch.object(
+            bcnav3_predictor.B,
+            "find_frames",
+            lambda s, prn: iter([(0, 1, frame[0], frame[2], frame[1])]),
+        ):
+            for _ in range(2):
+                st.pending = [np.ones(1000)]
+                pred._decode(7, st)
+        self.assertEqual(st.n_frames, 1)
+        st.seen.update(range(-10000, -10000 + 7300))
+        st.pending = []
+        pred._decode(7, st)
+        self.assertEqual(st.seen, {1000})
 
 
 def _bcnav2_stream(prn_field):
