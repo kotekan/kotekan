@@ -9,6 +9,7 @@
 #include "chordMetadata.hpp"
 #include "kotekanLogging.hpp"
 #include "prometheusMetrics.hpp"
+#include "timeUtil.hpp"
 #include "visUtil.hpp"
 
 #include <algorithm>
@@ -128,6 +129,10 @@ using kotekan::prometheus::Metrics;
  *                         Default 100.
  * @conf cutout_flagged_min_snr  Double. A candidate of at least this S/N gets a cutout with any
  *                         flag but "undispersed". Default 0: none does.
+ * @conf cutout_exclude    List of [DM low, DM high, ERA low, ERA high]. No cutout for a candidate
+ *                         with its DM in the range and the Earth rotation angle of its arrival
+ *                         (degrees, with UT1 taken as UTC) in the range, which may pass through
+ *                         360: a known pulsar in the beam. Needs GPS time. Default none.
  * @conf holdoff_s         Double. No candidates for this long after a (re)start. Default 120.
  * @conf tau_s             Double. Time constant of the running statistics. Default 5.
  * @conf num_threads       Int. OpenMP threads of the search. Default 4.
@@ -250,6 +255,12 @@ public:
         trigger_min_dm = config.get_default<double>(unique_name, "trigger_min_dm", 100.0);
         cutout_flagged_min_snr =
             config.get_default<double>(unique_name, "cutout_flagged_min_snr", 0.0);
+        cutout_exclude =
+            config.get_default<std::vector<std::vector<double>>>(unique_name, "cutout_exclude", {});
+        for (const std::vector<double>& e : cutout_exclude)
+            if (e.size() != 4 || e[0] > e[1])
+                FATAL_ERROR("IncoherentBeamSearch: an entry of cutout_exclude must be [DM low, "
+                            "DM high, ERA low, ERA high]");
         params.holdoff_s = config.get_default<double>(unique_name, "holdoff_s", params.holdoff_s);
         params.tau_s = config.get_default<double>(unique_name, "tau_s", params.tau_s);
         params.num_threads =
@@ -434,6 +445,22 @@ private:
         snr_id = (snr_id + 1) % snr_buf->num_frames;
     }
 
+    // True when an entry of cutout_exclude holds the DM and the Earth rotation angle of the
+    // arrival at FPGA sequence number seq.
+    bool cutout_excluded(double dm, int64_t seq) const {
+        const Telescope& tel = Telescope::instance();
+        if (cutout_exclude.empty() || !tel.gps_time_enabled())
+            return false;
+        const double era = get_ERA_from_time(tel.to_time(seq), 0.0);
+        for (const std::vector<double>& e : cutout_exclude) {
+            const bool in_era =
+                e[2] <= e[3] ? era >= e[2] && era <= e[3] : era >= e[2] || era <= e[3];
+            if (dm >= e[0] && dm <= e[1] && in_era)
+                return true;
+        }
+        return false;
+    }
+
     // Writes the samples around a candidate to cutout_buf and returns the number of the frame
     // since the stage started, or -1 when the buffer is full.
     int64_t write_cutout(const IncoherentCandidate& c) {
@@ -492,8 +519,10 @@ private:
                 flags.push_back("one_band");
             const bool bright_flagged =
                 cutout_flagged_min_snr > 0 && c.snr >= cutout_flagged_min_snr && !c.undispersed;
-            const int64_t cutout =
-                cutout_buf != nullptr && (flags.empty() || bright_flagged) ? write_cutout(c) : -1;
+            const int64_t cutout = cutout_buf != nullptr && (flags.empty() || bright_flagged)
+                                           && !cutout_excluded(c.dm, seq)
+                                       ? write_cutout(c)
+                                       : -1;
             if (!candidate_file.is_open())
                 continue;
             nlohmann::json line = {{"fpga_seq", seq},
@@ -547,6 +576,7 @@ private:
     double trigger_min_snr = 0;
     double trigger_min_dm = 0;
     double cutout_flagged_min_snr = 0;
+    std::vector<std::vector<double>> cutout_exclude;
     int64_t phase = 0;       // fpga_seq modulo period of the sample grid
     int64_t origin = 0;      // the search's first sample
     int64_t next_sample = 0; // the next sample to search

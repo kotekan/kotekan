@@ -11,6 +11,8 @@
 #include "kotekanLoggingFixture.hpp"
 #include "prometheusMetrics.hpp"
 #include "test_utils.hpp"
+#include "timeUtil.hpp"
+#include "visUtil.hpp"
 
 #include <boost/test/included/unit_test.hpp>
 #include <chrono>
@@ -252,6 +254,22 @@ BOOST_AUTO_TEST_CASE(a_bright_flagged_candidate_gets_a_cutout) {
     BOOST_REQUIRE_EQUAL(cands.size(), 1);
     BOOST_CHECK_EQUAL(cands[0]["flags"].dump(), R"(["low_dm"])");
     BOOST_CHECK_EQUAL(cands[0].value("cutout", -1), 0);
+}
+
+BOOST_AUTO_TEST_CASE(a_candidate_in_cutout_exclude_gets_no_cutout) {
+    // The pulse arrives 8000 samples after 2^34 FPGA samples of 5.12 us from frame0_nano,
+    // 2026-01-02 00:26:11 UTC.
+    const int64_t seq0 = int64_t(1) << 34;
+    const double unix_s = 1767225600 + (seq0 + int64_t(8000) * SearchPipeline::period) * 5.12e-6;
+    const double era = get_ERA_from_time(double_to_ts(unix_s), 0.0);
+    BOOST_CHECK_CLOSE(era, 107.8788, 1e-3);
+    SearchPipeline p({{"cutout_exclude", {{90.0, 110.0, era - 1, era + 1}}}}, "search_excluded");
+    p.stage->start();
+    p.send(seq0, 12000, 8000);
+    const std::vector<nlohmann::json> cands = p.candidates(1);
+    BOOST_REQUIRE_EQUAL(cands.size(), 1);
+    BOOST_CHECK(cands[0]["flags"].empty());
+    BOOST_CHECK(!cands[0].contains("cutout"));
 }
 
 BOOST_AUTO_TEST_CASE(finds_a_pulse_and_restarts_after_a_jump) {
