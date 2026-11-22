@@ -434,6 +434,12 @@ private:
                             profile.physical_channel);
             profile.decision_v2 = decision_version == "fine_decision_v2";
             profile.decision_v3 = decision_version == "fine_decision_v3";
+            // DtvRfiMask maps v3 words by receiver_channel_id, so a v3 row needs the explicit
+            // namespace
+            if (profile.decision_v3 && !explicit_namespace)
+                FATAL_ERROR("cudaPilotProxyDetector: fine_decision_v3 needs a bundle with "
+                            "receiver_channel_id_namespace (physical channel {:d})",
+                            profile.physical_channel);
             if (calibration_status != "pending_campaign" && calibration_status != "calibrated"
                 && calibration_status != "control")
                 FATAL_ERROR("cudaPilotProxyDetector: unknown fine "
@@ -656,10 +662,12 @@ private:
  *                                  multiple of the detector block. Required with bf_mask_name.
  * @conf mask_control               Bool. Mask the control (channel 37) like a pilot, so its
  *                                  false alarms show what the mask does without DTV. Default
- *                                  false: its mask stays 0 and its fine support (-1,-1).
+ *                                  false: its mask stays 0 and its fine support (-1,-1). A v3
+ *                                  control is decided in DtvRfiMask, whose mask_control applies.
  * @conf enabled_updatable_config   Optional block with `enabled` and `valid_at_time_ns`.
  *                                  First block at or after that time; 0 selects the next block.
- *                                  While off, mask/powers are 0 and support is (-1,-1).
+ *                                  While off, mask/powers are 0, support is (-1,-1) and the
+ *                                  statistic is [0, 2^64-1].
  */
 class cudaPilotProxyDetector : public cudaCommand {
 public:

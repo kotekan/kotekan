@@ -31,7 +31,8 @@ Components
     frequency and block, the command writes ``dtv_mask`` (``int8[1, F]``, 1
     rejects the block), ``dtv_powers`` (``uint64[1, F, 3]``, the target and the
     two reference frame powers, each the sum of the 256 fine powers of that
-    term), and optionally ``dtv_fine_support`` (``int32[1, F, 2]``, described
+    term), ``dtv_stat`` (``uint64[1, F, 2]``, the pair ``[n_peak, d_rho]`` of
+    each fine_decision_v3 channel and ``[0, 2^64-1]`` elsewhere), and optionally ``dtv_fine_support`` (``int32[1, F, 2]``, described
     below) and ``dtv_fine_powers`` (``uint64[1, R, 3, 256]``, the fine powers
     behind each decision). Frequencies without a bound profile get zero masks and powers. The
     detector sums every input in the ring, unless ``bf_mask_name`` names the bad
@@ -127,7 +128,8 @@ Configuration
 below is true. Both switches default to false.
 
 ``dtv_enabled: true`` (record only)
-    The detector runs, and its mask and powers are written to HDF5. n2k still
+    The detector runs, and its mask, powers and ``dtv_stat`` are written to
+    HDF5; the decision of a v3 channel is in ``dtv_stat``. n2k still
     reads the SK mask, so the visibilities do not change.
 
 ``dtv_apply_mask: true``
@@ -186,10 +188,10 @@ runtime, and both start off:
     Send the detector products to the recv node.
 
 ``dtv_calibration_mode`` (template only, default false) sets which products are
-sent: only the mask, or with it the powers, fine support and fine powers for
-calibration and debugging. ``config/chord/telescope.j2`` holds the products'
-shapes and ports for both configs, so render ``config/chord/recv.j2`` with the
-same ``dtv_enabled`` and ``dtv_calibration_mode``.
+sent: the mask and ``dtv_stat``, or with them the powers, fine support and fine
+powers for calibration and debugging. ``config/chord/telescope.j2`` holds the
+products' shapes and ports for both configs, so render ``config/chord/recv.j2``
+with the same ``dtv_enabled`` and ``dtv_calibration_mode``.
 
 The detector reads the bad feed mask ring of ``bufferBadInputs``, and a flagged
 input is packed as zero. ``bufferBadInputs`` also flags every element outside
@@ -207,7 +209,9 @@ node. ``config/chord/recv.j2`` writes each frame to its own file under
 attribute gives the start of the window. The windows are aligned in
 ``fpga_seq_num``, so the halves' files cover the same time spans. A block
 missing from a window is a row of ``0xFF`` bytes: ``-1`` for the mask and fine
-support, and the largest ``uint64`` for the powers and fine powers.
+support, and the largest ``uint64`` for the powers, fine powers and both values
+of ``dtv_stat``. A reader treats such a ``dtv_stat`` row as missing; it is not a
+statistic to pass to ``pilotproxy_v3_keep``.
 
 POST ``{"enabled": true, "valid_at_time_ns": 0}`` to ``/dtv_mask_enabled`` to
 apply the mask from the next frame, and ``false`` to stop. A nonzero
@@ -298,5 +302,8 @@ Monitoring
   decided and recorded like a pilot, and its mask stays zero. Its fine support
   stays ``(-1, -1)``, so ``DtvRfiMask`` never clears it. Only channel 37 can
   have this status. Calibration uses it to set the noise floor. With the
-  detector's ``mask_control`` set, the control is masked like a pilot, so its false
-  alarms show what the mask does to a channel without DTV.
+  detector's ``mask_control`` set (``dtv_mask_control`` in
+  ``config/chord/dtv.j2``), the control is masked like a pilot, so its false
+  alarms show what the mask does to a channel without DTV. A v3 control is
+  decided in ``DtvRfiMask``, whose own ``mask_control`` applies; the template
+  sets both from ``dtv_mask_control``.

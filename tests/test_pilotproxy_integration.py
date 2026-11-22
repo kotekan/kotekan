@@ -693,6 +693,28 @@ def test_rejects_invalid_bundle(pipeline, field, value, diagnostic):
     assert not list((pipeline.directory / "out").glob("dtv_*.raw"))
 
 
+@pytest.mark.parametrize(
+    "field", ["anchor_bin", "designated_half_width", "cfar_rank", "bulk_mask_words_hex"]
+)
+def test_v3_profile_refuses_geometry(pipeline, field):
+    pipeline.calibrate()
+    for profile in pipeline.bundle["profiles"]:
+        calibration = profile["fine_calibration"]
+        kept = calibration.get(field)
+        calibration["decision_version"] = "fine_decision_v3"
+        for key in (
+            "anchor_bin",
+            "designated_half_width",
+            "cfar_rank",
+            "bulk_mask_words_hex",
+        ):
+            calibration.pop(key, None)
+        calibration[field] = kept
+    code, output = pipeline.run()
+    assert code != 0, "a v3 profile with a geometry field was accepted"
+    assert f"fine_decision_v3 takes no {field}" in output, output[-12000:]
+
+
 def test_exported_bundle_loads_unchanged(pipeline):
     # The bundle as exported, with no pilot on the node, passes the digest checks.
     pipeline.config["gen_voltage"]["manual_freq_ids"] = [1600, 4000, 1601, 4001]

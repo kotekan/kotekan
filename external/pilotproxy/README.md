@@ -9,7 +9,7 @@ The detector uses a rank-based power ratio; the previous F-statistic names
 did not describe its production statistic. The rename leaves arithmetic and
 runtime bundle fields unchanged.
 
-The seven upstream files are:
+The eight upstream files are:
 
 - `config.h`: window length and kernel settings.
 - `pilotproxy_detector.h` and `pilotproxy_detector.cu`: the C API and CUDA implementation.
@@ -20,6 +20,8 @@ The seven upstream files are:
   Define `FXFFT256_REF_NO_MAIN` to build the transform without its file harness.
   `pilotproxy_reference.cpp` compiles it with internal linkage, so a test may
   include it again.
+- `pilotproxy_decision.h`: `pilotproxy_v3_keep`, the keep test of fine decision v3 that a consumer of the
+  published `[n_peak, d_rho]` applies with its own word.
 
 Keep these files unchanged. Make detector changes in PilotProxy, copy the new
 revision here, and update the pin and the file hashes. The PilotProxy CI script
@@ -37,7 +39,8 @@ Other kernel settings keep their upstream defaults.
 `PilotProxy_SetStream` when it first sees data, so the library's kernels are
 stream-ordered with the rest of the pipeline. The vendored files include their
 `config.h` with quotes, so it does not replace other headers with that name.
-Kotekan code includes only `pilotproxy_core.hpp`, not the vendored headers.
+Kotekan code includes `pilotproxy_core.hpp` and, in `DtvRfiMask`, `pilotproxy/pilotproxy_decision.h`
+through the include path of `libexternal`; it includes no other vendored header.
 
 This README, the CMake file, `pilotproxy_core.cu`, `pilotproxy_core.hpp` and
 the manifest are maintained in Kotekan. `tools/lint.sh` excludes `external/` from formatting. PilotProxy uses the

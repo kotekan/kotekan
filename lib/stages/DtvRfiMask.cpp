@@ -28,7 +28,8 @@ namespace {
 
 /// Return why the runtime bundle may not mask, or an empty string when it may.
 /// Every channel with status "calibrated" must carry the mask_qualification record that
-/// pilotproxy's qualify-bundle writes. The control and pending channels never reach a mask.
+/// pilotproxy's qualify-bundle writes. Pending channels never reach a mask; the control does only
+/// with mask_control, which needs no qualification.
 std::string mask_unqualified_reason(const std::string& path) {
     std::ifstream stream(path);
     if (!stream)
@@ -74,13 +75,17 @@ std::map<int, V3Channel> v3_channels(const std::string& path) {
     std::ifstream stream(path);
     nlohmann::json bundle;
     if (!stream)
-        return result;
+        return result; // mask_unqualified_reason reports it
     try {
         stream >> bundle;
     } catch (const std::exception&) {
         return result;
     }
     for (const auto& row : bundle.value("profiles", nlohmann::json::array())) {
+        if (!row.is_object()
+            || (row.contains("fine_calibration") && !row.at("fine_calibration").is_object()))
+            FATAL_ERROR_NON_OO("DtvRfiMask: a profile of {:s} has no fine_calibration object",
+                               path);
         const auto calibration = row.value("fine_calibration", nlohmann::json::object());
         const auto status = calibration.value("status", "");
         if (calibration.value("decision_version", "") != "fine_decision_v3"

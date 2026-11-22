@@ -270,7 +270,7 @@ BOOST_AUTO_TEST_CASE(refuse_detect_only_bundle_when_always_on) {
 
 /// Write a qualified fine_decision_v3 bundle: frequency 10 with the default word only,
 /// 11 with a power-limit word above its default word, and 13 as the control.
-static std::string write_v3_profiles() {
+static std::string write_v3_profiles(uint64_t power_limit_word) {
     const nlohmann::json provenance = {
         {"mask_qualification",
          {{"test_report_sha256", std::string(64, 'a')}, {"reviewer", "test"}}}};
@@ -283,12 +283,12 @@ static std::string write_v3_profiles() {
                               {"receiver_channel_id", id},
                               {"fine_calibration", calibration}};
     };
-    const nlohmann::json bundle = {
-        {"profiles",
-         {calibrated(10, 20, {{"cfar_multiplier_q16", 65536}}),
-          calibrated(11, 21,
-                     {{"cfar_multiplier_q16", 65536}, {"power_limit_multiplier_q16", 4 * 65536}}),
-          calibrated(13, 37, {{"cfar_multiplier_q16", 65536}})}}};
+    const nlohmann::json bundle = {{"profiles",
+                                    {calibrated(10, 20, {{"cfar_multiplier_q16", 65536}}),
+                                     calibrated(11, 21,
+                                                {{"cfar_multiplier_q16", 65536},
+                                                 {"power_limit_multiplier_q16", power_limit_word}}),
+                                     calibrated(13, 37, {{"cfar_multiplier_q16", 65536}})}}};
     const std::string path = "/tmp/test_DtvRfiMask_" + std::to_string(getpid()) + "_v3.json";
     std::ofstream(path) << bundle.dump();
     return path;
@@ -298,14 +298,18 @@ struct V3Pipeline {
     static constexpr int F = 4, samples = 8192;
     kotekan::Config config;
     std::shared_ptr<metadataPool> pool;
-    Buffer rfi, dtv, stat, output;
+    Buffer rfi, dtv, support, stat, output;
     kotekan::bufferContainer buffers;
     std::unique_ptr<kotekan::Stage> stage;
 
-    explicit V3Pipeline(bool mask_control, bool with_stat = true) :
+    // As the templates wire it: fine support beside the statistic, (-1,-1) on every v3 row.
+    explicit V3Pipeline(bool mask_control, bool with_stat = true, std::vector<int> permanent = {},
+                        uint64_t power_limit_word = 4 * 65536) :
         pool(metadataPool::create(32, sizeof(chordMetadata), "pool", "chordMetadata")),
         rfi(2, samples / 8 * F, pool, "rfi", "standard", 0, false, false, std::vector<int>{}, true),
         dtv(2, F, pool, "dtv", "standard", 0, false, false, std::vector<int>{}, true),
+        support(2, F * 2 * sizeof(int32_t), pool, "support", "standard", 0, false, false,
+                std::vector<int>{}, true),
         stat(2, F * 2 * sizeof(uint64_t), pool, "stat", "standard", 0, false, false,
              std::vector<int>{}, true),
         output(2, samples / 8 * F, pool, "output", "standard", 0, false, false, std::vector<int>{},
@@ -316,11 +320,13 @@ struct V3Pipeline {
                               {"num_local_freq", F},
                               {"num_times", samples},
                               {"mask",
-                               {{"pilot_profiles_path", write_v3_profiles()},
+                               {{"pilot_profiles_path", write_v3_profiles(power_limit_word)},
                                 {"rfi_buf", "rfi"},
                                 {"dtv_buf", "dtv"},
+                                {"fine_support_buf", "support"},
                                 {"out_buf", "output"},
                                 {"mask_control", mask_control},
+                                {"permanent_mask_freq_ids", permanent},
                                 {"require_fine_freq_ids", {11}}}}};
         if (with_stat)
             cfg["mask"]["stat_buf"] = "stat";
@@ -332,9 +338,11 @@ struct V3Pipeline {
         output.ensure_frame_desc(mask_desc);
         dtv.ensure_frame_desc(
             kotekan::GenericNDArray::describe(kotekan::int8, "dtv_mask", {F}, {"F"}, {1}));
-        for (auto* b : {&rfi, &dtv, &stat, &output})
+        support.ensure_frame_desc(kotekan::GenericNDArray::describe(
+            kotekan::int32, "dtv_fine_support", {F, 2}, {"F", "S"}, {1, 1}));
+        for (auto* b : {&rfi, &dtv, &support, &stat, &output})
             buffers.add_buffer(b->buffer_name, b);
-        for (auto* b : {&rfi, &dtv, &stat})
+        for (auto* b : {&rfi, &dtv, &support, &stat})
             b->register_producer("test");
         output.register_consumer("test");
         auto makers = kotekan::StageFactoryRegistry::get_registered_stages();
@@ -342,15 +350,16 @@ struct V3Pipeline {
     }
 
     ~V3Pipeline() {
-        for (auto* b : {&rfi, &dtv, &stat, &output})
+        for (auto* b : {&rfi, &dtv, &support, &stat, &output})
             b->send_shutdown_signal();
         stage->stop();
         stage->join();
     }
 
-    void fill(int index, const std::vector<uint64_t>& pairs) {
+    void fill(int index, const std::vector<uint64_t>& pairs,
+              const std::vector<uint8_t>& dtv_bytes = std::vector<uint8_t>(F, 0)) {
         const int slot = index % 2;
-        for (auto* b : {&rfi, &dtv, &stat}) {
+        for (auto* b : {&rfi, &dtv, &support, &stat}) {
             BOOST_REQUIRE(b->wait_for_empty_frame("test", slot));
             b->allocate_new_metadata_object(slot);
             auto meta = get_chord_metadata(b, slot);
@@ -362,9 +371,10 @@ struct V3Pipeline {
             meta->set_freq_upchan_factor({1, 1, 1, 1});
         }
         std::memset(rfi.frames[slot], 0x5a, rfi.frame_size);
-        std::memset(dtv.frames[slot], 0, F); // a v3 channel's byte is not read
+        std::memcpy(dtv.frames[slot], dtv_bytes.data(), F);
+        std::memset(support.frames[slot], 0xff, support.frame_size);
         std::memcpy(stat.frames[slot], pairs.data(), F * 2 * sizeof(uint64_t));
-        for (auto* b : {&rfi, &dtv, &stat})
+        for (auto* b : {&rfi, &dtv, &support, &stat})
             b->mark_frame_full("test", slot);
     }
 
@@ -412,4 +422,26 @@ BOOST_AUTO_TEST_CASE(v3_required_channel_must_be_evaluated) {
     V3Pipeline p(false);
     p.fill(0, {3, 2, 0, std::numeric_limits<uint64_t>::max(), 0, 0, 0, 1});
     BOOST_CHECK_THROW(p.stage->main_thread(), FatalError);
+}
+
+BOOST_AUTO_TEST_CASE(v3_reads_the_statistic_not_the_mask_byte) {
+    const uint64_t not_evaluated = std::numeric_limits<uint64_t>::max();
+    V3Pipeline p(false);
+    p.stage->start();
+    // 10 is kept by its statistic although its byte is 1; 12 is not a v3 channel and its byte
+    // still rejects it; the support of every row is (-1,-1), as the detector writes for v3
+    p.fill(0, {1, 1, 3, 1, 0, not_evaluated, 0, not_evaluated}, {1, 0, 1, 0});
+    BOOST_CHECK(p.rejected(0) == std::vector<int>({2}));
+}
+
+BOOST_AUTO_TEST_CASE(v3_permanent_frequency_is_masked) {
+    const uint64_t not_evaluated = std::numeric_limits<uint64_t>::max();
+    V3Pipeline p(false, true, {10});
+    p.stage->start();
+    p.fill(0, {1, 1, 3, 1, 0, not_evaluated, 0, not_evaluated});
+    BOOST_CHECK(p.rejected(0) == std::vector<int>({0}));
+}
+
+BOOST_AUTO_TEST_CASE(v3_word_must_be_positive) {
+    BOOST_CHECK_THROW(V3Pipeline(false, true, {}, 0), FatalError);
 }
