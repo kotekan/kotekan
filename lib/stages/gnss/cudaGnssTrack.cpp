@@ -39,9 +39,9 @@ cudaGnssTrack::cudaGnssTrack(Config& config, const std::string& unique_name,
     if (S.n_elem != 1)
         FATAL_ERROR("cudaGnssTrack: n_elements is {:d}; the input frame holds one element",
                     S.n_elem);
-    // enqueue_batch_nm synthesises three trials from the Phi tables.
-    if (S.psi_synth || S.epl_from_prompt)
-        FATAL_ERROR("cudaGnssTrack: psi_synth and epl_from_prompt are cudaGnssInject's");
+    // enqueue_batch_nm reads the Phi tables; it honours epl_from_prompt.
+    if (S.psi_synth)
+        FATAL_ERROR("cudaGnssTrack: psi_synth is cudaGnssInject's");
     if ((int)_local_channels.size() != S.n_chan)
         FATAL_ERROR("cudaGnssTrack: gnss_local_channels has {:d} entries but n_channels is {:d}",
                     (int)_local_channels.size(), S.n_chan);
@@ -65,8 +65,8 @@ cudaGnssTrack::cudaGnssTrack(Config& config, const std::string& unique_name,
         if (!config.exists(unique_name + "/data", "gpu_mem_output"))
             FATAL_ERROR("cudaGnssTrack: {:s}/data must set its own gpu_mem_output", unique_name);
         _gpu_mem_output_data = config.get<std::string>(unique_name + "/data", "gpu_mem_output");
-        if (D.psi_synth || D.epl_from_prompt)
-            FATAL_ERROR("cudaGnssTrack: psi_synth and epl_from_prompt are cudaGnssInject's");
+        if (D.psi_synth)
+            FATAL_ERROR("cudaGnssTrack: psi_synth is cudaGnssInject's");
         // The pilot's seeds, trims and slots apply to it unchanged only on the same slots,
         // channels, records and carrier, with a code whose period divides the pilot's.
         if (D.prns != S.prns || D.n_chan != S.n_chan || D.hops_per_record != S.hops_per_record

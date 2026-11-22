@@ -1050,8 +1050,8 @@ int GnssCudaDespread::enqueue_batch_nm(const void* d_frame, const void* d_chan_s
     // path splits the fused kernel. Both launches are on one stream, so the correlator starts
     // after the waveform it reads is complete.
     ck(gnss_cuda::launch_waveform(im.d_code, (gnss_cuda::DespreadJob*)d_jobs_slot, n_spec,
-                                  im.n_chan, par, nullptr, (float2*)d_wave, (double*)d_energy_out,
-                                  st),
+                                  im.n_chan, par, im.epl_rot ? im.d_rot : nullptr, (float2*)d_wave,
+                                  (double*)d_energy_out, st),
        "launch waveform (NxM)");
     ck(gnss_cuda::launch_correlate_nm(
            (const unsigned char*)d_frame, (const float*)d_chan_scale, d_chan_ids,
