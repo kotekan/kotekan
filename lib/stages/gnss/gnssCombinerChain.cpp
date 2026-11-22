@@ -574,12 +574,26 @@ void CombinerChain::emit(float* out) {
         std::vector<std::complex<double>> tw(nb); // integer-indexed: no trig in the inner loop
         for (size_t i = 0; i < nb; ++i)
             tw[i] = std::polar(1.0, -2.0 * M_PI * (double)i / (double)nb);
+        // Four bins per pass, each with its own accumulator (nb is a multiple of 4): one
+        // accumulator is a serial dependency chain, and four run ~2x faster. A bin's twiddle
+        // index (i m[k]) mod nb advances by i between consecutive records, without a division.
         std::vector<double> mag(nb, 0.0);
-        for (size_t i = 0; i < nb; ++i) {
-            std::complex<double> acc(0.0, 0.0);
-            for (size_t k = 0; k < L; ++k)
-                acc += x[k] * tw[(size_t)(((long long)i * m[k]) % (long long)nb)];
-            mag[i] = std::abs(acc);
+        for (size_t i0 = 0; i0 < nb; i0 += 4) {
+            std::complex<double> acc[4] = {};
+            size_t idx[4] = {};
+            for (size_t k = 0; k < L; ++k) {
+                const bool next = k > 0 && m[k] - m[k - 1] == 1;
+                for (size_t j = 0; j < 4; ++j) {
+                    const size_t i = i0 + j;
+                    if (next)
+                        idx[j] = idx[j] + i >= nb ? idx[j] + i - nb : idx[j] + i;
+                    else
+                        idx[j] = (size_t)(((long long)i * m[k]) % (long long)nb);
+                    acc[j] += x[k] * tw[idx[j]];
+                }
+            }
+            for (size_t j = 0; j < 4; ++j)
+                mag[i0 + j] = std::abs(acc[j]);
         }
         size_t ip = 0, ip_full = 0;
         double best_m = -1.0, best_m_full = -1.0;
