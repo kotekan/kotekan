@@ -365,8 +365,9 @@ b2b_rec_buf:
     num_frames: 64
     frame_size: 31 * 44 * 4 + 31 * 8 * 9 * 4
 
-# SBAS L5 (1176.45 MHz, on L5's channels): the WAAS GEOs and the EGNOS GEOs as noise probes, as
-# CHORD's sbas_l5 chain. gnss_gpu::frame_bytes(6 PRNs, 8 channels, 4 rows, 1 element).
+# SBAS L5 (1176.45 MHz, on L5's channels): the WAAS GEOs, and as the presence gate's noise probes
+# three GEOs always deep below the horizon here (GAGAN 127, 128; MSAS 129): the EGNOS GEOs CHORD
+# probes with can rise in the east. gnss_gpu::frame_bytes(6 PRNs, 8 channels, 4 rows, 1 element).
 sbas_epl_buf:
     kotekan_buffer: standard
     metadata_pool: gnss_pool
@@ -606,7 +607,7 @@ gputrack:
           gpu_mem_output: sbas_epl
           # Data only: the Manchester pair tiled into one 2 ms code, one 500 sps symbol.
           signal: SBAS_L5_I_MC
-          prns: &sbas_prns [131, 133, 135, 121, 123, 136]
+          prns: &sbas_prns [131, 133, 135, 127, 128, 129]
           f_offset_hz: -48.55e6
           n_channels: 8
           channel_ids: [35, 36, 37, 38, 39, 40, 41, 42]
