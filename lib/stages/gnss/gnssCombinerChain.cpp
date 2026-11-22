@@ -1405,8 +1405,9 @@ double CombinerChain::navwipe_amplitude(const std::vector<std::complex<double>>&
         }
     }
     cd deep(0.0, 0.0);
-    double noise2 = 0.0; // sum of squared orthogonal (noise) components, one per bit
-    if (obs) {           // export the per-bit decisions the wipe is about to apply
+    double noise2 = 0.0;     // sum of squared orthogonal (noise) components, one per bit
+    double noise2_exp = 0.0; // the same against the exported decisions' phase
+    if (obs) {               // export the per-bit decisions the wipe is about to apply
         obs->utc_ref = utc[0];
         obs->rec_dt = rec_dt;
         obs->phase = best_phase;
@@ -1425,16 +1426,18 @@ double CombinerChain::navwipe_amplitude(const std::vector<std::complex<double>>&
         deep += sgn * v;
         noise2 += std::imag(vr) * std::imag(vr);
         if (obs && bi < s_bi.size()) {
-            const double x = rot_bit.empty() ? std::real(vr) : std::real(v * rot_bit[bi]);
-            obs->bits.emplace_back(s_bi[bi], (int8_t)(x >= 0.0 ? 1 : -1));
-            obs->soft.push_back((float)x);
+            const cd ve = rot_bit.empty() ? vr : v * rot_bit[bi];
+            obs->bits.emplace_back(s_bi[bi], (int8_t)(std::real(ve) >= 0.0 ? 1 : -1));
+            obs->soft.push_back((float)std::real(ve));
+            noise2_exp += std::imag(ve) * std::imag(ve);
         }
     }
     const int nb = (int)s.size();
     const double sigma_bit = std::sqrt(noise2 / (double)nb); // per-bit noise (1 axis)
-    if (obs && sigma_bit > 0.0)
+    const double sigma_exp = std::sqrt(noise2_exp / (double)nb);
+    if (obs && sigma_exp > 0.0)
         for (float& x : obs->soft)
-            x = (float)(x / sigma_bit);
+            x = (float)(x / sigma_exp);
     const double noise_sum = sigma_bit * std::sqrt((double)nb); // noise std of the coherent sum
     // SNR = coherent sum / its noise std, i.e. the deep amplitude over its standard error
     // noise_sum/nrec. Choosing each bit's sign rectifies noise to ~sqrt(2 nb / pi), not ~1.

@@ -96,7 +96,7 @@ private:
         double rot_im = 0.0;
         std::vector<std::pair<long long, int8_t>> bits; ///< (bit index, +-1 sign)
         /// Per bit, parallel to bits: the aligned bit sum's real part over the per-bit noise
-        /// sigma, the soft value whose sign is the bit's.
+        /// sigma, both against the phase the bit was decided on; its sign is the bit's.
         std::vector<float> soft;
     };
 
