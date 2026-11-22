@@ -1304,6 +1304,11 @@ double CombinerChain::navwipe_amplitude(const std::vector<std::complex<double>>&
     std::vector<long long> cpi(nrec);
     for (int r = 0; r < nrec; ++r)
         cpi[r] = (long long)std::llround((utc[r] - utc[0]) / rec_dt);
+    // The exported period: the median step is quantised by the timestamps' rounding (2.4e-7 s
+    // for UTC near 1.8e9 s, 72 ppm of a 1 ms step), which a decoder placing symbols over minutes
+    // accumulates; the window's span over its period count averages it out.
+    const double rec_dt_obs =
+        cpi[nrec - 1] > 0 ? (utc[nrec - 1] - utc[0]) / (double)cpi[nrec - 1] : rec_dt;
 
     // Per-bit coherent sums for a given epoch phase. Records are sorted by cpi, so bit indices
     // arrive non-decreasing and a bit is a run of equal (cpi + phase) / br. Segmented (head
@@ -1409,7 +1414,7 @@ double CombinerChain::navwipe_amplitude(const std::vector<std::complex<double>>&
     double noise2_exp = 0.0; // the same against the exported decisions' phase
     if (obs) {               // export the per-bit decisions the wipe is about to apply
         obs->utc_ref = utc[0];
-        obs->rec_dt = rec_dt;
+        obs->rec_dt = rec_dt_obs;
         obs->phase = best_phase;
         obs->br = br;
         obs->rot_re = std::real(rot);
