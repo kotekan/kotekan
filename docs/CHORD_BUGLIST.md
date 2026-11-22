@@ -1136,6 +1136,19 @@ rho² exceeds 0.99 is dropped, so a very bright satellite's own cal can end with
 
 ## Open — bench or offline, no deployment at all
 
+### #237 — the array-mean beam's own phase and amplitude from fast GuoWang crossings: think it through once the GW birds track well (2026-11-22, KV: "we should keep this option in mind, maybe add a todo to think it through carefully once the GW birds track well")
+**What:** the complex beam maps (`~/gnss/fixtures/beamjones_1121/`, 11-21) give every feed over the coherent array
+mean, g_e(u)/Ḡ(u), per channel, X and Y. Ḡ(u) itself (pieces 2 and 3: magnitude and the phase every feed shares) cancels in
+every product, and along a MEO pass its phase is degenerate with the carrier (range, clocks, ionosphere), which drift on the
+same minutes. A GuoWang LEO bird moves ~0.4 deg/s: the 3-deg main lobe in ~8 s, a sidelobe in 2-3 s. Orbit and slant TEC
+are smooth over that, so the fast part of the records' carrier phase and amplitude would be Ḡ, broad shape included.
+**What must hold:** the satellite clock over ~10 s (~1e-12 for a few deg at 1.2 GHz; unknown); per-element or steered data
+at <= 1 s (the 12-s cube smears a crossing over ~4.5 deg); and tracking good enough to hold phase through a crossing,
+which waits on the precise ephemerides and nav bits fed forward for the overlay (11-22). GuoWang is at 1194-1208 and
+1250-1285 MHz, so the clean product is both pieces at those frequencies; the L5 maps tie in through the main lobe only.
+**Next:** once GW tracks well, see what is recorded at <= 1 s; on a few main-lobe passes remove a smooth trend and check
+that crossing passes agree in shared cells (the beam is fixed on the sky, clock noise is not).
+
 ### #236 — a 10 Hz carrier-phase pattern common to every satellite caps record coherence at ~0.946 (2026-11-21, paper item 5)
 **What [live]:** in a 120-s read-only capture of the gather's :11061 records (11-21 23:12-23:14Z, 12 instances,
 `~/gnss/fixtures/record_phase_1121/`, gnss_paper `86c957b`), the per-record prompt phase carries a 10.0 Hz pattern locked to
