@@ -7,7 +7,7 @@
   dtv_calibration_mode is set, which also sends the powers, fine support and fine powers
   (telescope.j2, which recv.j2 reads too). A v3 bundle is decided in DtvRfiMask from the
   statistic.
-  dtv_mask_control masks the control, channel 37, like a pilot (default: never masked).
+  dtv_mask_control masks the control, channel 37, like a pilot in DtvRfiMask (default: never masked).
   The detector zeroes the inputs flagged by bufferBadInputs, the RFI antennas too.
   Disable /rfi_first_stage_enabled for a DTV-only first-stage mask.
   Profiles bind by receiver_channel_id against each NUMA half's coarse_freq.
@@ -93,7 +93,6 @@ run_dtv_detector:
           pilot_profiles_path: {{ dtv_runtime_bundle_dir }}/pilot_profiles.json
           weights_path: {{ dtv_runtime_bundle_dir }}/weights.bin
           bf_mask_name: bf_mask
-          mask_control: {{ dtv_mask_control|default(false)|lower }}
         - name: cudaSyncOutput
         - name: cudaOutputData
           gpu_mem: dtv_mask_buffer

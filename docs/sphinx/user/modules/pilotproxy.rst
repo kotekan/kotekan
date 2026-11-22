@@ -302,8 +302,7 @@ Monitoring
   decided and recorded like a pilot, and its mask stays zero. Its fine support
   stays ``(-1, -1)``, so ``DtvRfiMask`` never clears it. Only channel 37 can
   have this status. Calibration uses it to set the noise floor. With the
-  detector's ``mask_control`` set (``dtv_mask_control`` in
-  ``config/chord/dtv.j2``), the control is masked like a pilot, so its false
+  detector's ``mask_control`` set, the control is masked like a pilot, so its false
   alarms show what the mask does to a channel without DTV. A v3 control is
-  decided in ``DtvRfiMask``, whose own ``mask_control`` applies; the template
-  sets both from ``dtv_mask_control``.
+  decided in ``DtvRfiMask``, whose ``mask_control`` the template sets from
+  ``dtv_mask_control`` in ``config/chord/dtv.j2``.
