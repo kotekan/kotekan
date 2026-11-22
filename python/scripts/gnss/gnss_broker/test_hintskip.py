@@ -64,6 +64,7 @@ def make_ctx():
         dr_min_prn=1,
         dr_untrusted={7: "model residual"},
         hold=_Obj(q={5: 3.0, 7: 3.0, 9: 3.0, 11: 3.0}, prev={}),
+        joint_consume=set(),
         detectors=["d0"],
         t0=T0,
     )
@@ -212,6 +213,16 @@ def main():
     check(hinted(ctx)[0] == [5, 7, 9, 11], "no fleet reading, not yet owned: hinted")
     ctx.dr_state["seeded"] = {5}
     check(hinted(ctx)[0] == [7, 9, 11], "no fleet reading, already owned: kept")
+    ctx = make_ctx()
+    ctx.joint_consume = {"clk", "rate", "slew"}
+    ctx.args.joint_source = "trk"
+    ctx.dr_state["jsrc"] = {"mode": "search", "fresh_t": None}
+    check(
+        hinted(ctx)[0] == [5, 7, 9, 11],
+        "on the tracker-fed clock but reading the search-fed state: everything hinted",
+    )
+    ctx.dr_state["jsrc"]["mode"] = "trk"
+    check(hinted(ctx)[0] == [7, 9, 11], "...and once it reads TRK_STATE, the skip")
     ctx = make_ctx()
     ctx.args.hint_skip_dr = False
     check(hinted(ctx)[0] == [5, 7, 9, 11], "off: every PRN is hinted")

@@ -1342,9 +1342,14 @@ def dr_owns_unhinted(ctx, prn):
     lock_q or prompt power >= lock_prompt_hold x the noise probes'. A cycle with no fleet
     reading keeps a satellite the model already owns: a gap in the data is not a lost lock,
     and re-hinting it hands it back to the search. An unlocked satellite stays hinted, so the
-    search can find it and its detections keep the clock solves fresh."""
+    search can find it and its detections keep the clock solves fresh. A chain on the
+    tracker-fed clock (joint-consume clk, --joint-source trk) hands nothing over while it reads
+    another state (joint_read's mode): until then its detections are its clock."""
     if not getattr(ctx.args, "hint_skip_dr", False) or not dr_can_seed(ctx, prn):
         return False
+    if "clk" in ctx.joint_consume and joint_which(ctx.args) == TRK_STATE:
+        if (ctx.dr_state.get("jsrc") or {}).get("mode") != "trk":
+            return False
     q, p = ctx.hold.q.get(prn), ctx.hold.prev.get(prn)
     if q is None and p is None:
         return prn in ctx.dr_state["seeded"]
