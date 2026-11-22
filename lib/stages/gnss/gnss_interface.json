@@ -711,6 +711,21 @@
     "tdm_phase": 0,
     "time_multiplexed": false
    },
+   "BDS_B2A_D_CS": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1176450000",
+    "chip_rate_hz": "10230000",
+    "code_length": 51150,
+    "code_period_s": "0.0050000000000000001",
+    "half_bandwidth_hz": "10230000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1186680000",
+    "occupied_lo_hz": "1166220000",
+    "secondary_length": 0,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
    "BDS_B2A_P": {
     "boc_m": 0,
     "boc_n": 0,
@@ -861,6 +876,21 @@
     "tdm_phase": 0,
     "time_multiplexed": false
    },
+   "GAL_E5A_I_CS": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1176450000",
+    "chip_rate_hz": "10230000",
+    "code_length": 204600,
+    "code_period_s": "0.02",
+    "half_bandwidth_hz": "10230000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1186680000",
+    "occupied_lo_hz": "1166220000",
+    "secondary_length": 0,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
    "GAL_E5A_Q": {
     "boc_m": 0,
     "boc_n": 0,
@@ -903,6 +933,21 @@
     "occupied_hi_hz": "1217370000",
     "occupied_lo_hz": "1196910000",
     "secondary_length": 4,
+    "tdm_phase": 0,
+    "time_multiplexed": false
+   },
+   "GAL_E5B_I_CS": {
+    "boc_m": 0,
+    "boc_n": 0,
+    "carrier_hz": "1207140000",
+    "chip_rate_hz": "10230000",
+    "code_length": 40920,
+    "code_period_s": "0.0040000000000000001",
+    "half_bandwidth_hz": "10230000",
+    "mod": "BPSK",
+    "occupied_hi_hz": "1217370000",
+    "occupied_lo_hz": "1196910000",
+    "secondary_length": 0,
     "tdm_phase": 0,
     "time_multiplexed": false
    },

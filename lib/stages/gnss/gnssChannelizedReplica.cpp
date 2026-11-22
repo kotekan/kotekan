@@ -216,6 +216,8 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         auto a = galileo::generate_e5ai_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
     }
+    if (name == "GAL_E5A_I_CS") // the shared CS20 baked in: one F/NAV symbol
+        return bake_secondary(galileo::generate_e5ai_code(prn), galileo::e5ai_secondary());
     if (name == "BDS_B2A_P") {
         auto a = beidou::generate_b2ap_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
@@ -226,6 +228,8 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         auto a = beidou::generate_b2ad_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
     }
+    if (name == "BDS_B2A_D_CS") // the shared 5-chip secondary baked in: one B-CNAV2 symbol
+        return bake_secondary(beidou::generate_b2ad_code(prn), beidou::b2ad_secondary());
     if (name == "BDS_B2B_I") {
         auto a = beidou::generate_b2bi_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
@@ -240,6 +244,8 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         auto a = galileo::generate_e5bi_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
     }
+    if (name == "GAL_E5B_I_CS") // the shared CS4 baked in: one I/NAV symbol
+        return bake_secondary(galileo::generate_e5bi_code(prn), galileo::e5bi_secondary());
     if (name == "GPS_L2C_CM")
         return gps::generate_l2cm_code(prn);
     if (name == "GPS_L2C_CL")

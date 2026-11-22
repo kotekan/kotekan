@@ -448,6 +448,23 @@ inline constexpr SignalDescriptor GAL_E5A_I = {
     /*tdm_phase=*/0,
 };
 
+/// Galileo E5a-I with the shared CS20 tiled into the code: one 204600-chip, 20 ms code, one
+/// F/NAV symbol, as GPS_L5_I_NH tiles NH10 into I5. Its period divides GAL_E5A_Q_CS's, so the
+/// pilot's seeds place it.
+inline constexpr SignalDescriptor GAL_E5A_I_CS = {
+    "GAL_E5A_I_CS",
+    1176.45e6,
+    10.23e6,
+    204600,
+    20e-3,
+    Modulation::BPSK,
+    0,
+    0,
+    /*secondary_length=*/0,
+    /*time_multiplexed=*/false,
+    /*tdm_phase=*/0,
+};
+
 /// BeiDou-3 B2a pilot (1176.45 MHz): 10230-chip primary at 10.23 Mcps (1 ms, two 13-stage
 /// LFSRs), per-PRN 100-chip Weil-1021 secondary (100 ms). BDS-3 only.
 /// Code: beidouB2aCode (PocketSDR-sourced tables).
@@ -495,6 +512,22 @@ inline constexpr SignalDescriptor BDS_B2A_D = {
     0,
     0,
     /*secondary_length=*/5,
+    /*time_multiplexed=*/false,
+    /*tdm_phase=*/0,
+};
+
+/// BeiDou-3 B2a data with the shared 5-chip secondary tiled into the code: one 51150-chip, 5 ms
+/// code, one B-CNAV2 symbol, as GAL_E5A_I_CS. Its period divides BDS_B2A_P_CS's.
+inline constexpr SignalDescriptor BDS_B2A_D_CS = {
+    "BDS_B2A_D_CS",
+    1176.45e6,
+    10.23e6,
+    51150,
+    5e-3,
+    Modulation::BPSK,
+    0,
+    0,
+    /*secondary_length=*/0,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
 };
@@ -564,6 +597,22 @@ inline constexpr SignalDescriptor GAL_E5B_I = {
     0,
     0,
     /*secondary_length=*/4,
+    /*time_multiplexed=*/false,
+    /*tdm_phase=*/0,
+};
+
+/// Galileo E5b-I with the shared CS4 tiled into the code: one 40920-chip, 4 ms code, one I/NAV
+/// symbol, as GAL_E5A_I_CS. Its period divides GAL_E5B_Q_CS's.
+inline constexpr SignalDescriptor GAL_E5B_I_CS = {
+    "GAL_E5B_I_CS",
+    1207.14e6,
+    10.23e6,
+    40920,
+    4e-3,
+    Modulation::BPSK,
+    0,
+    0,
+    /*secondary_length=*/0,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
 };
@@ -881,7 +930,7 @@ inline constexpr const SignalDescriptor* ALL_SIGNALS[] = {
     &BDS_B1I,      &BDS_B3I,     &BDS_B3I_NH,   &BDS_B2I,       &GLO_L3OC_P,    &GLO_L3OC_D,
     &GLO_L2OF,     &GLO_L2OC_P,  &GAL_E6_C_CS,  &GLO_L3OC_P_NH, &GLO_L2OC_P_OC, &SBAS_L5_I,
     &SBAS_L5_I_MC, &GLO_L2OF_MC, &GW_1202,      &BDS_B1I_NH,    &GPS_L1CA_BIT,  &SBAS_L1,
-    &SBAS_L1_SYM,  &GAL_E1C_CS,  &GPS_L5_I_NH};
+    &SBAS_L1_SYM,  &GAL_E1C_CS,  &GPS_L5_I_NH,  &GAL_E5A_I_CS,  &BDS_B2A_D_CS,  &GAL_E5B_I_CS};
 
 /// Look up a descriptor by its @c name (the config string); nullptr if unknown.
 inline const SignalDescriptor* signal_by_name(const std::string& name) {

@@ -1,9 +1,12 @@
 #define BOOST_TEST_MODULE "test_gnss_channelized_replica"
 
 #include "beidouB2aCode.hpp"           // for b2ap_secondary (baked-CS reference)
+#include "beidouB2aCode.hpp"           // for b2ad_secondary
 #include "dspPfbPrototype.hpp"         // for Window
 #include "galileoE1Code.hpp"           // for E1C_CS25 (baked-CS reference)
 #include "galileoE5aCode.hpp"          // for e5aq_secondary (baked-CS reference)
+#include "galileoE5aCode.hpp"          // for e5ai_secondary
+#include "galileoE5bCode.hpp"          // for e5bi_secondary
 #include "gnssChannelizedDespread.hpp" // for channelized_despread
 #include "gnssChannelizedReplica.hpp"  // for ChannelizedReplicaBank
 #include "gnssSignal.hpp"              // for signal_by_name
@@ -741,6 +744,39 @@ BOOST_AUTO_TEST_CASE(l5i_nh_is_the_i5_code_under_the_nh10) {
                 BOOST_REQUIRE_EQUAL((int)bank_nh.code_chip(0, (double)k * 10230 + i),
                                     (int)bank_i.code_chip(0, (double)i)
                                         * (int)gps::L5_NH10[(size_t)k]);
+    }
+}
+
+// The *_CS data codes tile their shared secondary as GPS_L5_I_NH tiles NH10: period k is the
+// primary times secondary[k], which the plain data bank applies as its secondary.
+BOOST_AUTO_TEST_CASE(data_cs_is_the_primary_under_the_secondary) {
+    const auto e5a = galileo::e5ai_secondary();
+    const auto e5b = galileo::e5bi_secondary();
+    const auto b2a = beidou::b2ad_secondary();
+    const std::vector<int8_t> cs20(e5a.begin(), e5a.end()), cs4(e5b.begin(), e5b.end()),
+        b2ad(b2a.begin(), b2a.end());
+    const struct {
+        const char* tiled;
+        const char* plain;
+        const std::vector<int8_t>& sec;
+    } cases[] = {{"GAL_E5A_I_CS", "GAL_E5A_I", cs20},
+                 {"GAL_E5B_I_CS", "GAL_E5B_I", cs4},
+                 {"BDS_B2A_D_CS", "BDS_B2A_D", b2ad}};
+    for (const auto& c : cases) {
+        const gnss::SignalDescriptor* d = gnss::signal_by_name(c.tiled);
+        BOOST_REQUIRE(d != nullptr);
+        const int n = (int)c.sec.size();
+        BOOST_CHECK_EQUAL(d->code_length, 10230L * n);
+        BOOST_CHECK_EQUAL(d->secondary_length, 0);
+        for (int prn : {1, 30}) {
+            auto bank_cs = make_bank(c.tiled, {prn});
+            auto bank_d = make_bank(c.plain, {prn});
+            BOOST_CHECK_EQUAL(bank_d.secondary_length(), n);
+            for (int k = 0; k < n; ++k)
+                for (int i = 0; i < 10230; i += 331)
+                    BOOST_REQUIRE_EQUAL((int)bank_cs.code_chip(0, (double)k * 10230 + i),
+                                        (int)bank_d.code_chip(0, (double)i) * (int)c.sec[k]);
+        }
     }
 }
 
