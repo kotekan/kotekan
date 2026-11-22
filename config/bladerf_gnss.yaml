@@ -811,9 +811,10 @@ b2b_assemble:
     chan_export: true
     channel_ids: [51, 52, 53, 54, 55, 56, 57, 58]
 # B-CNAV3 is one symbol per record: the deep sum wipes each record's sign, and bit_export serves
-# the decisions to the broker's bcnav3 decoder (its own combiner), which stitches the windows it
-# polls once a second into 1000-symbol frames. A 1.5 s window overlaps the polls; the bit-wipe
-# path is linear in the window, with no rate search.
+# the decisions to the bcnav3 decoder (nav_decode.py), which decodes each 1.5 s window's whole
+# 1000-symbol frame. The bit-wipe path is linear in the window, with no rate search. The carrier
+# phase drifts tens of degrees across a window, so each exported bit is decided against the
+# phase of the +-100 bits around it (bit_export_track), with its soft value.
 b2b_combine:
     kotekan_stage: GnssCoherentCombiner
     in_bufs: [b2b_rec_buf]
@@ -822,6 +823,7 @@ b2b_combine:
     record_export: 64
     navwipe_bit_records: 1
     bit_export: true
+    bit_export_track: 100
 
 # ---- Telemetry ----
 # Every chain's records as a CHORD node ships them (GnssTelemPack), gathered in this instance

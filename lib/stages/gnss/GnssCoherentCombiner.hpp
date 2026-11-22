@@ -93,6 +93,8 @@
  * @conf fft_len             Int. F-engine FFT length, to turn sample_seq into hops.
  * @conf record_export       Int (default 0 = off). Per-PRN record ring length for get_records.
  * @conf bit_export          Bool (default false). Publish nav_obs in get_status.
+ * @conf bit_export_track    Int (default 0). Half-width in bits of the local carrier phase that
+ *                           each exported bit is decided against; 0 = the window's one phase.
  * @conf reset_on_prn_change Bool (default true). When a slot's records carry a new PRN (a live
  *                           swap), its state restarts cold, as GnssGpuRecordAssemble's does.
  * @conf chain               String, set by each row of @c chains. The row's broker chain (e.g.

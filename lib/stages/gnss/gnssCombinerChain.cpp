@@ -127,6 +127,7 @@ CombinerChain::CombinerChain(Config& config, const std::string& cfg_path, const 
     _navutc.assign(_n_prn, {});
     _navhead.assign(_n_prn, {});
     _bit_export = config.get_default<bool>(cfg_path, "bit_export", false);
+    _bit_export_track = config.get_default<int>(cfg_path, "bit_export_track", 0);
     _reset_on_prn_change = config.get_default<bool>(cfg_path, "reset_on_prn_change", true);
     if (_bit_export)
         _st_nav_obs.assign(_n_prn, {});
@@ -1258,8 +1259,8 @@ nlohmann::json CombinerChain::get_status() {
                          {"adr_arc", _st_adr_arc[p]},
                          {"adr_records", _st_adr_n[p]},
                          {"adr_lock_s", _st_adr_lock[p]}});
-    // bit_export: the last emit's per-bit sign decisions (nav_obs; see NavObs for the timing
-    // convention), only on rows that have any.
+    // bit_export: the last emit's per-bit decisions (nav_obs; see NavObs for the timing
+    // convention and soft, which goes out as 10x, rounded), only on rows that have any.
     if (_bit_export)
         for (int p = 0; p < _n_prn; ++p) {
             const NavObs& o = _st_nav_obs[(size_t)p];
@@ -1268,9 +1269,12 @@ nlohmann::json CombinerChain::get_status() {
             nlohmann::json bits = nlohmann::json::array();
             for (const auto& b : o.bits)
                 bits.push_back({b.first, (int)b.second});
+            nlohmann::json soft = nlohmann::json::array();
+            for (float x : o.soft)
+                soft.push_back((int)std::lround(std::clamp(10.0f * x, -9999.0f, 9999.0f)));
             reply[(size_t)p]["nav_obs"] = {
                 {"utc_ref", o.utc_ref}, {"rec_dt", o.rec_dt}, {"phase", o.phase}, {"br", o.br},
-                {"rot_re", o.rot_re},   {"rot_im", o.rot_im}, {"bits", bits}};
+                {"rot_re", o.rot_re},   {"rot_im", o.rot_im}, {"bits", bits},     {"soft", soft}};
         }
     return reply;
 }
@@ -1380,6 +1384,26 @@ double CombinerChain::navwipe_amplitude(const std::vector<std::complex<double>>&
     for (const cd& v : s)
         sumsq += v * v;
     const cd rot = std::polar(1.0, -0.5 * std::arg(sumsq));
+    // Exported decisions with bit_export_track > 0: each bit against a local phase, -1/2 arg of
+    // the squared sums within +-bit_export_track bits, its sign chained from bit to bit so the
+    // polarity stays continuous. A residual carrier rate turns the window's single phase away
+    // from the bits at its ends; the local phase follows it.
+    std::vector<cd> rot_bit;
+    if (obs && _bit_export_track > 0) {
+        const int n = (int)s.size(), w = _bit_export_track;
+        std::vector<cd> cum(n + 1, cd(0.0, 0.0));
+        for (int k = 0; k < n; ++k)
+            cum[k + 1] = cum[k] + s[k] * s[k];
+        rot_bit.resize(n);
+        cd prev = rot;
+        for (int k = 0; k < n; ++k) {
+            const cd loc = cum[std::min(n, k + w + 1)] - cum[std::max(0, k - w)];
+            cd r = std::polar(1.0, -0.5 * std::arg(loc));
+            if (std::real(r * std::conj(prev)) < 0.0)
+                r = -r;
+            rot_bit[k] = prev = r;
+        }
+    }
     cd deep(0.0, 0.0);
     double noise2 = 0.0; // sum of squared orthogonal (noise) components, one per bit
     if (obs) {           // export the per-bit decisions the wipe is about to apply
@@ -1391,6 +1415,8 @@ double CombinerChain::navwipe_amplitude(const std::vector<std::complex<double>>&
         obs->rot_im = std::imag(rot);
         obs->bits.clear();
         obs->bits.reserve(s.size());
+        obs->soft.clear();
+        obs->soft.reserve(s.size());
     }
     for (size_t bi = 0; bi < s.size(); ++bi) {
         const cd& v = s[bi];
@@ -1398,11 +1424,17 @@ double CombinerChain::navwipe_amplitude(const std::vector<std::complex<double>>&
         const double sgn = std::real(vr) >= 0.0 ? 1.0 : -1.0;
         deep += sgn * v;
         noise2 += std::imag(vr) * std::imag(vr);
-        if (obs && bi < s_bi.size())
-            obs->bits.emplace_back(s_bi[bi], (int8_t)(sgn > 0 ? 1 : -1));
+        if (obs && bi < s_bi.size()) {
+            const double x = rot_bit.empty() ? std::real(vr) : std::real(v * rot_bit[bi]);
+            obs->bits.emplace_back(s_bi[bi], (int8_t)(x >= 0.0 ? 1 : -1));
+            obs->soft.push_back((float)x);
+        }
     }
     const int nb = (int)s.size();
-    const double sigma_bit = std::sqrt(noise2 / (double)nb);    // per-bit noise (1 axis)
+    const double sigma_bit = std::sqrt(noise2 / (double)nb); // per-bit noise (1 axis)
+    if (obs && sigma_bit > 0.0)
+        for (float& x : obs->soft)
+            x = (float)(x / sigma_bit);
     const double noise_sum = sigma_bit * std::sqrt((double)nb); // noise std of the coherent sum
     // SNR = coherent sum / its noise std, i.e. the deep amplitude over its standard error
     // noise_sum/nrec. Choosing each bit's sign rectifies noise to ~sqrt(2 nb / pi), not ~1.

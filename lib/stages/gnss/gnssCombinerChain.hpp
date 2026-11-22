@@ -81,8 +81,9 @@ private:
     /// Per-bit observations from one navwipe evaluation, for the broker's navigation-message
     /// decoders. The bit at index @c bi covers record indices [bi*br - phase, (bi+1)*br - phase)
     /// counted from @c utc_ref, so its start UTC is utc_ref + (bi*br - phase)*rec_dt. Gaps in
-    /// the record stream skip indices. The signs are the +-1 the deep wipe applies; their
-    /// global polarity is arbitrary per emit.
+    /// the record stream skip indices. The signs are the +-1 the deep wipe applies, or with
+    /// bit_export_track each bit's sign against its local phase; their global polarity is
+    /// arbitrary per emit.
     struct NavObs {
         double utc_ref = 0.0; ///< capture UTC of the window's first record
         double rec_dt = 0.0;  ///< median record spacing (s)
@@ -94,6 +95,9 @@ private:
         double rot_re = 1.0;
         double rot_im = 0.0;
         std::vector<std::pair<long long, int8_t>> bits; ///< (bit index, +-1 sign)
+        /// Per bit, parallel to bits: the aligned bit sum's real part over the per-bit noise
+        /// sigma, the soft value whose sign is the bit's.
+        std::vector<float> soft;
     };
 
     /// Nav-bit-wiped deep coherent amplitude from a window of per-record A and capture UTC.
@@ -211,6 +215,9 @@ private:
     /// Publish the nav-bit wipe's per-bit decisions ("nav_obs") in get_status (config
     /// bit_export).
     bool _bit_export = false;
+    /// Half-width, in bits, of the local phase the exported decisions are taken against (config
+    /// bit_export_track); 0 takes them against the window's single phase.
+    int _bit_export_track = 0;
     std::vector<NavObs> _st_nav_obs; ///< last emit's observations per PRN (under _st_mtx)
 
     /// Real-time cost. The derived quantity is the duty cycle, wall-clock seconds in ingest and
