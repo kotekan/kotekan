@@ -54,7 +54,11 @@ int main(int argc, char** argv) {
     // GNSS_TEST_IQ runs the checks on I/Q input folded in time order (gnss::Channelization),
     // with the carrier below the tuned frequency.
     const bool iq = getenv("GNSS_TEST_IQ") != nullptr;
-    const double fs = 5.0e6, f_off = iq ? -1.25e6 : 1.25e6;
+    // GNSS_TEST_FS and GNSS_TEST_FOFF (Hz) set the sample rate and carrier offset, e.g. the
+    // bladeRF's I/Q at 122.88e6 and L5 at -48.55e6, with N = 64 and n_hops = 1920.
+    const double fs = getenv("GNSS_TEST_FS") ? atof(getenv("GNSS_TEST_FS")) : 5.0e6;
+    const double f_off =
+        getenv("GNSS_TEST_FOFF") ? atof(getenv("GNSS_TEST_FOFF")) : (iq ? -1.25e6 : 1.25e6);
     const int N = (argc > 2) ? atoi(argv[2]) : 20;
     const int taps = 4;
     const int prn = 19;
