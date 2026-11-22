@@ -1311,15 +1311,19 @@ def dr_can_seed(ctx, prn):
 
 def dr_owns_unhinted(ctx, prn):
     """--hint-skip-dr: the search no longer hints prn and the model owns its seed, because it
-    is locked (fleet q >= lock_q) and the model can seed it (dr_can_seed). An unlocked
-    satellite stays hinted, so the search can find it and its detections keep the clock
-    solves fresh."""
-    return (
-        bool(getattr(ctx.args, "hint_skip_dr", False))
-        and ctx.args.lock_q > 0.0
-        and ctx.hold.q.get(prn, 0.0) >= ctx.args.lock_q
-        and dr_can_seed(ctx, prn)
-    )
+    is locked and the model can seed it (dr_can_seed). Locked is dr_seed's test: fleet q >=
+    lock_q or prompt power >= lock_prompt_hold x the noise probes'. A cycle with no fleet
+    reading keeps a satellite the model already owns: a gap in the data is not a lost lock,
+    and re-hinting it hands it back to the search. An unlocked satellite stays hinted, so the
+    search can find it and its detections keep the clock solves fresh."""
+    if not getattr(ctx.args, "hint_skip_dr", False) or not dr_can_seed(ctx, prn):
+        return False
+    q, p = ctx.hold.q.get(prn), ctx.hold.prev.get(prn)
+    if q is None and p is None:
+        return prn in ctx.dr_state["seeded"]
+    return (ctx.args.lock_q > 0.0 and (q or 0.0) >= ctx.args.lock_q) or (
+        p or 0.0
+    ) >= ctx.args.lock_prompt_hold
 
 
 def dr_joint_clk(ctx):

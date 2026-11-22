@@ -53,6 +53,7 @@ def make_ctx():
             joint_min_sats=4,
             joint_max_rate_ppm=0.01,
             lock_q=2.2,
+            lock_prompt_hold=3.0,
         ),
         pred={p: (-1000.0 + p, 0.0, 30.0, 2.2e7, 0.0) for p in (5, 7, 9, 11)},
         up=None,
@@ -62,7 +63,7 @@ def make_ctx():
         drp=_Obj(pd=pd, tag="G"),
         dr_min_prn=1,
         dr_untrusted={7: "model residual"},
-        hold=_Obj(q={5: 3.0, 7: 3.0, 9: 3.0, 11: 3.0}),
+        hold=_Obj(q={5: 3.0, 7: 3.0, 9: 3.0, 11: 3.0}, prev={}),
         detectors=["d0"],
         t0=T0,
     )
@@ -168,6 +169,17 @@ def main():
     ctx = make_ctx()
     ctx.hold.q[5] = 1.4
     check(hinted(ctx)[0] == [5, 7, 9, 11], "an unlocked PRN stays hinted")
+    ctx = make_ctx()
+    ctx.hold.q[5], ctx.hold.prev[5] = 1.4, 8.0
+    check(
+        hinted(ctx)[0] == [7, 9, 11], "q under lock_q but the prompt held: not hinted"
+    )
+    ctx = make_ctx()
+    del ctx.hold.q[5]
+    ctx.dr_state["seeded"] = set()
+    check(hinted(ctx)[0] == [5, 7, 9, 11], "no fleet reading, not yet owned: hinted")
+    ctx.dr_state["seeded"] = {5}
+    check(hinted(ctx)[0] == [7, 9, 11], "no fleet reading, already owned: kept")
     ctx = make_ctx()
     ctx.args.hint_skip_dr = False
     check(hinted(ctx)[0] == [5, 7, 9, 11], "off: every PRN is hinted")
