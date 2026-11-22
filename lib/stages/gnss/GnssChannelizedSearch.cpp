@@ -102,6 +102,10 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
     _acquire_fine_step = std::max(1, config.get_default<int>(unique_name, "acquire_fine_step", 1));
     _nh_hint_span = std::max(0, config.get_default<int>(unique_name, "nh_hint_span", 1));
     _hint_ttl_s = config.get_default<double>(unique_name, "hint_ttl_s", 8.0);
+    _pass_interval_hops = std::llround(
+        config.get_default<double>(unique_name, "pass_interval_s", 0.0) * _sample_rate / _fft_len);
+    // The first snapshot starts at once.
+    _snap_start_hop = -_pass_interval_hops;
     // Retired knobs. The generated config still sets each one to the only behaviour left (every
     // hinted PRN on every pass, unhinted PRNs skipped, the pair-sum plane and the period-label
     // vote, the bank's +1 code-Doppler sign), so another value is refused rather than ignored.
@@ -899,7 +903,7 @@ void GnssChannelizedSearch::main_thread() {
         }
         const long long frame_first_hop = mi->sample_seq / _fft_len;
 
-        if (!filling) {
+        if (!filling && frame_first_hop - _snap_start_hop >= _pass_interval_hops) {
             std::lock_guard<std::mutex> lk(_m);
             if (!_worker_busy) {
                 filling = true;

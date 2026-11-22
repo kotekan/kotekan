@@ -61,6 +61,9 @@
  * @conf hold_snapshots   Int (default 5). Missed snapshots a detection survives.
  * @conf doppler_margin_hz Double (default 5000). Covering-channel selection band.
  * @conf hint_ttl_s       Double (default 8). Age at which a hint counts as absent.
+ * @conf pass_interval_s  Double (default 0). Least time between the starts of two snapshots, in
+ *                        data time. 0 starts the next one as soon as the last pass ends, so the
+ *                        search fills whatever GPU time the trackers leave.
  * @conf nh_search        Bool (default false). Search every secondary-code alignment.
  * @conf nh_hint_span     Int (default 1). Alignments scanned either side of a hinted one.
  * @conf acquire_threads  Int (default 1). Threads for the CPU acquire and the CPU refine.
@@ -212,6 +215,7 @@ private:
     int _last_cov_n = -1;         ///< last logged covering set (log once per set, not snapshot)
     int _last_cov_first = -1, _last_cov_last = -1;
     double _hint_ttl_s = 8.0; ///< hint age, s, beyond which it counts as absent (<= 0: never)
+    long long _pass_interval_hops = 0; ///< pass_interval_s in hops
 
     std::unique_ptr<gnss::ChannelizedReplicaBank> _replica;
     gnss::AcquireWorkspace _acq_ws;

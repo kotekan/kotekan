@@ -150,6 +150,9 @@ l5_search:
     acquire_snr: 5
     acquire_fine_step: 2
     hint_ttl_s: 30
+    # One pass a second: back to back, the passes took ~450 ms/s of GPU and, with seven
+    # trackers, the valve dropped 30-45% of frames.
+    pass_interval_s: 1.0
     use_cuda_acquire: true
 # GuoWang: every code in the satellite library (PRN = G2' phase + 1), and PRNs 1 to 3, codes no
 # satellite carries, as dark noise probes. The window is one 2 ms frame, whose ranging half
@@ -178,6 +181,9 @@ gw_search:
     acquire_snr: 6
     acquire_fine_step: 2
     hint_ttl_s: 30
+    # One pass a second: back to back, the passes took ~450 ms/s of GPU and, with seven
+    # trackers, the valve dropped 30-45% of frames.
+    pass_interval_s: 1.0
     use_cuda_acquire: true
 
 # ---- Tracker ----
