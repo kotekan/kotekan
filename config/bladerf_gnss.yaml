@@ -767,6 +767,17 @@ b3i_combine:
     n_prn: 31
     integration_length: 200
     record_export: 64
+# B3I's D1 bits (50 bps; the NH20 is in the tracker code) for nav_decode's BDS_B3I_D1: a 2 s
+# window, each bit decided against the phase of the +-5 bits (100 ms) around it, as the
+# carrier residual here runs to a few tenths of a Hz.
+b3i_bits:
+    kotekan_stage: GnssCoherentCombiner
+    in_bufs: [b3i_rec_buf]
+    n_prn: 31
+    integration_length: 2000
+    navwipe_bit_records: 20
+    bit_export: true
+    bit_export_track: 5
 
 e6_assemble:
     kotekan_stage: GnssGpuRecordAssemble

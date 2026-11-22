@@ -37,6 +37,7 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
+import bds_d1_predictor  # noqa: E402
 import decode_health  # noqa: E402
 import gnss_ephemeris as ge  # noqa: E402
 from gnss_broker import sky  # noqa: E402
@@ -93,6 +94,13 @@ DECODERS = {
         "Bcnav3Predictor",
         sky._bcnav3_brdc_xcheck,
         "t_oe",
+    ),
+    "BDS_B3I_D1": (
+        "C",
+        "bds_d1_predictor",
+        "D1Predictor",
+        bds_d1_predictor.brdc_xcheck,
+        "toe_sow",
     ),
 }
 
