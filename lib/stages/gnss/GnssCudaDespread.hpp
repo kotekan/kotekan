@@ -214,6 +214,22 @@ public:
                          void* d_energy_out /*double [4*specs][nchan]*/, void* stream,
                          bool conjugate = false);
 
+    /// @ref enqueue_batch_nm for this chain and @p data, a data component despread at this
+    /// chain's seeds (cudaGnssTrack's @c data block), in one waveform launch: the data prompt is
+    /// gathered in this chain's chip walk (gnss_cuda::launch_waveform_pair), then each chain is
+    /// correlated into its own outputs. Both engines must have @ref set_epl_from_prompt, the
+    /// same channels and record length, and @p data_specs must hold @p specs' slots in order;
+    /// otherwise nothing is enqueued and false is returned, for the caller to enqueue the two
+    /// chains separately.
+    bool enqueue_batch_nm_pair(GnssCudaDespread& data, const void* d_frame,
+                               const void* d_chan_scale, const int* d_chan_ids, int n_elem,
+                               int elem_stride, int frame_chan_stride,
+                               long long window_start_sample, const std::vector<Spec>& specs,
+                               const std::vector<Spec>& data_specs, void* d_wave, void* d_jobs_slot,
+                               void* d_corr_out, void* d_energy_out, void* d_wave_data,
+                               void* d_jobs_data, void* d_corr_data, void* d_energy_data,
+                               void* stream, bool conjugate = false);
+
     /// Replicas only: the first half of @ref enqueue_batch_nm (same build_jobs, same
     /// launch_waveform) with no correlation. cudaGnssInject uses it: the correlation happens
     /// later in the N^2 kernel, against these waveforms quantized into synthetic 4+4b inputs by

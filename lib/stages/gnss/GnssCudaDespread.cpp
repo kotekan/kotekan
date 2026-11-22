@@ -809,6 +809,23 @@ struct GnssCudaDespread::Impl {
                                cudaMemcpyHostToDevice, st),
                "rot upload");
     }
+
+    /// The N x M path's kernel parameters for a record starting at @p window_start_sample.
+    gnss_cuda::DespreadParams nm_params(long long window_start_sample, bool conjugate) const {
+        gnss_cuda::DespreadParams par;
+        par.phi_half = use_fp16 ? 1 : 0;                   // __half2 gather (waveform kernels only)
+        par.n0 = window_start_sample + bank.fft_len() - 1; // hoprate_stream's per-hop reference
+        par.fft_len = bank.fft_len();
+        par.n_hops = n_hops;
+        par.Lf = Lf;
+        // The correlator reads the frame in its native [hop][chan][elem] order through
+        // frame_chan_stride and elem_stride; data_stride does not apply.
+        par.data_stride = n_hops;
+        par.conj_data = conjugate ? 1 : 0;
+        par.complex_input = bank.channelization().complex_input ? 1 : 0;
+        par.rot_prompt_only = epl_rot ? 1 : 0; // the correlator rotates E and L from P
+        return par;
+    }
 };
 
 GnssCudaDespread::GnssCudaDespread(gnss::ChannelizedReplicaBank& bank, int n_prn,
@@ -1033,19 +1050,7 @@ int GnssCudaDespread::enqueue_batch_nm(const void* d_frame, const void* d_chan_s
     const int n_spec = (int)specs.size();
     const cudaStream_t st = (cudaStream_t)stream;
     build_jobs(specs, d_jobs_slot, window_start_sample, stream);
-
-    gnss_cuda::DespreadParams par;
-    par.phi_half = im.use_fp16 ? 1 : 0;                   // __half2 gather (waveform kernels only)
-    par.n0 = window_start_sample + im.bank.fft_len() - 1; // hoprate_stream's per-hop reference
-    par.fft_len = im.bank.fft_len();
-    par.n_hops = im.n_hops;
-    par.Lf = im.Lf;
-    // The correlator reads the frame in its native [hop][chan][elem] order through
-    // frame_chan_stride and elem_stride; data_stride does not apply.
-    par.data_stride = im.n_hops;
-    par.conj_data = conjugate ? 1 : 0;
-    par.complex_input = im.bank.channelization().complex_input ? 1 : 0;
-    par.rot_prompt_only = im.epl_rot ? 1 : 0; // the correlator rotates E and L from P
+    const gnss_cuda::DespreadParams par = im.nm_params(window_start_sample, conjugate);
 
     // The replicas are generated once and reused for all n_elem antennas, which is why this
     // path splits the fused kernel. Both launches are on one stream, so the correlator starts
@@ -1061,6 +1066,46 @@ int GnssCudaDespread::enqueue_batch_nm(const void* d_frame, const void* d_chan_s
            frame_chan_stride, par, (double2*)d_corr_out, st),
        "launch correlate NxM");
     return 4 * n_spec;
+}
+
+bool GnssCudaDespread::enqueue_batch_nm_pair(
+    GnssCudaDespread& data, const void* d_frame, const void* d_chan_scale, const int* d_chan_ids,
+    int n_elem, int elem_stride, int frame_chan_stride, long long window_start_sample,
+    const std::vector<Spec>& specs, const std::vector<Spec>& data_specs, void* d_wave,
+    void* d_jobs_slot, void* d_corr_out, void* d_energy_out, void* d_wave_data, void* d_jobs_data,
+    void* d_corr_data, void* d_energy_data, void* stream, bool conjugate) {
+    Impl& im = *_impl;
+    Impl& dm = *data._impl;
+    if (!im.epl_rot || !dm.epl_rot || im.n_chan != dm.n_chan || im.n_hops != dm.n_hops
+        || specs.size() != data_specs.size())
+        return false;
+    for (size_t i = 0; i < specs.size(); ++i)
+        if (specs[i].p != data_specs[i].p)
+            return false;
+    if (specs.empty())
+        return true;
+    const int n_spec = (int)specs.size();
+    const cudaStream_t st = (cudaStream_t)stream;
+    build_jobs(specs, d_jobs_slot, window_start_sample, stream);
+    data.build_jobs(data_specs, d_jobs_data, window_start_sample, stream);
+    const gnss_cuda::DespreadParams par = im.nm_params(window_start_sample, conjugate);
+
+    ck(gnss_cuda::launch_waveform_pair(im.d_code, (gnss_cuda::DespreadJob*)d_jobs_slot, dm.d_code,
+                                       (gnss_cuda::DespreadJob*)d_jobs_data, n_spec, im.n_chan, par,
+                                       im.d_rot, (float2*)d_wave, (double*)d_energy_out,
+                                       (float2*)d_wave_data, (double*)d_energy_data, st),
+       "launch waveform pair (NxM)");
+    ck(gnss_cuda::launch_correlate_nm(
+           (const unsigned char*)d_frame, (const float*)d_chan_scale, d_chan_ids,
+           (const float2*)d_wave, (gnss_cuda::DespreadJob*)d_jobs_slot, im.d_rot, n_spec, im.n_chan,
+           n_elem, elem_stride, frame_chan_stride, par, (double2*)d_corr_out, st),
+       "launch correlate NxM");
+    ck(gnss_cuda::launch_correlate_nm(
+           (const unsigned char*)d_frame, (const float*)d_chan_scale, d_chan_ids,
+           (const float2*)d_wave_data, (gnss_cuda::DespreadJob*)d_jobs_data, dm.d_rot, n_spec,
+           im.n_chan, n_elem, elem_stride, frame_chan_stride, par, (double2*)d_corr_data, st),
+       "launch correlate NxM (data)");
+    return true;
 }
 
 int GnssCudaDespread::enqueue_waveform(long long window_start_sample,

@@ -73,6 +73,25 @@ cudaError_t launch_waveform(const int8_t* code, const DespreadJob* jobs, int n_j
                             const DespreadParams& p, const float* rot, float2* wave, double* energy,
                             cudaStream_t stream);
 
+/**
+ * @brief launch_waveform for a chain and its data component in one launch.
+ *
+ * The data component (cudaGnssTrack's @c data block) shares the chain's code timing, carrier
+ * and channels, so its prompt is gathered in the same chip walk as the chain's (chip_gather3's
+ * DATA), sharing the tap boundaries and table loads; only the code chips differ. @p jobs2 must
+ * pair @p jobs slot for slot (GnssCudaDespread::build_jobs from the same Specs on the data
+ * chain): only their code offset, code length and head length are read, so the data replica
+ * uses the chain's tables and code phase reduced mod the data code length, which must divide
+ * the chain's. Requires @p rot and @c p.rot_prompt_only; @p wave2 and @p energy2 are laid out
+ * as @p wave and @p energy, with only the P row synthesised and the E and L energy rows equal
+ * to P's. Returns cudaErrorInvalidValue without launching otherwise.
+ */
+cudaError_t launch_waveform_pair(const int8_t* code, const DespreadJob* jobs, const int8_t* code2,
+                                 const DespreadJob* jobs2, int n_job, int n_chan,
+                                 const DespreadParams& p, const float* rot, float2* wave,
+                                 double* energy, float2* wave2, double* energy2,
+                                 cudaStream_t stream);
+
 /// Host-side float2 -> __half2 conversion of @c n Phi entries into @c dst (n * 4 bytes); void*
 /// keeps __half2 out of g++-compiled callers. GnssCudaDespread falls back to it when built
 /// without F16C/AVX.

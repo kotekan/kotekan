@@ -22,6 +22,7 @@
 #include <complex>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <cuda_runtime.h>
 #include <numeric>
 #include <vector>
@@ -575,6 +576,82 @@ int main(int argc, char** argv) {
                     CK(cudaFree(d_cmap));
                     CK(cudaFree(d_s4));
                     CK(cudaFree(d_s2));
+                }
+                // --- A chain and its data component in one launch (launch_waveform_pair) ---
+                // The data code is the first half of a code made of two equal halves, so at half
+                // the chain's length it exercises the index reduction: its prompt must equal that
+                // doubled code's own prompt-only launch bit for bit, and the chain's prompt rows
+                // and energies must equal its own launch's.
+                if (code8.size() % 2 == 0) {
+                    const size_t L = code8.size(), H = L / 2;
+                    std::vector<int8_t> full(L);
+                    for (size_t i = 0; i < L; ++i) // differs from the chain's code
+                        full[i] = (int8_t)(code8[i % H] * (((i % H) % 3) ? 1 : -1));
+                    std::vector<gnss_cuda::DespreadJob> half = jobs;
+                    for (auto& j : half)
+                        j.code_len = (int)H;
+                    int8_t* d_full = nullptr;
+                    gnss_cuda::DespreadJob* d_half = nullptr;
+                    const size_t nw = (size_t)3 * n_spec * n_chan * n_hops;
+                    const size_t ne = (size_t)4 * n_spec * n_chan;
+                    float2* d_w[4];
+                    double* d_e[4];
+                    CK(cudaMalloc(&d_full, L));
+                    CK(cudaMemcpy(d_full, full.data(), L, cudaMemcpyHostToDevice));
+                    CK(cudaMalloc(&d_half, half.size() * sizeof(gnss_cuda::DespreadJob)));
+                    CK(cudaMemcpy(d_half, half.data(), half.size() * sizeof(gnss_cuda::DespreadJob),
+                                  cudaMemcpyHostToDevice));
+                    for (int k = 0; k < 4; ++k) {
+                        CK(cudaMalloc(&d_w[k], nw * sizeof(float2)));
+                        CK(cudaMalloc(&d_e[k], ne * sizeof(double)));
+                    }
+                    // 0, 1: the chain and the doubled code alone; 2, 3: the pair
+                    CK(gnss_cuda::launch_waveform(d_code, d_jobs, n_spec, n_chan, pp, d_rot, d_w[0],
+                                                  d_e[0], 0));
+                    CK(gnss_cuda::launch_waveform(d_full, d_jobs, n_spec, n_chan, pp, d_rot, d_w[1],
+                                                  d_e[1], 0));
+                    CK(gnss_cuda::launch_waveform_pair(d_code, d_jobs, d_full, d_half, n_spec,
+                                                       n_chan, pp, d_rot, d_w[2], d_e[2], d_w[3],
+                                                       d_e[3], 0));
+                    CK(cudaDeviceSynchronize());
+                    std::vector<float2> hw[4];
+                    std::vector<double> he[4];
+                    for (int k = 0; k < 4; ++k) {
+                        hw[k].resize(nw);
+                        he[k].resize(ne);
+                        CK(cudaMemcpy(hw[k].data(), d_w[k], nw * sizeof(float2),
+                                      cudaMemcpyDeviceToHost));
+                        CK(cudaMemcpy(he[k].data(), d_e[k], ne * sizeof(double),
+                                      cudaMemcpyDeviceToHost));
+                    }
+                    size_t bad_w = 0, bad_e = 0;
+                    for (int k = 0; k < 2; ++k) {
+                        for (int b = 0; b < n_spec; ++b) { // the P rows, the only ones written
+                            const size_t o = (size_t)(3 * b + 1) * n_chan * n_hops;
+                            bad_w += std::memcmp(&hw[k][o], &hw[k + 2][o],
+                                                 (size_t)n_chan * n_hops * sizeof(float2))
+                                     != 0;
+                        }
+                        bad_e +=
+                            std::memcmp(he[k].data(), he[k + 2].data(), ne * sizeof(double)) != 0;
+                    }
+                    // the data code must change the prompt, or the check would pass vacuously
+                    const bool differs = std::memcmp(&hw[0][(size_t)n_chan * n_hops],
+                                                     &hw[1][(size_t)n_chan * n_hops],
+                                                     (size_t)n_chan * n_hops * sizeof(float2))
+                                         != 0;
+                    const bool pair_ok = bad_w == 0 && bad_e == 0 && differs;
+                    printf("Chain + data component in one launch vs each alone: prompt rows %zu "
+                           "differ, energies %zu differ (both exact; data code half the chain's) "
+                           "%s\n",
+                           bad_w, bad_e, pair_ok ? "OK" : "FAIL");
+                    split_ok = split_ok && pair_ok;
+                    for (int k = 0; k < 4; ++k) {
+                        CK(cudaFree(d_w[k]));
+                        CK(cudaFree(d_e[k]));
+                    }
+                    CK(cudaFree(d_half));
+                    CK(cudaFree(d_full));
                 }
                 CK(cudaFree(d_rot));
             }

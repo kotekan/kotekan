@@ -27,13 +27,20 @@ using gnss_cuda::cmulf;
 /// their own chip walks (see launch_waveform), and their energy rows equal the prompt's. With
 /// p.rot_prompt_only the E and L rows are not written.
 /// IMAGE_A false skips the zero phiA of I/Q input (DespreadParams::complex_input).
-template<int MAXT, class PHI = float2, bool ROT = false, bool IMAGE_A = true>
+/// DATA (with ROT): also the data component's prompt, from @p code2 at @p jobs2's code offset
+/// and length, gathered in the same chip walk (chip_gather3); @p wave2 and @p energy2 are laid
+/// out as @p wave and @p energy, and only their prompt rows are synthesised.
+template<int MAXT, class PHI = float2, bool ROT = false, bool IMAGE_A = true, bool DATA = false>
 __global__ __launch_bounds__(MAXT) void
 gnss_waveform_kernel(const int8_t* __restrict__ code,
                      const gnss_cuda::DespreadJob* __restrict__ jobs, gnss_cuda::DespreadParams p,
                      const float* __restrict__ rot, // ROT only: [n_job][nchan]
                      float2* __restrict__ wave,     // [3*n_job][nchan][n_hops]
-                     double* __restrict__ energy) { // [4*n_job][nchan]
+                     double* __restrict__ energy,   // [4*n_job][nchan]
+                     const int8_t* __restrict__ code2,
+                     const gnss_cuda::DespreadJob* __restrict__ jobs2,
+                     float2* __restrict__ wave2, double* __restrict__ energy2) {
+    static_assert(!DATA || ROT, "the data prompt rides the prompt-only walk");
     const int b = blockIdx.x;
     const int ci = blockIdx.y;
     const int m = threadIdx.x;
@@ -42,6 +49,10 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
 
     double e[4] = {0.0, 0.0, 0.0, 0.0}; // E, P, L, P_HEAD
     const bool covered = (job.chan_mask >> ci) & 1ULL;
+    double e2[2] = {0.0, 0.0}; // DATA: P, P_HEAD
+    const int off2 = DATA ? jobs2[b].code_offset : 0;
+    const int len2 = DATA ? jobs2[b].code_len : 1;
+    const int m_head2 = DATA ? jobs2[b].m_head : 0;
 
     // Hoisted as in the fused kernel: invariant across hops and trials.
     const int ks = (int)job.inv_cps;
@@ -68,9 +79,13 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
         // channel's rows, and zero is the correct replica for a channel this PRN does not occupy.
         if (!covered) {
 #pragma unroll
-            for (int t = 0; t < 3; ++t)
+            for (int t = 0; t < 3; ++t) {
                 wave[((size_t)(3 * b + t) * n_chan + ci) * p.n_hops + mh] =
                     make_float2(0.f, 0.f);
+                if (DATA)
+                    wave2[((size_t)(3 * b + t) * n_chan + ci) * p.n_hops + mh] =
+                        make_float2(0.f, 0.f);
+            }
             continue;
         }
 
@@ -90,10 +105,10 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
         if (ROT) {
             // The prompt's walk alone, the same arithmetic as trial 0 below; E and L are its
             // per-channel rotations.
-            float2 sA[1], sB[1];
-            gnss_cuda::chip_gather3<PHI, 1, IMAGE_A>(inv_cps, job.code_offset, job.code_len,
-                                                     job.n_chips, job.d_first, p.Lf, code, phiA,
-                                                     phiB, ks, kf, chip0, phi, sA, sB);
+            float2 sA[1], sB[1], sA2, sB2;
+            gnss_cuda::chip_gather3<PHI, 1, IMAGE_A, DATA>(
+                inv_cps, job.code_offset, job.code_len, job.n_chips, job.d_first, p.Lf, code, phiA,
+                phiB, ks, kf, chip0, phi, sA, sB, code2, off2, len2, &sA2, &sB2);
             const float2 t1 = cmulf(pa, sA[0]);
             const float2 t2 = cmulf(pb, sB[0]);
             const float2 r = make_float2(0.5f * (t1.x + t2.x), 0.5f * (t1.y + t2.y));
@@ -107,6 +122,16 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
             e[1] += ee;
             if (in_head)
                 e[3] += ee;
+            if (DATA) {
+                const float2 u1 = cmulf(pa, sA2);
+                const float2 u2 = cmulf(pb, sB2);
+                const float2 r2 = make_float2(0.5f * (u1.x + u2.x), 0.5f * (u1.y + u2.y));
+                wave2[o + row_stride] = r2;
+                const double ee2 = (double)(r2.x * r2.x + r2.y * r2.y);
+                e2[0] += ee2;
+                if (mh < m_head2)
+                    e2[1] += ee2;
+            }
             continue;
         }
 
@@ -156,6 +181,31 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
         }
         if (m == 0)
             energy[(size_t)(4 * b + j) * n_chan + ci] = sh_e[0];
+    }
+    if (!DATA)
+        return;
+    // The data prompt's energy, as the prompt's above: E and L rows equal P's.
+    for (int j = 0; j < 2; ++j) {
+        if (j == 1 && m_head2 == 0) {
+            if (m == 0)
+                energy2[(size_t)(4 * b + 3) * n_chan + ci] = 0.0;
+            break;
+        }
+        __syncthreads();
+        sh_e[m] = e2[j];
+        __syncthreads();
+        for (int off = blockDim.x / 2; off > 0; off >>= 1) {
+            if (m < off)
+                sh_e[m] += sh_e[m + off];
+            __syncthreads();
+        }
+        if (m == 0) {
+            if (j == 1)
+                energy2[(size_t)(4 * b + 3) * n_chan + ci] = sh_e[0];
+            else
+                for (int t = 0; t < 3; ++t)
+                    energy2[(size_t)(4 * b + t) * n_chan + ci] = sh_e[0];
+        }
     }
 }
 
@@ -259,53 +309,76 @@ int block_ceiling(const void* fn) {
     return cudaFuncGetAttributes(&at, fn) == cudaSuccess ? at.maxThreadsPerBlock : 256;
 }
 
-template<class PHI, bool ROT, bool IMAGE_A>
+/// The data component's side of a paired launch (launch_waveform_pair); null pointers for one
+/// chain.
+struct WaveData {
+    const int8_t* code = nullptr;
+    const gnss_cuda::DespreadJob* jobs = nullptr;
+    float2* wave = nullptr;
+    double* energy = nullptr;
+};
+
+template<class PHI, bool ROT, bool IMAGE_A, bool DATA>
 cudaError_t launch_waveform_t(const int8_t* code, const gnss_cuda::DespreadJob* jobs, dim3 grid,
                               int threads, const gnss_cuda::DespreadParams& p, const float* rot,
-                              float2* wave, double* energy, cudaStream_t stream) {
+                              float2* wave, double* energy, const WaveData& w2,
+                              cudaStream_t stream) {
     if (threads > 512) {
         static const int k10 =
-            block_ceiling((const void*)gnss_waveform_kernel<1024, PHI, ROT, IMAGE_A>);
+            block_ceiling((const void*)gnss_waveform_kernel<1024, PHI, ROT, IMAGE_A, DATA>);
         if (threads <= k10) {
-            gnss_waveform_kernel<1024, PHI, ROT, IMAGE_A>
-                <<<grid, threads, 0, stream>>>(code, jobs, p, rot, wave, energy);
+            gnss_waveform_kernel<1024, PHI, ROT, IMAGE_A, DATA><<<grid, threads, 0, stream>>>(
+                code, jobs, p, rot, wave, energy, w2.code, w2.jobs, w2.wave, w2.energy);
             return cudaGetLastError();
         }
         threads = 512;
     }
-    static const int k5 = block_ceiling((const void*)gnss_waveform_kernel<512, PHI, ROT, IMAGE_A>);
+    static const int k5 =
+        block_ceiling((const void*)gnss_waveform_kernel<512, PHI, ROT, IMAGE_A, DATA>);
     if (threads > k5)
         threads = k5;
-    gnss_waveform_kernel<512, PHI, ROT, IMAGE_A>
-        <<<grid, threads, 0, stream>>>(code, jobs, p, rot, wave, energy);
+    gnss_waveform_kernel<512, PHI, ROT, IMAGE_A, DATA><<<grid, threads, 0, stream>>>(
+        code, jobs, p, rot, wave, energy, w2.code, w2.jobs, w2.wave, w2.energy);
     return cudaGetLastError();
+}
+
+template<class PHI, bool IMAGE_A>
+cudaError_t launch_waveform_r(const int8_t* code, const gnss_cuda::DespreadJob* jobs, dim3 grid,
+                              int threads, const gnss_cuda::DespreadParams& p, const float* rot,
+                              float2* wave, double* energy, const WaveData& w2,
+                              cudaStream_t stream) {
+    if (w2.code)
+        return launch_waveform_t<PHI, true, IMAGE_A, true>(code, jobs, grid, threads, p, rot,
+                                                            wave, energy, w2, stream);
+    return rot ? launch_waveform_t<PHI, true, IMAGE_A, false>(code, jobs, grid, threads, p, rot,
+                                                               wave, energy, w2, stream)
+               : launch_waveform_t<PHI, false, IMAGE_A, false>(code, jobs, grid, threads, p, rot,
+                                                                wave, energy, w2, stream);
 }
 
 template<bool IMAGE_A>
 cudaError_t launch_waveform_a(const int8_t* code, const gnss_cuda::DespreadJob* jobs, dim3 grid,
                               int threads, const gnss_cuda::DespreadParams& p, const float* rot,
-                              float2* wave, double* energy, cudaStream_t stream) {
+                              float2* wave, double* energy, const WaveData& w2,
+                              cudaStream_t stream) {
     // p.phi_half selects the __half2 gather (despite job.phiA/phiB's float2 type); the tables
     // the jobs point at must already be half storage, which GnssCudaDespread::ensure_phi
     // guarantees.
     if (p.phi_half)
-        return rot ? launch_waveform_t<__half2, true, IMAGE_A>(code, jobs, grid, threads, p, rot,
-                                                               wave, energy, stream)
-                   : launch_waveform_t<__half2, false, IMAGE_A>(code, jobs, grid, threads, p, rot,
-                                                                wave, energy, stream);
-    return rot ? launch_waveform_t<float2, true, IMAGE_A>(code, jobs, grid, threads, p, rot, wave,
-                                                          energy, stream)
-               : launch_waveform_t<float2, false, IMAGE_A>(code, jobs, grid, threads, p, rot, wave,
-                                                           energy, stream);
+        return launch_waveform_r<__half2, IMAGE_A>(code, jobs, grid, threads, p, rot, wave,
+                                                   energy, w2, stream);
+    return launch_waveform_r<float2, IMAGE_A>(code, jobs, grid, threads, p, rot, wave, energy, w2,
+                                              stream);
 }
 
 } // namespace
 
 namespace gnss_cuda {
 
-cudaError_t launch_waveform(const int8_t* code, const DespreadJob* jobs, int n_job, int n_chan,
-                            const DespreadParams& p, const float* rot, float2* wave,
-                            double* energy, cudaStream_t stream) {
+namespace {
+cudaError_t launch_waveform_w(const int8_t* code, const DespreadJob* jobs, int n_job, int n_chan,
+                              const DespreadParams& p, const float* rot, float2* wave,
+                              double* energy, const WaveData& w2, cudaStream_t stream) {
     int threads = p.n_hops < WAVE_THREADS ? p.n_hops : WAVE_THREADS;
     // The shared reduction tree halves blockDim.x, so it must be a power of two.
     int pow2 = 1;
@@ -313,9 +386,28 @@ cudaError_t launch_waveform(const int8_t* code, const DespreadJob* jobs, int n_j
         pow2 *= 2;
     threads = pow2;
     const dim3 grid(n_job, n_chan);
-    return p.complex_input
-               ? launch_waveform_a<false>(code, jobs, grid, threads, p, rot, wave, energy, stream)
-               : launch_waveform_a<true>(code, jobs, grid, threads, p, rot, wave, energy, stream);
+    return p.complex_input ? launch_waveform_a<false>(code, jobs, grid, threads, p, rot, wave,
+                                                      energy, w2, stream)
+                           : launch_waveform_a<true>(code, jobs, grid, threads, p, rot, wave,
+                                                     energy, w2, stream);
+}
+} // namespace
+
+cudaError_t launch_waveform(const int8_t* code, const DespreadJob* jobs, int n_job, int n_chan,
+                            const DespreadParams& p, const float* rot, float2* wave,
+                            double* energy, cudaStream_t stream) {
+    return launch_waveform_w(code, jobs, n_job, n_chan, p, rot, wave, energy, WaveData{}, stream);
+}
+
+cudaError_t launch_waveform_pair(const int8_t* code, const DespreadJob* jobs, const int8_t* code2,
+                                 const DespreadJob* jobs2, int n_job, int n_chan,
+                                 const DespreadParams& p, const float* rot, float2* wave,
+                                 double* energy, float2* wave2, double* energy2,
+                                 cudaStream_t stream) {
+    if (!rot || !p.rot_prompt_only || !code2 || !jobs2)
+        return cudaErrorInvalidValue;
+    return launch_waveform_w(code, jobs, n_job, n_chan, p, rot, wave, energy,
+                             WaveData{code2, jobs2, wave2, energy2}, stream);
 }
 
 void phi_to_half(const float2* src, void* dst, size_t n) {

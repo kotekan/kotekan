@@ -84,14 +84,26 @@ public:
 private:
     gnss::TrackChain& chain();
 
-    /// Build chain @p C's frame from the frame's @p seeds and @p trim_now: the control block in
-    /// @p stage, copied to @p d_out after the despread of each record into it. Returns the
-    /// frame's jobs, and in @p n_active the slots with a job in the first record.
-    int enqueue_frame(gnss::TrackChain& C, char* stage, char* d_out, void* d_jobs,
-                      const std::vector<gnss::TrackChain::Seed>& seeds,
-                      const std::vector<double>& trim_now, long long hop0_frame,
-                      const unsigned char* d_frame, const float* d_chan_scale,
-                      const int* d_chan_ids, void* d_wave, cudaStream_t stream, int& n_active);
+    /// One chain's frame: its control block staging, device output, jobs, seeds and replica
+    /// scratch, and the jobs and active slots enqueue_frame counts into it.
+    struct ChainFrame {
+        gnss::TrackChain* C;
+        char* stage;
+        char* d_out;
+        void* d_jobs;
+        const std::vector<gnss::TrackChain::Seed>* seeds;
+        void* d_wave;
+        int n_jobs = 0;
+        int n_active = 0;
+    };
+
+    /// Build the frame of pilot @p P, and of its data component @p D when non-null, from their
+    /// seeds and @p trim_now: each control block in its stage, copied to its d_out after the
+    /// despread of each record into it. A record whose two chains pair slot for slot
+    /// (GnssCudaDespread::enqueue_batch_nm_pair) synthesises both replicas in one launch.
+    void enqueue_frame(ChainFrame& P, ChainFrame* D, const std::vector<double>& trim_now,
+                       long long hop0_frame, const unsigned char* d_frame,
+                       const float* d_chan_scale, const int* d_chan_ids, cudaStream_t stream);
 
     const std::string _gpu_mem_input;
     const std::string _gpu_mem_output;

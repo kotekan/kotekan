@@ -125,13 +125,19 @@ __device__ inline float2 hop_phase(const HopPhase& h, int mh, int* chip0, float*
 /// bit-identical to the prompt of the three-trial walk. With @c IMAGE_A false (I/Q input, whose
 /// phiA is zero; DespreadParams::complex_input) phiA is not read and sA is zero, as the walk
 /// over a zero table gives.
-template<class PHI, int NT = 3, bool IMAGE_A = true>
+/// DATA: also gather a second code (a data component) at trial 0's chip index, sharing its tap
+/// boundaries and table loads, into @p sA2 / @p sB2. Its code length divides this one's and
+/// both start together, so its index is chip0 mod @p code2_len.
+template<class PHI, int NT = 3, bool IMAGE_A = true, bool DATA = false>
 __device__ inline void chip_gather3(float inv_cps, int job_code_offset, int job_code_len,
                                     int job_n_chips, int job_d_first, int Lf,
                                     const int8_t* __restrict__ code,
                                     const PHI* __restrict__ phiA, const PHI* __restrict__ phiB,
                                     int ks, float kf, const int* chip0, const float* phi,
-                                    float2* sA, float2* sB) {
+                                    float2* sA, float2* sB,
+                                    const int8_t* __restrict__ code2 = nullptr,
+                                    int code2_offset = 0, int code2_len = 1,
+                                    float2* sA2 = nullptr, float2* sB2 = nullptr) {
     int idx[NT], khi_base[NT];
     float f[NT];
     float2 pA[NT], pB[NT];
@@ -172,6 +178,14 @@ __device__ inline void chip_gather3(float inv_cps, int job_code_offset, int job_
             pA[u] = phi_ld(phiA, t_prev);
         pB[u] = phi_ld(phiB, t_prev);
     }
+    int idx2 = 0;
+    if (DATA) {
+        *sA2 = make_float2(0.f, 0.f);
+        *sB2 = make_float2(0.f, 0.f);
+        idx2 = chip0[0] % code2_len - job_d_first;
+        if (idx2 < 0)
+            idx2 += code2_len;
+    }
     for (int d = job_d_first; d < job_n_chips; ++d) {
 #pragma unroll
         for (int u = 0; u < NT; ++u) {
@@ -180,6 +194,7 @@ __device__ inline void chip_gather3(float inv_cps, int job_code_offset, int job_
             f[u] += kf;
             khi_base[u] += ks;
             const float cv = (float)code[job_code_offset + idx[u]];
+            const float cv2 = (DATA && u == 0) ? (float)code2[code2_offset + idx2] : 0.f;
             // fmaf explicitly, not `s += cv * d`: whether ptxas contracts the plain expression
             // depends on the surrounding code, and the despread and waveform kernels, which both
             // call this, must produce the same bits.
@@ -188,12 +203,22 @@ __device__ inline void chip_gather3(float inv_cps, int job_code_offset, int job_
                 const float2 dA = make_float2(cA.x - pA[u].x, cA.y - pA[u].y);
                 sA[u].x = fmaf(cv, dA.x, sA[u].x);
                 sA[u].y = fmaf(cv, dA.y, sA[u].y);
+                if (DATA && u == 0) {
+                    sA2->x = fmaf(cv2, dA.x, sA2->x);
+                    sA2->y = fmaf(cv2, dA.y, sA2->y);
+                }
                 pA[u] = cA;
             }
             const float2 cB = phi_ld(phiB, t);
             const float2 dB = make_float2(cB.x - pB[u].x, cB.y - pB[u].y);
             sB[u].x = fmaf(cv, dB.x, sB[u].x);
             sB[u].y = fmaf(cv, dB.y, sB[u].y);
+            if (DATA && u == 0) {
+                sB2->x = fmaf(cv2, dB.x, sB2->x);
+                sB2->y = fmaf(cv2, dB.y, sB2->y);
+                if (--idx2 < 0)
+                    idx2 += code2_len;
+            }
             pB[u] = cB;
             if (--idx[u] < 0)
                 idx[u] += job_code_len;

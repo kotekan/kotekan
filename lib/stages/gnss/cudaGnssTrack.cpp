@@ -76,6 +76,7 @@ cudaGnssTrack::cudaGnssTrack(Config& config, const std::string& unique_name,
                         "and carrier of {:s}, and a code length dividing its {:d} chips",
                         unique_name, D.sig->name, S.sig->name, S.replica->eff_code_length());
         device.register_gpu_memory_name(unique_name + "_data_jobs");
+        device.register_gpu_memory_name(unique_name + "_wave_data");
         gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_output_data, true, false, true));
         CHECK_CUDA_ERROR(
             cudaHostAlloc((void**)&_stage_data, gnss_gpu::off_corr(D.n_prn), cudaHostAllocDefault));
@@ -94,58 +95,88 @@ gnss::TrackChain& cudaGnssTrack::chain() {
     return *static_cast<cudaGnssChordTrackState*>(command_state.get())->rows[0].chain;
 }
 
-int cudaGnssTrack::enqueue_frame(gnss::TrackChain& C, char* stage, char* d_out, void* d_jobs,
-                                 const std::vector<gnss::TrackChain::Seed>& seeds,
-                                 const std::vector<double>& trim_now, long long hop0_frame,
-                                 const unsigned char* d_frame, const float* d_chan_scale,
-                                 const int* d_chan_ids, void* d_wave, cudaStream_t stream,
-                                 int& n_active) {
-    const int n_rec = C.n_hops_frame / C.hops_per_record;
+void cudaGnssTrack::enqueue_frame(ChainFrame& P, ChainFrame* D, const std::vector<double>& trim_now,
+                                  long long hop0_frame, const unsigned char* d_frame,
+                                  const float* d_chan_scale, const int* d_chan_ids,
+                                  cudaStream_t stream) {
+    ChainFrame* frames[2] = {&P, D};
+    const int n_rec = P.C->n_hops_frame / P.C->hops_per_record;
 
     // The control block is zeroed each frame: a PRN that just set must read as run = 0.
-    std::memset(stage, 0, gnss_gpu::off_corr(C.n_prn));
-    auto* hdr = (gnss_gpu::FrameHdr*)stage;
-    auto* winstart = (int64_t*)(stage + gnss_gpu::off_winstart());
-    auto* pctl = (gnss_gpu::PrnCtl*)(stage + gnss_gpu::off_prnctl());
-    hdr->n_rec = n_rec;
-    hdr->n_prn = C.n_prn;
-    hdr->n_chan = C.n_chan;
-    hdr->n_rows_spec = gnss_gpu::ROWS_PLAIN;
-    hdr->lanes_per_slot = gnss_gpu::LANES_FULL;
-    hdr->seq0 = hop0_frame * (long long)C.fft_len;
-    hdr->utc0 = C.frame0_utc;
-
-    // The kernels write each record's rows straight into the output frame.
-    char* d_corr = d_out + gnss_gpu::off_corr(C.n_prn);
-    char* d_energy = d_out + gnss_gpu::off_energy(C.n_prn, C.n_chan, gnss_gpu::ROWS_PLAIN, 1);
-    auto* jobs = (gnss_cuda::DespreadJob*)d_jobs;
-    int n_jobs_frame = 0;
-    n_active = 0;
-    for (int r = 0; r < n_rec; ++r) {
-        const long long hop0 = hop0_frame + (long long)r * C.hops_per_record;
-        const long long wstart = hop0 * (long long)C.fft_len;
-        int n_psi_dark = 0;
-        const std::vector<GnssCudaDespread::Spec> specs =
-            C.record_specs(hop0, seeds, trim_now, n_jobs_frame, pctl + (size_t)r * C.n_prn, nullptr,
-                           (void*)stream, n_psi_dark);
-        if (r == 0)
-            n_active = (int)specs.size();
-        winstart[r] = wstart;
-
-        const size_t row0 = (size_t)n_jobs_frame * gnss_gpu::ROWS_PLAIN * C.n_chan;
-        C.despread->enqueue_batch_nm(
-            d_frame + (size_t)r * C.hops_per_record * _num_local_freq, d_chan_scale, d_chan_ids,
-            d_wave, 1, 1, _num_local_freq, wstart, specs, jobs + (size_t)r * C.n_prn,
-            d_corr + row0 * 2 * sizeof(double), d_energy + row0 * sizeof(double), (void*)stream,
-            /*conjugate=*/true);
-        C.record_built(specs, pctl + (size_t)r * C.n_prn);
-        n_jobs_frame += (int)specs.size();
+    for (ChainFrame* f : frames) {
+        if (!f)
+            continue;
+        gnss::TrackChain& C = *f->C;
+        std::memset(f->stage, 0, gnss_gpu::off_corr(C.n_prn));
+        auto* hdr = (gnss_gpu::FrameHdr*)f->stage;
+        hdr->n_rec = n_rec;
+        hdr->n_prn = C.n_prn;
+        hdr->n_chan = C.n_chan;
+        hdr->n_rows_spec = gnss_gpu::ROWS_PLAIN;
+        hdr->lanes_per_slot = gnss_gpu::LANES_FULL;
+        hdr->seq0 = hop0_frame * (long long)C.fft_len;
+        hdr->utc0 = C.frame0_utc;
+        f->n_jobs = 0;
+        f->n_active = 0;
     }
-    hdr->n_jobs = n_jobs_frame * gnss_gpu::ROWS_PLAIN;
 
-    CHECK_CUDA_ERROR(
-        cudaMemcpyAsync(d_out, stage, gnss_gpu::off_corr(C.n_prn), cudaMemcpyHostToDevice, stream));
-    return n_jobs_frame;
+    for (int r = 0; r < n_rec; ++r) {
+        const long long hop0 = hop0_frame + (long long)r * P.C->hops_per_record;
+        const long long wstart = hop0 * (long long)P.C->fft_len;
+        const unsigned char* d_rec = d_frame + (size_t)r * P.C->hops_per_record * _num_local_freq;
+        std::vector<GnssCudaDespread::Spec> specs[2];
+        // The kernels write each record's rows straight into the output frame.
+        char* d_corr[2] = {nullptr, nullptr};
+        char* d_energy[2] = {nullptr, nullptr};
+        void* d_jobs[2] = {nullptr, nullptr};
+        for (int k = 0; k < 2; ++k) {
+            ChainFrame* f = frames[k];
+            if (!f)
+                continue;
+            gnss::TrackChain& C = *f->C;
+            auto* pctl = (gnss_gpu::PrnCtl*)(f->stage + gnss_gpu::off_prnctl());
+            int n_psi_dark = 0;
+            specs[k] =
+                C.record_specs(hop0, *f->seeds, trim_now, f->n_jobs, pctl + (size_t)r * C.n_prn,
+                               nullptr, (void*)stream, n_psi_dark);
+            if (r == 0)
+                f->n_active = (int)specs[k].size();
+            ((int64_t*)(f->stage + gnss_gpu::off_winstart()))[r] = wstart;
+            const size_t row0 = (size_t)f->n_jobs * gnss_gpu::ROWS_PLAIN * C.n_chan;
+            d_corr[k] = f->d_out + gnss_gpu::off_corr(C.n_prn) + row0 * 2 * sizeof(double);
+            d_energy[k] = f->d_out
+                          + gnss_gpu::off_energy(C.n_prn, C.n_chan, gnss_gpu::ROWS_PLAIN, 1)
+                          + row0 * sizeof(double);
+            d_jobs[k] = (gnss_cuda::DespreadJob*)f->d_jobs + (size_t)r * C.n_prn;
+        }
+        const bool paired =
+            D
+            && P.C->despread->enqueue_batch_nm_pair(
+                *D->C->despread, d_rec, d_chan_scale, d_chan_ids, 1, 1, _num_local_freq, wstart,
+                specs[0], specs[1], P.d_wave, d_jobs[0], d_corr[0], d_energy[0], D->d_wave,
+                d_jobs[1], d_corr[1], d_energy[1], (void*)stream, /*conjugate=*/true);
+        for (int k = 0; k < 2; ++k) {
+            ChainFrame* f = frames[k];
+            if (!f)
+                continue;
+            if (!paired)
+                f->C->despread->enqueue_batch_nm(d_rec, d_chan_scale, d_chan_ids, f->d_wave, 1, 1,
+                                                 _num_local_freq, wstart, specs[k], d_jobs[k],
+                                                 d_corr[k], d_energy[k], (void*)stream,
+                                                 /*conjugate=*/true);
+            auto* pctl = (gnss_gpu::PrnCtl*)(f->stage + gnss_gpu::off_prnctl());
+            f->C->record_built(specs[k], pctl + (size_t)r * f->C->n_prn);
+            f->n_jobs += (int)specs[k].size();
+        }
+    }
+
+    for (ChainFrame* f : frames) {
+        if (!f)
+            continue;
+        ((gnss_gpu::FrameHdr*)f->stage)->n_jobs = f->n_jobs * gnss_gpu::ROWS_PLAIN;
+        CHECK_CUDA_ERROR(cudaMemcpyAsync(f->d_out, f->stage, gnss_gpu::off_corr(f->C->n_prn),
+                                         cudaMemcpyHostToDevice, stream));
+    }
 }
 
 cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate, const std::vector<cudaEvent_t>&) {
@@ -171,13 +202,14 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate, const std::vect
     auto* d_out = (char*)device.get_gpu_memory_array(_gpu_mem_output, pipestate.gpu_frame_id,
                                                      _gpu_buffer_depth, out_bytes);
     // The jobs are per frame slot, since frames pipeline. The replicas are scratch shared by
-    // every frame and both chains, whose work is all on this command's stream.
+    // every frame, whose work is all on this command's stream.
     const size_t jobs_bytes = (size_t)gnss_gpu::max_specs(S.n_prn) * sizeof(gnss_cuda::DespreadJob);
     void* d_jobs = device.get_gpu_memory_array(unique_name + "_jobs", pipestate.gpu_frame_id,
                                                _gpu_buffer_depth, jobs_bytes);
-    void* d_wave =
-        device.get_gpu_memory(unique_name + "_wave", (size_t)3 * S.n_prn * S.n_chan
-                                                         * S.hops_per_record * 2 * sizeof(float));
+    // The data component's replicas have their own scratch, as a paired launch writes both.
+    const size_t wave_bytes =
+        (size_t)3 * S.n_prn * S.n_chan * S.hops_per_record * 2 * sizeof(float);
+    void* d_wave = device.get_gpu_memory(unique_name + "_wave", wave_bytes);
     auto* d_chan_scale =
         (float*)device.get_gpu_memory(unique_name + "_chan_scale", S.n_chan * sizeof(float));
     auto* d_chan_ids =
@@ -205,10 +237,9 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate, const std::vect
              "phase has stepped back to the broker's model.",
              prn);
 
-    int n_active = 0;
-    const int n_jobs = enqueue_frame(S, _stage, d_out, d_jobs, seeds, trim_now, hop0_frame, d_frame,
-                                     d_chan_scale, d_chan_ids, d_wave, stream, n_active);
-
+    ChainFrame pilot{&S, _stage, d_out, d_jobs, &seeds, d_wave};
+    ChainFrame data{nullptr, _stage_data, nullptr, nullptr, nullptr, nullptr};
+    std::vector<gnss::TrackChain::Seed> seeds_data;
     if (D) {
         // The data component follows the pilot's PRN map, staged here and applied at its
         // begin_frame. A slot the map could not move (no code for the PRN) gets no seed.
@@ -218,21 +249,24 @@ cudaEvent_t cudaGnssTrack::execute(cudaPipelineState& pipestate, const std::vect
                 D->pending_prns = S.prns;
         }
         D->begin_frame(hop0_frame, (void*)stream);
+        seeds_data = seeds;
         for (int p = 0; p < S.n_prn; ++p)
             if (D->prns[(size_t)p] != S.prns[(size_t)p])
-                seeds[(size_t)p].have = false;
-        auto* d_out_data = (char*)device.get_gpu_memory_array(
+                seeds_data[(size_t)p].have = false;
+        data.C = D;
+        data.d_out = (char*)device.get_gpu_memory_array(
             _gpu_mem_output_data, pipestate.gpu_frame_id, _gpu_buffer_depth, out_bytes);
-        void* d_jobs_data = device.get_gpu_memory_array(
+        data.d_jobs = device.get_gpu_memory_array(
             unique_name + "_data_jobs", pipestate.gpu_frame_id, _gpu_buffer_depth, jobs_bytes);
-        int n_active_data = 0;
-        enqueue_frame(*D, _stage_data, d_out_data, d_jobs_data, seeds, trim_now, hop0_frame,
-                      d_frame, d_chan_scale, d_chan_ids, d_wave, stream, n_active_data);
+        data.seeds = &seeds_data;
+        data.d_wave = device.get_gpu_memory(unique_name + "_wave_data", wave_bytes);
     }
+    enqueue_frame(pilot, D ? &data : nullptr, trim_now, hop0_frame, d_frame, d_chan_scale,
+                  d_chan_ids, stream);
 
     if ((++_frames & 0xFF) == 1)
         INFO("cudaGnssTrack: frame hop0 {:d}, {:d} active PRNs, {:d} jobs across {:d} records",
-             hop0_frame, n_active, n_jobs, n_rec);
+             hop0_frame, pilot.n_active, pilot.n_jobs, n_rec);
 
     return record_end_event();
 }
