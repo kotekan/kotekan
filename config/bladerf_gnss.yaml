@@ -59,7 +59,9 @@ gps_time:
 
 gnss_pool:
     kotekan_metadata_pool: GnssChanMetadata
-    num_metadata_objects: 2048
+    # One per frame of every buffer that takes it (2544 with nine chains and four data
+    # components).
+    num_metadata_objects: 3072
 
 # ---- Front end ----
 input_buf:
@@ -207,7 +209,7 @@ l5i_epl_buf:
     kotekan_buffer: standard
     metadata_pool: gnss_pool
     num_frames: 8
-    frame_size: 647344
+    frame_size: 450736
 l5i_rec_buf:
     kotekan_buffer: standard
     metadata_pool: gnss_pool
@@ -227,6 +229,17 @@ e5a_rec_buf:
     num_frames: 64
     # The records, then the comb block (chan_export): 8 channels of 9 floats per PRN.
     frame_size: 36 * 44 * 4 + 36 * 8 * 9 * 4
+# E5a-I (F/NAV), despread at the E5a tracker's seeds (its data block), and its symbols.
+e5ai_epl_buf:
+    kotekan_buffer: standard
+    metadata_pool: gnss_pool
+    num_frames: 8
+    frame_size: 507056
+e5ai_rec_buf:
+    kotekan_buffer: standard
+    metadata_pool: gnss_pool
+    num_frames: 64
+    frame_size: 36 * 44 * 4
 
 # GuoWang (1202.025 MHz, 22.975 MHz below the LO): DFT bins 50 to 54, frame positions 18 to 22,
 # the main lobe and part of the first sidelobes. gnss_gpu::frame_bytes(69 PRNs, 5 channels, 4 rows,
@@ -256,6 +269,17 @@ b2a_rec_buf:
     num_frames: 64
     # The records, then the comb block (chan_export): 8 channels of 9 floats per PRN.
     frame_size: 31 * 44 * 4 + 31 * 8 * 9 * 4
+# B2a-D (B-CNAV2), despread at the B2a tracker's seeds, and its symbols.
+b2ad_epl_buf:
+    kotekan_buffer: standard
+    metadata_pool: gnss_pool
+    num_frames: 8
+    frame_size: 436656
+b2ad_rec_buf:
+    kotekan_buffer: standard
+    metadata_pool: gnss_pool
+    num_frames: 64
+    frame_size: 31 * 44 * 4
 
 # The mid band, dead-reckoned on the L5 chain's clock as E5a. BeiDou B3I (1268.52 MHz, 43.52 MHz
 # above the LO): DFT bins 19 to 26, frame positions 51 to 58, the main lobe's centre as on L5.
@@ -295,6 +319,41 @@ l2c_rec_buf:
     num_frames: 64
     frame_size: 28 * 44 * 4 + 28 * 2 * 9 * 4
 
+# 1207.14 MHz, 17.86 MHz below the LO: DFT bins 51 to 58, frame positions 19 to 26, the main
+# lobe's centre as on L5. Galileo E5b-Q, the same PRNs as E5a, and its I/NAV data component;
+# BeiDou B2b-I, the same PRNs as B2a, with no pilot. gnss_gpu::frame_bytes(36 or 31 PRNs,
+# 8 channels, 4 rows, 1 element).
+e5b_epl_buf:
+    kotekan_buffer: standard
+    metadata_pool: gnss_pool
+    num_frames: 8
+    frame_size: 507056
+e5b_rec_buf:
+    kotekan_buffer: standard
+    metadata_pool: gnss_pool
+    num_frames: 64
+    frame_size: 36 * 44 * 4 + 36 * 8 * 9 * 4
+e5bi_epl_buf:
+    kotekan_buffer: standard
+    metadata_pool: gnss_pool
+    num_frames: 8
+    frame_size: 507056
+e5bi_rec_buf:
+    kotekan_buffer: standard
+    metadata_pool: gnss_pool
+    num_frames: 64
+    frame_size: 36 * 44 * 4
+b2b_epl_buf:
+    kotekan_buffer: standard
+    metadata_pool: gnss_pool
+    num_frames: 8
+    frame_size: 436656
+b2b_rec_buf:
+    kotekan_buffer: standard
+    metadata_pool: gnss_pool
+    num_frames: 64
+    frame_size: 31 * 44 * 4 + 31 * 8 * 9 * 4
+
 gputrack:
     kotekan_stage: cudaProcess
     gpu_id: 0
@@ -306,13 +365,18 @@ gputrack:
         q_valve_buf: q_valve_buf
     out_buffers:
         l5_epl_buf: l5_epl_buf
-        # l5i_epl_buf: l5i_epl_buf
+        l5i_epl_buf: l5i_epl_buf
         e5a_epl_buf: e5a_epl_buf
+        e5ai_epl_buf: e5ai_epl_buf
         b2a_epl_buf: b2a_epl_buf
+        b2ad_epl_buf: b2ad_epl_buf
         gw_epl_buf: gw_epl_buf
         b3i_epl_buf: b3i_epl_buf
         e6_epl_buf: e6_epl_buf
         l2c_epl_buf: l2c_epl_buf
+        e5b_epl_buf: e5b_epl_buf
+        e5bi_epl_buf: e5bi_epl_buf
+        b2b_epl_buf: b2b_epl_buf
     commands:
         - name: cudaInputData
           in_buf: q_valve_buf
@@ -342,12 +406,10 @@ gputrack:
           set_trim_endpoint: /l5_track/set_trim
           get_prns_endpoint: /l5_track/get_prns
           set_prns_endpoint: /l5_track/set_prns
-          # I5 with NH10 tiled in: one 10 ms code, one CNAV symbol. Off while the GPU is short of
-          # time for every chain: uncomment, with l5i_epl_buf's cudaOutputData, l5i_assemble and
-          # l5i_symbols below, to read CNAV again.
-          # data:
-          #     signal: GPS_L5_I_NH
-          #     gpu_mem_output: l5i_epl
+          # I5 with NH10 tiled in: one 10 ms code, one CNAV symbol.
+          data:
+              signal: GPS_L5_I_NH
+              gpu_mem_output: l5i_epl
         - name: cudaGnssTrack
           gpu_mem_input: gnss_chan_frame
           gpu_mem_output: e5a_epl
@@ -369,6 +431,10 @@ gputrack:
           set_trim_endpoint: /e5a_track/set_trim
           get_prns_endpoint: /e5a_track/get_prns
           set_prns_endpoint: /e5a_track/set_prns
+          # E5a-I with CS20 tiled in: one 20 ms code, one F/NAV symbol.
+          data:
+              signal: GAL_E5A_I_CS
+              gpu_mem_output: e5ai_epl
         - name: cudaGnssTrack
           gpu_mem_input: gnss_chan_frame
           gpu_mem_output: b2a_epl
@@ -390,6 +456,10 @@ gputrack:
           set_trim_endpoint: /b2a_track/set_trim
           get_prns_endpoint: /b2a_track/get_prns
           set_prns_endpoint: /b2a_track/set_prns
+          # B2a-D with its 5-chip secondary tiled in: one 5 ms code, one B-CNAV2 symbol.
+          data:
+              signal: BDS_B2A_D_CS
+              gpu_mem_output: b2ad_epl
         - name: cudaGnssTrack
           gpu_mem_input: gnss_chan_frame
           gpu_mem_output: gw_epl
@@ -461,22 +531,66 @@ gputrack:
           set_trim_endpoint: /l2c_track/set_trim
           get_prns_endpoint: /l2c_track/get_prns
           set_prns_endpoint: /l2c_track/set_prns
+        - name: cudaGnssTrack
+          gpu_mem_input: gnss_chan_frame
+          gpu_mem_output: e5b_epl
+          # CS100 tiled in: one 1023000-chip, 100 ms code.
+          signal: GAL_E5B_Q_CS
+          prns: *e5a_prns
+          f_offset_hz: -17.86e6
+          n_channels: 8
+          channel_ids: [51, 52, 53, 54, 55, 56, 57, 58]
+          gnss_local_channels: [19, 20, 21, 22, 23, 24, 25, 26]
+          epl_from_prompt: true
+          dll_spacing: 0.5
+          seed_endpoint: /e5b_track/set_seeds
+          set_trim_endpoint: /e5b_track/set_trim
+          get_prns_endpoint: /e5b_track/get_prns
+          set_prns_endpoint: /e5b_track/set_prns
+          # E5b-I with CS4 tiled in: one 4 ms code, one I/NAV symbol.
+          data:
+              signal: GAL_E5B_I_CS
+              gpu_mem_output: e5bi_epl
+        - name: cudaGnssTrack
+          gpu_mem_input: gnss_chan_frame
+          gpu_mem_output: b2b_epl
+          # Data only (B-CNAV3, one symbol per 1 ms code period): the combiner wipes the bits.
+          signal: BDS_B2B_I
+          prns: *b2a_prns
+          f_offset_hz: -17.86e6
+          n_channels: 8
+          channel_ids: [51, 52, 53, 54, 55, 56, 57, 58]
+          gnss_local_channels: [19, 20, 21, 22, 23, 24, 25, 26]
+          epl_from_prompt: true
+          dll_spacing: 0.5
+          seed_endpoint: /b2b_track/set_seeds
+          set_trim_endpoint: /b2b_track/set_trim
+          get_prns_endpoint: /b2b_track/get_prns
+          set_prns_endpoint: /b2b_track/set_prns
         - name: cudaSyncOutput
         - name: cudaOutputData
           gpu_mem: l5_epl
           out_buf: l5_epl_buf
           in_buf: q_valve_buf
-        # - name: cudaOutputData
-        #   gpu_mem: l5i_epl
-        #   out_buf: l5i_epl_buf
-        #   in_buf: q_valve_buf
+        - name: cudaOutputData
+          gpu_mem: l5i_epl
+          out_buf: l5i_epl_buf
+          in_buf: q_valve_buf
         - name: cudaOutputData
           gpu_mem: e5a_epl
           out_buf: e5a_epl_buf
           in_buf: q_valve_buf
         - name: cudaOutputData
+          gpu_mem: e5ai_epl
+          out_buf: e5ai_epl_buf
+          in_buf: q_valve_buf
+        - name: cudaOutputData
           gpu_mem: b2a_epl
           out_buf: b2a_epl_buf
+          in_buf: q_valve_buf
+        - name: cudaOutputData
+          gpu_mem: b2ad_epl
+          out_buf: b2ad_epl_buf
           in_buf: q_valve_buf
         - name: cudaOutputData
           gpu_mem: gw_epl
@@ -493,6 +607,18 @@ gputrack:
         - name: cudaOutputData
           gpu_mem: l2c_epl
           out_buf: l2c_epl_buf
+          in_buf: q_valve_buf
+        - name: cudaOutputData
+          gpu_mem: e5b_epl
+          out_buf: e5b_epl_buf
+          in_buf: q_valve_buf
+        - name: cudaOutputData
+          gpu_mem: e5bi_epl
+          out_buf: e5bi_epl_buf
+          in_buf: q_valve_buf
+        - name: cudaOutputData
+          gpu_mem: b2b_epl
+          out_buf: b2b_epl_buf
           in_buf: q_valve_buf
 
 l5_assemble:
@@ -511,20 +637,19 @@ l5_combine:
     integration_length: 200
     record_export: 64
 
-# I5's symbols against Q5, served for the broker's CNAV decode (cnav-combiner); off with the
-# data block above.
-# l5i_assemble:
-#     kotekan_stage: GnssGpuRecordAssemble
-#     in_buf: l5i_epl_buf
-#     out_buf: l5i_rec_buf
-#     prns: *l5_prns
-# l5i_symbols:
-#     kotekan_stage: GnssNavSymbols
-#     pilot_buf: l5_rec_buf
-#     data_buf: l5i_rec_buf
-#     n_prn: 32
-#     symbol_records: 10
-#     offset_deg: 90
+# I5's symbols against Q5, served for the broker's CNAV decode (cnav-combiner).
+l5i_assemble:
+    kotekan_stage: GnssGpuRecordAssemble
+    in_buf: l5i_epl_buf
+    out_buf: l5i_rec_buf
+    prns: *l5_prns
+l5i_symbols:
+    kotekan_stage: GnssNavSymbols
+    pilot_buf: l5_rec_buf
+    data_buf: l5i_rec_buf
+    n_prn: 32
+    symbol_records: 10
+    offset_deg: 90
 
 e5a_assemble:
     kotekan_stage: GnssGpuRecordAssemble
@@ -540,6 +665,19 @@ e5a_combine:
     n_prn: 36
     integration_length: 200
     record_export: 64
+# E5a-I's F/NAV symbols against E5a-Q, for the broker's fnav-combiner.
+e5ai_assemble:
+    kotekan_stage: GnssGpuRecordAssemble
+    in_buf: e5ai_epl_buf
+    out_buf: e5ai_rec_buf
+    prns: *e5a_prns
+e5ai_symbols:
+    kotekan_stage: GnssNavSymbols
+    pilot_buf: e5a_rec_buf
+    data_buf: e5ai_rec_buf
+    n_prn: 36
+    symbol_records: 20
+    offset_deg: 90
 
 b2a_assemble:
     kotekan_stage: GnssGpuRecordAssemble
@@ -555,6 +693,19 @@ b2a_combine:
     n_prn: 31
     integration_length: 200
     record_export: 64
+# B2a-D's B-CNAV2 symbols against B2a-P, for the broker's bcnav2-combiner.
+b2ad_assemble:
+    kotekan_stage: GnssGpuRecordAssemble
+    in_buf: b2ad_epl_buf
+    out_buf: b2ad_rec_buf
+    prns: *b2a_prns
+b2ad_symbols:
+    kotekan_stage: GnssNavSymbols
+    pilot_buf: b2a_rec_buf
+    data_buf: b2ad_rec_buf
+    n_prn: 31
+    symbol_records: 5
+    offset_deg: 90
 
 gw_assemble:
     kotekan_stage: GnssGpuRecordAssemble
@@ -625,6 +776,53 @@ l2c_combine:
     integration_length: 200
     record_export: 64
 
+e5b_assemble:
+    kotekan_stage: GnssGpuRecordAssemble
+    in_buf: e5b_epl_buf
+    out_buf: e5b_rec_buf
+    prns: *e5a_prns
+    chan_export: true
+    channel_ids: [51, 52, 53, 54, 55, 56, 57, 58]
+e5b_combine:
+    kotekan_stage: GnssCoherentCombiner
+    in_bufs: [e5b_rec_buf]
+    n_prn: 36
+    integration_length: 200
+    record_export: 64
+# E5b-I's I/NAV symbols against E5b-Q, for the broker's inav-combiner.
+e5bi_assemble:
+    kotekan_stage: GnssGpuRecordAssemble
+    in_buf: e5bi_epl_buf
+    out_buf: e5bi_rec_buf
+    prns: *e5a_prns
+e5bi_symbols:
+    kotekan_stage: GnssNavSymbols
+    pilot_buf: e5b_rec_buf
+    data_buf: e5bi_rec_buf
+    n_prn: 36
+    symbol_records: 4
+    offset_deg: 90
+
+b2b_assemble:
+    kotekan_stage: GnssGpuRecordAssemble
+    in_buf: b2b_epl_buf
+    out_buf: b2b_rec_buf
+    prns: *b2a_prns
+    chan_export: true
+    channel_ids: [51, 52, 53, 54, 55, 56, 57, 58]
+# B-CNAV3 is one symbol per record: the deep sum wipes each record's sign, and bit_export serves
+# the decisions to the broker's bcnav3 decoder (its own combiner), which stitches the windows it
+# polls once a second into 1000-symbol frames. A 1.5 s window overlaps the polls; the bit-wipe
+# path is linear in the window, with no rate search.
+b2b_combine:
+    kotekan_stage: GnssCoherentCombiner
+    in_bufs: [b2b_rec_buf]
+    n_prn: 31
+    integration_length: 1500
+    record_export: 64
+    navwipe_bit_records: 1
+    bit_export: true
+
 # ---- Telemetry ----
 # Every chain's records as a CHORD node ships them (GnssTelemPack), gathered in this instance
 # (GnssTelemGather) and served to the broker (telem-gather 127.0.0.1:11061): its tracker code
@@ -632,9 +830,9 @@ l2c_combine:
 telem_buf:
     kotekan_buffer: standard
     metadata_pool: gnss_pool
-    # Seven chains send ~1750 frames/s: 1024 frames ride out the broker's pauses (256 dropped
-    # 1.3% of them).
-    num_frames: 1024
+    # Nine chains send ~2250 frames/s: 1536 frames ride out the broker's pauses (256 dropped
+    # 1.3% of them at seven chains).
+    num_frames: 1536
     # The widest row's frame: gnss::telem_frame_bytes(4 records, 69 PRNs, 5 channels).
     frame_size: 85120
 telem_pack:
@@ -693,6 +891,20 @@ telem_pack:
             max_prn: 28
             n_chan: 2
             channel_ids: [1, 2]
+        e5b:
+            in_buf: e5b_rec_buf
+            chain: gal_e5b
+            n_prn: 36
+            max_prn: 36
+            n_chan: 8
+            channel_ids: [51, 52, 53, 54, 55, 56, 57, 58]
+        b2b:
+            in_buf: b2b_rec_buf
+            chain: bds_b2b
+            n_prn: 31
+            max_prn: 31
+            n_chan: 8
+            channel_ids: [51, 52, 53, 54, 55, 56, 57, 58]
 telem_gather:
     kotekan_stage: GnssTelemGather
     in_buf: telem_buf
