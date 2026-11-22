@@ -61,7 +61,7 @@ gnss_pool:
     kotekan_metadata_pool: GnssChanMetadata
     # One per frame of every buffer that takes it (2544 with nine chains and four data
     # components).
-    num_metadata_objects: 3200
+    num_metadata_objects: 3400
 
 # ---- Front end ----
 input_buf:
@@ -365,6 +365,19 @@ b2b_rec_buf:
     num_frames: 64
     frame_size: 31 * 44 * 4 + 31 * 8 * 9 * 4
 
+# SBAS L5 (1176.45 MHz, on L5's channels): the WAAS GEOs and the EGNOS GEOs as noise probes, as
+# CHORD's sbas_l5 chain. gnss_gpu::frame_bytes(6 PRNs, 8 channels, 4 rows, 1 element).
+sbas_epl_buf:
+    kotekan_buffer: standard
+    metadata_pool: gnss_pool
+    num_frames: 8
+    frame_size: 84656
+sbas_rec_buf:
+    kotekan_buffer: standard
+    metadata_pool: gnss_pool
+    num_frames: 64
+    frame_size: 6 * 44 * 4 + 6 * 8 * 9 * 4
+
 gputrack:
     kotekan_stage: cudaProcess
     gpu_id: 0
@@ -389,6 +402,7 @@ gputrack:
         e5b_epl_buf: e5b_epl_buf
         e5bi_epl_buf: e5bi_epl_buf
         b2b_epl_buf: b2b_epl_buf
+        sbas_epl_buf: sbas_epl_buf
     commands:
         - name: cudaInputData
           in_buf: q_valve_buf
@@ -587,6 +601,22 @@ gputrack:
           set_trim_endpoint: /b2b_track/set_trim
           get_prns_endpoint: /b2b_track/get_prns
           set_prns_endpoint: /b2b_track/set_prns
+        - name: cudaGnssTrack
+          gpu_mem_input: gnss_chan_frame
+          gpu_mem_output: sbas_epl
+          # Data only: the Manchester pair tiled into one 2 ms code, one 500 sps symbol.
+          signal: SBAS_L5_I_MC
+          prns: &sbas_prns [131, 133, 135, 121, 123, 136]
+          f_offset_hz: -48.55e6
+          n_channels: 8
+          channel_ids: [35, 36, 37, 38, 39, 40, 41, 42]
+          gnss_local_channels: [3, 4, 5, 6, 7, 8, 9, 10]
+          epl_from_prompt: true
+          dll_spacing: 0.5
+          seed_endpoint: /sbas_track/set_seeds
+          set_trim_endpoint: /sbas_track/set_trim
+          get_prns_endpoint: /sbas_track/get_prns
+          set_prns_endpoint: /sbas_track/set_prns
         - name: cudaSyncOutput
         - name: cudaOutputData
           gpu_mem: l5_epl
@@ -643,6 +673,10 @@ gputrack:
         - name: cudaOutputData
           gpu_mem: b2b_epl
           out_buf: b2b_epl_buf
+          in_buf: q_valve_buf
+        - name: cudaOutputData
+          gpu_mem: sbas_epl
+          out_buf: sbas_epl_buf
           in_buf: q_valve_buf
 
 l5_assemble:
@@ -851,6 +885,30 @@ e5bi_symbols:
     symbol_records: 4
     offset_deg: 90
 
+sbas_assemble:
+    kotekan_stage: GnssGpuRecordAssemble
+    in_buf: sbas_epl_buf
+    out_buf: sbas_rec_buf
+    prns: *sbas_prns
+    chan_export: true
+    channel_ids: [35, 36, 37, 38, 39, 40, 41, 42]
+sbas_combine:
+    kotekan_stage: GnssCoherentCombiner
+    in_bufs: [sbas_rec_buf]
+    n_prn: 6
+    integration_length: 200
+    record_export: 64
+# The 500 sps symbols (two 1 ms records each) for nav_decode: a 1 s window, each symbol decided
+# against the phase of the +-50 symbols (100 ms) around it.
+sbas_bits:
+    kotekan_stage: GnssCoherentCombiner
+    in_bufs: [sbas_rec_buf]
+    n_prn: 6
+    integration_length: 1000
+    navwipe_bit_records: 2
+    bit_export: true
+    bit_export_track: 50
+
 b2b_assemble:
     kotekan_stage: GnssGpuRecordAssemble
     in_buf: b2b_epl_buf
@@ -955,6 +1013,13 @@ telem_pack:
             max_prn: 31
             n_chan: 8
             channel_ids: [51, 52, 53, 54, 55, 56, 57, 58]
+        sbas:
+            in_buf: sbas_rec_buf
+            chain: sbas_l5
+            n_prn: 6
+            max_prn: 6
+            n_chan: 8
+            channel_ids: [35, 36, 37, 38, 39, 40, 41, 42]
 telem_gather:
     kotekan_stage: GnssTelemGather
     in_buf: telem_buf
