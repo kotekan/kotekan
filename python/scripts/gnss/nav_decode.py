@@ -140,7 +140,14 @@ def write_atomic(doc, path):
 def make_decoder(signal):
     _, mod, cls, _, _ = DECODERS[signal]
     c = getattr(importlib.import_module(mod), cls)
-    return c(log=log) if cls == "CnavPredictor" else c()
+    if cls != "CnavPredictor":
+        return c()
+    # CnavPredictor lets one PRN decode per _min_gap across all PRNs, sized for the broker's 1 s
+    # loop. Here a poll ingests every PRN at once, a window apart, so the gate would let one
+    # PRN decode per poll; its round-robin still shares the decodes out.
+    d = c(log=log)
+    d._min_gap = 0.0
+    return d
 
 
 def load_brdc(store, block):
