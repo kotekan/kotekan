@@ -24,7 +24,8 @@ using gnss_cuda::cmulf;
 /// wider one when the driver reports that it can launch.
 /// PHI = __half2 reads fp16 tables.
 /// ROT: the E and L rows are the prompt rotated by -+rot[b][ci] radians per channel instead of
-/// their own chip walks (see launch_waveform), and their energy rows equal the prompt's.
+/// their own chip walks (see launch_waveform), and their energy rows equal the prompt's. With
+/// p.rot_prompt_only the E and L rows are not written.
 /// IMAGE_A false skips the zero phiA of I/Q input (DespreadParams::complex_input).
 template<int MAXT, class PHI = float2, bool ROT = false, bool IMAGE_A = true>
 __global__ __launch_bounds__(MAXT) void
@@ -97,9 +98,11 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
             const float2 t2 = cmulf(pb, sB[0]);
             const float2 r = make_float2(0.5f * (t1.x + t2.x), 0.5f * (t1.y + t2.y));
             const size_t o = ((size_t)(3 * b) * n_chan + ci) * p.n_hops + mh;
-            wave[o] = cmulf(r, rotE);
             wave[o + row_stride] = r;
-            wave[o + 2 * row_stride] = cmulf(r, rotL);
+            if (!p.rot_prompt_only) {
+                wave[o] = cmulf(r, rotE);
+                wave[o + 2 * row_stride] = cmulf(r, rotL);
+            }
             const double ee = (double)(r.x * r.x + r.y * r.y);
             e[1] += ee;
             if (in_head)
@@ -161,11 +164,15 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
 /// block.y = hop lane (reduced in shared memory at the end).
 /// Accumulates in float: double runs at 1/64 of the float rate on some GPUs (GB10), and the
 /// sums here are of 4+4b data over one record.
+/// ROT: only P and P_HEAD are correlated; E and L are the prompt's sum rotated by
+/// exp(-+i rot[b][ci]) (see launch_correlate_nm), and the wave's E and L rows are not read.
+template<bool ROT>
 __global__ void gnss_correlate_nm_kernel(const unsigned char* __restrict__ data,
                                          const float* __restrict__ chan_scale,
                                          const int* __restrict__ chan_ids,
                                          const float2* __restrict__ wave, // [3*n_job][nchan][hops]
                                          const gnss_cuda::DespreadJob* __restrict__ jobs,
+                                         const float* __restrict__ rot, // ROT only: [n_job][nchan]
                                          gnss_cuda::DespreadParams p, int n_elem, int elem_stride,
                                          int frame_chan_stride,
                                          double2* __restrict__ corr) { // [4*n_job][nchan][n_elem]
@@ -176,6 +183,9 @@ __global__ void gnss_correlate_nm_kernel(const unsigned char* __restrict__ data,
     const float scale = chan_scale[ci];
     // The only job field needed; everything else is already in `wave`.
     const int m_head = jobs[b].m_head;
+    float sr = 0.f, cr = 1.f;
+    if (ROT)
+        sincosf(rot[(size_t)b * n_chan + ci], &sr, &cr);
 
     extern __shared__ float2 sh[]; // [blockDim.x * blockDim.y]
 
@@ -199,7 +209,7 @@ __global__ void gnss_correlate_nm_kernel(const unsigned char* __restrict__ data,
             const bool in_head = (mh < m_head);
 
 #pragma unroll
-            for (int t = 0; t < 3; ++t) {
+            for (int t = ROT ? 1 : 0; t < (ROT ? 2 : 3); ++t) {
                 // Uniform across threadIdx.x, so a broadcast rather than a per-element load.
                 const float2 r = wave[((size_t)(3 * b + t) * n_chan + ci) * p.n_hops + mh];
                 const float re = dd.x * r.x + dd.y * r.y; // Re(d * conj(r))
@@ -216,7 +226,7 @@ __global__ void gnss_correlate_nm_kernel(const unsigned char* __restrict__ data,
         // Reduce the hop lanes (threadIdx.y) for this element, one row at a time.
         const int slot = threadIdx.y * blockDim.x + threadIdx.x;
 #pragma unroll
-        for (int j = 0; j < 4; ++j) {
+        for (int j = ROT ? 1 : 0; j < 4; j += ROT ? 2 : 1) {
             __syncthreads();
             sh[slot] = acc[j];
             __syncthreads();
@@ -227,9 +237,16 @@ __global__ void gnss_correlate_nm_kernel(const unsigned char* __restrict__ data,
                 }
                 __syncthreads();
             }
-            if (threadIdx.y == 0 && active)
-                corr[((size_t)(4 * b + j) * n_chan + ci) * n_elem + e0] =
-                    make_double2(sh[threadIdx.x].x, sh[threadIdx.x].y);
+            if (threadIdx.y == 0 && active) {
+                const float2 s = sh[threadIdx.x];
+                const size_t o = ((size_t)(4 * b + j) * n_chan + ci) * n_elem + e0;
+                corr[o] = make_double2(s.x, s.y);
+                if (ROT && j == 1) { // E = P exp(-i rot), L = P exp(+i rot)
+                    const size_t row = (size_t)n_chan * n_elem;
+                    corr[o - row] = make_double2(s.x * cr + s.y * sr, s.y * cr - s.x * sr);
+                    corr[o + row] = make_double2(s.x * cr - s.y * sr, s.y * cr + s.x * sr);
+                }
+            }
         }
     }
 }
@@ -310,9 +327,9 @@ void phi_to_half(const float2* src, void* dst, size_t n) {
 
 cudaError_t launch_correlate_nm(const unsigned char* data, const float* chan_scale,
                                 const int* chan_ids, const float2* wave, const DespreadJob* jobs,
-                                int n_job, int n_chan, int n_elem, int elem_stride,
-                                int frame_chan_stride, const DespreadParams& p, double2* corr,
-                                cudaStream_t stream) {
+                                const float* rot, int n_job, int n_chan, int n_elem,
+                                int elem_stride, int frame_chan_stride, const DespreadParams& p,
+                                double2* corr, cudaStream_t stream) {
     // Elements across x (coalescing), hops across y (parallelism): n_elem is small, so without
     // the hop lanes the launch would have too few threads to fill the device. blockDim.y is a
     // power of two for the reduction.
@@ -328,8 +345,14 @@ cudaError_t launch_correlate_nm(const unsigned char* data, const float* chan_sca
     const dim3 block(ex, hy);
     const dim3 grid(n_job, n_chan);
     const size_t shmem = (size_t)ex * hy * sizeof(float2);
-    gnss_correlate_nm_kernel<<<grid, block, shmem, stream>>>(
-        data, chan_scale, chan_ids, wave, jobs, p, n_elem, elem_stride, frame_chan_stride, corr);
+    if (rot)
+        gnss_correlate_nm_kernel<true><<<grid, block, shmem, stream>>>(
+            data, chan_scale, chan_ids, wave, jobs, rot, p, n_elem, elem_stride,
+            frame_chan_stride, corr);
+    else
+        gnss_correlate_nm_kernel<false><<<grid, block, shmem, stream>>>(
+            data, chan_scale, chan_ids, wave, jobs, rot, p, n_elem, elem_stride,
+            frame_chan_stride, corr);
     return cudaGetLastError();
 }
 

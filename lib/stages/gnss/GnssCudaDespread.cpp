@@ -1045,6 +1045,7 @@ int GnssCudaDespread::enqueue_batch_nm(const void* d_frame, const void* d_chan_s
     par.data_stride = im.n_hops;
     par.conj_data = conjugate ? 1 : 0;
     par.complex_input = im.bank.channelization().complex_input ? 1 : 0;
+    par.rot_prompt_only = im.epl_rot ? 1 : 0; // the correlator rotates E and L from P
 
     // The replicas are generated once and reused for all n_elem antennas, which is why this
     // path splits the fused kernel. Both launches are on one stream, so the correlator starts
@@ -1055,8 +1056,9 @@ int GnssCudaDespread::enqueue_batch_nm(const void* d_frame, const void* d_chan_s
        "launch waveform (NxM)");
     ck(gnss_cuda::launch_correlate_nm(
            (const unsigned char*)d_frame, (const float*)d_chan_scale, d_chan_ids,
-           (const float2*)d_wave, (gnss_cuda::DespreadJob*)d_jobs_slot, n_spec, im.n_chan, n_elem,
-           elem_stride, frame_chan_stride, par, (double2*)d_corr_out, st),
+           (const float2*)d_wave, (gnss_cuda::DespreadJob*)d_jobs_slot,
+           im.epl_rot ? im.d_rot : nullptr, n_spec, im.n_chan, n_elem, elem_stride,
+           frame_chan_stride, par, (double2*)d_corr_out, st),
        "launch correlate NxM");
     return 4 * n_spec;
 }

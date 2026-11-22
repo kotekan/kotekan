@@ -64,7 +64,8 @@ static constexpr int WAVE_THREADS = 1024;
  *                f_car the job's carrier (DespreadJob::wc), up to the offset's phase ramp
  *                across one channel (0.06 rad at CHORD's 195 kHz channels and 0.5 chips of
  *                10.23 Mcps). GnssCudaDespread::set_epl_from_prompt computes it;
- *                cudaGnssDespreadTest pins the sign against the fused kernel's E/L.
+ *                cudaGnssDespreadTest pins the sign against the fused kernel's E/L. With
+ *                @c p.rot_prompt_only only the P row is written.
  * @param energy  out [4*n_job][n_chan] double, rows E/P/L/P_HEAD; P_HEAD is the prompt's energy
  *                over the head hops only. Uncovered channels get zero replica and zero energy.
  */
@@ -92,6 +93,9 @@ void phi_to_half(const float2* src, void* dst, size_t n);
  * @param chan_ids    [n_chan] index of each covering channel within the frame's channel axis
  * @param wave        [3*n_job][n_chan][n_hops] float2 from @ref launch_waveform
  * @param jobs        [n_job]; only @c m_head is read (the P_HEAD gate)
+ * @param rot         nullptr, or launch_waveform's @c rot: only P and P_HEAD are correlated,
+ *                    and the E and L rows are corr_P exp(-i rot) and corr_P exp(+i rot), what
+ *                    the rotated wave rows give, so those rows are not read
  * @param n_elem      antennas correlated (threads span this)
  * @param elem_stride element axis stride of the frame (>= n_elem)
  * @param frame_chan_stride channel axis stride of the frame (num_local_freq)
@@ -101,9 +105,9 @@ void phi_to_half(const float2* src, void* dst, size_t n);
  */
 cudaError_t launch_correlate_nm(const unsigned char* data, const float* chan_scale,
                                 const int* chan_ids, const float2* wave, const DespreadJob* jobs,
-                                int n_job, int n_chan, int n_elem, int elem_stride,
-                                int frame_chan_stride, const DespreadParams& p, double2* corr,
-                                cudaStream_t stream);
+                                const float* rot, int n_job, int n_chan, int n_elem,
+                                int elem_stride, int frame_chan_stride, const DespreadParams& p,
+                                double2* corr, cudaStream_t stream);
 
 /**
  * @brief Path B: quantize @ref launch_waveform's replicas into synthetic 4+4b N^2 stations.

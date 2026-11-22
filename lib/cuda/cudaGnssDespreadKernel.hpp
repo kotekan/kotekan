@@ -108,6 +108,9 @@ struct DespreadParams {
     /// I/Q input (gnss::Channelization::complex_input): the phiA tables are zero
     /// (ChannelizedReplicaBank::image_weights), so the kernels skip that image's gather.
     int complex_input = 0;
+    /// With launch_waveform's @c rot: write the P row only. launch_correlate_nm with @c rot
+    /// forms E and L from the prompt's correlation and does not read the E and L rows.
+    int rot_prompt_only = 0;
 };
 
 /// float2 wrapper over gnss44::unpack, which defines the CHORD 4+4b format (documented in

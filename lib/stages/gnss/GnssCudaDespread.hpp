@@ -112,7 +112,8 @@ public:
     /// Synthesise the prompt alone and take E and L as its per-channel rotations (the @c rot
     /// argument of gnss_cuda::launch_waveform), one chip walk per hop instead of three.
     /// @ref enqueue_waveform, @ref enqueue_batch_nm and @ref enqueue_psi_pack honour it;
-    /// @ref despread_batch keeps its three trials.
+    /// @ref despread_batch keeps its three trials. @ref enqueue_batch_nm also correlates the
+    /// prompt alone and rotates its correlation into E and L.
     void set_epl_from_prompt();
 
     /// Arm the code-phase-table ("Psi") synthesis for @ref enqueue_psi_pack
