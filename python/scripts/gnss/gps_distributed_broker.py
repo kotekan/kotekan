@@ -1759,7 +1759,9 @@ def main(argv=None, rx=None, publisher=None):
             if _ctx.utc0_sample0:
                 _axis_utc0[0] = float(_ctx.utc0_sample0)
             if _axis_utc0[0] > 0.0 and _fh > 0.0:
-                _fh_bound = (_now() - _axis_utc0[0] + 0.05) * args.hops_per_sec
+                _fh_bound = (
+                    _now() - _axis_utc0[0] + args.fe_axis_future_s
+                ) * args.hops_per_sec
                 if _fh > _fh_bound:
                     _fh_ok = max(
                         (
@@ -1835,11 +1837,11 @@ def main(argv=None, rx=None, publisher=None):
                 # rejects stale samples by construction, but it adopts any upward move under
                 # 2.0 s at once and decays only 1.8 s/hour, so one future sample would hold the
                 # axis ahead for hours and evaluate every model off-time. Staleness is >= 0, so
-                # the offset can never exceed -utc0_sample0 (+0.05 s): reject such a sample from
-                # the init, the ratchet and the snap counter. The ingestion bound above already
-                # enforces the same limit.
+                # the offset can never exceed -utc0_sample0 (+fe_axis_future_s): reject such a
+                # sample from the init, the ratchet and the snap counter. The ingestion bound
+                # above already enforces the same limit.
                 _utc0 = float(getattr(_ctx, "utc0_sample0", 0.0) or 0.0)
-                if _utc0 > 0.0 and _oi > -_utc0 + 0.05:
+                if _utc0 > 0.0 and _oi > -_utc0 + args.fe_axis_future_s:
                     _log_rl(
                         "fe-axis-future",
                         "fe-axis: REJECTED a pow_hop %.2f s in the FUTURE of the wall "

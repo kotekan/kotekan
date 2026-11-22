@@ -1636,6 +1636,19 @@ def build_parser(description):
         "--combiner's status. 0 (default) = seeds for now.",
     )
     ap.add_argument(
+        "--fe-axis-future-s",
+        type=float,
+        default=0.05,
+        help="how far past this cycle's frozen clock the newest pow_hop in --combiner's "
+        "status may lie and still be the F-engine axis; a newer one is a corrupt or "
+        "forecast-epoch row and is dropped. The status is fetched partway through the "
+        "cycle, so on a pipeline whose newest record is only tens of ms old the true "
+        "newest row can lie past the cycle's clock by the stages before the fetch. A "
+        "dropped row stops the axis advancing, which dr_clock_freeze_s then reads as "
+        "a stall. Keep it under --dr-forecast-lead-s where that is set: birth rows "
+        "echo the forecast-epoch seed hop.",
+    )
+    ap.add_argument(
         "--model-primacy-max",
         type=int,
         default=0,
