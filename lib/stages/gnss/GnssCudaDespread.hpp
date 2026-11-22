@@ -192,8 +192,8 @@ public:
 
     /// CHORD N x M: generate the replicas once, then correlate them against @c n_elem antennas.
     /// With fp32 tables the replicas equal the fused despread's (launch_despread); only the
-    /// consumer differs (cuda_gnss_despread_test checks the two kernel paths agree exactly at
-    /// N=1).
+    /// consumer differs, accumulating in float (cuda_gnss_despread_test checks the two kernel
+    /// paths agree to float rounding at N=1).
     ///
     /// @c d_frame is the 4+4b voltage in CHORD's native [hop][chan][elem] order, as
     /// GnssChordVoltageTap emits it, with strides @c frame_chan_stride and @c elem_stride;

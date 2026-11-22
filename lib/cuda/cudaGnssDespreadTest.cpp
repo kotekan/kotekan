@@ -310,6 +310,8 @@ int main(int argc, char** argv) {
     // the reference for the split below: rows E/P/L from the record, and the P_HEAD row from the
     // fused prompt over the head hops alone.
     {
+        // The split's float correlation against the fused kernel's double, relative.
+        const double CORR_TOL = 1e-5;
         std::vector<float> h_scale(n_chan), h_inv(n_chan);
         for (int c = 0; c < n_chan; ++c) {
             double ss = 0.0;
@@ -344,8 +346,8 @@ int main(int argc, char** argv) {
         CK(cudaMemcpy(fe.data(), d_energy, fe.size() * sizeof(double), cudaMemcpyDeviceToHost));
         // P_HEAD reference: the fused prompt row of a launch over hops [0, m_head) only. Here
         // every lane of either path holds at most one head hop and the reductions are the same
-        // power-of-two trees (the split's extra lanes add exact zeros), so it is exact. A job
-        // with m_head = 0 keeps the fused kernel's zero row.
+        // power-of-two trees (the split's extra lanes add exact zeros), so it differs only by
+        // the split's float accumulation. A job with m_head = 0 keeps the fused kernel's zero row.
         for (int b = 0; b < n_spec; ++b) {
             if (ftrials[b].m_head == 0)
                 continue;
@@ -363,8 +365,9 @@ int main(int argc, char** argv) {
 
         // --- CHORD split (waveform generation + N x M correlation) vs the fused kernel ---
         // The split generates each replica once and correlates it against N antennas instead of
-        // regenerating it inside the MAC. At N=1 both paths do the same arithmetic in the same
-        // order (gather, carrier, combination, accumulation), so they must agree exactly.
+        // regenerating it inside the MAC. At N=1 both paths synthesise the same replica and
+        // energy (gather, carrier, combination), which must agree exactly; the split accumulates
+        // the correlation in float, so it agrees to float rounding (CORR_TOL).
         {
             const int n_elem = 1;
             // The fused kernel read the dequantized voltage as [chan][hop] floats; the CHORD
@@ -416,17 +419,17 @@ int main(int argc, char** argv) {
                         emax = std::max(emax, std::abs(ne[kf] - fe[kf])
                                                   / std::max(1e-9, std::abs(fe[kf])));
                     }
-            bool split_ok = (cmax == 0.0) && (emax == 0.0);
-            printf("CHORD split (waveform + NxM) vs fused despread, N=1: corr %.3e energy %.3e "
-                   "%s\n",
-                   cmax, emax, split_ok ? "OK (exact)" : "FAIL");
+            bool split_ok = (cmax < CORR_TOL) && (emax == 0.0);
+            printf("CHORD split (waveform + NxM) vs fused despread, N=1: corr %.3e (< %.0e) "
+                   "energy %.3e (exact) %s\n",
+                   cmax, CORR_TOL, emax, split_ok ? "OK" : "FAIL");
 
             // --- E/L from the prompt (launch_waveform's rot) vs the fused kernel's own E/L ---
             // Row 0 (the prompt - ds trial) is the prompt rotated by +2 pi (f_c - f_car)
             // ds/cps/fs on the channel at f_c; row 2 the opposite (the sign is empirical). The
             // rotation ignores the delay's phase ramp across one channel (0.06 rad at CHORD,
-            // 0.4 rad at this test's 125 kHz channels), so the checks are: P and P_HEAD exact
-            // as before, and the rotated prompt much closer to the fused E than the opposite
+            // 0.4 rad at this test's 125 kHz channels), so the checks are: P and P_HEAD as
+            // before, and the rotated prompt much closer to the fused E than the opposite
             // rotation (which is what the L row carries) is.
             {
                 std::vector<float> h_rot((size_t)n_spec * n_chan);
@@ -464,12 +467,12 @@ int main(int argc, char** argv) {
                             const size_t k = (size_t)(4 * b + j) * n_chan + c;
                             return std::complex<double>(fc[k].x, fc[k].y);
                         };
-                        for (int j = 1; j < 4; j += 2) { // P, P_HEAD: exact
+                        for (int j = 1; j < 4; j += 2) { // P, P_HEAD
                             const size_t k = (size_t)(4 * b + j) * n_chan + c;
                             pmax = std::max(pmax, std::abs(at(j) - fused(j))
                                                       / std::max(1e-9, std::abs(fused(j))));
-                            pmax = std::max(pmax, std::fabs(re[k] - fe[k])
-                                                      / std::max(1e-9, std::fabs(fe[k])));
+                            emaxr = std::max(emaxr, std::fabs(re[k] - fe[k])
+                                                        / std::max(1e-9, std::fabs(fe[k])));
                         }
                         // E and L energy rows must equal the prompt's
                         const size_t kp = (size_t)(4 * b + 1) * n_chan + c;
@@ -482,10 +485,10 @@ int main(int argc, char** argv) {
                     }
                 const double r_same = std::sqrt(same / std::max(1e-30, den));
                 const double r_flip = std::sqrt(flip / std::max(1e-30, den));
-                const bool rot_ok =
-                    (pmax == 0.0) && (emaxr == 0.0) && (r_same < 0.25) && (r_same < 0.25 * r_flip);
-                printf("E/L from the rotated prompt vs fused E/L: P,P_HEAD %.3e (exact), E/L "
-                       "energy = P %.3e, E/L residual %.3e (opposite rotation %.3e) %s\n",
+                const bool rot_ok = (pmax < CORR_TOL) && (emaxr == 0.0) && (r_same < 0.25)
+                                    && (r_same < 0.25 * r_flip);
+                printf("E/L from the rotated prompt vs fused E/L: P,P_HEAD %.3e, energy %.3e "
+                       "(exact), E/L residual %.3e (opposite rotation %.3e) %s\n",
                        pmax, emaxr, r_same, r_flip, rot_ok ? "OK" : "FAIL");
                 split_ok = split_ok && rot_ok;
 
@@ -640,8 +643,8 @@ int main(int argc, char** argv) {
             // N=1 above checks the arithmetic, not the element indexing. Replicate the voltage into
             // every element, pad the element axis with a poison byte (0x00 = (-8,-8), the loudest
             // code; 0x88 decodes to zero and would hide a stride error), and require every element
-            // to match the fused answer exactly. n_elem = 5 with elem_stride = 7 is not a power of
-            // two and is less than the stride. It is below the 32-wide element block, so
+            // to match the fused answer to CORR_TOL. n_elem = 5 with elem_stride = 7 is not a power
+            // of two and is less than the stride. It is below the 32-wide element block, so
             // launch_correlate_nm makes the block 5 wide and the ragged-tail predication (n_elem
             // above 32, not a multiple of it) is not exercised.
             const int nE = 5, strideE = 7;
@@ -675,8 +678,8 @@ int main(int argc, char** argv) {
                         }
                     }
             printf("CHORD NxM element axis, N=%d stride=%d (poison-padded): max rel %.3e %s\n", nE,
-                   strideE, mmax, (mmax == 0.0) ? "OK (exact)" : "FAIL");
-            pass = pass && (mmax == 0.0);
+                   strideE, mmax, (mmax < CORR_TOL) ? "OK" : "FAIL");
+            pass = pass && (mmax < CORR_TOL);
 
             cudaFree(d_qm);
             cudaFree(d_mcorr);

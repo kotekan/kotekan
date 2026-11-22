@@ -10,8 +10,9 @@
  *
  * The synthesis calls the same gather, carrier and combination as the fused kernel
  * (cudaGnssReplicaDevice.cuh) and takes the same @ref gnss_cuda::DespreadJob.
- * cudaGnssDespreadTest requires the split and fused paths to agree exactly at N = 1; a
- * divergence would otherwise show only as a correlation-amplitude error.
+ * cudaGnssDespreadTest requires the split's replicas and energies to match the fused kernel's
+ * exactly, and its correlations to within float accumulation, at N = 1; a divergence would
+ * otherwise show only as a correlation-amplitude error.
  *
  * Replica energy is element-independent and goes in the per-PRN record header; correlations
  * are per antenna and go in the element blocks (gnssRecord.hpp). Path B's assembler
@@ -83,7 +84,7 @@ void phi_to_half(const float2* src, void* dst, size_t n);
  * fastest, so there is no transpose: consecutive threads take consecutive elements (coalesced),
  * and the replica sample for a (row, channel, hop) is the same for all of them (a broadcast).
  * As in the fused kernel, one block produces a PRN's rows (here E/P/L/P_HEAD) from one data
- * load.
+ * load. The sums are accumulated in float.
  *
  * @param data        [n_hops][frame_chan_stride][elem_stride] 4+4b bytes (device), real in the
  *                    high nibble, imag in the low (gnss44.hpp)

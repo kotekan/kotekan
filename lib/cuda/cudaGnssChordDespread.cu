@@ -6,9 +6,9 @@
 #include <math.h>
 
 // The synthesis kernel is the fused kernel's replica path (cudaGnssDespreadKernel.cu) without the
-// data load and MAC, and the correlation kernel is that MAC with an element axis added.
-// cudaGnssDespreadTest requires the split and fused paths to agree exactly, so keep the
-// arithmetic textually the same.
+// data load and MAC, and the correlation kernel is that MAC with an element axis added and a
+// float accumulator. cudaGnssDespreadTest requires the split's replicas and energies to match
+// the fused kernel's exactly, so keep the synthesis arithmetic textually the same.
 
 namespace {
 
@@ -159,6 +159,8 @@ gnss_waveform_kernel(const int8_t* __restrict__ code,
 /// grid.x = job (PRN), grid.y = covering channel.
 /// block.x = element lane (coalesced over the frame's fastest axis),
 /// block.y = hop lane (reduced in shared memory at the end).
+/// Accumulates in float: double runs at 1/64 of the float rate on some GPUs (GB10), and the
+/// sums here are of 4+4b data over one record.
 __global__ void gnss_correlate_nm_kernel(const unsigned char* __restrict__ data,
                                          const float* __restrict__ chan_scale,
                                          const int* __restrict__ chan_ids,
@@ -175,7 +177,7 @@ __global__ void gnss_correlate_nm_kernel(const unsigned char* __restrict__ data,
     // The only job field needed; everything else is already in `wave`.
     const int m_head = jobs[b].m_head;
 
-    extern __shared__ double2 sh[]; // [blockDim.x * blockDim.y]
+    extern __shared__ float2 sh[]; // [blockDim.x * blockDim.y]
 
     // Round the element loop up to whole blockDim.x passes and predicate the memory accesses:
     // the reduction below calls __syncthreads(), so every thread must run the same number of
@@ -184,7 +186,7 @@ __global__ void gnss_correlate_nm_kernel(const unsigned char* __restrict__ data,
 
     for (int e0 = threadIdx.x; e0 < e_end; e0 += blockDim.x) {
         const bool active = (e0 < n_elem);
-        double2 acc[4] = {{0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}};
+        float2 acc[4] = {{0.f, 0.f}, {0.f, 0.f}, {0.f, 0.f}, {0.f, 0.f}};
 
         for (int mh = threadIdx.y; mh < p.n_hops; mh += blockDim.y) {
             // Coalesced across threadIdx.x: consecutive elements are adjacent bytes.
@@ -200,8 +202,8 @@ __global__ void gnss_correlate_nm_kernel(const unsigned char* __restrict__ data,
             for (int t = 0; t < 3; ++t) {
                 // Uniform across threadIdx.x, so a broadcast rather than a per-element load.
                 const float2 r = wave[((size_t)(3 * b + t) * n_chan + ci) * p.n_hops + mh];
-                const double re = (double)(dd.x * r.x + dd.y * r.y); // Re(d * conj(r))
-                const double im = (double)(dd.y * r.x - dd.x * r.y); // Im(d * conj(r))
+                const float re = dd.x * r.x + dd.y * r.y; // Re(d * conj(r))
+                const float im = dd.y * r.x - dd.x * r.y; // Im(d * conj(r))
                 acc[t].x += re;
                 acc[t].y += im;
                 if (t == 1 && in_head) {
@@ -226,7 +228,8 @@ __global__ void gnss_correlate_nm_kernel(const unsigned char* __restrict__ data,
                 __syncthreads();
             }
             if (threadIdx.y == 0 && active)
-                corr[((size_t)(4 * b + j) * n_chan + ci) * n_elem + e0] = sh[threadIdx.x];
+                corr[((size_t)(4 * b + j) * n_chan + ci) * n_elem + e0] =
+                    make_double2(sh[threadIdx.x].x, sh[threadIdx.x].y);
         }
     }
 }
@@ -324,7 +327,7 @@ cudaError_t launch_correlate_nm(const unsigned char* data, const float* chan_sca
 
     const dim3 block(ex, hy);
     const dim3 grid(n_job, n_chan);
-    const size_t shmem = (size_t)ex * hy * sizeof(double2);
+    const size_t shmem = (size_t)ex * hy * sizeof(float2);
     gnss_correlate_nm_kernel<<<grid, block, shmem, stream>>>(
         data, chan_scale, chan_ids, wave, jobs, p, n_elem, elem_stride, frame_chan_stride, corr);
     return cudaGetLastError();
