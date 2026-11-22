@@ -97,6 +97,7 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
     // Threads for the CPU acquire (the per-channel correlations, then the aggregate over
     // Doppler x lag rows) and the CPU refine's trial phases; 1 is the serial path.
     _acquire_threads = config.get_default<int>(unique_name, "acquire_threads", 1);
+    _pace_ms = config.get_default<double>(unique_name, "pace_ms", 0.0);
     // Fine-lag decimation (1 = every sample). The fine-lag lobe is fft_len / (comb span in
     // bins) samples wide, so a per-sample axis oversamples it; see AcquisitionSurface.
     _acquire_fine_step = std::max(1, config.get_default<int>(unique_name, "acquire_fine_step", 1));
@@ -635,6 +636,9 @@ void GnssChannelizedSearch::search_snapshot() {
                 _last_surface_cells = dims.size();
                 ai = _cuda_acq->peak_result(dims, grid, _sample_rate, _replica->chip_rate_hz(),
                                             _replica->code_length(), true);
+                if (_pace_ms > 0.0) // peak_result has synchronised: the slice's work is done
+                    std::this_thread::sleep_for(
+                        std::chrono::duration<double, std::milli>(_pace_ms));
             } else
 #endif
             {
@@ -820,10 +824,10 @@ void GnssChannelizedSearch::search_snapshot() {
             ceiling = kx / (double)kwin;
         }
         INFO("GnssChannelizedSearch[{:s}]: pass best snr {:.2f} (PRN {:d}{:s}), threshold {:.2f}, "
-             "pure-noise ceiling ~{:.2f}{:s}",
+             "pure-noise ceiling ~{:.2f}, done {:.0f} ms after its snapshot closed{:s}",
              unique_name, best_any, best_any_prn,
              (_n_nh > 1) ? fmt::format(", nh {:d}/{:d}", best_any_nh, _n_nh) : std::string(),
-             _acquire_snr, ceiling,
+             _acquire_snr, ceiling, 1e3 * (steady_s() - _snap_taken_s),
              (_acquire_snr < ceiling) ? "  [THRESHOLD BELOW NOISE CEILING -- every \"detection\" "
                                         "is meaningless]"
                                       : "");

@@ -153,9 +153,12 @@ l5_search:
     acquire_fine_step: 2
     hint_ttl_s: 30
     # One pass every 2 s: back to back, the passes took ~450 ms/s of GPU and, with seven
-    # trackers, the valve dropped 30-45% of frames.
+    # trackers, the valve dropped 30-45% of frames. Paced, a pass's ~2.5 ms slices (one PRN and
+    # alignment each) spread over a few hundred ms instead of one burst past what the trackers
+    # leave, which held tracker frames back by up to ~90 ms.
     pass_interval_s: 2.0
     use_cuda_acquire: true
+    pace_ms: 8
 # GuoWang: every code in the satellite library (PRN = G2' phase + 1), and PRNs 1 to 3, codes no
 # satellite carries, as dark noise probes. The window is one 2 ms frame, whose ranging half
 # carries one data sign; the broker hints the visible satellites from the TLE table.
@@ -184,9 +187,12 @@ gw_search:
     acquire_fine_step: 2
     hint_ttl_s: 30
     # One pass every 2 s: back to back, the passes took ~450 ms/s of GPU and, with seven
-    # trackers, the valve dropped 30-45% of frames.
+    # trackers, the valve dropped 30-45% of frames. Paced, a pass's ~2.5 ms slices (one PRN and
+    # alignment each) spread over a few hundred ms instead of one burst past what the trackers
+    # leave, which held tracker frames back by up to ~90 ms.
     pass_interval_s: 2.0
     use_cuda_acquire: true
+    pace_ms: 8
 
 # ---- Tracker ----
 # gnss_gpu::frame_bytes(32 PRNs, 12 channels, 4 rows, 1 element).

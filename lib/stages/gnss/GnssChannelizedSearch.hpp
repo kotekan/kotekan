@@ -73,6 +73,9 @@
  * @conf refine_hops      Int (default 0 = the full record). Refine integration, hops.
  * @conf prn_freq_offset_hz Array<Double> (optional). Per-slot FDMA carrier offsets, Hz.
  * @conf use_cuda_acquire Bool (default false). Acquire and refine on the GPU (CUDA builds only).
+ * @conf pace_ms          Double (default 0). On the GPU path, a pause after each PRN and
+ *                        alignment's acquire, so a pass's work spreads out instead of bursting
+ *                        past what the trackers leave of the GPU.
  * @conf prns_per_pass, blind_prns_per_pass, require_hint, acq_pairsum_select,
  *       nh_label_consensus, code_doppler_sign  Retired: accepted only at 0, 0, true, true, true
  *                        and 1, the behaviour the stage has.
@@ -209,6 +212,7 @@ private:
     int _nh_hint_span = 1;
     std::mutex _hint_mtx;
     int _acquire_threads = 1;     ///< threads for channelized_accumulate and refine_peak
+    double _pace_ms = 0.0;        ///< pause after each GPU acquire slice (config pace_ms)
     int _acquire_fine_step = 1;   ///< fine-lag decimation of the surface (see AcquisitionSurface)
     long _last_surface_cells = 0; ///< cells in the last surface (for the noise-ceiling log)
     long _empty_hint_passes = 0;  ///< passes with no fresh hint at all (rate-limited WARN)
