@@ -2,8 +2,7 @@
 
 Ingests a combiner's bit_export nav_obs: one 20 ms D1 bit per slot, the NH20 already wiped by
 the tracker code, each bit's soft value when the combiner exports it. Emits are chained into a
-per-PRN bit history: each new emit is slot-aligned to the history (navobs_align.emit_offset)
-and takes the polarity of the history it overlaps. Subframes (300 bits, 6 s) are found by their
+per-PRN bit history (navobs_align.SymbolHistory). Subframes (300 bits, 6 s) are found by their
 preamble, confirmed by the next subframe's preamble 300 bits on, and each word is corrected by
 BCH(15,11,1). Subframes 1-3 of one frame (SOWs 6 s apart) give the ephemeris, taken when the
 next frame repeats it, and built as a gnss_ephemeris record (sys "C"), so sat_pos_clk
@@ -24,11 +23,10 @@ import time
 import numpy as np
 
 import gnss_ephemeris as ge
-from navobs_align import emit_offset
+from navobs_align import HistoryState, SymbolHistory
 
 PREAMBLE = (1, 1, 1, 0, 0, 0, 1, 0, 0, 1, 0)
 SF_BITS = 300
-MIN_OVERLAP_POL = 16  # shared bits before an emit takes the history's polarity
 HIST_BITS = (
     1500  # bits kept per PRN (30 s: a subframe and the next one's preamble, with room)
 )
@@ -182,13 +180,9 @@ def brdc_xcheck(brdc, sysc, prn, eph, log=None):
         return " | BRDC xcheck err: %s" % ex
 
 
-class _PrnState:
+class _PrnState(HistoryState):
     def __init__(self):
-        self.grid0 = None  # slot-grid origin (s)
-        self.s0 = None  # first slot of the history
-        self.hist = np.zeros(0)  # soft values from slot s0 (0 = no bit)
-        self.scan = None  # first slot not yet scanned for a subframe start
-        self.last_obs = None
+        super().__init__()
         self.subframes = {}  # (fra, sow) -> (stored bits, t_decoded)
         self.n_sf = 0  # distinct subframes decoded
         self.n_corr = 0  # bits BCH corrected
@@ -202,83 +196,17 @@ def bdt_sow_now():
     return (ge.gpst_of_utc(time.time()) + ge.BDT_GPST) % 604800.0
 
 
-class D1Predictor:
+class D1Predictor(SymbolHistory):
+    hist_max = HIST_BITS
+
     def __init__(self):
-        self._p = {}
+        super().__init__()
         self.max_sow_err_s = (
             MAX_SOW_ERR_S  # None: no clock check (the self-test's stream)
         )
 
-    def ingest(self, prn, obs):
-        st = self._p.setdefault(prn, _PrnState())
-        try:
-            utc_ref = float(obs["utc_ref"])
-            rec_dt = float(obs["rec_dt"])
-            phase = int(obs["phase"])
-            br = int(obs["br"])
-            pairs = obs["bits"]
-            soft = obs.get("soft")
-        except (KeyError, TypeError, ValueError, AttributeError):
-            return
-        if rec_dt <= 0 or br <= 0 or not pairs:
-            return
-        key = (utc_ref, phase, br)
-        if key == st.last_obs:
-            return
-        st.last_obs = key
-        if soft is not None and len(soft) != len(pairs):
-            soft = None
-        sym_s = br * rec_dt
-        t0 = utc_ref - phase * rec_dt
-        if st.grid0 is None:
-            st.grid0 = t0
-        base = int(round((t0 - st.grid0) / sym_s))
-        idx = np.array([int(p[0]) for p in pairs])
-        sg = np.array([int(p[1]) for p in pairs], dtype=float)
-        val = (
-            sg
-            if soft is None
-            else np.where(np.array(soft) * sg > 0, np.array(soft) / 10.0, sg * 0.01)
-        )
-        lo, hi = int(idx.min()), int(idx.max())
-        arr = np.zeros(hi - lo + 1)
-        arr[idx - lo] = val
-        slot0 = base + lo
-        if st.s0 is not None and len(st.hist):
-            slot0 += emit_offset(
-                slot0, np.sign(arr).astype(int), [(st.s0, np.sign(st.hist).astype(int))]
-            )
-        self._merge(st, slot0, arr)
-        self._decode(prn, st)
-
-    def _merge(self, st, slot0, arr):
-        if st.s0 is None or slot0 > st.s0 + len(st.hist) or slot0 + len(arr) < st.s0:
-            # a new island: nothing to chain its polarity to, so the history restarts there
-            st.s0, st.hist, st.scan = slot0, arr.copy(), slot0
-            return
-        lo = max(slot0, st.s0)
-        hi = min(slot0 + len(arr), st.s0 + len(st.hist))
-        a = arr[lo - slot0 : hi - slot0]
-        h = st.hist[lo - st.s0 : hi - st.s0]
-        both = (a != 0) & (h != 0)
-        if (
-            np.count_nonzero(both) >= MIN_OVERLAP_POL
-            and float(np.dot(np.sign(a[both]), np.sign(h[both]))) < 0
-        ):
-            arr = -arr
-        end = max(slot0 + len(arr), st.s0 + len(st.hist))
-        start = min(slot0, st.s0)
-        new = np.zeros(end - start)
-        new[st.s0 - start : st.s0 - start + len(st.hist)] = st.hist
-        tail = arr[max(0, st.s0 + len(st.hist) - slot0) :]
-        t0 = max(slot0, st.s0 + len(st.hist))
-        new[t0 - start : t0 - start + len(tail)] = tail
-        st.s0, st.hist = start, new
-        if len(st.hist) > HIST_BITS:
-            cut = len(st.hist) - HIST_BITS
-            st.s0 += cut
-            st.hist = st.hist[cut:]
-            st.scan = max(st.scan, st.s0)
+    def new_state(self):
+        return _PrnState()
 
     def _decode(self, prn, st):
         n = len(st.hist)

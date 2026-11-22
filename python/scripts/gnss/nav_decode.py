@@ -40,6 +40,7 @@ sys.path.insert(0, HERE)
 import bds_d1_predictor  # noqa: E402
 import decode_health  # noqa: E402
 import gnss_ephemeris as ge  # noqa: E402
+import sbas_l5_predictor  # noqa: E402
 from gnss_broker import sky  # noqa: E402
 
 # signal -> (constellation, decoder module, class, BRDC cross-check, the ephemeris's toe field).
@@ -100,6 +101,13 @@ DECODERS = {
         "bds_d1_predictor",
         "D1Predictor",
         bds_d1_predictor.brdc_xcheck,
+        "toe_sow",
+    ),
+    "SBAS_L5_DFMC": (
+        "S",
+        "sbas_l5_predictor",
+        "SbasL5Predictor",
+        sbas_l5_predictor.brdc_xcheck,
         "toe_sow",
     ),
 }

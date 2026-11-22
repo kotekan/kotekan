@@ -42,6 +42,7 @@ import bcnav3_predictor  # noqa: E402
 import bds_d1_predictor  # noqa: E402
 import cnav2_predictor  # noqa: E402
 import cnav_predictor  # noqa: E402
+import sbas_l5_predictor  # noqa: E402
 import fnav_predictor  # noqa: E402
 import inav_predictor  # noqa: E402
 import navobs_align  # noqa: E402
@@ -119,6 +120,7 @@ class TestDistinctCounts(unittest.TestCase):
         (bcnav1_predictor, bcnav1_predictor.Bcnav1Predictor, 2),  # 2 frames
         (bcnav3_predictor, bcnav3_predictor.Bcnav3Predictor, 6),  # 3 x types 10, 30
         (bds_d1_predictor, bds_d1_predictor.D1Predictor, 9),  # 3 x subframes 1-3
+        (sbas_l5_predictor, sbas_l5_predictor.SbasL5Predictor, 10),  # 12 less warm-up
     )
 
     def test_rescans_do_not_count_again(self):
@@ -136,8 +138,12 @@ class TestDistinctCounts(unittest.TestCase):
 
     def test_seen_slots_pruned_with_the_emit_cache(self):
         for mod, cls, _n in self.CASES:
-            if cls in (bcnav3_predictor.Bcnav3Predictor, bds_d1_predictor.D1Predictor):
-                continue  # count by SOW, not by slot (test_bcnav3_sow_counted_once)
+            if cls in (
+                bcnav3_predictor.Bcnav3Predictor,
+                bds_d1_predictor.D1Predictor,
+                sbas_l5_predictor.SbasL5Predictor,
+            ):
+                continue  # not slots pruned with an emit cache (test_bcnav3_sow_counted_once)
             with self.subTest(cls=cls.__name__):
                 pred = cls()
                 pred._decode = lambda prn, st: None
