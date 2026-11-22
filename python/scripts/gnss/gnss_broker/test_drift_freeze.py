@@ -176,7 +176,7 @@ def test_drift_expires():
         "expiry rule present at the propagation site",
     )
     i = src.index("EXPIRED (dr_drift_max_age_s")
-    j = src.index('ctx.drp.drift = ctx.dr_state.get("drift")', i)
+    j = src.index("ctx.drp.drift = dr_drift(ctx)", i)
     check(
         'ctx.dr_state["drift"] = None' in src[i:j],
         "expiry sets drift to None (falls back to the (l-a) model)",

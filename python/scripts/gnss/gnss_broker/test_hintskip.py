@@ -145,6 +145,38 @@ def handover_checks():
     check(3 not in ctx.dr_state["seeded"], "and one detected this cycle")
 
 
+def drift_checks():
+    ctx = make_ctx()
+    ctx.args.dr_drift_source = "bias"
+    ctx.args.carrier_hz = 1176.45e6
+    ctx.cb.ema = 1.5
+    ctx.dr_state["drift"] = 0.02
+    ctx.drp.la = 0.0
+    ctx.rx = _Obj(joint_unit=lambda which: (CHIP_HZ, 1.0))
+    state = _Obj(_idx=[("G", p) for p in range(6)], clk_rate=0.001)
+    saved = (deadreckon.joint_read, deadreckon._log_rl)
+    deadreckon.joint_read = lambda c: (state, "trk", "[trk]")
+    deadreckon._log_rl = lambda key, msg, every_s=10.0: None
+    try:
+        for consume, want, what in (
+            (
+                set(),
+                1.5 * CHIP_HZ / 1176.45e6,
+                "the carrier bias (--dr-drift-source bias)",
+            ),
+            ({"rate"}, 1.5 * CHIP_HZ / 1176.45e6, "rate alone leaves it"),
+            ({"clk", "rate"}, 0.001, "clk,rate: the joint rate"),
+        ):
+            ctx.joint_consume = consume
+            got = deadreckon.dr_drift(ctx)
+            check(abs(got - want) < 1e-12, "%s (%.6f chips/s)" % (what, got))
+        ctx.args.dr_drift_source = "solve"
+        ctx.joint_consume = set()
+        check(deadreckon.dr_drift(ctx) == 0.02, "the measured drift otherwise")
+    finally:
+        deadreckon.joint_read, deadreckon._log_rl = saved
+
+
 def main():
     print("\ndr_can_seed")
     ctx = make_ctx()
@@ -205,6 +237,9 @@ def main():
     check(
         joint_rate(6, 0.2 * CHIP_HZ * 1e-6) is None, "refused beyond joint_max_rate_ppm"
     )
+
+    print("\ndr_drift")
+    drift_checks()
 
     print("-" * 70)
     if _fails:

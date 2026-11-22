@@ -1297,6 +1297,27 @@ def dr_joint_rate(ctx):
     return la
 
 
+def dr_drift(ctx):
+    """The rate this chain runs its clock at, chips/s: the measured drift (dr_state), else
+    the f_chip*(l-a) model, except that --dr-drift-source bias takes the carrier bias (a
+    free-running oscillator's frequency error), and a chain that takes both the joint clock
+    and its rate (joint-consume clk,rate) takes the joint rate. Between adoptions, and
+    through a refusal, the clock it falls back on must not walk away from the one the seeds
+    ride: a chain whose locked satellites go unsearched (--hint-skip-dr) has no fresh
+    solves to measure a drift from, and a stale one walked 5 chips in 6 min."""
+    drift = ctx.dr_state.get("drift")
+    bias = getattr(ctx.args, "dr_drift_source", "solve") == "bias"
+    if bias and ctx.cb.ema is not None:
+        drift = ctx.cb.ema * ctx.args.chip_rate_hz / ctx.args.carrier_hz
+    if "clk" in ctx.joint_consume and "rate" in ctx.joint_consume:
+        jla = dr_joint_rate(ctx)
+        if jla is not None:
+            drift = ctx.args.chip_rate_hz * jla
+    if drift is None:
+        drift = ctx.args.chip_rate_hz * ctx.drp.la
+    return drift
+
+
 def dr_can_seed(ctx, prn):
     """Can this chain dead-reckon prn: its clock is fresh (_dr_clock_local_fresh) and the
     model's last prediction for prn carries a clock known to half a chip and is not marked
@@ -3098,14 +3119,7 @@ def stage_dead_reckon(ctx):
             elif ctx.dr_state.get("drift") is not None and _dt is None:
                 # an unstamped drift gets one full lifetime from now, not forever
                 ctx.dr_state["drift_t"] = ctx.drp.now_w
-            ctx.drp.drift = ctx.dr_state.get("drift")
-            _bias_drift = getattr(ctx.args, "dr_drift_source", "solve") == "bias"
-            if _bias_drift and ctx.cb.ema is not None:
-                # A free-running oscillator: the carrier bias is its frequency error, and the
-                # code clock runs off by the same fraction.
-                ctx.drp.drift = ctx.cb.ema * ctx.args.chip_rate_hz / ctx.args.carrier_hz
-            if ctx.drp.drift is None:
-                ctx.drp.drift = ctx.args.chip_rate_hz * ctx.drp.la
+            ctx.drp.drift = dr_drift(ctx)
             # The hop-axis epoch (#208): every model below is evaluated at _ep_w and labelled
             # _ep_age; nothing here reads the wall clock.
             _ep_age, _ep_w = dr_eph_epoch(ctx)
