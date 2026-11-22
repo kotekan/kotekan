@@ -92,16 +92,14 @@ the aggregator and gather. #184–#187 below are what the removal left for later
 
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
 
-### #228 — GuoWang track-beam loop: block start times rounded in a float64, 238 ns steps (2026-11-18, KV: "add these to the buglist")
-**What:** the track-beam loop (cf05, `blocks.jsonl`) forms each block's start time in a float64 of unix
-seconds, which steps by 238.4 ns at these epochs, and places its code replica on the rounded time. The code
-epoch then alternates by about 118 ns between blocks. Known exactly and removable offline (`gw_arc_model.py` in
-~/gnss/guowang_paper models it). **Fixed in the loop 2026-11-18 (KV go), not live:** builds/gw1202/track_beam_loop.py keeps frame0 as
-(integer, fraction) and forms each sample's time as (frame0_int - day0) + (frac + seq * HOP + t_rel - rho/c),
-never the absolute unix time in a float64 (backup `.bak_20261118_pre_reref`). Open: whether the dump's reducer
-rounds a time tag the same way (not looked at); confirm on sky when the loop runs again.
+### #240 — GuoWang track beam: the code epoch wanders 20-100 ns over a minute or two at high elevation (2026-11-18, KV: "add to the buglist") (was kv/docs-tree #230)
+**What:** on DIGUI-55, DIGUI-134 and DIGUI-96 the code epoch wanders 20 to 100 ns over one to two minutes,
+growing toward the top of the pass; per-run slopes scatter four times more at 75-90 deg than at 15-30 deg.
+No term found (orbit, troposphere, ionosphere and the clock words are modelled). Once #239 is gone this is
+what limits a pass. Open: whether DIGUI-134's late fall (20-65 ns two minutes after its clock-word step) is
+this wander. **Check:** `[archive]` note 18c parts 3 and 5, `scripts/gw_arc_el_slope.py`.
 
-### #229 — GuoWang track-beam loop: a per-pass offset of 1.1 us rms (2026-11-18, KV: "add these to the buglist")
+### #239 — GuoWang track-beam loop: a per-pass offset of 1.1 us rms (2026-11-18, KV: "add these to the buglist") (was kv/docs-tree #229)
 **What:** each pass of the track beam carries an offset of its own against the dump's code epoch, 1.1 us rms
 over 71 passes (the mean, -78 ns, agrees with the dump). It makes absolute levels from the track beam
 untestable. **Confirmed 2026-11-18 `[archive]`:** it is the free phase origin of the target weights. The node builds
@@ -116,12 +114,14 @@ of `--ref-inputs` (default 50,17,25,32) with a non-zero weight (builds/gw1202/ra
 loop_test.py and their logs). Past blocks cannot be redone: their raw frames are gone. Open: confirm on sky
 that runs no longer step; which inputs are live when the array returns.
 
-### #230 — GuoWang track beam: the code epoch wanders 20-100 ns over a minute or two at high elevation (2026-11-18, KV: "add to the buglist")
-**What:** on DIGUI-55, DIGUI-134 and DIGUI-96 the code epoch wanders 20 to 100 ns over one to two minutes,
-growing toward the top of the pass; per-run slopes scatter four times more at 75-90 deg than at 15-30 deg.
-No term found (orbit, troposphere, ionosphere and the clock words are modelled). Once #229 is gone this is
-what limits a pass. Open: whether DIGUI-134's late fall (20-65 ns two minutes after its clock-word step) is
-this wander. **Check:** `[archive]` note 18c parts 3 and 5, `scripts/gw_arc_el_slope.py`.
+### #238 — GuoWang track-beam loop: block start times rounded in a float64, 238 ns steps (2026-11-18, KV: "add these to the buglist") (was kv/docs-tree #228)
+**What:** the track-beam loop (cf05, `blocks.jsonl`) forms each block's start time in a float64 of unix
+seconds, which steps by 238.4 ns at these epochs, and places its code replica on the rounded time. The code
+epoch then alternates by about 118 ns between blocks. Known exactly and removable offline (`gw_arc_model.py` in
+~/gnss/guowang_paper models it). **Fixed in the loop 2026-11-18 (KV go), not live:** builds/gw1202/track_beam_loop.py keeps frame0 as
+(integer, fraction) and forms each sample's time as (frame0_int - day0) + (frac + seq * HOP + t_rel - rho/c),
+never the absolute unix time in a float64 (backup `.bak_20261118_pre_reref`). Open: whether the dump's reducer
+rounds a time tag the same way (not looked at); confirm on sky when the loop runs again.
 
 ### #222 — a broker cold start after a long outage predicts from an expired BRDC set and hints nothing for up to 15 min: the collapse guard cannot see a sky that was empty from the first parse (2026-10-30, live)
 **What:** the stack had been down 19 h. The broker started at 16:44:45Z and every chain parsed the cached

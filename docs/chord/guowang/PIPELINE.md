@@ -13,8 +13,12 @@ the UTC 2 ms boundary, measured; drifts ~-0.7 us/day), `status` (transmitting / 
 `passes` [utc, separation, detected], `last_observed_utc`, `last_checked_*`. 99 satellites on
 11-04, 46 with a code and theta ("known"); 29 of 57 codes are shared by two satellites.
 `guowang_codes.py` generates the code (G1 at 1206 x G2' phase); `guowang_passes.py` holds the
-site, the boresight (az 180, el 62.70) and the TLE cache (`~/.cache/guowang/hulianwang_*.tle`,
-plus `hidden_digui.tle` for the inferred-orbit "H" satellites from `gw_hidden_tle.py`).
+site, the boresight (az 180, el 62.70) and the element cache: since 2026-11-21 CelesTrak's OMM
+records of every HULIANWANG object, `~/.cache/guowang/gp_hulianwang_<stamp>.csv` (query
+`gp.php?NAME=HULIANWANG&FORMAT=CSV`, 261 objects; `guowang_passes.read_omm`), fetched every 2 h by
+`scripts/gnss/site/gw_published_tle.py` (cron on the VM). TLEs cannot carry the six-digit catalogue
+numbers given since 2026-07-11; the older `hulianwang_*.tle` and Alpha-5 `published_hulianwang*.tle`
+files stay in the cache as history (`builds/gw1202/gwcommon.py` reads both).
 
 What `theta_us` is referenced to is the file's `schema`, and both steps are of 11-17. Schema 2
 put theta on UTC: the reduction's theta plus `tag_early_us` of its reference input, +9.81 us.

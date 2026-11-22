@@ -218,12 +218,15 @@ A pass over every open item against the five-day archive (285 822 CRC-valid high
   12 + 339 + 24 = 375. Its docstring and the notes quote 328 and 351, which count the 12 bits
   twice. Pages 1-4 cycle every 12 s. Every clean subframe's SOW matched its UTC start with
   BDT = UTC + 4 s. Clean 18/28 and 25/55 subframes on two passes (`slow_decode.py`).
-- Page 1 payload: [4 bits = 0010][8-bit satellite ID: 139 = H24-4, 126 = H84-1, the high-rate
+- Page 1 payload: [4 bits = 0010][8-bit satellite ID: 139 = H24-4 (DIGUI-208), 126 = H84-1 (DIGUI-186), the high-rate
   header's numbering][17 bits 0x21fa|1, common][10-bit per-satellite field: 481 / 812][~50 bits
   common: ...bfffea88000002][a 24-28-bit per-page word with ~5 satellite-specific bits][filler].
   Pages 2-4: filler only, the byte 0x2d + 8 x (page - 1) repeated. Payloads are constant over a
-  pass. Placeholder content; no ephemeris. **That holds for the two inferred-orbit satellites
-  decoded first (H24-4, H84-1). Catalogued satellites do not send filler (11-05): DIGUI-121,
+  pass. Placeholder content; no ephemeris. **That holds for every satellite outside the almanac
+  (sender IDs 109-144), and only for them (11-21: all 12 such satellites in the live page file
+  since 11-07, none of 122 almanac satellites; first seen on DIGUI-208 and -186). On a shared
+  code the fill alternates with the almanac code-mate's real pages. Almanac satellites do not
+  send filler (11-05): DIGUI-121,
   -139 and -142 carry changing content in all four pages, 20-36 of 316 bits per 12 s cycle over
   a union of 30-120 positions per page, 25-35 % differing between satellites at other times.
   What it encodes is open; it is where an ephemeris or clock would sit.**
@@ -316,8 +319,10 @@ A pass over every open item against the five-day archive (285 822 CRC-valid high
   1488 bits per UTC second with a CRC flag): 4684 of 4930 complete seconds verified (95 %, 63
   passes), later 5986 verified messages from 80 passes.
 - Header, bits 0-48: shell + ID 12 bits (slot 4 bit 3 = shell flag, set for 50 deg, clear for
-  polar; number = (slot 4 & 3) x 64 + slot 5; DIGUI-87..91 = 20, 19, 21, 22, 23; DIGUI-H54-3 =
-  128; code-mates differ by 2); a 4-bit constant (slot 6 high bits); BDT SOW 20 bits (slot 6 low 2
+  polar; number = (slot 4 & 3) x 64 + slot 5; DIGUI-87..91 = 20, 19, 21, 22, 23; DIGUI-H54-3 (DIGUI-189) =
+  128; code-mates differ by 2; the 36 satellites not in the almanac, the second nine of planes
+  2, 1, 0 and 11, send IDs 109-144 in launch order, ID = base + (slot + 1) / 2 with base 108, 117, 126,
+  135; 19 confirmed from headers on 2026-11-21, DIGUI-172 sends 0); a 4-bit constant (slot 6 high bits); BDT SOW 20 bits (slot 6 low 2
   bits + slots 7-9; the rollover past 262144 at 11-04 00:49Z was predicted and seen); BDT week
   13 bits (slots 10-11 read 8, 31).
 - Body: ONE constellation-wide stream. The per-bit change profile repeats with a 490-bit record
@@ -341,7 +346,7 @@ A pass over every open item against the five-day archive (285 822 CRC-valid high
   bits 0, 5, 10, 15, 29, 34, 39, 44-47 never flip; 1-4 = 6-9 = 11-14 (one 4-bit value sent three
   times), 25-28 = 30-33 = 35-38 = 40-43 (another, four times); 16-24 a separate ~9-bit field; not
   a counter. (The earlier "7 x 5-bit + 14-bit table" was a snapshot label.)
-- Variant satellites (DIGUI-169/170/176/177, the inferred H24-x and H54-x; 556 of 5986 messages)
+- Variant satellites (DIGUI-169/170/176/177, the H24-x and H54-x, now DIGUI-205..213 and -187..195; 556 of 5986 messages)
   send 0x6565 or zeros in the epoch fields; H84-1 and H24-1 sent zeros at 11-04 13:10Z.
 - Interpretation (11-04, superseded 11-05): live GNSS augmentation corrections at ~10 s epochs.
 
@@ -390,7 +395,7 @@ to every sender, but each sender carries its own subset, so same-second messages
   shell, 0 = polar), the same bit as bit 2 of the message header's ID word; 80 of 80 decoded
   senders agree. The 50 deg-shell senders cycle 108 entries (IDs 1-108, nine per plane in the
   system's plane order, one entry per second, 54 s per flag); the polar senders cycle the polar
-  shell's 62 (IDs 22-83, including the two silent planes). Entry fields after a 26-bit table header
+  shell's 61 (IDs 22-82, including the two silent planes; 82 = JISHU-SHIYAN-8A). Entry fields after a 26-bit table header
   (bits 0-14 the BDT day, 15-25 a per-shell constant, 1009 / 495), from the 11-09 field scans
   (`alm_words.py`, `alm_words2.py`, 168 satellites against the cached TLEs): @26/12 unsigned = the
   semi-major axis as an offset from a per-shell reference (~7529 km for the 50 deg shell, ~7547 km

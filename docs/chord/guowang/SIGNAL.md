@@ -72,10 +72,10 @@ Message content: `PAYLOAD.md`.
   codes in use run c = -1..234 (not 1..120 as first read).
 - PLANE & SLOT RULE (11-05, builds/gw1202/constellation.py; zero exceptions):
   * each 50 deg plane uses 5 codes, each polar ring of 10 uses 2; the blocks ascend in ALMANAC ID
-    order (PAYLOAD.md): polar rings (IDs 22-83) lowest, then the 50 deg planes in ID blocks 1-9,
+    order (PAYLOAD.md): polar rings (IDs 22-82) lowest, then the 50 deg planes in ID blocks 1-9,
     10-18, ... 100-108 (planes 2, 1, 0, 3, 4, 5, 11, 10, 9, 7, 8, 6 in the map's numbering);
   * a 50 deg plane has 18 slots 20 deg apart; almanac satellite j (= ID - block start) sits at
-    s' = 2j, the inferred H satellites at odd s'; group g = (s' mod 9) mod 5 takes the plane's
+    s' = 2j, the satellites not in the almanac at odd s'; group g = (s' mod 9) mod 5 takes the plane's
     (g+1)-th lowest code: a code at u, u+80, u+180, u+260 (the 80-100-80-100 pattern), group 4
     at u and u+180 only. Nine-satellite planes: j = 0..8 -> g = 0,2,4,1,3,1,3,0,2;
   * polar ring: even slot -> the lower code, odd -> the higher.

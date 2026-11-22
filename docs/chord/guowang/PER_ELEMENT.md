@@ -66,7 +66,7 @@ latency, which the alternative (decoding the bits) does not.
    identical across every repeat of both decoded satellites), the CRC-24Q computed, the block
    encoded (K=7, 171/133, G2 not inverted) at 250 symbols/s, one symbol per two 2 ms frames.
    Against the symbols measured by `slow_bits2.py` from the window reductions
-   (`/var/tmp/kvand-gw1202/reduce/w078` DIGUI-H24-4, `w090` DIGUI-H84-1), the clean subframes
+   (`/var/tmp/kvand-gw1202/reduce/w078` DIGUI-H24-4 = DIGUI-208, `w090` DIGUI-H84-1 = DIGUI-186), the clean subframes
    agree at 98.3 % median (minimum 97.6 %) with the 12 trailer bits unknown, 98.8 % with their
    most common value. The trailer is the last 96 ms of each 3 s period, after the CRC, and
    varies; it costs ~1.5 % of the signs. A satellite sometimes switches to all-zero subframes

@@ -18,8 +18,15 @@ work started 2026-10-28; everything below is dated.
 
 Code lives in `lib/stages/gnss` (descriptor `GW_1202`, code generator), `lib/cuda`
 (beam dump, track beam), `python/scripts/gnss/guowang` (library, codes, passes),
-`scripts/gnss/site` (ephemeris table, scheduler, sync, hidden TLEs) and the broker
+`scripts/gnss/site` (ephemeris table, scheduler, sync, published TLEs) and the broker
 (`gnss-broker`, chain `gw_1202`). Non-git tools and state are under `~/gnss/builds/gw1202`.
+
+Names: satellites are named by their catalogue names, HULIANWANG DIGUI-nn. Notes before 2026-11-12
+also use our working names for 28 satellites the TLE files lacked: H84-1..9, H54-1..9 and H24-1..9
+are DIGUI-178..195 and -205..213, and DIGUI-A82 is JISHU-SHIYAN-8A. They have six-digit catalogue
+numbers, which the TLE format cannot carry; CelesTrak serves them only in the OMM formats
+(`gp.php?NAME=HULIANWANG&FORMAT=CSV`). The map is `renamed` in `guowang_1202_db.json`; the order
+within a set is not the H order (H84-1 = DIGUI-186, H54-9 = DIGUI-187).
 
 Owner: the `gnss GuoWang` Claude session; session state (what is running, what is next) stays
 in that session's memory, these documents hold what is established.
