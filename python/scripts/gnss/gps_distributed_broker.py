@@ -33,6 +33,7 @@ Runs one chain; scripts/gnss/broker_multi.py runs every chain of
 config/gnss_chains_chord.yaml as threads of one process.
 """
 
+import json
 import math
 import os
 import statistics
@@ -1294,15 +1295,79 @@ def main(argv=None, rx=None, publisher=None):
     )
     _dec_reg = [r for r in _dec_reg if r]
 
+    # nav_decode.py's decoded ephemerides (--decoded-eph-file), by signal: the propagator each
+    # one's eph takes. B-CNAV3 has none here, so B2b's are skipped.
+    _dec_svp = (
+        {
+            "GPS_L1_LNAV": _svp_lnav,
+            "GPS_L2C_CNAV": _svp_cnav,
+            "GPS_L5_CNAV": _svp_cnav,
+            "GAL_E1B_INAV": _svp_inav,
+            "GAL_E5BI_INAV": _svp_inav,
+            "GAL_E5AI_FNAV": _svp_fnav,
+            "BDS_B1C_BCNAV1": _svp_bc1,
+            "BDS_B2A_BCNAV2": _svp_bc2,
+        }
+        if _decfb
+        else {}
+    )
+    _dec_files = {}  # path -> (mtime_ns, its entries)
+
+    def _file_entries():
+        """(sys, prn, signal, eph, sv_pos, toe_field) from each --decoded-eph-file, re-read when
+        its mtime changes. A file that cannot be read keeps its last entries."""
+        out = []
+        for path in filter(None, (args.decoded_eph_file or "").split(",")):
+            try:
+                mt = os.stat(path).st_mtime_ns
+                if path not in _dec_files or _dec_files[path][0] != mt:
+                    with open(path) as fh:
+                        doc = json.load(fh)
+                    ents = []
+                    for r in doc.get("eph", []):
+                        svp = _dec_svp.get(r.get("signal"))
+                        if svp is not None:
+                            ents.append(
+                                (
+                                    r["sys"],
+                                    int(r["prn"]),
+                                    r["signal"],
+                                    r["eph"],
+                                    svp,
+                                    r["toe_field"],
+                                )
+                            )
+                    _dec_files[path] = (mt, ents)
+            except Exception as e:
+                _log_rl("decfile", "decoded-eph-file %s unreadable: %s" % (path, e))
+            out.extend(_dec_files.get(path, (None, []))[1])
+        return out
+
     def _decoded_entries(t_utc):
         """Build decoded_eph entries (sys, prn, signal, eph, sv_pos, toe_gpst) from whichever
-        decoders exist. toe_gpst is the eph's time-of-week field as GPST, placed within half a
-        week of t_utc (decoded_eph.toe_gpst_near), the epoch the caller evaluates at
-        (deadreckon.dr_eph_epoch). Never raises: a bad decoder or eph is skipped."""
+        decoders exist, this broker's own and those in --decoded-eph-file. toe_gpst is the eph's
+        time-of-week field as GPST, placed within half a week of t_utc
+        (decoded_eph.toe_gpst_near), the epoch the caller evaluates at (deadreckon.dr_eph_epoch).
+        Never raises: a bad decoder or eph is skipped."""
         ents = []
         if not _decfb:
             return ents
         gpst_now = _decfb.gpst_of_utc(datetime.fromtimestamp(t_utc, tz=timezone.utc))
+        for gsys, prn, signal, e, svp, toef in _file_entries():
+            try:
+                if toef in e:
+                    ents.append(
+                        (
+                            gsys,
+                            prn,
+                            signal,
+                            e,
+                            svp,
+                            _decfb.toe_gpst_near(gsys, e[toef], gpst_now),
+                        )
+                    )
+            except Exception:
+                continue
         for signal, gsys, svp, toef, getter in _dec_reg:
             try:
                 dec = getter()
