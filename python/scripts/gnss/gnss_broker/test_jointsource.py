@@ -624,6 +624,31 @@ def test_trk_unfit_falls_back_or_coasts():
     )
 
 
+def test_trk_coast_refuses_a_stepped_clock():
+    """A coast may not move the clock further than an adoption may. After the legacy clock
+    steps (a declared re-pin once the capture re-based), the last adopted joint clock is
+    hundreds of chips away, and coasting on it would hold every seed on the old
+    clock."""
+    bsat = {3: 0.37, 9: -0.21}
+    ds = {
+        "jclk_t": T_NOW - 60.0,
+        "jclk_last": 750.8,
+        "jclk_last_t": T_NOW - 60.0,
+        "jclk_last_rate": 0.001,
+    }
+    offs, clk_now, lines, _ = run_dr_seed(
+        make_rx("empty", search="thin"), "trk", bsat, ds=ds
+    )
+    jc = _lines(lines, "JOINT-CLK")
+    check(
+        clk_now == LEGACY_CLK
+        and not any("COAST" in m for m in jc)
+        and all(offs[p] == _w(LEGACY_CLK + bsat[p]) for p in (3, 9)),
+        "an adoption 600 chips from the legacy clock: no coast, the legacy clock (%s)"
+        % (jc[:1],),
+    )
+
+
 def _w(off):
     """An offset as a born seed carries it (through the seed's modulus)."""
     return (MODEL + off) % MOD - MODEL

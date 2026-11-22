@@ -1242,7 +1242,8 @@ def _joint_coast(ctx, ds, jrate, jlen):
     the refusal that calls for a coast is the moment the state's rate is least trusted (a
     thin set walks it), and an unbounded live rate over 300 s could move the seeds by 6x
     the adoption bound. The level is built in joint chips, then converted and wrapped
-    exactly as an adoption is (Receiver.joint_clk_delta)."""
+    exactly as an adoption is (Receiver.joint_clk_delta). None as well when the coasted
+    level is further from this chain's clock than joint_clk_max_chips."""
     if not (ctx.args.joint_clk_coast_max_s > 0.0):
         return None
     last, t_last, rate = (
@@ -1258,14 +1259,19 @@ def _joint_coast(ctx, ds, jrate, jlen):
     ext = rate * age
     if abs(ext) > ctx.args.joint_clk_max_chips:
         return None
-    delta = ctx.rx.joint_clk_delta(
+    delta, delta_j = ctx.rx.joint_clk_delta(
         (last + ext) % jlen,
         jrate,
         jlen,
         ctx.drp.clk_now,
         ctx.args.chip_rate_hz,
         ctx.code_len,
-    )[0]
+    )
+    # Nor may the coast move the clock further than an adoption may. Past that the legacy
+    # clock has stepped under it (a declared re-pin after the capture re-based), and the
+    # coast would hold every seed on the clock from before the step.
+    if abs(delta_j) > ctx.args.joint_clk_max_chips:
+        return None
     return delta, ext, age, rate
 
 
