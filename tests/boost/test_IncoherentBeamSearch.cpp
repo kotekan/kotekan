@@ -69,7 +69,10 @@ struct SearchPipeline {
     int largest_dm = 0;      // index of its trial DM
     int64_t sum_frames = 0;
 
-    SearchPipeline() :
+    // extra: further configuration of the search stage. Two pipelines in one process need
+    // different names: a stage's metrics outlive it.
+    explicit SearchPipeline(const nlohmann::json& extra = nlohmann::json::object(),
+                            const std::string& name = "search") :
         path("/tmp/test_IncoherentBeamSearch." + std::to_string(getpid()) + ".jsonl"),
         dm_path("/tmp/test_IncoherentBeamSearch." + std::to_string(getpid()) + ".dms.json"),
         cutout_dir("/tmp/test_IncoherentBeamSearch." + std::to_string(getpid()) + ".cutouts"),
@@ -111,6 +114,13 @@ struct SearchPipeline {
                                 {"file_name", "cutout"},
                                 {"time_in_file_name", true},
                                 {"prefix_hostname", false}}}};
+        cfg["search"].update(extra);
+        if (name != "search") {
+            cfg[name] = cfg["search"];
+            cfg.erase("search");
+            cfg["write_" + name] = cfg["write_cutouts"];
+            cfg.erase("write_cutouts");
+        }
         add_test_telescope_config(cfg);
         cfg["gps_time"] = {{"frame0_nano", 1767225600000000000}};
         cfg["num_polarizations"] = 2;
@@ -131,9 +141,12 @@ struct SearchPipeline {
         // As on the telescope, nothing consumes the image of recent passes: it is peeked.
         snr.enable_peek_hold();
         auto makers = kotekan::StageFactoryRegistry::get_registered_stages();
-        stage.reset(makers.at("IncoherentBeamSearch")->create(config, "/search", buffers));
+        stage.reset(makers.at("IncoherentBeamSearch")->create(config, "/" + name, buffers));
         if (makers.count("hdf5FileWrite")) {
-            writer.reset(makers.at("hdf5FileWrite")->create(config, "/write_cutouts", buffers));
+            writer.reset(makers.at("hdf5FileWrite")
+                             ->create(config,
+                                      name == "search" ? "/write_cutouts" : "/write_" + name,
+                                      buffers));
             writer->start();
         }
         sums_thread = std::thread(&SearchPipeline::read_sums, this);
@@ -229,6 +242,17 @@ struct SearchPipeline {
         return out;
     }
 };
+
+BOOST_AUTO_TEST_CASE(a_bright_flagged_candidate_gets_a_cutout) {
+    // The pulse of DM 100 is below trigger_min_dm.
+    SearchPipeline p({{"trigger_min_dm", 120}, {"cutout_flagged_min_snr", 8}}, "search_flagged");
+    p.stage->start();
+    p.send(int64_t(1) << 34, 12000, 8000);
+    const std::vector<nlohmann::json> cands = p.candidates(1);
+    BOOST_REQUIRE_EQUAL(cands.size(), 1);
+    BOOST_CHECK_EQUAL(cands[0]["flags"].dump(), R"(["low_dm"])");
+    BOOST_CHECK_EQUAL(cands[0].value("cutout", -1), 0);
+}
 
 BOOST_AUTO_TEST_CASE(finds_a_pulse_and_restarts_after_a_jump) {
     SearchPipeline p;

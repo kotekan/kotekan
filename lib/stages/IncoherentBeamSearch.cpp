@@ -76,7 +76,8 @@ using kotekan::prometheus::Metrics;
  * trial DM (IncoherentSearch::last_max_snr) in each of the last passes, one row per pass, the
  * newest last. The buffer is meant to be peeked (peek_hold), not consumed.
  *
- * With cutout_buf, a candidate without a flag also gets a frame of the samples around it as
+ * With cutout_buf, a candidate without a flag, or one of at least cutout_flagged_min_snr that is
+ * not "undispersed", also gets a frame of the samples around it as
  * the search saw them (IncoherentSearch::cutout): each channel's power less its running mean,
  * in units of 1/32 of its sigma, less the average of the channels at each time, 0 where the
  * channel was masked. The channels are shifted by the candidate's DM, so that a pulse is a
@@ -100,7 +101,8 @@ using kotekan::prometheus::Metrics;
  *     @buffer_format   NDArray float32 [Trfi, DM], 256 time samples by the number of trial DMs
  *                      (logged at start); 0 where there is no sum.
  *     @buffer_metadata chordMetadata
- * @buffer cutout_buf  Optional. The samples around each candidate without a flag.
+ * @buffer cutout_buf  Optional. The samples around each candidate without a flag, and around
+ *                     those of cutout_flagged_min_snr.
  *     @buffer_format   NDArray int8 [F, Trfi]: the channels searched by 256 time samples.
  *     @buffer_metadata chordMetadata
  *
@@ -124,6 +126,8 @@ using kotekan::prometheus::Metrics;
  *                         Default 7.5.
  * @conf trigger_min_dm    Double. A candidate below this DM gets the flag "low_dm".
  *                         Default 100.
+ * @conf cutout_flagged_min_snr  Double. A candidate of at least this S/N gets a cutout with any
+ *                         flag but "undispersed". Default 0: none does.
  * @conf holdoff_s         Double. No candidates for this long after a (re)start. Default 120.
  * @conf tau_s             Double. Time constant of the running statistics. Default 5.
  * @conf num_threads       Int. OpenMP threads of the search. Default 4.
@@ -244,6 +248,8 @@ public:
         params.threshold = config.get_default<double>(unique_name, "threshold", params.threshold);
         trigger_min_snr = config.get_default<double>(unique_name, "trigger_min_snr", 7.5);
         trigger_min_dm = config.get_default<double>(unique_name, "trigger_min_dm", 100.0);
+        cutout_flagged_min_snr =
+            config.get_default<double>(unique_name, "cutout_flagged_min_snr", 0.0);
         params.holdoff_s = config.get_default<double>(unique_name, "holdoff_s", params.holdoff_s);
         params.tau_s = config.get_default<double>(unique_name, "tau_s", params.tau_s);
         params.num_threads =
@@ -484,7 +490,10 @@ private:
                 flags.push_back("low_snr");
             if (c.one_band)
                 flags.push_back("one_band");
-            const int64_t cutout = cutout_buf != nullptr && flags.empty() ? write_cutout(c) : -1;
+            const bool bright_flagged =
+                cutout_flagged_min_snr > 0 && c.snr >= cutout_flagged_min_snr && !c.undispersed;
+            const int64_t cutout =
+                cutout_buf != nullptr && (flags.empty() || bright_flagged) ? write_cutout(c) : -1;
             if (!candidate_file.is_open())
                 continue;
             nlohmann::json line = {{"fpga_seq", seq},
@@ -537,6 +546,7 @@ private:
     int64_t restart_gap = 0;
     double trigger_min_snr = 0;
     double trigger_min_dm = 0;
+    double cutout_flagged_min_snr = 0;
     int64_t phase = 0;       // fpga_seq modulo period of the sample grid
     int64_t origin = 0;      // the search's first sample
     int64_t next_sample = 0; // the next sample to search
