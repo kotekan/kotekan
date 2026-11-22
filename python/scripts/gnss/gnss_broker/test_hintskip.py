@@ -1,11 +1,12 @@
-"""--hint-skip-dr and the dead-reckon `joint-consume: rate` consumer.
+"""--hint-skip-dr, its handover, and the dead-reckon `joint-consume: rate` consumer.
 
     python3 -m gnss_broker.test_hintskip
 
 dr_can_seed says whether a chain can dead-reckon a PRN (fresh clock, a model clock known to
-half a chip, not untrusted); stage_narrow_search with --hint-skip-dr hints only the PRNs it
-refuses. dr_joint_rate turns the joint state's clk_rate into (l-a) through the state's unit,
-under joint_min_sats and joint_max_rate_ppm.
+half a chip, not untrusted); with --hint-skip-dr, stage_narrow_search stops hinting a PRN that
+is also locked (dr_owns_unhinted), and dr_seed takes over its search seed and slews it.
+dr_joint_rate turns the joint state's clk_rate into (l-a) through the state's unit, under
+joint_min_sats and joint_max_rate_ppm.
 
 @author Keith Vanderlinde
 """
@@ -13,6 +14,7 @@ under joint_min_sats and joint_max_rate_ppm.
 import sys
 
 from gnss_broker import deadreckon, searchhint
+from gnss_broker.test_jointsource import make_rx, run_dr_seed
 
 _fails = []
 
@@ -50,6 +52,7 @@ def make_ctx():
             chip_rate_hz=CHIP_HZ,
             joint_min_sats=4,
             joint_max_rate_ppm=0.01,
+            lock_q=2.2,
         ),
         pred={p: (-1000.0 + p, 0.0, 30.0, 2.2e7, 0.0) for p in (5, 7, 9, 11)},
         up=None,
@@ -59,6 +62,7 @@ def make_ctx():
         drp=_Obj(pd=pd, tag="G"),
         dr_min_prn=1,
         dr_untrusted={7: "model residual"},
+        hold=_Obj(q={5: 3.0, 7: 3.0, 9: 3.0, 11: 3.0}),
         detectors=["d0"],
         t0=T0,
     )
@@ -92,6 +96,54 @@ def joint_rate(n_sats, clk_rate, ref_hz=CHIP_HZ):
         deadreckon.joint_read, deadreckon._log_rl = saved
 
 
+def handover(q, clk_sigma_s=0.0, best=None):
+    """A model-born PRN 3 turned into a locked, held search seed on a chain with a search, then
+    one dr_seed pass with --hint-skip-dr: (ctx, log lines, the seed's phase before)."""
+    argkw = {"lock_q": 2.2, "hint_skip_dr": True}
+    _o, _c, _l, ctx = run_dr_seed(make_rx("fed"), "trk", {3: 0.0, 9: 0.0}, argkw=argkw)
+    ctx.dr_state["seeded"].discard(3)
+    ctx.cp_held = {3}
+    ctx.detectors = ["d0"]
+    ctx.best = best or {}
+    ctx.hold.q[3] = q
+    ctx.dr_state["clk_meas_t"] = ctx.t0
+    ctx.drp.pd[("G", 3)]["clk_sigma_s"] = clk_sigma_s
+    before = ctx.seeds[3]["code_phase_at_ref_chips"]
+    lines = []
+    saved = deadreckon._log, deadreckon._log_rl, deadreckon.seed_phase_at_ref
+    deadreckon._log = lines.append
+    deadreckon._log_rl = lambda key, msg, every_s=10.0: lines.append(msg)
+    deadreckon.seed_phase_at_ref = lambda ph, *a: ph
+    try:
+        deadreckon.dr_seed(ctx)
+    finally:
+        deadreckon._log, deadreckon._log_rl, deadreckon.seed_phase_at_ref = saved
+    return ctx, lines, before
+
+
+def handover_checks():
+    ctx, lines, _b = handover(3.0)
+    check(
+        3 in ctx.dr_state["seeded"] and 3 not in ctx.cp_held,
+        "a locked, unhinted search seed is taken over and its hold released",
+    )
+    check(any("HANDOVER PRN 3" in m for m in lines), "...and the log says so")
+    check(deadreckon.seeds_are_model_owned(ctx, 3), "...and the model owns it")
+    slew = [m for m in lines if m.startswith("dead-reckon SLEW PRN 3:")]
+    check(
+        slew
+        and "(cap 0.05)" in slew[0]
+        and ctx.seeds[3].owners().startswith("dop=dr_slew cp0=dr_slew"),
+        "...and it is slewed at the cap, not re-born (%s)" % (slew[:1],),
+    )
+    ctx, lines, _b = handover(1.4)
+    check(3 not in ctx.dr_state["seeded"], "an unlocked one stays the search's")
+    ctx, lines, _b = handover(3.0, clk_sigma_s=1e-6)
+    check(3 not in ctx.dr_state["seeded"], "so does one the model cannot seed")
+    ctx, lines, _b = handover(3.0, best={3: (20.0,)})
+    check(3 not in ctx.dr_state["seeded"], "and one detected this cycle")
+
+
 def main():
     print("\ndr_can_seed")
     ctx = make_ctx()
@@ -109,13 +161,22 @@ def main():
     print("\n--hint-skip-dr")
     prns, lines = hinted(make_ctx())
     check(prns == [7, 9, 11], "hints only what the model cannot seed (%s)" % prns)
-    check(any("1 dead-reckoned" in m for m in lines), "the log counts the skipped PRN")
+    check(
+        any("1 locked and dead-reckoned" in m for m in lines),
+        "the log counts the skipped PRN",
+    )
+    ctx = make_ctx()
+    ctx.hold.q[5] = 1.4
+    check(hinted(ctx)[0] == [5, 7, 9, 11], "an unlocked PRN stays hinted")
     ctx = make_ctx()
     ctx.args.hint_skip_dr = False
     check(hinted(ctx)[0] == [5, 7, 9, 11], "off: every PRN is hinted")
     ctx = make_ctx()
     ctx.dr_state["clk"] = None
     check(hinted(ctx)[0] == [5, 7, 9, 11], "no clock: every PRN is hinted")
+
+    print("\nhandover")
+    handover_checks()
 
     print("\ndr_joint_rate")
     la = joint_rate(6, 0.001)

@@ -920,12 +920,13 @@ def build_parser(description):
     ap.add_argument(
         "--hint-skip-dr",
         action="store_true",
-        help="with --narrow-search, hint no PRN this chain can dead-reckon: its clock is "
-        "fresh and the model predicts the PRN with a clock known to half a chip (a "
-        "broadcast or decoded orbit, not a GuoWang catalogue record) and does not mark "
-        "it untrusted. The search then scans only the rest. The clock stays fresh only "
-        "from a source other than this chain's detections (joint-consume clk, or a "
-        "donor); otherwise hints return each time it goes stale. Off by default.",
+        help="with --narrow-search, hint no PRN that is locked (fleet q >= lock_q) and "
+        "that this chain can dead-reckon: its clock is fresh and the model predicts the "
+        "PRN with a clock known to half a chip (a broadcast or decoded orbit, not a "
+        "GuoWang catalogue record) and does not mark it untrusted. The dead-reckon stage "
+        "takes over such a PRN's search seed and slews it; a detection hands it back. The "
+        "search then scans unlocked satellites and those the model cannot seed. Off by "
+        "default.",
     )
     ap.add_argument(
         "--search-margin-hz",

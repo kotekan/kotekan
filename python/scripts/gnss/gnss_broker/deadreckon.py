@@ -1309,6 +1309,19 @@ def dr_can_seed(ctx, prn):
     )
 
 
+def dr_owns_unhinted(ctx, prn):
+    """--hint-skip-dr: the search no longer hints prn and the model owns its seed, because it
+    is locked (fleet q >= lock_q) and the model can seed it (dr_can_seed). An unlocked
+    satellite stays hinted, so the search can find it and its detections keep the clock
+    solves fresh."""
+    return (
+        bool(getattr(ctx.args, "hint_skip_dr", False))
+        and ctx.args.lock_q > 0.0
+        and ctx.hold.q.get(prn, 0.0) >= ctx.args.lock_q
+        and dr_can_seed(ctx, prn)
+    )
+
+
 def dr_joint_clk(ctx):
     """The `joint-consume: clk` consumer: move this cycle's clk_now onto the joint clock, or
     leave it.
@@ -1700,12 +1713,14 @@ def joint_read(ctx):
 def seeds_are_model_owned(ctx, prn):
     """Does the model own this PRN's seed, so a locked seed is slewed toward the model rather
     than left to the DLL? True without detectors, under --detectors-monitor (the search is
-    read, never seeded from: #209), and for a PRN the map has flipped to this chain. A chain
-    whose search seeds leaves locked seeds to the DLL."""
+    read, never seeded from: #209), for a PRN the map has flipped to this chain, and for one
+    the search no longer hints (dr_owns_unhinted). A chain whose search seeds leaves locked
+    seeds to the DLL."""
     return (
         not ctx.detectors
         or bool(getattr(ctx.args, "detectors_monitor", False))
         or prn in ctx.mp_flipped
+        or dr_owns_unhinted(ctx, prn)
     )
 
 
@@ -1946,7 +1961,10 @@ def dr_clock_long_chips(ctx):
     period."""
     if not getattr(ctx.args, "dr_clock_long", False) or ctx.lc_seg <= 1:
         return 0.0
-    rec = ctx.rx.clock_mod_epoch(min_epoch_s=0.0, t_now=ctx.t0)
+    # No age bound: the record is a run constant, and losing it would move every seed by whole
+    # code periods. A chain whose satellites are all locked and unhinted (--hint-skip-dr)
+    # detects nothing, so the record can go unrefreshed for hours.
+    rec = ctx.rx.clock_mod_epoch(min_epoch_s=0.0, max_age_s=None, t_now=ctx.t0)
     if rec is None or ctx.drp.clk_now is None:
         return 0.0
     ep = float(rec.extra["epoch_s"])
@@ -2042,6 +2060,25 @@ def dr_seed(ctx):
                 continue
             if ctx.capable is not None and prn not in ctx.capable:
                 continue  # its block does not broadcast this signal
+            # --hint-skip-dr hands a locked search seed to the model once the search stops hinting
+            # it and its last detection has expired: the hold is released, and from here the seed
+            # is slewed, as on a chain with no search. A detection hands it back (the loop at the
+            # end of stage_dead_reckon).
+            if (
+                ctag == ctx.drp.tag
+                and v["el"] >= ctx.args.mask_deg + 0.5
+                and prn in ctx.seeds
+                and prn not in ctx.dr_state["seeded"]
+                and prn not in ctx.best
+                and prn not in ctx.probe_set
+                and dr_owns_unhinted(ctx, prn)
+            ):
+                ctx.dr_state["seeded"].add(prn)
+                ctx.cp_held.discard(prn)
+                _log(
+                    "dead-reckon HANDOVER PRN %d: locked and no longer hinted -- the model "
+                    "owns its seed (slewed)" % prn
+                )
             # Seed above the mask + 0.5 deg, drop below the mask (the drop loop below): without the
             # hysteresis a satellite riding the mask flickers drop/reseed. A model-primary PRN stays
             # dead-reckon-owned while the search detects it, and is not skipped as untrusted:
