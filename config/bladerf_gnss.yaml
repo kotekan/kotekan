@@ -520,6 +520,9 @@ gputrack:
           n_channels: 6
           channel_ids: [25, 26, 27, 28, 29, 30]
           gnss_local_channels: [57, 58, 59, 60, 61, 62]
+          # E and L rotated from the prompt: 8% from the true E/L at this geometry
+          # (cuda_gnss_despread_test); the narrower L2C and GW chains keep all three.
+          epl_from_prompt: true
           dll_spacing: 0.5
           seed_endpoint: /e6_track/set_seeds
           set_trim_endpoint: /e6_track/set_trim
