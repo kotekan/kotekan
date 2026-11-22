@@ -8,14 +8,15 @@ are wiped by the tracker code (SBAS_L5_I_MC), so each emit slot is one FEC symbo
 The combiner's emits are chained into a symbol history (navobs_align.SymbolHistory). Each new
 stretch is Viterbi-decoded with an overlap of more than one message behind it, and messages are
 found by their CRC and preamble at every bit offset, in both polarities. Which symbol of a pair
-starts a data bit, and whether G2 is inverted, are searched until two messages land 500 symbols
-apart, then kept: the pair phase per PRN, the G2 convention for all (a link constant).
+starts a data bit, and whether G2 is inverted, are searched until three messages land 500
+symbols apart, then kept: the pair phase per PRN, the G2 convention for all (a link constant).
 
 No ephemeris is decoded yet: the per-type counts show the stream (31 satellite mask,
 32 clock-ephemeris corrections, 34-36 integrity, 37 OBAD/DFREI, 39-40 the GEO's own orbit,
 42 time offsets, 47 almanac, 62 test, 63 null).
 """
 
+import collections
 import time
 
 import numpy as np
@@ -39,12 +40,23 @@ PREAMBLES = {
     (1, 0, 1, 0),
     (1, 1, 0, 0),
 }
-# Re-decoded behind each new stretch: a message and the warm-up.
-OVERLAP_SYMS = 2 * MSG_BITS + 64
-# Viterbi output trusted only this far into a stretch (no known start state).
+# Viterbi output is trusted only this far into a stretch (no known start state) and this far
+# from its end (no symbols after it): each message start is tried in one stretch only, where
+# both margins clear it, so the stretches overlap by a message and both margins.
 WARMUP_BITS = 16
-# An unlocked PRN decodes its whole history at most this often.
+TAIL_BITS = 48
+OVERLAP_SYMS = 2 * (MSG_BITS + WARMUP_BITS + TAIL_BITS)
+# An unlocked PRN decodes its whole history at most this often, and only while its symbols
+# stand above noise (whose median |soft| is 0.67 sigma): the four-way decode of a dark GEO
+# would hold up the others' emits.
 RETRY_S = 2.0
+# A right lock finds a message a second; at the wrong pair phase some messages still turn into
+# CRC-valid ones with a valid preamble (about 3 in 8). A lock held this long with fewer new
+# messages over the same span is dropped, as is one a tracker re-acquisition left behind (its
+# emits chain through the gap, keeping a pair phase and lattice that no longer hold).
+CHECK_S = 10.0
+MIN_IN_CHECK = 6
+MIN_MEDIAN_SOFT = 0.9
 
 
 def _crc_bits(bits):
@@ -66,6 +78,8 @@ class _PrnState(HistoryState):
         self.phase = None  # parity of the slots that start a bit, once locked
         self.lattice = None  # message start slots mod 500, once locked
         self.locked_at = None  # the history restart count the lock holds for
+        self.lock_t = 0.0
+        self.recent = collections.deque()  # times of the new messages
         self.next_try = 0.0
         self.seen = set()  # message start slots counted
         self.types = {}  # message type -> count
@@ -79,7 +93,7 @@ def brdc_xcheck(brdc, sysc, prn, eph, log=None):
 
 
 class SbasL5Predictor(SymbolHistory):
-    hist_max = 2000  # 4 s of symbols
+    hist_max = 3000  # 6 s of symbols
 
     def __init__(self):
         super().__init__()
@@ -89,19 +103,31 @@ class SbasL5Predictor(SymbolHistory):
         return _PrnState()
 
     def _decode(self, prn, st):
-        if st.restarts != st.locked_at:
-            # a restarted history is a new slot grid: its pair phase and lattice are unknown
+        now = time.time()
+        while st.recent and now - st.recent[0] > CHECK_S:
+            st.recent.popleft()
+        if st.restarts != st.locked_at or (
+            st.phase is not None
+            and now - st.lock_t > CHECK_S
+            and len(st.recent) < MIN_IN_CHECK
+        ):
+            # a restarted history is a new slot grid, and a silent lock a lost one: the pair
+            # phase and lattice are unknown
             st.phase = st.lattice = None
         # Unlocked, the whole history, so that two messages can land in one decode.
         first = st.s0 if st.phase is None else max(st.s0, st.scan - OVERLAP_SYMS)
         seg = st.hist[first - st.s0 :]
-        # unlocked: three messages, so that two whole ones clear the warm-up
-        if len(seg) < (6 if st.phase is None else 2) * MSG_BITS + 4 * WARMUP_BITS:
+        # unlocked: four messages, so that three whole ones clear the margins
+        if len(seg) < (8 if st.phase is None else 2) * MSG_BITS + 2 * (
+            WARMUP_BITS + TAIL_BITS
+        ):
             return
         if st.phase is None:
             if time.time() < st.next_try:
                 return
             st.next_try = time.time() + RETRY_S
+            if np.median(np.abs(seg[-2 * MSG_BITS :])) < MIN_MEDIAN_SOFT:
+                return
         best = None  # (messages, phase, g2, bits)
         for ph in (0, 1) if st.phase is None else ((st.phase - first) % 2,):
             for g2 in (False, True) if self._g2 is None else (self._g2,):
@@ -112,7 +138,10 @@ class SbasL5Predictor(SymbolHistory):
                     : len(x) // 2
                 ]
                 slots = self._scan(st, bits, first + ph, count=False)
-                spaced = any(x + 2 * MSG_BITS in slots for x in slots)
+                spaced = any(
+                    x + 2 * MSG_BITS in slots and x + 4 * MSG_BITS in slots
+                    for x in slots
+                )
                 if (st.phase is not None or spaced) and (
                     best is None or len(slots) > best[0]
                 ):
@@ -125,6 +154,8 @@ class SbasL5Predictor(SymbolHistory):
                     for x in self._scan(st, best[3], first + best[1], False)
                 ]
                 st.lattice = max(set(res), key=res.count)
+            if st.phase is None:
+                st.lock_t = time.time()
             st.phase, self._g2 = (first + best[1]) % 2, best[2]
             st.locked_at = st.restarts
             self._scan(st, best[3], first + best[1], count=True)
@@ -133,7 +164,7 @@ class SbasL5Predictor(SymbolHistory):
     def _scan(self, st, bits, slot0, count):
         """The start slots of the messages in decoded bits whose first bit is at symbol slot0
         (CRC and preamble), counting them when @p count."""
-        n = len(bits) - MSG_BITS - WARMUP_BITS + 1 - WARMUP_BITS
+        n = len(bits) - MSG_BITS - TAIL_BITS + 1 - WARMUP_BITS
         if n <= 0:
             return []
         w = np.lib.stride_tricks.sliding_window_view(
@@ -150,6 +181,7 @@ class SbasL5Predictor(SymbolHistory):
             found.append(slot)
             if count and slot % (2 * MSG_BITS) == st.lattice and slot not in st.seen:
                 st.seen.add(slot)
+                st.recent.append(time.time())
                 st.n_msg += 1
                 mt = int("".join(str(int(b)) for b in m[4:10]), 2)
                 st.types[mt] = st.types.get(mt, 0) + 1
