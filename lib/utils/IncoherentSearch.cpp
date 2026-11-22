@@ -43,16 +43,18 @@ const double block_clip = 6.0;
 // two DMs
 const int merge_slack = 20;
 // A partner of a candidate is another one more than partner_dm from it in DM, of at least
-// far_fraction of its S/N, that fits the same arrival without dispersion and has its strongest
-// block of channels where the candidate is strong too: within far_blocks of a block in which
-// the candidate has block_fraction of its own highest S/N. Two sources of interference at once
-// can put a candidate's highest S/N in another block than its partners'. A candidate is
-// undispersed when it has far_candidates partners and they cover, with it, more than far_dm
-// in DM. A pulse's own candidates at neighbouring DMs lie within partner_dm, and two pulsars
-// in the beam within far_dm of each other.
+// far_fraction of its S/N and of partner_min_snr, that fits the same arrival without dispersion
+// and has its strongest block of channels where the candidate is strong too: within far_blocks
+// of a block in which the candidate has block_fraction of its own highest S/N. Two sources of
+// interference at once can put a candidate's highest S/N in another block than its partners'.
+// A candidate is undispersed when it has far_candidates partners and they cover, with it, more
+// than far_dm in DM. A pulse's own candidates at neighbouring DMs lie within partner_dm, and two
+// pulsars in the beam within far_dm of each other. With a threshold below partner_min_snr the
+// candidates from noise are many, and several fit any arrival by chance.
 const double partner_dm = 20.0;
 const double far_dm = 50.0;
 const double far_fraction = 0.5;
+const double partner_min_snr = 6.0;
 const int far_candidates = 2;
 const int far_blocks = 1;
 const double block_fraction = 0.5;
@@ -511,7 +513,8 @@ int IncoherentSearch::count_partners(
     int n = 0;
     for (const Event& other : events) {
         const double ddm = p.dms[other.best.dm_index] - dm;
-        if (std::abs(ddm) <= partner_dm || other.best.snr < far_fraction * e.best.snr)
+        if (std::abs(ddm) <= partner_dm
+            || other.best.snr < std::max(far_fraction * e.best.snr, partner_min_snr))
             continue;
         bool shared = false;
         for (int b = std::max(0, other.block - far_blocks);

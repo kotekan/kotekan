@@ -99,10 +99,10 @@ struct IncoherentCandidate {
  *
  * Interference in part of the band has no dispersion, and is found at every DM: at a higher DM
  * earlier at the top channel, by the sweep from its own frequency to the top. A pulse is found
- * at its own DM. A partner of a candidate is another one of at least half its S/N, more than
- * 20 DM units away at such a time, with its highest S/N in or beside a block of the band where
- * the candidate has at least half its own highest: a pulse that arrives during interference
- * has little S/N where the interference is. A candidate is marked
+ * at its own DM. A partner of a candidate is another one of at least half its S/N and of at
+ * least 6 sigma, more than 20 DM units away at such a time, with its highest S/N in or beside a
+ * block of the band where the candidate has at least half its own highest: a pulse that arrives
+ * during interference has little S/N where the interference is. A candidate is marked
  * undispersed when it has two or more partners and they cover, with it, more than 50 DM units.
  * For that a candidate is reported only when the same arrival has been searched at the highest
  * DM: the sweep of the highest DM after it reached the top channel.

@@ -239,6 +239,24 @@ BOOST_AUTO_TEST_CASE(pulse_beside_a_burst_is_not_marked) {
     BOOST_CHECK_GE(marked, 10);
 }
 
+BOOST_AUTO_TEST_CASE(candidates_from_noise_are_not_partners) {
+    // At 4 sigma the noise gives many candidates, and several of them fit the arrival of a
+    // pulse of about 8 sigma without dispersion.
+    IncoherentSearchParams p = burst_params();
+    p.threshold = 4;
+    const std::vector<IncoherentCandidate> cands = run(p, {{0.5, 150, 4200, p.num_freq}});
+    BOOST_CHECK_GE(cands.size(), 50);
+    int pulses = 0;
+    for (const IncoherentCandidate& c : cands) {
+        BOOST_CHECK(!c.undispersed);
+        if (c.dm == 150 && c.sample == 4200) {
+            BOOST_CHECK_GT(c.snr, 6);
+            ++pulses;
+        }
+    }
+    BOOST_CHECK_EQUAL(pulses, 1);
+}
+
 BOOST_AUTO_TEST_CASE(channels_back_from_no_data_start_again) {
     // After a frame of no data every channel has another level, by up to 1 sigma and smooth
     // over the band, as when the set of feeds in the sum changes. Against the statistics from
