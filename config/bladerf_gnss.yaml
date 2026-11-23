@@ -191,13 +191,14 @@ gw_search:
     acquire_snr: 6
     acquire_fine_step: 2
     hint_ttl_s: 30
-    # One pass every 2 s: back to back, the passes took ~450 ms/s of GPU and, with seven
-    # trackers, the valve dropped 30-45% of frames. Paced, a pass's ~2.5 ms slices (one PRN and
-    # alignment each) spread over a few hundred ms instead of one burst past what the trackers
-    # leave, which held tracker frames back by up to ~90 ms.
+    # The refine needs only the acquire peak's few samples (a whole hop is 129 trials).
+    refine_span: 4
+    # One pass every 2 s, on the cores l5_search uses, which kotekan leaves idle: off the GPU,
+    # the trackers keep their frame time.
     pass_interval_s: 2.0
-    use_cuda_acquire: true
-    pace_ms: 8
+    use_cuda_acquire: false
+    acquire_threads: 5
+    cpu_affinity: [10, 11, 12, 13, 19]
 
 # ---- Tracker ----
 # gnss_gpu::frame_bytes(32 PRNs, 12 channels, 4 rows, 1 element).
