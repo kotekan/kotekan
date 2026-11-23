@@ -59,9 +59,10 @@
  * @conf  receipt_bitmap_buf          String. Name of the packet receipt bitmap buffer.
  * @conf  packet_size                 UInt32. Total packet size in bytes; must equal
  *                                    payload_size plus the 64-byte header.
- * @conf  payload_size                UInt32. Payload bytes per packet. Must be a multiple
- *                                    of 32, and the output frame size must be a multiple
- *                                    of payload_size * num_source_ids * num_stream_ids.
+ * @conf  payload_size                UInt32. Payload bytes per packet: 128 for each of the
+ *                                    telescope's frequencies per stream. The output frame
+ *                                    size must be a multiple of
+ *                                    payload_size * num_source_ids * num_stream_ids.
  * @conf  num_expected_stream_ids     UInt32. Number of distinct stream IDs expected on
  *                                    this port; capture starts once all have been seen.
  * @conf  capture_n_frames            UInt64. Default 0. Number of frames to capture
@@ -129,6 +130,10 @@ protected:
     static constexpr uint32_t num_source_ids = 16;
     const uint32_t num_stream_ids = 8;
     const uint32_t time_samples_per_packet = 16;
+    /// Bytes one frequency bin takes in a packet: 16 time samples of 8 elements.
+    static constexpr uint32_t bytes_per_bin = 128;
+    /// Frequency bins per packet, payload_size / bytes_per_bin.
+    uint32_t bins_per_packet;
 
     /// Output slot in the frame for each raw CRS source_id. Identity unless the
     /// optional `crs_board_remap` config is set, in which case this is the inverse
@@ -235,8 +240,15 @@ inline crs16BoardCaptureWorker::crs16BoardCaptureWorker(
                                  "size of all source and stream IDs for a given time sample.");
     }
 
-    if ((payload_size % 32) != 0) {
-        throw std::runtime_error("The packet_size must be a multiple of 32 bytes");
+    if ((payload_size % bytes_per_bin) != 0) {
+        throw std::runtime_error("The payload_size must be a multiple of 128 bytes");
+    }
+    bins_per_packet = payload_size / bytes_per_bin;
+    if (bins_per_packet != Telescope::instance().num_freq_per_stream()) {
+        throw std::runtime_error(fmt::format(
+            fmt("crs16BoardCaptureWorker: payload_size {:d} holds {:d} frequency bins, but the "
+                "telescope has {:d} frequencies per stream"),
+            payload_size, bins_per_packet, Telescope::instance().num_freq_per_stream()));
     }
 
     if (payload_size + header_size != packet_size) {
@@ -517,9 +529,10 @@ inline void crs16BoardCaptureWorker::packet_copy_to_frame(struct rte_mbuf* mbuf,
     const uint64_t element_long = dest_slot;
 
     // Base offset calculation
-    // stride_time_long = (num_stream_ids * 48) * 2048
+    // stride_time_long = (num_stream_ids * bins_per_packet) * 2048
     // stride_element_long = 128
-    uint64_t base_offset = time_long * (uint64_t)(num_stream_ids * 48) * 2048 + element_long * 128;
+    uint64_t base_offset =
+        time_long * (uint64_t)(num_stream_ids * bins_per_packet) * 2048 + element_long * 128;
 
     uint8_t* dst_base = frame_ptr + base_offset;
 
@@ -528,7 +541,7 @@ inline void crs16BoardCaptureWorker::packet_copy_to_frame(struct rte_mbuf* mbuf,
     uint8_t* src = rte_pktmbuf_mtod_offset(m, uint8_t*, header_size);
     int rem = rte_pktmbuf_data_len(m) - header_size;
 
-    for (int bin = 0; bin < 48; ++bin) {
+    for (uint32_t bin = 0; bin < bins_per_packet; ++bin) {
         uint64_t freq_bin_idx = stream_id / 16 + 8 * bin;
         uint8_t* dst = dst_base + freq_bin_idx * 2048;
 
