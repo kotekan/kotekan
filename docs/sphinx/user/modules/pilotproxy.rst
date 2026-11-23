@@ -216,12 +216,17 @@ a bundle calibrated from recorded files needs a steady input count.
 
 Each X-engine half packs 1024 blocks (about 43 seconds) of each sent product
 into one frame with ``NDArrayTimeConcat``, and sends the frames to the recv
-node. ``config/chord/recv.j2`` writes each frame to its own file under
-``/mnt/cs00/data/dtv/acq_<start time>``, one directory per run, named
-``dtv_<product>.<number>.h5``. The numbers follow arrival order, so a file's
-``coarse_freq`` attribute identifies the half, and its ``fpga_seq_num``
-attribute gives the start of the window. The windows are aligned in
-``fpga_seq_num``, so the halves' files cover the same time spans. A block
+node. Every half sends every sent product, whether or not it binds a channel.
+``config/chord/recv.j2`` writes the frames of all 16 halves to files of 448
+frames (about 20 minutes for each product) under
+``/mnt/cs00/data/dtv/acq_<start time>``, one
+directory per run, named ``dtv_<product>.<number>.h5`` for the first frame of
+the file. The frames are in arrival order, and frame *n* is rows
+``1024 n`` to ``1024 (n + 1)`` of the dataset. Row *n* of
+``frame_metadata/COARSE_FREQ`` identifies its half, and row *n* of
+``frame_metadata/FPGA_SEQ_NUM`` gives the start of its window (see
+:ref:`hdf5_frames_format`). The windows are aligned in
+``fpga_seq_num``, so the halves' frames cover the same time spans. A block
 missing from a window is a row of ``0xFF`` bytes: ``-1`` for the mask and fine
 support, and the largest ``uint64`` for the powers, fine powers and both values
 of ``dtv_stat``. A reader treats such a ``dtv_stat`` row as missing; it is not a

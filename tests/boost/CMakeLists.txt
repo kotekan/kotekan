@@ -287,6 +287,25 @@ if(HDF5_FOUND
     target_include_directories(test_hdf5N2Write PUBLIC . ${CUDA_INCLUDE_DIR} ${CUDA_INCLUDE_DIRS})
     target_compile_definitions(test_hdf5N2Write
                                PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/testdata")
+
+    # The stages are compiled in, so that they register with the stage factory.
+    add_executable(
+        test_hdf5FileWrite
+        test_hdf5FileWrite.cpp ${KOTEKAN_SOURCE_DIR}/lib/stages/hdf5FileWrite.cpp
+        ${KOTEKAN_SOURCE_DIR}/lib/stages/hdf5FileRead.cpp)
+    target_link_libraries(
+        test_hdf5FileWrite
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                ${HDF5_HL_LIBRARIES}
+                ${HDF5_LIBRARIES}
+                HighFive::HighFive)
+    target_include_directories(
+        test_hdf5FileWrite PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages ${KOTEKAN_SOURCE_DIR}/lib/utils
+                                   ${HDF5_INCLUDE_DIRS})
 endif()
 
 add_executable(test_Telescope test_Telescope.cpp)

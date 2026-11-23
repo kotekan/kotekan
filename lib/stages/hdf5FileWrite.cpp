@@ -21,7 +21,8 @@
 #include "visUtil.hpp"             // for current_time
 #include "waitingForMaxFrames.hpp" // for waiting_for_max_frames
 
-#include "fmt.hpp" // for compile_string_to_view
+#include "fmt.hpp"  // for compile_string_to_view
+#include "json.hpp" // for json
 
 #include <algorithm>                             // for max, min
 #include <array>                                 // for array
@@ -45,6 +46,7 @@
 #include <iomanip>                               // for operator<<, setfill, setw
 #include <memory>                                // for allocator, shared_ptr, __shared_ptr_access
 #include <sstream>                               // for basic_ostream, operator<<, basic_ostrin...
+#include <stdexcept>                             // for runtime_error
 #include <string>                                // for basic_string, char_traits, string, oper...
 #include <vector>                                // for vector
 
@@ -92,6 +94,15 @@ const auto kotekan_start_time = std::chrono::system_clock::now();
  *       - frame decimation (@c write_x_frames / @c per_y_frames) must not be used.
  *       A writer whose buffer violates one of these has to use per-frame files
  *       (`create_single_file: false`), which have no such constraints.
+ * @conf frames_per_file  Int. Default: 1. The number of frames in each file, appended along
+ *       axis 0. More than one frame per file has the constraints of @c create_single_file,
+ *       except that a frame that does not continue `fpga_seq_num` starts a new file. With
+ *       @c record_per_frame_metadata there are no constraints.
+ * @conf record_per_frame_metadata  Bool. Default: false. Also store the metadata of every
+ *       frame, as one row per frame of the datasets in the group `frame_metadata`. The frames
+ *       of a file then need not be contiguous or in time order, as when several senders share
+ *       the buffer. A frame whose metadata does not fit the datasets of the current file
+ *       starts a new file, or is fatal with @c create_single_file.
  * @conf write_x_frames  Int. Write the first X out of every Y frames (see per_y_frames).
  *       Default: -1 (disabled). Cannot be combined with @c create_single_file.
  * @conf per_y_frames  Int. Period Y for frame decimation (see write_x_frames).
@@ -128,6 +139,8 @@ class hdf5FileWrite : public kotekan::Stage {
     const int64_t per_y_frames = config.get_default<int64_t>(unique_name, "per_y_frames", -1);
     const uint64_t frames_per_file =
         config.get_default<uint64_t>(unique_name, "frames_per_file", 1);
+    const bool record_per_frame_metadata =
+        config.get_default<bool>(unique_name, "record_per_frame_metadata", false);
 
     const uint64_t num_polarizations = config.get<uint64_t>(unique_name, "num_polarizations");
     const uint64_t num_dishes = config.get<uint64_t>(unique_name, "num_dishes");
@@ -147,6 +160,8 @@ class hdf5FileWrite : public kotekan::Stage {
     int64_t current_file_start_frame = 0;
     // track whether a new file should be started on the next frame
     bool start_new_file = true;
+    // The per-frame metadata datasets of the current file (record_per_frame_metadata).
+    FrameMetadataColumns frame_metadata_file_columns;
 
     kotekan::prometheus::Gauge& write_time_metric =
         kotekan::prometheus::Metrics::instance().add_gauge(
@@ -170,6 +185,11 @@ public:
                         "be combined with create_single_file or multiple frames per file; a single "
                         "file must hold a contiguous stream",
                         unique_name);
+
+        if (record_per_frame_metadata && file_name == frame_metadata_group)
+            FATAL_ERROR("hdf5FileWrite {:s}: file_name \"{:s}\" is the name of the per-frame "
+                        "metadata group",
+                        unique_name, file_name);
 
         if (create_single_file && frames_per_file > 1)
             INFO("single file mode requested - ignoring `frames_per_file` config parameter (={:d})",
@@ -276,6 +296,26 @@ public:
 
         bool do_create_dataset = false; // Whether to create the dataset and write the attributes
 
+        FrameMetadataColumns frame_metadata;
+        if (record_per_frame_metadata) {
+            nlohmann::json metadata_json;
+            ::to_json(metadata_json, *meta);
+            try {
+                frame_metadata = frame_metadata_columns(metadata_json);
+            } catch (const std::runtime_error& ex) {
+                FATAL_ERROR("Buffer \"{:s}\" frame {:d}: {:s}", buffer->buffer_name, frame_counter,
+                            ex.what());
+            }
+            if (the_current_file_pointer
+                && !frame_metadata_fits(frame_metadata_file_columns, frame_metadata)) {
+                if (create_single_file)
+                    FATAL_ERROR("Buffer \"{:s}\": the metadata of frame {:d} does not fit the "
+                                "per-frame metadata datasets of the single file",
+                                buffer->buffer_name, frame_counter);
+                start_new_file = true;
+            }
+        }
+
         if (create_single_file) {
             // Create only a single file
             if (!the_current_file_pointer) {
@@ -309,7 +349,7 @@ public:
 
         auto& file = *the_current_file_pointer;
 
-        if (create_single_file || (frames_per_file > 1)) {
+        if ((create_single_file || frames_per_file > 1) && !record_per_frame_metadata) {
             // A file with multiple frames concatenates frames along axis 0 and stores the metadata
             // only once, so hdf5FileRead can only reconstruct the per-frame fpga_seq_num if axis 0
             // is a contiguous, uniformly sampled time axis.
@@ -474,6 +514,10 @@ public:
 
             write_telescope_metadata(dataset);
 
+            if (record_per_frame_metadata)
+                frame_metadata_file_columns =
+                    create_frame_metadata(file, frame_metadata, use_compression);
+
             // only true when a new file is being started
             if (create_single_file || frames_per_file > 1) {
                 // Start SWMR mode
@@ -507,6 +551,9 @@ public:
 
         // Write data
         hyperslab.write_raw(frame, type);
+
+        if (record_per_frame_metadata)
+            append_frame_metadata(file, frame_metadata_file_columns, frame_metadata);
 
         // Only flush when writing multiple frames to a single file.
         // Otherwise we'll close the file anyway so we don't need to flush.
