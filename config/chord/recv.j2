@@ -405,15 +405,16 @@ write_incoherent_sums:
 # search can be run again on these files with other masks and cuts. A file is
 # power/acq_<start of kotekan>/power.<UTC of its first sample>.<n>.h5 and holds 256 frames of
 # 256 samples (86 s), [time, channel] with 0 for a missing value. The search does not wait for
-# the writer: with the 64 frames (21 s) full a frame is left out, the stage counts it in
-# power_skipped_total, and the next frame starts a new file.
+# the writer: with the 600 frames (205 s, 2 GB) full a frame is left out, the stage counts it in
+# power_skipped_total, and the next frame starts a new file. The writer stops for 60 to 80 s
+# while hdf5N2Write finalizes a subset file, and 64 frames (21 s) lost 40 to 60 s each time.
 incoherent_power_record_pool:
     kotekan_metadata_pool: chordMetadata
-    num_metadata_objects: 70
+    num_metadata_objects: 610
 
 incoherent_power_record_buffer:
     kotekan_buffer: ndarray
-    num_frames: 64
+    num_frames: 600
     value_type: uint16
     extents: [256, 6656]
     quantity_name: "incoherent_beam_power"
