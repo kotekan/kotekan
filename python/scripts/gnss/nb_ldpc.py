@@ -268,21 +268,30 @@ def _check_parity(GM, ie, je, he, n_check, code):
     return bool(np.all(s == 0))
 
 
-def decode(H_idx, H_ele, m, n, syms, rel=None):
+def decode(H_idx, H_ele, m, n, syms, rel=None, cost=None):
     """syms: n*6 hard bits (0/1). rel: optional n*6 reliabilities (|soft value|), each bit's
-    cost of being flipped; without them every bit costs the same. Returns (info_bits[m*6],
-    nerr). nerr>=0 decoded (0=clean), -1 = failed to converge."""
+    cost of being flipped; without them every bit costs the same. cost: optional n x 64 costs of
+    each GF symbol taking each value, for a channel that sends whole symbols (GuoWang's CSK);
+    it replaces syms and rel. Returns (info_bits[m*6], nerr). nerr>=0 decoded (0=clean), -1 =
+    failed to converge."""
     GM = init_gf()
-    s = np.asarray(syms, dtype=np.uint8)
-    code = bin2gf(s)
     ie, je, he, ne, check_edges, var_edges = _edges(H_idx, H_ele, m, n)
     V2C = np.zeros((ne, Q_GF), dtype=np.float32)
     C2V = np.zeros((ne, Q_GF), dtype=np.float32)
-    c0 = -math.log(ERR_PROB)
-    # L[i][q]: the cost of GF symbol i being q, the summed reliability of the bits q flips
-    r = np.ones(n * N_GF) if rel is None else np.asarray(rel, dtype=float)
-    flips = _QBITS[None, :, :] != s.reshape(n, N_GF)[:, None, :]
-    L = (c0 * (flips * r.reshape(n, N_GF)[:, None, :]).sum(axis=2)).astype(np.float32)
+    if cost is not None:
+        L = np.asarray(cost, dtype=np.float32)
+        code = np.argmin(L, axis=1).astype(np.uint8)
+        s = gf2bin(code)
+    else:
+        s = np.asarray(syms, dtype=np.uint8)
+        code = bin2gf(s)
+        c0 = -math.log(ERR_PROB)
+        # L[i][q]: the cost of GF symbol i being q, the summed reliability of the bits q flips
+        r = np.ones(n * N_GF) if rel is None else np.asarray(rel, dtype=float)
+        flips = _QBITS[None, :, :] != s.reshape(n, N_GF)[:, None, :]
+        L = (c0 * (flips * r.reshape(n, N_GF)[:, None, :]).sum(axis=2)).astype(
+            np.float32
+        )
     for e in range(ne):
         V2C[e] = _permute_V2C(GM, he[e], L[je[e]])
     for _ in range(MAX_ITER):
