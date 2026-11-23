@@ -341,22 +341,13 @@ void debug_check_dot_int16_bounds(
     for (int n = 0; n < PILOTPROXY_NUM_WEIGHT_TERMS; ++n) {
         if (dot[n].x < SHRT_MIN || dot[n].x > SHRT_MAX ||
             dot[n].y < SHRT_MIN || dot[n].y > SHRT_MAX) {
-            if (batch_index >= 0) {
-                printf(
-                    "PilotProxy dot product exceeded int16 bound: batch=%d row=%d term=%d real=%d imag=%d\n",
-                    batch_index,
-                    detector_row,
-                    n,
-                    dot[n].x,
-                    dot[n].y);
-            } else {
-                printf(
-                    "PilotProxy dot product exceeded int16 bound: row=%d term=%d real=%d imag=%d\n",
-                    detector_row,
-                    n,
-                    dot[n].x,
-                    dot[n].y);
-            }
+            printf(
+                "PilotProxy dot product exceeded int16 bound: batch=%d row=%d term=%d real=%d imag=%d\n",
+                batch_index,
+                detector_row,
+                n,
+                dot[n].x,
+                dot[n].y);
         }
     }
 }
@@ -391,140 +382,10 @@ void debug_check_dot_int16_bounds(
  * bit-reproducible for any accumulation order. This buffer is the input of
  * the fine stage (PilotProxy_Compute_FinePowers_U64), and the frame powers
  * P_r are the sums over all bins of that stage's output.
- */
-__global__ void
-kernel_accumulate_row_sums(
-    const InputType* __restrict__ X,
-    const InputType* __restrict__ W,
-    const int*       __restrict__ W_Lanes,
-    int*             __restrict__ RowSums,
-    int detector_rows_per_block)
-{
-    #if PILOTPROXY_USE_DP4A
-    (void)W;
-    #if PILOTPROXY_USE_CONSTANT_WEIGHT_LANES
-    (void)W_Lanes;
-    #endif
-    #else
-    (void)W_Lanes;
-    #endif
-
-    __shared__ int2 warp_sums[PILOTPROXY_NUM_WEIGHT_TERMS][PILOTPROXY_WARPS_PER_BLOCK];
-
-    const int tid     = threadIdx.x;
-    const int warp_id = tid / PILOTPROXY_WARP_SIZE;
-    const int lane_id = tid % PILOTPROXY_WARP_SIZE;
-
-    #if PILOTPROXY_USE_DP4A && PILOTPROXY_USE_SHARED_WEIGHT_LANES && !PILOTPROXY_USE_CONSTANT_WEIGHT_LANES
-    const int* weight_lanes = W_Lanes;
-    __shared__ int shared_weight_lanes[PILOTPROXY_WEIGHT_LANE_COUNT];
-    for (int idx = tid; idx < PILOTPROXY_WEIGHT_LANE_COUNT; idx += blockDim.x) {
-        shared_weight_lanes[idx] = W_Lanes[idx];
-    }
-    __syncthreads();
-    weight_lanes = shared_weight_lanes;
-    #elif PILOTPROXY_USE_DP4A
-    const int* weight_lanes = W_Lanes;
-    #endif
-
-    for (int m = blockIdx.x; m < detector_rows_per_block; m += gridDim.x) {
-
-        int2 dot[PILOTPROXY_NUM_WEIGHT_TERMS];
-        #pragma unroll
-        for (int n = 0; n < PILOTPROXY_NUM_WEIGHT_TERMS; ++n) {
-            dot[n] = make_int2(0, 0);
-        }
-
-        #if PILOTPROXY_USE_DP4A
-        for (int pair = tid; pair < PILOTPROXY_DP4A_TAP_PAIRS; pair += blockDim.x) {
-            const int k0 = 2 * pair;
-            const int k1 = k0 + 1;
-
-            int a_re;
-            int a_im;
-            unpack_two_complex_bytes_to_dp4a_lanes(
-                X[m * PILOTPROXY_DETECTOR_WINDOW_SAMPLES + k0],
-                X[m * PILOTPROXY_DETECTOR_WINDOW_SAMPLES + k1],
-                a_re,
-                a_im);
-
-            #pragma unroll
-            for (int n = 0; n < PILOTPROXY_NUM_WEIGHT_TERMS; ++n) {
-                const int w_lane =
-                    load_weight_lane(weight_lanes, n * PILOTPROXY_DP4A_TAP_PAIRS + pair);
-                dot[n].x = __dp4a(a_re, w_lane, dot[n].x);
-                dot[n].y = __dp4a(a_im, w_lane, dot[n].y);
-            }
-        }
-        #else
-        for (int k = tid; k < PILOTPROXY_DETECTOR_WINDOW_SAMPLES; k += blockDim.x) {
-            short2 x_val = unpack_sample(X[m * PILOTPROXY_DETECTOR_WINDOW_SAMPLES + k]);
-
-            #pragma unroll
-            for (int n = 0; n < PILOTPROXY_NUM_WEIGHT_TERMS; ++n) {
-                short2 w_val = unpack_sample(W[n * PILOTPROXY_DETECTOR_WINDOW_SAMPLES + k]);
-                dot[n] = complex_add(dot[n], complex_multiply(x_val, w_val));
-            }
-        }
-        #endif
-
-        #pragma unroll
-        for (int n = 0; n < PILOTPROXY_NUM_WEIGHT_TERMS; ++n) {
-            dot[n] = warp_reduce_sum(dot[n]);
-        }
-
-        if (lane_id == 0) {
-            #pragma unroll
-            for (int n = 0; n < PILOTPROXY_NUM_WEIGHT_TERMS; ++n) {
-                warp_sums[n][warp_id] = dot[n];
-            }
-        }
-        __syncthreads();
-
-        if (warp_id == 0) {
-            if (lane_id < PILOTPROXY_WARPS_PER_BLOCK) {
-                #pragma unroll
-                for (int n = 0; n < PILOTPROXY_NUM_WEIGHT_TERMS; ++n) {
-                    dot[n] = warp_sums[n][lane_id];
-                }
-            } else {
-                #pragma unroll
-                for (int n = 0; n < PILOTPROXY_NUM_WEIGHT_TERMS; ++n) {
-                    dot[n] = make_int2(0, 0);
-                }
-            }
-
-            #pragma unroll
-            for (int n = 0; n < PILOTPROXY_NUM_WEIGHT_TERMS; ++n) {
-                dot[n] = warp_reduce_sum(dot[n]);
-            }
-
-            if (tid == 0) {
-                #ifndef NDEBUG
-                debug_check_dot_int16_bounds(dot, m, -1);
-                #endif
-
-                #pragma unroll
-                for (int n = 0; n < PILOTPROXY_NUM_WEIGHT_TERMS; ++n) {
-                    const size_t out_index =
-                        (static_cast<size_t>(n) * detector_rows_per_block + m)
-                        * 2;
-                    RowSums[out_index + 0] = dot[n].x;
-                    RowSums[out_index + 1] = dot[n].y;
-                }
-            }
-        }
-        __syncthreads();
-    }
-}
-
-/**
- * @brief Write the exact complex row sums of a batch of input blocks.
  *
- * Batch entry b (blockIdx.y) reads input block b and writes
- * RowSums + b * num_weight_terms * detector_rows_per_block * 2. Each batch
- * entry keeps the term-major, stream-major, interleaved layout of
- * kernel_accumulate_row_sums.
+ * Batch entry b (blockIdx.y) reads input block b and writes the layout above
+ * at RowSums + b * num_weight_terms * detector_rows_per_block * 2. A handle
+ * of batch 1 launches one entry.
  */
 __global__ void
 kernel_accumulate_row_sums_batched(
@@ -1762,25 +1623,15 @@ void PilotProxy_Compute_RowSums_I32(
         grid_size = PILOTPROXY_GRID_MAX_BLOCKS;
     }
 
-    if (h->batch <= 1) {
-        kernel_accumulate_row_sums<<<grid_size, PILOTPROXY_BLOCK_THREADS, 0, h->stream>>>(
-            h->d_in,
-            h->d_weights,
-            h->d_weight_lanes,
-            d_row_sums_out,
-            h->detector_rows_per_block
-        );
-    } else {
-        dim3 grid(grid_size, h->batch, 1);
-        kernel_accumulate_row_sums_batched<<<grid, PILOTPROXY_BLOCK_THREADS, 0, h->stream>>>(
-            h->d_in,
-            h->d_weights,
-            h->d_weight_lanes,
-            d_row_sums_out,
-            h->detector_rows_per_block,
-            h->batch
-        );
-    }
+    dim3 grid(grid_size, h->batch, 1);
+    kernel_accumulate_row_sums_batched<<<grid, PILOTPROXY_BLOCK_THREADS, 0, h->stream>>>(
+        h->d_in,
+        h->d_weights,
+        h->d_weight_lanes,
+        d_row_sums_out,
+        h->detector_rows_per_block,
+        h->batch
+    );
     CUDA_CHECK_LAST();
     CUDA_CHECK_SYNC(h->stream);
 }

@@ -39,8 +39,9 @@ Other kernel settings keep their upstream defaults.
 `PilotProxy_SetStream` when it first sees data, so the library's kernels are
 stream-ordered with the rest of the pipeline. The vendored files include their
 `config.h` with quotes, so it does not replace other headers with that name.
-Kotekan code includes `pilotproxy_core.hpp` and, in `DtvRfiMask`, `pilotproxy/pilotproxy_decision.h`
-through the include path of `libexternal`; it includes no other vendored header.
+Kotekan code includes `pilotproxy/pilotproxy_core.hpp` through the include path of `libexternal` and,
+in `DtvRfiMask`, `pilotproxy_decision.h` through the header-only `pilotproxy_decision` target; it
+includes no other vendored header.
 
 This README, the CMake file, `pilotproxy_core.cu`, `pilotproxy_core.hpp` and
 the manifest are maintained in Kotekan. `tools/lint.sh` excludes `external/` from formatting. PilotProxy uses the

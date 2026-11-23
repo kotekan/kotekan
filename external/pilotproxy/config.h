@@ -26,7 +26,7 @@
  */
 #define PILOTPROXY_CORE_VERSION_MAJOR 4
 #define PILOTPROXY_CORE_VERSION_MINOR 2
-#define PILOTPROXY_CORE_VERSION_PATCH 0
+#define PILOTPROXY_CORE_VERSION_PATCH 1
 
 /* ===========================================================================
  * ALGORITHM PARAMETERS
