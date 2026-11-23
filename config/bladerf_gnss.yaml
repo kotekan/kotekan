@@ -831,7 +831,7 @@ gw_combine:
 # GuoWang's high-rate channel: the data half of every 2 ms frame is a second code cyclically
 # shifted by 0..63 chips (six bits per frame). Despread at all 64 shifts on the CPU, from the
 # search's channel data under the gw tracker's models, for the slots standing over the median.
-# csk_g2: each ranging code's CSK code, as G2' phases (the site's map; docs/chord/guowang).
+# csk_g2: each ranging code's CSK code, as G2' phases.
 gw_csk:
     kotekan_stage: GnssCskDespread
     rec_buf: gw_rec_buf
@@ -844,12 +844,20 @@ gw_csk:
                   0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
                   16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
     csk_channels: [50, 51, 52, 53, 54]
-    # The site's four (docs/chord/guowang/SIGNAL.md), then found here by searching every G2'
-    # phase against captured data halves (gw_csk/capture, python/scripts/gnss/guowang_csk.py
-    # find).
-    csk_g2: [[1145, 1436], [1403, 1726], [391, 1041], [1586, 1002],
-             [613, 485], [203, 436], [1483, 181], [747, 301], [188, 1548],
-             [269, 669], [793, 1832], [1234, 494], [1457, 196], [1611, 1008], [2028, 2011]]
+    # The site's table for all 66 library codes (11-23; there is no rule from ranging code to
+    # CSK code, each was measured). The 15 found here by searching every G2' phase against
+    # captured data halves (gw_csk/capture, guowang_csk.py find) agree with it.
+    csk_g2: [[10, 1768], [124, 190], [133, 1401], [188, 1548], [203, 436], [266, 1803], [269, 669],
+             [272, 1029], [288, 1439], [303, 1729], [391, 1041], [556, 1119], [597, 1727],
+             [600, 663], [613, 485], [648, 967], [665, 1880], [703, 2031], [729, 1853], [747, 301],
+             [779, 252], [793, 1832], [831, 443], [857, 1532], [894, 446], [896, 1714],
+             [906, 1932], [910, 2000], [916, 552], [943, 1902], [1094, 528], [1101, 511],
+             [1135, 524], [1145, 1436], [1158, 1076], [1214, 573], [1234, 494], [1243, 1386],
+             [1276, 748], [1293, 1957], [1352, 1440], [1375, 2043], [1378, 1082], [1381, 1886],
+             [1403, 1726], [1425, 1669], [1443, 1632], [1457, 196], [1459, 1107], [1483, 181],
+             [1519, 1209], [1554, 208], [1561, 241], [1586, 1002], [1606, 1673], [1611, 1008],
+             [1676, 673], [1696, 164], [1829, 160], [1836, 1667], [1891, 463], [1897, 1740],
+             [1923, 1955], [1941, 809], [1951, 473], [2028, 2011]]
     # Shift k puts code chip j - k at chip j: the sync word 56 36 55 40 opens each UTC second.
     shift_sign: -1
     n_workers: 2
