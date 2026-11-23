@@ -89,6 +89,15 @@ the aggregator and gather. #184–#187 below are what the removal left for later
 
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
 
+### #241 — retire the site's GuoWang beam-dump capture: the standalone system now covers GuoWang (2026-11-23, KV: "We might want to consider pulling that out altogether; the standalone system already handles it now, so let's make a note.")
+**What:** the site still runs the GuoWang beam-dump chain: the scheduler on the gnss VM (`beam_dump_sched.py`, from
+`~/gnss/gw1202-wt`) arms the nodes' beamdump gates every pass, the nodes write `/tmp/gnss/beamdump` (~0.8 TB per node in five
+days before the 11-23 cleanup, 4.5 TB deleted across eight nodes), and `gw_catchup.py` on cf05 pulls and reduces it (it
+never pruned the node originals; it died in cf05's 11-22 03:03Z reboot). Stopped for the 11-23 F-engine work (guowang, KV go).
+**Decide:** remove it altogether (scheduler, arm cron, the node beamdump stages and gates, the catch-up), or keep a minimal
+capture for cross-checks against the standalone system. Until then: if it runs, gw_catchup's retain step must prune the
+node originals (`gw_retain_cf05.py --nodes`), and ~1.4 TB of unreduced dumps from 11-22 03:28Z onward remain on the nodes.
+
 ### #240 — GuoWang track beam: the code epoch wanders 20-100 ns over a minute or two at high elevation (2026-11-18, KV: "add to the buglist") (was kv/docs-tree #230)
 **What:** on DIGUI-55, DIGUI-134 and DIGUI-96 the code epoch wanders 20 to 100 ns over one to two minutes,
 growing toward the top of the pass; per-run slopes scatter four times more at 75-90 deg than at 15-30 deg.
