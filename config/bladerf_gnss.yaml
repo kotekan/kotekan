@@ -164,6 +164,35 @@ l5_search:
     use_cuda_acquire: false
     acquire_threads: 5
     cpu_affinity: [10, 11, 12, 13, 19]
+# SBAS L5: the GEOs the sbas_l5 chain tracks. Model-primary chains have no other way back once a
+# seed drifts off its satellite (a dead-reckon slew closes 0.05 chips a pass): a detection hands
+# the seed back. The Manchester pair tiled in (2 ms), as the tracker; a GEO's Doppler is near
+# zero, so the grid is narrow, and the 2 ms surface is a tenth of L5's.
+sbas_search:
+    kotekan_stage: GnssChannelizedSearch
+    in_buf: search_buf
+    signal: SBAS_L5_I_MC
+    prns: [131, 133, 135, 127, 128, 129]
+    f_offset: -48.55e6
+    n_channels: 64
+    channel_ids: [32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
+                  48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63,
+                  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+                  16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
+    doppler_min: -1000
+    doppler_max: 1000
+    doppler_step: 50
+    doppler_margin_hz: 6000
+    acquire_windows: 3
+    acquire_snr: 5
+    acquire_fine_step: 4
+    refine_span: 4
+    refine_hops: 960
+    hint_ttl_s: 30
+    pass_interval_s: 2.0
+    use_cuda_acquire: false
+    acquire_threads: 5
+    cpu_affinity: [10, 11, 12, 13, 19]
 # GuoWang: every code in the satellite library (PRN = G2' phase + 1), and PRNs 1 to 3, codes no
 # satellite carries, as dark noise probes. The window is one 2 ms frame, whose ranging half
 # carries one data sign; the broker hints the visible satellites from the TLE table.
