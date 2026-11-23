@@ -189,9 +189,9 @@ def setup_pipeline(
         cfg["gen_dtv_stat"] = dict(cfg["gen_dtv_mask"])
         cfg["gen_dtv_stat"].update(
             out_buf="host_dtv_stat_buffer",
-            type="const32",
+            type="constu64",
             name="dtv_stat",
-            array_shape=[F, 4],
+            array_shape=[F, 2],
             dim_name=["F", "S"],
             dim_scaling=[1, 1],
         )
@@ -378,6 +378,16 @@ def setup_pipeline(
         out_buf="host_dtv_RFImask_buffer",
     )
     if v3_control is not None:
+        cfg["host_dtv_stat_buffer"] = dict(
+            kotekan_buffer="ndarray",
+            num_frames=4,
+            value_type="uint64",
+            extents=[F, 2],
+            quantity_name="dtv_stat",
+            dimnames=["F", "S"],
+            dimscalings=[1, 1],
+            metadata_pool="main_pool",
+        )
         cfg["combine"].update(stat_buf="host_dtv_stat_buffer", mask_control=v3_control)
     if mask_enabled is not None:
         cfg["dtv_mask_enabled"] = dict(

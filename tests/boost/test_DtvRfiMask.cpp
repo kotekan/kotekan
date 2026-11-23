@@ -356,6 +356,8 @@ struct V3Pipeline {
             kotekan::GenericNDArray::describe(kotekan::int8, "dtv_mask", {F}, {"F"}, {1}));
         support.ensure_frame_desc(kotekan::GenericNDArray::describe(
             kotekan::int32, "dtv_fine_support", {F, 2}, {"F", "S"}, {1, 1}));
+        stat.ensure_frame_desc(kotekan::GenericNDArray::describe(kotekan::uint64, "dtv_stat",
+                                                                 {F, 2}, {"F", "S"}, {1, 1}));
         for (auto* b : {&rfi, &dtv, &support, &stat, &output})
             buffers.add_buffer(b->buffer_name, b);
         for (auto* b : {&rfi, &dtv, &support, &stat})
@@ -379,8 +381,7 @@ struct V3Pipeline {
             BOOST_REQUIRE(b->wait_for_empty_frame("test", slot));
             b->allocate_new_metadata_object(slot);
             auto meta = get_chord_metadata(b, slot);
-            if (b != &stat)
-                meta->set_from_frame_desc(b->get_frame_desc<kotekan::GenericNDArray>());
+            meta->set_from_frame_desc(b->get_frame_desc<kotekan::GenericNDArray>());
             meta->set_fpga_seq_num((int64_t(1) << 34) + int64_t(index) * samples * 4);
             meta->set_time_downsampling_fpga(b == &rfi ? 4096 : samples * 4);
             meta->set_coarse_freq({10, 11, 12, 13});
@@ -555,4 +556,25 @@ BOOST_AUTO_TEST_CASE(v3_permanent_channel_needs_no_test) {
     p.stage->start();
     p.fill(0, {0, not_evaluated, 3, 1, 0, 0, 0, 1});
     BOOST_CHECK(p.rejected(0) == std::vector<int>({0}));
+}
+
+BOOST_AUTO_TEST_CASE(v3_reject_statistic_descriptor) {
+    // a statistic frame whose metadata does not describe uint64 [F, S] pairs named dtv_stat
+    for (int fault = 0; fault < 3; ++fault) {
+        V3Pipeline p(false);
+        p.fill(0, {3, 2, 3, 1, 0, 0, 0, 1});
+        auto meta = get_chord_metadata(&p.stat, 0);
+        switch (fault) {
+            case 0:
+                meta->type = kotekan::int32;
+                break;
+            case 1:
+                meta->set_dimension_name(1, "W");
+                break;
+            case 2:
+                meta->set_name("dtv_powers");
+                break;
+        }
+        BOOST_CHECK_THROW(p.stage->main_thread(), FatalError);
+    }
 }

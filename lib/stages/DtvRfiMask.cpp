@@ -10,7 +10,7 @@
 #include "chordMetadata.hpp"
 #include "configUpdater.hpp"
 #include "kotekanLogging.hpp"
-#include "pilotproxy/pilotproxy_decision.h" // for pilotproxy_v3_keep
+#include "pilotproxy_decision.h" // for pilotproxy_v3_keep
 
 #include <algorithm>
 #include <cstdint>
@@ -251,19 +251,22 @@ public:
         output->require_frame_desc(desc);
         const auto dtv_desc = dtv->get_frame_desc<kotekan::GenericNDArray>();
         if (dtv_desc)
-            ensure_product_desc(dtv, false, dtv_desc->get_rank());
+            ensure_product_desc(dtv, Product::mask, dtv_desc->get_rank());
         if (support) {
             support->register_consumer(unique_name);
             if (support->frame_size != size_t(frequencies) * 2 * sizeof(int32_t))
                 FATAL_ERROR("DtvRfiMask fine support buffer size mismatch");
             const auto support_desc = support->get_frame_desc<kotekan::GenericNDArray>();
             if (support_desc)
-                ensure_product_desc(support, true, support_desc->get_rank());
+                ensure_product_desc(support, Product::support, support_desc->get_rank());
         }
         if (stat) {
             stat->register_consumer(unique_name);
             if (stat->frame_size != size_t(frequencies) * 2 * sizeof(uint64_t))
                 FATAL_ERROR("DtvRfiMask statistic buffer size mismatch");
+            const auto stat_desc = stat->get_frame_desc<kotekan::GenericNDArray>();
+            if (stat_desc)
+                ensure_product_desc(stat, Product::stat, stat_desc->get_rank());
         }
         unqualified_reason = mask_unqualified_reason(pilot_profiles_path);
         enabled_config_path =
@@ -312,7 +315,7 @@ public:
             const auto dm = get_chord_metadata(dtv, dtv_id);
             rm->check_frame_desc(rfi->get_frame_desc<kotekan::GenericNDArray>());
             if (!started)
-                ensure_product_desc(dtv, false, dm->dims, dm->get_time_downsampling_fpga());
+                ensure_product_desc(dtv, Product::mask, dm->dims, dm->get_time_downsampling_fpga());
             dm->check_frame_desc(dtv->get_frame_desc<kotekan::GenericNDArray>());
             const auto seq = rm->get_fpga_seq_num();
             const auto rp = rm->get_time_downsampling_fpga();
@@ -345,7 +348,8 @@ public:
             if (support) {
                 const auto sm = get_chord_metadata(support, support_id);
                 if (!started)
-                    ensure_product_desc(support, true, sm->dims, sm->get_time_downsampling_fpga());
+                    ensure_product_desc(support, Product::support, sm->dims,
+                                        sm->get_time_downsampling_fpga());
                 sm->check_frame_desc(support->get_frame_desc<kotekan::GenericNDArray>());
                 if (sm->get_fpga_seq_num() != seq || sm->get_time_downsampling_fpga() != dp
                     || (sm->dims == 3 && sm->dim_scaling[0] != dp) || !sm->has_coarse_freq()
@@ -357,8 +361,13 @@ public:
             }
             if (stat) {
                 const auto tm = get_chord_metadata(stat, stat_id);
+                if (!started)
+                    ensure_product_desc(stat, Product::stat, tm->dims,
+                                        tm->get_time_downsampling_fpga());
+                tm->check_frame_desc(stat->get_frame_desc<kotekan::GenericNDArray>());
                 if (tm->get_fpga_seq_num() != seq || tm->get_time_downsampling_fpga() != dp
-                    || !tm->has_coarse_freq() || tm->get_coarse_freq() != freq)
+                    || (tm->dims == 3 && tm->dim_scaling[0] != dp) || !tm->has_coarse_freq()
+                    || tm->get_coarse_freq() != freq)
                     FATAL_ERROR("DtvRfiMask statistic identity mismatch");
             }
             {
@@ -477,11 +486,15 @@ private:
         return true;
     }
 
-    void ensure_product_desc(Buffer* buffer, bool fine, size_t rank, int64_t period = 1) {
+    /// The detector products this stage reads: the mask byte, the fine support pair and the v3
+    /// statistic pair, each per frequency.
+    enum class Product { mask, support, stat };
+
+    void ensure_product_desc(Buffer* buffer, Product product, size_t rank, int64_t period = 1) {
         std::vector<std::ptrdiff_t> extents{frequencies};
         std::vector<kotekan::Symbol> names{"F"};
         std::vector<std::ptrdiff_t> scalings{1};
-        if (fine) {
+        if (product != Product::mask) {
             extents.push_back(2);
             names.push_back("S");
             scalings.push_back(1);
@@ -494,9 +507,15 @@ private:
             FATAL_ERROR("DtvRfiMask input {:s} has unsupported rank {:d}", buffer->buffer_name,
                         rank);
         }
-        buffer->ensure_frame_desc(kotekan::GenericNDArray::describe(
-            fine ? kotekan::int32 : kotekan::int8, fine ? "dtv_fine_support" : "dtv_mask", extents,
-            names, scalings));
+        if (product == Product::mask)
+            buffer->ensure_frame_desc(kotekan::GenericNDArray::describe(kotekan::int8, "dtv_mask",
+                                                                        extents, names, scalings));
+        else if (product == Product::support)
+            buffer->ensure_frame_desc(kotekan::GenericNDArray::describe(
+                kotekan::int32, "dtv_fine_support", extents, names, scalings));
+        else
+            buffer->ensure_frame_desc(kotekan::GenericNDArray::describe(kotekan::uint64, "dtv_stat",
+                                                                        extents, names, scalings));
     }
 
     const int frequencies;
