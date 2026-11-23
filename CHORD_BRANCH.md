@@ -16,7 +16,7 @@ Base: `develop` at `ba9a1ac86` (#1915).
 | #1848 | `jbm/n2-switch-per-freq` | `9d6821aeb` | 2026-11-05 | 2026-11-05 | hdf5N2Write: record fringestop and second-stage RFI switches per frequency |
 | #1849 | `jbm/n2-gains` | `8868a27f3` | 2026-11-05 | 2026-11-20 | bufferGains: buffer posted calibration gains; N2Accumulate records them |
 | #1851 | `jbm/async-start` | `944510918` | 2026-11-05 | 2026-11-06 | kotekan: start the pipeline on its own thread, report it in /status |
-| #1903 | `jbm/incoherent-search` | `665981758` | 2026-11-17 | 2026-11-22 | Incoherent-beam pulse search: IncoherentBeamPower and IncoherentBeamSearch |
+| #1903 | `jbm/incoherent-search` | `a18c1a010` | 2026-11-17 | 2026-11-23 | Incoherent-beam pulse search: IncoherentBeamPower and IncoherentBeamSearch |
 | #1884 | `jbm/crs-wide-band` | `4dea22979` | 2026-11-11 | 2026-11-20 | CRS capture for a wider science band: frequencies per stream from the band, n2k kernel sizes, worker ring fill gauge |
 | #1918 | `jbm/rfi-frame-mask-exempt` | `668493edf` | 2026-11-19 | 2026-11-19 | RfiFrameMask: leave first-stage exempt channels unmasked |
 | #1919 | `jbm/chord-config-docs` | `7256aee9c` | 2026-11-20 | 2026-11-21 | config/chord: controller full name, 4096 bins with fringestopping, second-stage RFI excision, DTV behind `dtv_enabled` |

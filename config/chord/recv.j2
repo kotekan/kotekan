@@ -368,6 +368,9 @@ incoherent_beam_search:
         - [1559, 1610]      # GNSS L1
     candidate_file: /mnt/cs00/data/incoherent_beam_search/candidates.jsonl
     dm_file: /mnt/cs00/data/incoherent_beam_search/trial_dms.json
+{%- if incoherent_write_power | default(false) %}
+    power_buf: incoherent_power_record_buffer
+{%- endif %}
 {%- if incoherent_write_sums | default(false) %}
     out_buf: incoherent_sums_buffer
 
@@ -394,4 +397,38 @@ write_incoherent_sums:
     file_name: incoherent_sums
     prefix_hostname: false
     frames_per_file: 64
+{%- endif %}
+{%- if incoherent_write_power | default(false) %}
+
+# For a run of a few days: the power of every time sample as the search received it, before any
+# mask, 10 MB/s (880 GB a day) before compression. Render with incoherent_write_power true. The
+# search can be run again on these files with other masks and cuts. A file is
+# power/acq_<start of kotekan>/power.<UTC of its first sample>.<n>.h5 and holds 256 frames of
+# 256 samples (86 s), [time, channel] with 0 for a missing value. The search does not wait for
+# the writer: with the 64 frames (21 s) full a frame is left out, the stage counts it in
+# power_skipped_total, and the next frame starts a new file.
+incoherent_power_record_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: 70
+
+incoherent_power_record_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 64
+    value_type: uint16
+    extents: [256, 6656]
+    quantity_name: "incoherent_beam_power"
+    dimnames: ["Trfi", "F"]
+    dimscalings: [256, 1]
+    metadata_pool: incoherent_power_record_pool
+
+write_incoherent_power:
+    kotekan_stage: hdf5FileWrite
+    log_level: warn
+    in_buf: incoherent_power_record_buffer
+    base_dir: /mnt/cs00/data/incoherent_beam_search/power
+    acq_dir: true
+    file_name: power
+    time_in_file_name: true
+    prefix_hostname: false
+    frames_per_file: 256
 {%- endif %}

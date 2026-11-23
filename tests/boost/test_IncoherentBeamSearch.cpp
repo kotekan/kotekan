@@ -56,12 +56,14 @@ struct SearchPipeline {
     const std::vector<double> dms = trial_dms();
     kotekan::Config config;
     std::shared_ptr<metadataPool> pool;
-    Buffer input, sums, snr, cutout;
+    Buffer input, sums, snr, cutout, power;
     kotekan::bufferContainer buffers;
     std::unique_ptr<kotekan::Stage> stage;
     std::unique_ptr<kotekan::Stage> writer; // hdf5FileWrite of the cutouts, when kotekan has it
     std::mt19937 rng{1};
     int next_slot = 0;
+    std::vector<uint16_t> first_sent; // [T][halves * F]: the first samples sent, by channel
+    bool sent_any = false;
 
     // The largest dedispersed sum the stage has written, kept by sums_thread.
     std::thread sums_thread;
@@ -86,7 +88,9 @@ struct SearchPipeline {
         snr(4, snr_passes * dms.size() * sizeof(float), pool, "snr", "standard", 0, false, false,
             std::vector<int>{}, true),
         cutout(4, halves * F * cutout_samples, pool, "cutout", "standard", 0, false, false,
-               std::vector<int>{}, true) {
+               std::vector<int>{}, true),
+        power(2, sum_samples * halves * F * sizeof(uint16_t), pool, "power", "standard", 0, false,
+              false, std::vector<int>{}, true) {
         // Force metadata registration from the static library.
         chordMetadata metadata;
         std::remove(path.c_str());
@@ -97,6 +101,7 @@ struct SearchPipeline {
                                 {"out_buf", "sums"},
                                 {"snr_buf", "snr"},
                                 {"cutout_buf", "cutout"},
+                                {"power_buf", "power"},
                                 {"freq_id_base", min_freq_id},
                                 {"num_local_freq", halves * F},
                                 {"num_feeds", 128},
@@ -137,9 +142,11 @@ struct SearchPipeline {
         buffers.add_buffer("sums", &sums);
         buffers.add_buffer("snr", &snr);
         buffers.add_buffer("cutout", &cutout);
+        buffers.add_buffer("power", &power);
         input.register_producer("test");
         sums.register_consumer("test");
         cutout.register_consumer("test");
+        power.register_consumer("test");
         // As on the telescope, nothing consumes the image of recent passes: it is peeked.
         snr.enable_peek_hold();
         auto makers = kotekan::StageFactoryRegistry::get_registered_stages();
@@ -158,6 +165,7 @@ struct SearchPipeline {
         input.send_shutdown_signal();
         sums.send_shutdown_signal();
         cutout.send_shutdown_signal();
+        power.send_shutdown_signal();
         stage->stop();
         stage->join();
         if (writer) {
@@ -222,10 +230,17 @@ struct SearchPipeline {
                             (uint16_t)std::lround(mean + sigma * (gauss(rng) + (on ? 2 : 0)));
                     }
                 }
+                if (!sent_any && first == 0) {
+                    first_sent.resize((size_t)T * halves * F);
+                    for (int t = 0; t < T; ++t)
+                        for (int f = 0; f < F; ++f)
+                            first_sent[(t * F + f) * halves + half] = frame[t * F + f];
+                }
                 meta->set_coarse_freq(freq_ids);
                 input.mark_frame_full("test", slot);
             }
         }
+        sent_any = true;
     }
 
     // Reads the candidate file once the stage has taken every frame and written `expected`
@@ -301,6 +316,23 @@ BOOST_AUTO_TEST_CASE(finds_a_pulse_and_restarts_after_a_jump) {
     BOOST_CHECK_SMALL(cands[0]["unix_time"].get<double>()
                           - (1767225600 + cands[0]["fpga_seq"].get<int64_t>() * 5.12e-6),
                       1e-3);
+
+    // The power went out as it came in, by time and channel, 256 samples to a frame. Nothing
+    // takes the frames here: the search went on with power_buf full.
+    for (int k = 0; k < p.power.num_frames; ++k) {
+        const int num_freq = SearchPipeline::halves * SearchPipeline::F;
+        const uint16_t* const frame = (const uint16_t*)p.power.wait_for_full_frame("test", k);
+        BOOST_REQUIRE(frame);
+        const auto meta = get_chord_metadata(&p.power, k);
+        BOOST_CHECK_EQUAL(meta->get_fpga_seq_num(),
+                          seq0 + int64_t(k) * SearchPipeline::sum_samples * SearchPipeline::period);
+        BOOST_CHECK_EQUAL(meta->get_coarse_freq().size(), num_freq);
+        BOOST_CHECK_EQUAL(meta->get_coarse_freq()[0], SearchPipeline::min_freq_id);
+        if (k == 0)
+            BOOST_CHECK(std::equal(p.first_sent.begin(), p.first_sent.end(), frame));
+    }
+    BOOST_CHECK(!metric_has(
+        "kotekan_incoherent_beam_search_power_skipped_total{stage_name=\"/search\"} 0"));
 
     // The candidate has no flag, so it has a cutout: the first one. The pulse is the middle
     // column, and the frame starts half a cutout before the candidate at the top channel.
