@@ -18,7 +18,9 @@ broker did, and writes:
   --decode-health-file  the viewer's decode-health panel (decode_health.py)
 
 and, with --progress-file, each second: per satellite its decoded-message count and the times
-it grew over the last two minutes, so a viewer can show messages arriving.
+it grew over the last two minutes, so a viewer can show messages arriving; with --payload-file,
+every 2 s: per satellite its current ephemeris, decode state and the newest decode of each
+message type, so a viewer can show the message contents.
 
 and a line of CPU per decoder (ingest, and fetch plus JSON), so the load is visible. One process
 is one interpreter: to spread decoders over cores, run several instances with disjoint sources
@@ -130,6 +132,7 @@ BRDC_REFRESH_S = 1800.0
 # one whose reference time is further than this from now is not reported, checked or exported.
 EPH_FRESH_S = 4 * 3600.0
 PROGRESS_EVERY_S = 1.0
+PAYLOAD_EVERY_S = 2.0
 PROGRESS_KEEP_S = 120.0
 
 
@@ -161,6 +164,65 @@ def note_progress(src, prn, now):
     p["n"] = n
     while p["ev"] and now - p["ev"][0][0] > PROGRESS_KEEP_S:
         p["ev"].popleft()
+
+
+def message_types(signal, st):
+    """{message type: [count or None, newest decode time or None]} from a decoder's per-PRN
+    state: I/NAV words, F/NAV pages, B-CNAV2/3 message types, D1 subframes, GLONASS strings,
+    SBAS message types (counts), CNAV message types (counts, from the decoded bits)."""
+    out = {}
+    if signal in ("GAL_E5BI_INAV", "GAL_E1B_INAV"):
+        for k, v in st.words.items():
+            out["word %d" % k] = [None, v[2]]
+    elif signal == "GAL_E5AI_FNAV":
+        for k, v in st.pages.items():
+            out["page %d" % k] = [None, v[2]]
+    elif signal in ("BDS_B2A_BCNAV2", "BDS_B2B_BCNAV3"):
+        for k, v in st.frames.items():
+            out["type %d" % k] = [None, v[2]]
+    elif signal == "BDS_B3I_D1":
+        for (fra, _), v in st.subframes.items():
+            k = "subframe %d" % fra
+            out[k] = [None, max(v[1], (out.get(k) or [0, 0])[1])]
+    elif signal == "GLO_L2OF":
+        for m, _, t in st.strings.values():
+            k = "string %d" % m
+            out[k] = [None, max(t, (out.get(k) or [0, 0])[1])]
+    elif signal == "SBAS_L5_DFMC":
+        for k, n in st.types.items():
+            out["type %d" % k] = [n, None]
+    elif signal in ("GPS_L5_CNAV", "GPS_L2C_CNAV"):
+        for bits in st.decoded.values():
+            k = "type %d" % int("".join(str(int(b)) for b in bits[14:20]), 2)
+            out[k] = [(out.get(k) or [0])[0] + 1, None]
+    return out
+
+
+def write_payload(srcs, path, now):
+    doc = {"schema": 1, "t": round(now, 2), "signals": {}}
+    for s in srcs:
+        sysc, _, _, _, toef = DECODERS[s["signal"]]
+        dec = s["dec"]
+        prns = {}
+        for prn, st in sorted(dec._p.items()):
+            try:
+                h = dec.health(prn)
+                if not h:
+                    continue
+                eph = dec.ephemeris(prn)
+                age = eph_age_s(sysc, eph, toef, now) if eph is not None else None
+                if age is not None and abs(age) > EPH_FRESH_S:
+                    eph, age = None, None
+                prns[str(prn)] = {
+                    "health": h,
+                    "eph": eph,
+                    "eph_age_s": None if age is None else round(age),
+                    "msgs": message_types(s["signal"], st),
+                }
+            except Exception as e:
+                log("%s PRN %d: payload failed (%s)" % (s["signal"], prn, e))
+        doc["signals"][s["signal"]] = {"sys": sysc, "prns": prns}
+    write_atomic(doc, path)
 
 
 def write_progress(srcs, path, now):
@@ -325,6 +387,11 @@ def main():
         "--progress-file",
         help="per satellite, the decoded-message count and when it grew (rewritten each second)",
     )
+    ap.add_argument(
+        "--payload-file",
+        help="per satellite, the current ephemeris, decode state and newest message types "
+        "(rewritten every 2 s)",
+    )
     ap.add_argument("--every", type=float, default=1.0, help="shortest poll period, s")
     ap.add_argument(
         "--window-frac",
@@ -368,7 +435,7 @@ def main():
 
     t_report = time.time()
     t_cpu = time.time()
-    t_prog = 0.0
+    t_prog = t_pay = 0.0
     while True:
         for s in srcs:
             if time.time() < s["next_t"]:
@@ -394,6 +461,9 @@ def main():
             s["next_t"] = max(s["next_t"], time.time() + args.window_frac * span)
             s["io"] += t1 - t0
             s["cpu"] += time.process_time() - t1
+        if args.payload_file and time.time() - t_pay >= PAYLOAD_EVERY_S:
+            t_pay = time.time()
+            write_payload(srcs, args.payload_file, t_pay)
         if args.progress_file and time.time() - t_prog >= PROGRESS_EVERY_S:
             t_prog = time.time()
             write_progress(srcs, args.progress_file, t_prog)
