@@ -680,3 +680,47 @@ def test_voltage_reader_roundtrip(tmpdir_factory):
         {"regen": _generator(case, "regen_buf"), "read": read, "check": check},
         {},
     ).run()
+
+
+def test_n2_frame_counts_are_root_attributes(tmpdir_factory):
+    """Per-frame N2 files carry the frame's counts as root attributes."""
+    tmpdir = tmpdir_factory.mktemp("hdf5_n2_counts")
+    t0_ns = 1_700_000_000 * 10**9
+    eop = dict(delta_UT1_inst=0.0, xp_as=0.0, yp_as=0.0)
+    global_config = {
+        "num_ev": 2,
+        "telescope": {
+            "name": "CHORDTelescope",
+            "require_gps": False,
+            "origin_itrs_lat_deg": 49.3,
+            "origin_itrs_lon_deg": -119.6,
+            "grid_x_axis": [1, 0, 0],
+            "grid_y_axis": [0, 1, 0],
+            "dish_elev_axis": [1, 0, 0],
+            "dish_vert_axis": [0, 0, 1],
+            "dish_coelev_deg": 0.0,
+            "dish_grid_size_x": 22,
+            "dish_grid_size_y": 24,
+            "eop_updatable_config": "/earth_rotation_data",
+            "dish_inputs": [],
+        },
+        "earth_rotation_data": {
+            "kotekan_update_endpoint": "json",
+            "earth_orientation_parameter_table": [
+                dict(eop, t_inst_ns=t0_ns - 1000 * 10**9),
+                dict(eop, t_inst_ns=t0_ns + 1000 * 10**9),
+            ],
+        },
+        "gps_time": {"frame0_nano": t0_ns},
+    }
+    write = dict(
+        base_dir=str(tmpdir), file_name=FILE_NAME, prefix_hostname=False, max_frames=1
+    )
+    fake = runner.FakeN2Buffer(
+        mode="fill_ij_missing", num_frames=1, cadence=1.0, start_time=t0_ns // 10**9
+    )
+    runner.KotekanStageTester("hdf5FileWrite", write, fake, None, global_config).run()
+    (path,) = glob.glob(os.path.join(str(tmpdir), FILE_NAME + ".*.h5"))
+    with h5py.File(path, "r") as f:
+        assert f.attrs["n_rfi_fpga_ticks"] == 1
+        assert f.attrs["n_usable_variance_pairs"] == 3
