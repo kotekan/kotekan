@@ -72,6 +72,46 @@ def _emit(utc_ref, n=8):
     }
 
 
+class TestOffGridEmits(unittest.TestCase):
+    """SymbolHistory drops an emit whose symbols fall off its grid (the combiner's bit sync
+    briefly picked the other phase of a 2-record symbol), and restarts on a grid that holds."""
+
+    def _emit(self, h, t0, n=200):
+        rng = np.random.RandomState(int(t0 * 1e3) % 1000)
+        sg = rng.choice([-1, 1], n)
+        h.ingest(
+            7,
+            {
+                "utc_ref": t0,
+                "rec_dt": 0.001,
+                "phase": 0,
+                "br": 2,
+                "bits": [[i, int(v)] for i, v in enumerate(sg)],
+                "soft": [int(30 * v) for v in sg],
+            },
+        )
+
+    def test_brief_flip_dropped_and_lasting_shift_restarts(self):
+        class H(navobs_align.SymbolHistory):
+            def new_state(self):
+                return navobs_align.HistoryState()
+
+            def _decode(self, prn, st):
+                pass
+
+        h = H()
+        self._emit(h, 100.000)
+        self._emit(h, 100.200)
+        st = h._p[7]
+        restarts, n = st.restarts, len(st.hist)
+        for k in range(h.grid_debounce - 1):  # half a symbol off the grid
+            self._emit(h, 100.401 + 0.2 * k)
+        self.assertEqual(st.restarts, restarts, "a brief flip must not restart the history")
+        self.assertEqual(len(st.hist), n, "nor merge its symbols")
+        self._emit(h, 100.401 + 0.2 * (h.grid_debounce - 1))
+        self.assertEqual(st.restarts, restarts + 1, "a lasting shift restarts on the new grid")
+
+
 class TestPerPrnGate(unittest.TestCase):
     def test_two_prns_in_one_second_both_decode(self):
         for cls in GATED:

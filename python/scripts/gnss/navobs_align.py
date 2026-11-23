@@ -65,6 +65,7 @@ class HistoryState:
         self.restarts = (
             0  # times the history restarted on an emit it could not chain to
         )
+        self.off_grid = 0  # consecutive emits whose symbols fall off the history's grid
 
 
 class SymbolHistory:
@@ -77,6 +78,11 @@ class SymbolHistory:
 
     hist_max = 1500
     min_overlap_pol = 16
+    # An emit whose symbol boundaries fall off the history's grid (the combiner's bit sync
+    # chose another phase for that window, pairing records across symbols) is dropped, unless
+    # this many emits in a row agree on the new grid: then the grid itself moved and the history
+    # restarts on it.
+    grid_debounce = 5
 
     def __init__(self):
         self._p = {}
@@ -106,6 +112,13 @@ class SymbolHistory:
         t0 = utc_ref - phase * rec_dt
         if st.grid0 is None:
             st.grid0 = t0
+        off = (t0 - st.grid0) / sym_s
+        if abs(off - round(off)) > 0.25:
+            st.off_grid += 1
+            if st.off_grid < self.grid_debounce:
+                return
+            st.grid0, st.s0, st.hist = t0, None, np.zeros(0)
+        st.off_grid = 0
         base = int(round((t0 - st.grid0) / sym_s))
         idx = np.array([int(p[0]) for p in pairs])
         sg = np.array([int(p[1]) for p in pairs], dtype=float)
