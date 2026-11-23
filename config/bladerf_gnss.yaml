@@ -824,6 +824,33 @@ gw_combine:
     record_export: 64
     navwipe_bit_records: 4
     bit_export: true
+# GuoWang's high-rate channel: the data half of every 2 ms frame is a second code cyclically
+# shifted by 0..63 chips (six bits per frame). Despread at all 64 shifts on the CPU, from the
+# search's channel data under the gw tracker's models, for the slots standing over the median.
+# csk_g2: each ranging code's CSK code, as G2' phases (the site's map; docs/chord/guowang).
+gw_csk:
+    kotekan_stage: GnssCskDespread
+    rec_buf: gw_rec_buf
+    chan_buf: search_buf
+    signal: GW_1202
+    prns: *gw_prns
+    f_offset: -22.975e6
+    channel_ids: [32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
+                  48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63,
+                  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+                  16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
+    csk_channels: [50, 51, 52, 53, 54]
+    # The site's four (docs/chord/guowang/SIGNAL.md), then found here by searching every G2'
+    # phase against captured data halves (gw_csk/capture, python/scripts/gnss/guowang_csk.py
+    # find).
+    csk_g2: [[1145, 1436], [1403, 1726], [391, 1041], [1586, 1002],
+             [613, 485], [203, 436], [1483, 181], [747, 301], [188, 1548],
+             [269, 669], [793, 1832], [1234, 494], [1457, 196], [1611, 1008], [2028, 2011]]
+    # Shift k puts code chip j - k at chip j: the sync word 56 36 55 40 opens each UTC second.
+    shift_sign: -1
+    n_workers: 2
+    cpu_affinity: [12, 13]
+
 # GuoWang's low-rate symbols (4 ms, two 2 ms frames, the sign of the ranging half), decided from
 # its own records: no pilot.
 gw_symbols:
