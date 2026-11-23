@@ -746,11 +746,21 @@ def test_template_routes_both_correlators_and_rfi_counts(apply):
         assert f"host_{name}_ringbuffer" in gpu["in_buffers"]
     assert cfg["run_n2_counting"]["count_rfi_mask"]["in_buf"] == f"host_{name}_buffer"
     assert ("run_combine_dtv_mask" in cfg) is apply
+    accumulate = cfg["run_N2_accumulate"].get("dtv_mask_enabled_updatable_config")
     if apply:
         assert (
             cfg["run_combine_dtv_mask"]["fine_support_buf"]
             == "host_dtv_fine_support_buffer"
         )
+        # both stages follow one switch, so the recorded mask fraction is right
+        assert (
+            cfg["run_combine_dtv_mask"]["enabled_updatable_config"]
+            == accumulate
+            == "/dtv_mask_enabled"
+        )
+        assert cfg["dtv_mask_enabled"]["enabled"] is True
+    else:
+        assert accumulate is None and "dtv_mask_enabled" not in cfg
 
 
 def test_template_passes_the_same_reject_all_limit_to_both_stages():

@@ -136,6 +136,13 @@ run_combine_dtv_mask:
     permanent_mask_freq_ids: {{ dtv_permanent_mask_freq_ids|default([]) }}
     require_fine_freq_ids: {{ dtv_require_fine_freq_ids|default([]) }}
     out_buf: host_dtv_RFImask_buffer
+    enabled_updatable_config: /dtv_mask_enabled
+
+# DtvRfiMask and N2Accumulate both follow this switch, so the recorded mask fraction is right.
+dtv_mask_enabled:
+    kotekan_update_endpoint: json
+    enabled: true
+    valid_at_time_ns: 0
 
 run_send_dtv_RFImask:
     gpu_0:
