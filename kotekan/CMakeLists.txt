@@ -19,11 +19,8 @@ if(HDF5_FOUND
     target_compile_definitions(kotekan PRIVATE DEFAULT_HDF5_PLUGIN_PATH="${_HDF5_PLUGIN_DIR_ESC}")
 endif()
 
+target_link_libraries(kotekan PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,kotekan_libs>")
 if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    target_link_libraries(
-        kotekan
-        PRIVATE -Wl,--whole-archive $<TARGET_PROPERTY:kotekan_libs,INTERFACE_LINK_LIBRARIES>
-                -Wl,--no-whole-archive)
     if(ASDF_CXX_FOUND)
         target_link_libraries(kotekan PRIVATE blosc)
         # asdf-cxx's pkg-config declares -lblosc (c-blosc 1.x), but an install built against
@@ -38,10 +35,6 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
                                                   "-Wl,--pop-state")
         endif()
     endif()
-elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries(kotekan PRIVATE -Wl,-all_load kotekan_libs)
-else()
-    message(FATAL_ERROR "System type ${CMAKE_SYSTEM_NAME} not supported")
 endif()
 
 if(Julia_FOUND)
