@@ -386,7 +386,9 @@ ndarray``; the reader validates the declared frame descriptor against the file.
   metadata of each frame taken from its row and none of the reconstruction
   below. Among numbered files the reader goes from a file to the one named for
   the frame after its last, so files of several frames each are read as one
-  stream.
+  stream. If the metadata datasets differ in length, as after the writer was
+  killed while it appended a frame, the reader replays the frames that every
+  dataset has and warns about the samples left over.
 
 In both modes the attributes ``chord_metadata_version``, ``name``, ``type``,
 ``dim_names`` and ``dim_scalings`` are mandatory and the HDF5 storage type of

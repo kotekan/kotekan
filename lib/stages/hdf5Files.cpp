@@ -230,13 +230,13 @@ void read_columns(const HighFive::Group& group, const std::vector<std::string>& 
         const std::vector<std::size_t> dims = dataset.getDimensions();
         if (dims.empty())
             throw std::runtime_error(fmt::format("frame metadata \"{:s}\" has rank 0", name));
+        // A writer that was killed while it appended a frame leaves columns of unequal
+        // length. Keep the frames that every column has.
         if (!have_frames) {
             frames.assign(dims[0], nlohmann::json::object());
             have_frames = true;
-        } else if (dims[0] != frames.size()) {
-            throw std::runtime_error(
-                fmt::format("frame metadata \"{:s}\" has {:d} frames, other columns have {:d}",
-                            name, dims[0], frames.size()));
+        } else if (dims[0] < frames.size()) {
+            frames.resize(dims[0]);
         }
 
         const HighFive::DataType type = dataset.getDataType();

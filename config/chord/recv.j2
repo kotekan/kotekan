@@ -232,7 +232,8 @@ hdf5_N2_write_subset:
 
 
 # DTV products, 448 frames per file: 28 frames of ~43 s from each of the 16 halves, about 20
-# minutes. The frames are in arrival order; frame_metadata/COARSE_FREQ and
+# minutes. Every half sends every product, whether or not it binds a channel, so that holds
+# for each of them. The frames are in arrival order; frame_metadata/COARSE_FREQ and
 # frame_metadata/FPGA_SEQ_NUM identify the half and the window of each.
 write_dtv:
 {% for p in dtv_sent %}

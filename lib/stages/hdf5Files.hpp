@@ -117,8 +117,9 @@ void append_frame_metadata(HighFive::File& file, const FrameMetadataColumns& fil
 /**
  * @brief Read the per-frame metadata of @p file back, one json object per frame.
  *
- * Throws std::runtime_error if the columns disagree on the number of frames or hold a type
- * that create_frame_metadata does not write.
+ * If the columns disagree on the number of frames, as after a writer was killed while it
+ * appended one, only the frames that every column has are returned. Throws
+ * std::runtime_error if a column holds a type that create_frame_metadata does not write.
  */
 std::vector<nlohmann::json> read_frame_metadata(const HighFive::File& file);
 

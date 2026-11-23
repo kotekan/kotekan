@@ -156,16 +156,17 @@ static std::vector<json> write_frames(const fs::path& dir, const std::string& na
     return written;
 }
 
-// Replay the files and compare every frame with what was written.
+// Replay the files and compare the first `count` frames, which must be all that are read, with
+// what was written.
 static void check_replay(const fs::path& dir, const std::string& name, const json& options,
-                         const std::vector<json>& written) {
+                         const std::vector<json>& written, int count = num_frames) {
     kotekan::Config config = stage_config(name, "hdf5FileRead", dir, options);
     Pipeline p;
     p.buf.register_consumer("test");
     p.create(config, name, "hdf5FileRead")->main_thread();
 
-    BOOST_REQUIRE_EQUAL(p.buf.get_num_full_frames(), num_frames);
-    for (int i = 0; i < num_frames; i++) {
+    BOOST_REQUIRE_EQUAL(p.buf.get_num_full_frames(), count);
+    for (int i = 0; i < count; i++) {
         const uint8_t* frame = p.buf.wait_for_full_frame("test", i);
         BOOST_REQUIRE(frame != nullptr);
         for (int j = 0; j < T * F; j++)
@@ -231,6 +232,21 @@ BOOST_AUTO_TEST_CASE(test_single_file) {
     BOOST_CHECK_THROW(
         write_frames(dir2.path, "write_single_other", {{"create_single_file", true}}, 3),
         FatalError);
+}
+
+BOOST_AUTO_TEST_CASE(test_unequal_columns) {
+    tmp_dir dir;
+    const std::vector<json> written =
+        write_frames(dir.path, "write_unequal", {{"create_single_file", true}});
+
+    // As a writer leaves the file when it is killed while it appends the last frame.
+    {
+        HighFive::File file((dir.path / "mask.h5").string(), HighFive::File::ReadWrite);
+        file.getDataSet(std::string(hdf5::frame_metadata_group) + "/FPGA_SEQ_NUM")
+            .resize({num_frames - 1});
+    }
+
+    check_replay(dir.path, "read_unequal", {{"read_single_file", true}}, written, num_frames - 1);
 }
 
 BOOST_AUTO_TEST_CASE(test_one_frame_per_file) {
