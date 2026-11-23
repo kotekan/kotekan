@@ -2154,7 +2154,7 @@ def build_parser(description):
         "--nh-joint",
         type=str,
         default="off",
-        choices=["off", "apply"],
+        choices=["off", "apply", "model"],
         help="the joint NH overlay fit. The overlay is synchronous at the "
         "transmitters, so the satellites' received overlay alignments differ only by "
         "their predicted transmit times plus one common unknown, the receiver clock "
@@ -2169,9 +2169,11 @@ def build_parser(description):
         "a warning that the consensus or the prediction may be wrong. While "
         "this chain's search solve is established, the resolved offset is also "
         "published as its clock-mod-epoch record, which --dr-clock-adopt needs on a "
-        "chain whose code period is longer than this one's. Needs --almanac and the "
-        "capture time anchor (--time0-endpoint, read under --dead-reckon). Default "
-        "off.",
+        "chain whose code period is longer than this one's. 'model': no votes; the "
+        "offset is the receiver clock from a sibling chain's clock-mod-epoch record, "
+        "for a search that cannot see its own overlay segment (SBAS L5's Manchester "
+        "pair in 1 ms windows). Needs --almanac and the capture time anchor "
+        "(--time0-endpoint, read under --dead-reckon). Default off.",
     )
     ap.add_argument(
         "--nh-joint-min-snr",
@@ -2308,6 +2310,16 @@ def build_parser(description):
         "this chain's Doppler residuals. For a chain whose residuals do not measure the "
         "receiver: LEO satellites (GuoWang), whose TLE Doppler is 10-25 ppb off and whose "
         "Doppler moves 100 Hz/s, so a detection half a second old reads 50 Hz off.",
+    )
+    ap.add_argument(
+        "--dr-clock-publish",
+        type=int,
+        default=1,
+        help="0: this chain's dead-reckon clock stays its own, never offered to the shared "
+        "Receiver, so no other chain bootstraps or adopts from it. For a chain whose solve "
+        "carries a model bias of its own: the SBAS GEOs sit ~16 chips off their BRDC model in "
+        "common, and with a fast search their chain solved first after a restart and became "
+        "B3I's bootstrap donor. Default 1.",
     )
     ap.add_argument(
         "--dr-clock-adopt-max-chips",

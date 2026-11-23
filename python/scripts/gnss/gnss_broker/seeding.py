@@ -199,6 +199,25 @@ def _nh_joint_consensus(ctx, now):
     return ctx.cpt.nh_common
 
 
+def _nh_model_offset(ctx):
+    """--nh-joint model: the common overlay offset is the receiver clock itself, known mod the
+    overlay epoch from a sibling chain's clock-mod-epoch record (gps_l5's NH20 joint fit), not a
+    vote of this chain's own detections. For a search that cannot see its overlay segment (SBAS
+    L5's 2 ms Manchester pair searched in 1 ms windows: both halves correlate alike, and the
+    reported half follows the snapshot's alignment, the same for every satellite) the votes are
+    noise. Returns (offset chips,), as _nh_joint_consensus, or None while no record covers the
+    epoch."""
+    rx = getattr(ctx, "rx", None)
+    rec = (
+        rx.clock_mod_epoch(min_epoch_s=ctx.lc_epoch, exclude=ctx.chain_id, t_now=ctx.t0)
+        if rx is not None
+        else None
+    )
+    if rec is None:
+        return None
+    return ((rec.value % ctx.lc_epoch) * ctx.args.chip_rate_hz,)
+
+
 def _nh_joint_snap(ctx, prn, ph_ref, ref_hop, dstar):
     """Snap a measured phase's overlay segment to the consensus, keeping its fine phase: the
     segment comes from (prediction + common offset), the sub-chip phase from the measurement.
@@ -776,7 +795,11 @@ def stage_detections_to_seeds(ctx):
                 )
                 _ph_raw = ph  # the measured phase, before the debounce can move it:
                 # the vote, the referee and the apply-side snap read this, never the debounced ph
-                if _nhj_ok and snr >= ctx.args.nh_joint_min_snr:
+                if (
+                    _nhj_ok
+                    and ctx.args.nh_joint == "apply"
+                    and snr >= ctx.args.nh_joint_min_snr
+                ):
                     _nh_joint_vote(ctx, prn, _ph_raw, ref_hop, snr, ctx.drp.now_w)
                 # Period continuity is a check, not an authority. The search measures the overlay
                 # period (AcquisitionResult::peak_tau_samples), so overriding it from history can
@@ -873,7 +896,11 @@ def stage_detections_to_seeds(ctx):
                 # fine phase. ph_hist was fed above from measured phases only, so nothing derived is
                 # stored as the satellite's own word.
                 if _nhj_ok:
-                    _nhc = _nh_joint_consensus(ctx, ctx.drp.now_w)
+                    _nhc = (
+                        _nh_model_offset(ctx)
+                        if ctx.args.nh_joint == "model"
+                        else _nh_joint_consensus(ctx, ctx.drp.now_w)
+                    )
                     if _nhc is not None:
                         # The derived segment applies to every satellite, strong included: the
                         # consensus is the weighted median of the strong population's raw phases, so

@@ -13,11 +13,13 @@ import sys
 import types
 
 from gnss_broker.loopstate import CpTracking
+from gnss_broker.receiver import Receiver
 from gnss_broker.seeding import (
     _nh_joint_consensus,
     _nh_joint_pred_chips,
     _nh_joint_snap,
     _nh_joint_vote,
+    _nh_model_offset,
 )
 
 _fails = []
@@ -221,6 +223,45 @@ def test_no_cycle_time_does_not_kill_the_chain():
     )
 
 
+def test_model_mode_takes_the_clock_record():
+    """--nh-joint model (SBAS L5's 2 ms Manchester pair, searched in 1 ms windows): the offset is
+    the receiver clock from a sibling's clock-mod-epoch record, so a detection reporting the
+    wrong half is snapped to prediction plus clock, and nothing resolves without the record."""
+    lc_epoch, code_len = 0.002, 10230.0
+    ctx = types.SimpleNamespace(
+        args=types.SimpleNamespace(chip_rate_hz=CHIP_RATE, hops_per_sec=195312.5),
+        lc_seg=2,
+        lc_epoch=lc_epoch,
+        code_len=code_len,
+        utc0_sample0=T0,
+        pred={133: (0.0, 0.0, 30.0, 0.1265 * 3.0e8, 2e-8)},
+        chain_id="sbas_l5",
+        t0=T0 + 100.0,
+        rx=None,
+    )
+    check(_nh_model_offset(ctx) is None, "no receiver, no offset")
+    ctx.rx = Receiver()
+    check(_nh_model_offset(ctx) is None, "no clock-mod-epoch record, no offset")
+    clk_s = 228.15e-6  # gps_l5's receiver clock mod 20 ms
+    ctx.rx.contribute_clock_mod_epoch("gps_l5", clk_s, 0.02, 7, T0 + 90.0)
+    off = _nh_model_offset(ctx)
+    check(
+        off is not None and abs(off[0] - clk_s * CHIP_RATE) < 1e-6,
+        "the offset is the record's clock in chips mod 2 ms (got %s)" % (off and off[0]),
+    )
+    ref_hop = 2000
+    t_ref = T0 + ref_hop / ctx.args.hops_per_sec
+    truth = (_nh_joint_pred_chips(ctx, 133, t_ref) + off[0] + 0.3) % (2 * code_len)
+    wrong = (truth + code_len) % (2 * code_len)  # the other half of the pair
+    ph, k = _nh_joint_snap(ctx, 133, wrong, ref_hop, off[0])
+    check(
+        k != 0 and abs(((ph - truth + code_len) % (2 * code_len)) - code_len) < 1e-6,
+        "the wrong half is moved one period onto the truth, fine phase kept",
+    )
+    ph, k = _nh_joint_snap(ctx, 133, truth, ref_hop, off[0])
+    check(k == 0, "the right half stays")
+
+
 def main():
     for fn in (
         test_consensus_resolves,
@@ -230,6 +271,7 @@ def main():
         test_noisy_sat_is_carried,
         test_consensus_kept_when_votes_expire,
         test_no_cycle_time_does_not_kill_the_chain,
+        test_model_mode_takes_the_clock_record,
     ):
         print(fn.__name__)
         fn()
