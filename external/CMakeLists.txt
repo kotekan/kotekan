@@ -4,8 +4,6 @@ add_library(libexternal INTERFACE)
 target_include_directories(libexternal SYSTEM INTERFACE fmt)
 target_include_directories(libexternal SYSTEM INTERFACE gsl)
 target_include_directories(libexternal SYSTEM INTERFACE json)
-# pilotproxy/pilotproxy_decision.h is header only, for consumers built without CUDA (DtvRfiMask).
-target_include_directories(libexternal SYSTEM INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_subdirectory(MurmurHash3)
 target_link_libraries(libexternal INTERFACE MurmurHash3)
@@ -36,3 +34,7 @@ if(CUDAToolkit_FOUND)
         endif()
     endforeach()
 endif()
+
+# pilotproxy_decision.h is header only, for consumers built without CUDA (DtvRfiMask).
+add_library(pilotproxy_decision INTERFACE)
+target_include_directories(pilotproxy_decision SYSTEM INTERFACE pilotproxy)

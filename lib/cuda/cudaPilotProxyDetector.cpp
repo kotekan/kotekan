@@ -555,7 +555,7 @@ private:
  * decision_version selects the test: fine_decision_v1 ranks the bin ratios, and
  * fine_decision_v2 ranks the reference powers and compares the target powers with it.
  * fine_decision_v3 makes no decision here: it writes its statistic to dtv_stat, and
- * DtvRfiMask applies the word with pilotproxy_v3_keep (pilotproxy/pilotproxy_decision.h).
+ * DtvRfiMask applies the word with pilotproxy_v3_keep (external/pilotproxy/pilotproxy_decision.h).
  * A v3 channel's dtv_mask row stays 0 and its fine support (-1,-1).
  *
  * dtv_mask holds one byte per frequency (1 = reject). dtv_powers holds the target,
