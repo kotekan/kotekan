@@ -297,6 +297,12 @@ public:
     virtual kotekan::BufferState dot_buffer_state();
 
     /**
+     * @brief The fraction of this buffer's capacity holding data not yet read,
+     *        from 0 to 1, for the pipeline graph. NaN if the buffer cannot say.
+     */
+    virtual double dot_occupancy();
+
+    /**
      * @brief Requires that a frame descriptor is attached to this buffer
      *        (fatal if not), then ensures it conforms to @p desc.
      *

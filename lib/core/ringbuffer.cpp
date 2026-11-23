@@ -7,6 +7,7 @@
 #include <algorithm>          // for min
 #include <cassert>            // for assert
 #include <condition_variable> // for condition_variable_any
+#include <limits>             // for numeric_limits
 #include <mutex>              // for unique_lock, recursive_mutex, lock_guard
 #include <sstream>            // for basic_ostream, operator<<, basic_ostringstream, ostringstream
 #include <stdexcept>          // for runtime_error
@@ -275,6 +276,13 @@ std::vector<std::string> RingBuffer::dot_label_lines(const kotekan::GraphOptions
         lines.push_back(fmt::format(fmt("{:d} readable ({:.1f}%)"), readable,
                                     capacity > 0 ? 100.0 * readable / capacity : 0.0));
     return lines;
+}
+
+double RingBuffer::dot_occupancy() {
+    std::unique_lock<std::recursive_mutex> lock(mutex);
+    if (size <= 0)
+        return std::numeric_limits<double>::quiet_NaN();
+    return (double)(first_write_head - last_read_tail) / size;
 }
 
 kotekan::BufferState RingBuffer::dot_buffer_state() {
