@@ -26,6 +26,10 @@ target_link_libraries(test_synchronized_queue PRIVATE pthread kotekan_libs kotek
 add_executable(test_modulo test_modulo.cpp)
 target_link_libraries(test_modulo PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
 
+# logBuffer: the line ring behind /logs
+add_executable(test_log_buffer test_log_buffer.cpp)
+target_link_libraries(test_log_buffer PRIVATE libexternal kotekan_libs kotekan_utils kotekan_core)
+
 # test_cuda_stream_assignment - stream-by-role and the pipeline's lock order. The functions under
 # test are header-only and call no CUDA, so this runs in the CPU-only builds; lib/gpu is named
 # explicitly because gpuCommand.hpp (for gpuCommandType) is only on an include path via kotekan_gpu,
