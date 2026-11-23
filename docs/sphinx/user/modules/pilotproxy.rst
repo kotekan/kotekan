@@ -275,17 +275,17 @@ Fatal errors
 The following errors stop the whole Kotekan instance, and the correlator with
 it:
 
-* at startup, a bundle that fails its digest checks, a malformed bundle, or a
-  malformed configuration
+* at startup, a bundle that fails its digest checks, a malformed bundle, a
+  ``fine_decision_v3`` bundle without ``receiver_channel_id_namespace`` or, in
+  ``DtvRfiMask``, without ``stat_buf``, or a malformed configuration
 * at the first frame, missing or miscounted ``coarse_freq`` metadata, a listed
   receiver ID that is not on the node, or a bound channel that is not
   calibrated
 * during the run, a ``coarse_freq`` change after binding, or a CUDA or
   detector error
 * in ``DtvRfiMask``, mismatched timestamps, frequencies, or layouts, a malformed
-  support row, an unevaluated row for a required frequency or, while the mask
-  is on, for a calibrated channel, or a
-  ``fine_decision_v3`` bundle without ``stat_buf``
+  support row, or an unevaluated row for a required frequency or, while the
+  mask is on, for a calibrated channel
 
 An uncalibrated channel must therefore be removed from the bundle or listed in
 ``dtv_permanent_mask_freq_ids`` before the run starts. A node with no bundle
