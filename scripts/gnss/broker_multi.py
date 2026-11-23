@@ -183,6 +183,7 @@ def main():
     if pub:
         transport._log("fleet publisher shared by every chain on :%d" % port)
         pub.iface = watcher
+        pub.rx = rx
     transport._log(
         "iface: watching %d origin(s), mode %s, mode file %s"
         % (len(watcher.origins), watcher.yaml_mode, watcher.mode_file)

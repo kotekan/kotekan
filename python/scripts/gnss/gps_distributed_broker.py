@@ -1539,6 +1539,7 @@ def main(argv=None, rx=None, publisher=None):
 
     # The first cycle's clock: ctx.uptime_s counts from it, on the cycle clock (context.py).
     t_first = None
+    site_seq = rx.site_req["seq"]  # the newest live site move this chain has adopted
     while True:
         # Sample the frozen cycle clock once (transport._Transcript): every _now() in this pass
         # returns t0, so every gate, age and EMA evaluates at one instant rather than across
@@ -1547,6 +1548,17 @@ def main(argv=None, rx=None, publisher=None):
         if t_first is None:
             t_first = t0
         _ctx.begin_cycle(t0=t0, uptime_s=t0 - t_first)
+        # A live site move (publish /set_site): adopt the receiver-wide target, once each.
+        if rx.site_req["seq"] != site_seq:
+            site_seq = rx.site_req["seq"]
+            _tgt = rx.site_target(site_seq, args.lat, args.lon, args.alt)
+            if _tgt is not None:
+                args.lat, args.lon, args.alt = _tgt
+                _log(
+                    "SITE MOVED live by E %+.2f N %+.2f U %+.2f m (/set_site #%d): the model "
+                    "predicts from there from this cycle"
+                    % (rx.site_req["d_enu"] + (site_seq,))
+                )
         t_wall = time.time()  # real clock, for the pass's busy time and the sleep
         # 1. collect best-SNR detection per PRN across all detection sources
         best = {}  # prn -> (snr, dop, cp, ref_hop, nh, cp_long, cp_at_ref)

@@ -89,6 +89,38 @@ class Receiver(object):
         self._joint = {}  # JOINT_STATE / TRK_STATE -> a JointReceiverState, in
         # reference chips (JOINT_REF_RATE_HZ) whatever its feeders' chip rates
         self._trk = {}  # chain -> _Shared ({prn: tracker code residual, s}, one cycle's)
+        # A live site move (publish /set_site): its sequence number, the east/north/up offset
+        # asked for, and the position the first chain to see it computed (site_target).
+        self.site_req = {"seq": 0, "d_enu": None, "target": None}
+
+    # -- the site -------------------------------------------------------------------------------
+    def request_site_offset(self, d_e, d_n, d_u):
+        """Queue a move of the receiver's site by (d_e, d_n, d_u) metres; every chain adopts it
+        at its next cycle. Returns the request's sequence number."""
+        with self._lock:
+            self.site_req = {
+                "seq": self.site_req["seq"] + 1,
+                "d_enu": (float(d_e), float(d_n), float(d_u)),
+                "target": None,
+            }
+            return self.site_req["seq"]
+
+    def site_target(self, seq, lat, lon, alt):
+        """(lat, lon, alt) for move `seq`: the first caller's position plus the offset, computed
+        once so every chain lands on one point; None once `seq` is superseded."""
+        with self._lock:
+            r = self.site_req
+            if r["seq"] != seq:
+                return None
+            if r["target"] is None:
+                import numpy as np
+
+                import gnss_pvt
+
+                apr = gnss_pvt._llh_to_ecef(lat, lon, alt)
+                d = gnss_pvt._enu_axes(lat, lon).T @ np.array(r["d_enu"])
+                r["target"] = gnss_pvt._ecef_to_llh(apr + d)
+            return r["target"]
 
     # -- the joint receiver state -----------------------------------------------------------
     def joint_receiver(self, band, code_len, chip_rate_hz, which=JOINT_STATE, **kw):

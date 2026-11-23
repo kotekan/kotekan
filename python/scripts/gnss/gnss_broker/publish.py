@@ -28,6 +28,12 @@ PROMPT_RAYLEIGH_S4 = 0.90
 DUTY_WIN_S = 120.0
 
 
+# The largest site move /set_site makes live. Every satellite's model range moves by at most
+# this, 0.17 chips at 10.23 Mcps: within the tracking loops, which re-lock nothing, while the
+# per-satellite biases relax. A larger move (an antenna moved) goes in the yaml, with a restart.
+SITE_LIVE_MAX_M = 5.0
+LOOPBACK = ("127.0.0.1", "::1", "::ffff:127.0.0.1")
+
 class FleetPublisher:
     """Serve the broker's fleet-merged per-PRN state over REST, in a combiner's schema.
 
@@ -54,13 +60,17 @@ class FleetPublisher:
       * Broker-owned: doppler_hz, code_phase_chips, code_phase_rate, dll_trim -- the shared
         model, which no single combiner knows.
 
-    Read-only, no side effects, and optional: without --publish-port nothing starts.
+    Read-only and optional (without --publish-port nothing starts), with one write: POST
+    /set_site moves the receiver's site by an east/north/up offset of at most SITE_LIVE_MAX_M
+    (receiver.Receiver.request_site_offset), from loopback only and as JSON only.
     """
 
     def __init__(self, port, log):
         # The interface watcher (iface_watch.Watcher), set by broker_multi: GET /get_iface serves
         # its verdicts and /get_chains adds each chain's summary. None in a single-chain broker.
         self.iface = None
+        # The shared Receiver, set by broker_multi, for POST /set_site. None: the endpoint 503s.
+        self.rx = None
         self._rf = {"t": None, "instances": {}}  # receiver-wide RF health (set_rf)
         # the tracker-fed shadow joint state and each chain's feed (set_joint, get_joint)
         self._joint = {"t": None, "trk": None, "feed": {}}
@@ -93,6 +103,44 @@ class FleetPublisher:
                 self.send_header("Access-Control-Allow-Origin", "*")
                 self.send_header("Access-Control-Allow-Methods", "GET")
                 self.send_header("Access-Control-Allow-Headers", "Content-Type")
+
+            def do_POST(self):
+                # Loopback only, and JSON only: a page on another origin cannot POST JSON
+                # without a preflight, which this server does not answer.
+                code, out = 200, None
+                ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip()
+                if self.path.split("?")[0].rstrip("/") != "/set_site":
+                    code, out = 404, {"error": "unknown endpoint"}
+                elif self.client_address[0] not in LOOPBACK:
+                    code, out = 403, {"error": "loopback only"}
+                elif ctype != "application/json":
+                    code, out = 415, {"error": "application/json only"}
+                elif pub.rx is None:
+                    code, out = 503, {"error": "no receiver here"}
+                else:
+                    try:
+                        n = min(int(self.headers.get("Content-Length") or 0), 4096)
+                        req = json.loads(self.rfile.read(n) or b"{}")
+                        d = [float(req[k]) for k in ("d_e", "d_n", "d_u")]
+                        if not all(math.isfinite(x) for x in d):
+                            raise ValueError("not finite")
+                        mag = math.sqrt(sum(x * x for x in d))
+                        if mag > SITE_LIVE_MAX_M:
+                            code, out = 400, {
+                                "error": "a %.1f m move is more than a live one (%.1f m): write "
+                                "the broker yaml and restart" % (mag, SITE_LIVE_MAX_M)
+                            }
+                        else:
+                            out = {"seq": pub.rx.request_site_offset(*d), "d_enu": d}
+                    except (KeyError, TypeError, ValueError) as e:
+                        why = "want {d_e, d_n, d_u} in metres (%s)" % e
+                        code, out = 400, {"error": why}
+                body = json.dumps(out).encode()
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
 
             def do_GET(self):
                 # The viewer builds every URL as <base>/<stage>/<endpoint> from one host:port,
