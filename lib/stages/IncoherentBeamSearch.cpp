@@ -87,6 +87,11 @@ using kotekan::prometheus::Metrics;
  * started, which is the number hdf5FileWrite puts in the file name. The search does not wait
  * for cutout_buf: when it is full the candidate has no cutout.
  *
+ * With power_buf, the power of every time sample also goes out as the search received it, before
+ * any mask, in frames of 256 samples: 2 bytes per channel and sample, 10 MB/s for 6656 channels.
+ * The search does not wait for power_buf: when it is full the frame is left out, which leaves a
+ * gap in the stream.
+ *
  * The search runs in this stage's thread and its OpenMP threads, between frames. in_buf must
  * hold the frames that arrive during one search pass (0.3 s).
  *
@@ -105,6 +110,10 @@ using kotekan::prometheus::Metrics;
  * @buffer cutout_buf  Optional. The samples around each candidate without a flag, and around
  *                     those of cutout_flagged_min_snr.
  *     @buffer_format   NDArray int8 [F, Trfi]: the channels searched by 256 time samples.
+ *     @buffer_metadata chordMetadata
+ * @buffer power_buf  Optional. The power of every time sample, one frame per 256 samples.
+ *     @buffer_format   NDArray uint16 [Trfi, F]: 256 time samples by the channels searched;
+ *                      0 marks a missing value.
  *     @buffer_metadata chordMetadata
  *
  * @conf freq_id_base     Int. FPGA frequency id of the lowest channel searched.
@@ -145,6 +154,8 @@ using kotekan::prometheus::Metrics;
  * @metric kotekan_incoherent_beam_search_undispersed_total   Candidates left out as undispersed.
  * @metric kotekan_incoherent_beam_search_cutouts_skipped_total   Candidates without a cutout
  *         because cutout_buf was full.
+ * @metric kotekan_incoherent_beam_search_power_skipped_total   Frames left out because power_buf
+ *         was full.
  * @metric kotekan_incoherent_beam_search_max_snr  Highest S/N in the last 32 search passes.
  * @metric kotekan_incoherent_beam_search_channels_used   Channels used in the newest sample.
  * @metric kotekan_incoherent_beam_search_dropped_frames_total   Frames late, far or off the grid.
@@ -159,6 +170,7 @@ public:
         out_buf(config.exists(unique_name, "out_buf") ? get_buffer("out_buf") : nullptr),
         snr_buf(config.exists(unique_name, "snr_buf") ? get_buffer("snr_buf") : nullptr),
         cutout_buf(config.exists(unique_name, "cutout_buf") ? get_buffer("cutout_buf") : nullptr),
+        power_buf(config.exists(unique_name, "power_buf") ? get_buffer("power_buf") : nullptr),
         freq_id_base(config.get<int>(unique_name, "freq_id_base")),
         candidates_counter(Metrics::instance().add_counter(
             "kotekan_incoherent_beam_search_candidates_total", unique_name)),
@@ -166,6 +178,8 @@ public:
             "kotekan_incoherent_beam_search_undispersed_total", unique_name)),
         cutouts_skipped_counter(Metrics::instance().add_counter(
             "kotekan_incoherent_beam_search_cutouts_skipped_total", unique_name)),
+        power_skipped_counter(Metrics::instance().add_counter(
+            "kotekan_incoherent_beam_search_power_skipped_total", unique_name)),
         max_snr_gauge(
             Metrics::instance().add_gauge("kotekan_incoherent_beam_search_max_snr", unique_name)),
         channels_used_gauge(Metrics::instance().add_gauge(
@@ -243,6 +257,14 @@ public:
                 kotekan::int8, "incoherent_beam_cutout",
                 {params.num_freq, IncoherentSearch::cutout_samples}, {"F", "Trfi"}, {1, period}));
             cutout_desc = cutout_buf->get_frame_desc<kotekan::GenericNDArray>();
+        }
+        if (power_buf != nullptr) {
+            power_buf->register_producer(unique_name);
+            power_buf->ensure_frame_desc(kotekan::GenericNDArray::describe(
+                kotekan::uint16, "incoherent_beam_power",
+                {IncoherentSearch::chunk, params.num_freq}, {"Trfi", "F"}, {period, 1}));
+            power_desc = power_buf->get_frame_desc<kotekan::GenericNDArray>();
+            power_frame.assign((size_t)IncoherentSearch::chunk * params.num_freq, 0);
         }
         params.mask_bands_mhz = config.get_default<std::vector<std::pair<double, double>>>(
             unique_name, "mask_bands_mhz", {});
@@ -385,6 +407,7 @@ private:
             search = std::make_unique<IncoherentSearch>(params);
         }
         origin = next_sample = newest_end = sample;
+        power_rows = 0;
         std::fill(ring.begin(), ring.end(), 0);
         std::fill(recent_max.begin(), recent_max.end(), 0.0);
         std::fill(snr_image.begin(), snr_image.end(), 0.0f);
@@ -394,10 +417,40 @@ private:
         uint16_t* const row = &ring[(size_t)(next_sample % ring_len) * params.num_freq];
         for (int c = 0; c < params.num_freq; ++c)
             power[c] = row[c];
+        if (power_buf != nullptr)
+            std::copy(row, row + params.num_freq,
+                      &power_frame[(size_t)power_rows * params.num_freq]);
         std::fill(row, row + params.num_freq, 0);
         ++next_sample;
+        if (power_buf != nullptr && ++power_rows == IncoherentSearch::chunk)
+            write_power();
         if (search->add_sample(power.data()))
             report();
+    }
+
+    // Writes the IncoherentSearch::chunk samples before next_sample to power_buf, unless it is
+    // full.
+    void write_power() {
+        power_rows = 0;
+        if (!power_buf->is_frame_empty(power_id)) {
+            power_skipped_counter.inc();
+            return;
+        }
+        uint8_t* const frame = power_buf->wait_for_empty_frame(unique_name, power_id);
+        if (frame == nullptr)
+            return;
+        std::copy(power_frame.begin(), power_frame.end(), (uint16_t*)frame);
+
+        power_buf->allocate_new_metadata_object(power_id);
+        const auto meta = get_chord_metadata(power_buf, power_id);
+        meta->set_from_frame_desc(power_desc);
+        meta->set_fpga_seq_num((next_sample - IncoherentSearch::chunk) * period + phase);
+        meta->set_time_downsampling_fpga(period);
+        std::vector<int> freq_ids(params.num_freq);
+        std::iota(freq_ids.begin(), freq_ids.end(), freq_id_base);
+        meta->set_coarse_freq(freq_ids);
+        power_buf->mark_frame_full(unique_name, power_id);
+        power_id = (power_id + 1) % power_buf->num_frames;
     }
 
     // Writes the sums of the search pass that just ran to out_buf, as [time][DM].
@@ -556,6 +609,11 @@ private:
     std::shared_ptr<const kotekan::GenericNDArray> cutout_desc;
     int cutout_id = 0;
     int64_t num_cutouts = 0;
+    Buffer* const power_buf; // nullptr when the power is not written
+    std::shared_ptr<const kotekan::GenericNDArray> power_desc;
+    std::vector<uint16_t> power_frame; // [time][channel]: the samples since the last frame
+    int power_rows = 0;
+    int power_id = 0;
     const int freq_id_base;
     std::shared_ptr<const kotekan::GenericNDArray> in_desc;
     std::shared_ptr<const kotekan::GenericNDArray> out_desc;
@@ -588,6 +646,7 @@ private:
     kotekan::prometheus::Counter& candidates_counter;
     kotekan::prometheus::Counter& undispersed_counter;
     kotekan::prometheus::Counter& cutouts_skipped_counter;
+    kotekan::prometheus::Counter& power_skipped_counter;
     kotekan::prometheus::Gauge& max_snr_gauge;
     kotekan::prometheus::Gauge& channels_used_gauge;
     kotekan::prometheus::Counter& dropped_frames_counter;
