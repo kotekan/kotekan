@@ -9,7 +9,7 @@
 # n2k use the default streams (copies in on 0, copies out on 1, kernels on 2),
 # so the detector kernels run on stream 3 and the detector products are copied
 # out on stream 4. The detector therefore queues behind neither of them.
-# dtv_mask_control masks the control, channel 37, like a pilot in DtvRfiMask (default: never masked).
+# dtv_mask_control masks the control, channel 37, like a pilot (default: never masked).
 
 
 ################################################################################
@@ -85,6 +85,7 @@ run_dtv_detector:
           permanent_mask_freq_ids: {{ dtv_permanent_mask_freq_ids|default([]) }}
           pilot_profiles_path: {{ dtv_runtime_bundle_dir|default("data/pilotproxy_bundle") }}/pilot_profiles.json
           weights_path: {{ dtv_runtime_bundle_dir|default("data/pilotproxy_bundle") }}/weights.bin
+          mask_control: {{ dtv_mask_control|default(false)|lower }}
         - name: cudaSyncOutput
           cuda_stream: 4
         - name: cudaOutputData
