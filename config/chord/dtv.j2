@@ -15,8 +15,8 @@
   See docs/sphinx/user/modules/pilotproxy.rst for bundle setup and runtime controls.
 -#}
 {% from "telescope.j2" import dtv_blocks_per_frame, dtv_products, dtv_sent with context %}
-{#- make install puts the bundles under <prefix>/etc/kotekan/chord/dtv_bundles. #}
-{% set dtv_runtime_bundle_dir = "/usr/local/etc/kotekan/chord/dtv_bundles/pathfinder-commissioning-e2e90219" %}
+{#- make install puts the bundles under <prefix>/etc/kotekan/chord/dtv_bundles; a run may name another. #}
+{% set dtv_runtime_bundle_dir = dtv_runtime_bundle_dir|default("/usr/local/etc/kotekan/chord/dtv_bundles/pathfinder-commissioning-e2e90219") %}
 
 # One frame per 8192-sample block: mask, target/lower/upper powers
 # (sums of 256 fine powers), per-frequency fine support, the v3 statistic, and the fine powers of the
