@@ -38,6 +38,7 @@ import time
 import urllib.request
 
 import numpy as np
+from scipy.special import i0e
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -62,8 +63,9 @@ SYSTEM = {0: "C", 1: "G", 2: "E"}
 MAX_PRN = {"C": 63, "G": 32, "E": 36}
 BDT_WEEK0 = 1356  # GPS week of BDT week 0
 SEMI = math.pi * 2.0**-34
-# The fewest symbols of a second worth an LDPC attempt; the decoder takes erasures.
-MIN_SLOTS = 450
+# The fewest symbols of a second worth an LDPC attempt: belief propagation recovers a quarter
+# of the symbols missing at 12 dB.
+MIN_SLOTS = 300
 
 
 def log(msg):
@@ -127,16 +129,20 @@ def bits_s(b, o, n):
     return v - (1 << n) if v >> (n - 1) else v
 
 
-def costs_from_powers(p):
-    """Each slot's 64 shift powers over the noise -> LDPC symbol costs: the non-coherent
-    log-likelihood 2 sqrt(S P) against the strongest, S the signal power. A slot of zeros is an
-    erasure."""
-    p = np.asarray(p, dtype=float)
-    pmax = p.max(axis=1, keepdims=True)
-    s = np.maximum(pmax - 1.0, 0.0)
-    c = 2.0 * (np.sqrt(s * pmax) - np.sqrt(s * np.maximum(p, 0.0)))
-    c[pmax[:, 0] <= 0.0] = 0.0
-    return c
+def loglik_from_powers(p):
+    """Each slot's 64 shift powers over the noise -> the non-coherent log-likelihood of each
+    value, log I0(2 sqrt(S P)), S the signal power: the second's median of the strongest shift's
+    excess over the noise. A slot of zeros is an erasure (a flat row)."""
+    p = np.maximum(np.asarray(p, dtype=float), 0.0)
+    pmax = p.max(axis=1)
+    have = pmax > 0.0
+    if not have.any():
+        return np.zeros_like(p)
+    s = max(float(np.median(pmax[have])) - 1.0, 1.0)
+    x = 2.0 * np.sqrt(s * p)
+    ll = np.log(i0e(x)) + x
+    ll[~have] = 0.0
+    return ll
 
 
 def powers_from_top(top):
@@ -148,12 +154,13 @@ def powers_from_top(top):
     return p
 
 
-def decode_second(costs):
-    """500 x 64 symbol costs (slot 0 the sync word's first) -> (1488 info bits, symbol errors
-    corrected) when the three codewords decode and the CRC holds, else (None, -1)."""
+def decode_second(ll):
+    """500 x 64 symbol log-likelihoods (slot 0 the sync word's first) -> (1488 info bits,
+    symbols corrected) when the three codewords decode (nb_ldpc.decode_bp) and the CRC holds,
+    else (None, -1)."""
     info, nerr = [], 0
     for first, m, n, idx, ele in CODEWORDS:
-        bits, ne = nb_ldpc.decode(idx, ele, m, n, None, cost=costs[first : first + n])
+        bits, ne = nb_ldpc.decode_bp(idx, ele, m, n, ll[first : first + n])
         if ne < 0:
             return None, -1
         info.append(bits)
@@ -224,6 +231,40 @@ def parse(b):
     return msg
 
 
+# The relay's clocks sit on one time scale this far below the broadcast ones (the site's
+# five-day archive and the live check here agree to a few ns; BeiDou scatters ~13 ns with its
+# group delays), s. Added back where a relayed clock seeds code phase.
+CLOCK_OFFSET = {"G": 412e-9, "E": 416e-9, "C": 433e-9}
+
+
+def sv_position_relay(eph, t_sow):
+    """A relayed orbit at t_sow, the satellite system's seconds of week (BDT for BeiDou, as the
+    broker's decoded-ephemeris fallback feeds them): decoded_eph's propagator for GW_CSK_RELAY.
+    """
+    tk = (t_sow - eph["toe"] + 302400) % 604800 - 302400
+    return ge.sat_pos_clk(eph, eph["toe_gpst"] + tk)[0]
+
+
+def fallback_eph(rec):
+    """A relayed record in the form decoded_eph reads (nav_decode's --eph-out entries): toe in
+    the system's own seconds of week, the clock offset added back, and the Kepler and clock
+    names its relativistic term looks up."""
+    toe = (
+        rec["toe_sow"] if rec["sys"] == "C" else (rec["toe_sow"] - ge.BDT_GPST) % 604800
+    )
+    e = dict(
+        rec, toe=toe, toc=toe, M0=rec["m0"], dn=0.0, sqrtA=rec["sqrta"], e=rec["ecc"]
+    )
+    e["af0"] = rec["af0"] + CLOCK_OFFSET[rec["sys"]]
+    return {
+        "signal": "GW_CSK_RELAY",
+        "sys": rec["sys"],
+        "prn": rec["prn"],
+        "toe_field": "toe",
+        "eph": e,
+    }
+
+
 def xcheck(brdc, rec):
     """The relayed orbit against the broadcast one at the relay's epoch: (dpos m, dclk ns)."""
     recs = brdc.get((rec["sys"], rec["prn"])) if brdc else None
@@ -257,9 +298,8 @@ def describe(msg, brdc):
 
 
 def selftest():
-    """Random messages, encoded, at 12 dB a symbol (a few percent of symbols wrong): each must
-    come back. The min-sum decoder keeps four candidates a symbol, so it takes few erasures:
-    a missing symbol is flat and ranks none."""
+    """Random messages, encoded, at 9 dB a symbol (about 15 % of symbols wrong) with 15 % of
+    them missing: each must come back."""
     rng = np.random.RandomState(3)
     ok = 0
     for trial in range(3):
@@ -275,8 +315,10 @@ def selftest():
                 nb_ldpc.bin2gf(nb_ldpc.encode_systematic(idx, ele, m, n, info))
             )
         p = rng.exponential(1.0, (SLOTS, 64))
-        p[np.arange(SLOTS), syms] += 10**1.2
-        b, nerr = decode_second(costs_from_powers(p))
+        z = (rng.randn(SLOTS) + 1j * rng.randn(SLOTS)) / math.sqrt(2) + 10**0.45
+        p[np.arange(SLOTS), syms] = np.abs(z) ** 2
+        p[rng.rand(SLOTS) < 0.15] = 0.0
+        b, nerr = decode_second(loglik_from_powers(p))
         good = b is not None and np.array_equal(b[:MSG_BITS], msg)
         ok += good
         print(
@@ -312,7 +354,7 @@ def capture(path, g2):
         if have < MIN_SLOTS:
             print("second at %d: %d of 500 slots, skipped" % (s, have))
             continue
-        b, nerr = decode_second(costs_from_powers(p))
+        b, nerr = decode_second(loglik_from_powers(p))
         if b is None:
             print("second at %d: no decode" % s)
             continue
@@ -345,6 +387,7 @@ def live(args):
     phase = {}  # code -> second-start frame id mod 500
     tried = collections.defaultdict(set)  # code -> second starts attempted
     relay = {}  # (sys, prn) -> newest relayed record and its check
+    fallback = {}  # (sys, prn) -> its decoded_eph entry
     stats = collections.Counter()
     prog = collections.defaultdict(lambda: {"n": 0, "ev": collections.deque()})
     dhw = (
@@ -399,7 +442,7 @@ def live(args):
                 if (p.max(axis=1) > 0).sum() < MIN_SLOTS:
                     stats["short"] += 1
                     continue
-                b, nerr = decode_second(costs_from_powers(p))
+                b, nerr = decode_second(loglik_from_powers(p))
                 if b is None:
                     stats["fail"] += 1
                     continue
@@ -424,6 +467,7 @@ def live(args):
                         "t_unix": now,
                     }
                     out.append(dict(relay[key], eph=rec))
+                    fallback[key] = dict(fallback_eph(rec), dpos_m=relay[key]["dpos_m"])
                 if args.log_dir:
                     path = os.path.join(
                         args.log_dir,
@@ -455,6 +499,11 @@ def live(args):
             write_atomic(
                 {"schema": 1, "t_unix": now, "relay": list(relay.values())},
                 args.relay_out,
+            )
+        if args.eph_out:
+            write_atomic(
+                {"schema": 1, "t_unix": now, "eph": list(fallback.values())},
+                args.eph_out,
             )
         if args.progress_file and now - t_prog >= 1.0:
             t_prog = now
@@ -521,6 +570,11 @@ def main():
     )
     lv.add_argument(
         "--relay-out", help="the newest relayed ephemeris per GNSS satellite (JSON)"
+    )
+    lv.add_argument(
+        "--eph-out",
+        help="the same as decoded ephemerides (nav_decode's --eph-out form) for the broker's "
+        "--decoded-eph-file, where they stand behind every other decoded source",
     )
     lv.add_argument(
         "--decode-health-file", help="decode-health export (decode_health.py)"

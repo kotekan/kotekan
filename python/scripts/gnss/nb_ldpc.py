@@ -328,6 +328,68 @@ def decode(H_idx, H_ele, m, n, syms, rel=None, cost=None):
     return gf2bin(code)[: m * N_GF], -1
 
 
+def _wht(x):
+    """Walsh-Hadamard transform over the last axis (64), unnormalized: the XOR group's
+    Fourier transform, which turns the sum of GF(64) symbols into a product."""
+    shape = x.shape
+    h = 1
+    while h < Q_GF:
+        x = x.reshape(shape[:-1] + (Q_GF // (2 * h), 2, h))
+        a, b = x[..., 0, :], x[..., 1, :]
+        x = np.stack((a + b, a - b), axis=-2)
+        h *= 2
+    return x.reshape(shape)
+
+
+def decode_bp(H_idx, H_ele, m, n, logp, max_iter=50):
+    """Belief propagation over GF(64) (the FFT/WHT sum-product): each check node combines its
+    other edges' symbol distributions through the Walsh-Hadamard transform, so every message is
+    a whole distribution rather than EMS's best NM_EMS values. A missing symbol enters as a flat
+    distribution and is recovered from the code, which EMS cannot rank. logp: n x 64 channel
+    log-probabilities of each symbol's values (a flat row for an erasure). Returns
+    (info_bits[m*6], symbols changed from the channel's best), or (bits, -1) when the parity
+    checks never hold."""
+    GM = init_gf()
+    hi = np.asarray(H_idx, dtype=np.int64)
+    he = np.asarray(H_ele, dtype=np.int64)
+    d_c = hi.shape[1]
+    ev, eh = hi.ravel(), he.ravel()
+    mul = GM[eh].astype(np.int64)  # mul[e][a] = h_e * a
+    lp = np.asarray(logp, dtype=float)
+    lp = lp - lp.max(axis=1, keepdims=True)
+    q = np.exp(lp[ev])
+    q /= q.sum(axis=1, keepdims=True)
+    first = lp.argmax(axis=1)
+    hard = first
+    for _ in range(max_iter):
+        # the permuted message h*x: qp[e][h a] = q[e][a]
+        qp = np.empty_like(q)
+        np.put_along_axis(qp, mul, q, axis=1)
+        w = _wht(qp).reshape(m, d_c, Q_GF)
+        # each edge's product over the check's other edges, from prefix and suffix products
+        pre = np.ones_like(w)
+        suf = np.ones_like(w)
+        for k in range(1, d_c):
+            pre[:, k] = pre[:, k - 1] * w[:, k - 1]
+            suf[:, d_c - 1 - k] = suf[:, d_c - k] * w[:, d_c - k]
+        rp = _wht((pre * suf).reshape(m * d_c, Q_GF)) / Q_GF
+        rp = np.maximum(rp, 1e-30)
+        r = np.take_along_axis(rp, mul, axis=1)  # back from h*x to x
+        r /= r.sum(axis=1, keepdims=True)
+        lr = np.log(r)
+        tot = lp.copy()
+        np.add.at(tot, ev, lr)
+        hard = tot.argmax(axis=1)
+        syn = np.bitwise_xor.reduce(GM[eh, hard[ev]].reshape(m, d_c), axis=1)
+        if not syn.any():
+            return gf2bin(hard)[: m * N_GF], int(np.count_nonzero(hard != first))
+        lq = tot[ev] - lr
+        lq -= lq.max(axis=1, keepdims=True)
+        q = np.exp(lq)
+        q /= q.sum(axis=1, keepdims=True)
+    return gf2bin(hard)[: m * N_GF], -1
+
+
 def encode_systematic(H_idx, H_ele, m, n, info_syms):
     """For self-tests: given the first m GF(64) info symbols, solve H c = 0 for the parity
     symbols (info-systematic) and return the full n*6-bit codeword. Requires the parity
