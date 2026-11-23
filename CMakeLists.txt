@@ -60,6 +60,43 @@ set(KOTEKAN_AIRSPY_ENABLED
     "${_ktk_airspy_enabled}"
     CACHE BOOL "Airspy enabled state" FORCE)
 
+set(_ktk_bladerf_reason "disabled")
+set(_ktk_bladerf_enabled OFF)
+if("${USE_BLADERF}" STREQUAL "AUTO")
+    find_package(LIBBLADERF QUIET)
+    if(LIBBLADERF_FOUND)
+        set(_ktk_bladerf_reason "auto-detected")
+        set(_ktk_bladerf_enabled ON)
+        add_definitions(-DWITH_BLADERF)
+        kmsg_ok(
+            "bladeRF found (autodetected): enabling bladeRF producer (disable with -DUSE_BLADERF=OFF)"
+        )
+    else()
+        set(_ktk_bladerf_reason "disabled, not found (requires libbladeRF)")
+        kmsg_warn("bladeRF not found (default AUTO, continuing without).")
+    endif()
+elseif("${USE_BLADERF}" STREQUAL "ON")
+    find_package(LIBBLADERF QUIET)
+    if(LIBBLADERF_FOUND)
+        set(_ktk_bladerf_reason "enabled, found")
+        set(_ktk_bladerf_enabled ON)
+        add_definitions(-DWITH_BLADERF)
+        kmsg_ok("bladeRF explicitly enabled via -DUSE_BLADERF=ON")
+    else()
+        set(_ktk_bladerf_reason "enabled, not found (requires libbladeRF)")
+        kmsg_warn("bladeRF requested but libbladeRF not found; disabling bladeRF support.")
+    endif()
+else()
+    set(_ktk_bladerf_reason "disabled")
+    kmsg_status("bladeRF explicitly disabled via -DUSE_BLADERF=OFF")
+endif()
+set(KOTEKAN_BLADERF_REASON
+    "${_ktk_bladerf_reason}"
+    CACHE STRING "bladeRF detection summary" FORCE)
+set(KOTEKAN_BLADERF_ENABLED
+    "${_ktk_bladerf_enabled}"
+    CACHE BOOL "bladeRF enabled state" FORCE)
+
 # Math features handled in FeatureMath
 include(cmake/Features/FeatureMath.cmake)
 
