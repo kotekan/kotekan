@@ -34,7 +34,8 @@ Files are written to ``base_dir`` (created if missing) as::
   range;
 * ``<frame:08d>`` is an 8-digit frame counter, one file per frame. With
   ``create_single_file: true`` the counter is omitted and all frames go to
-  one file.
+  one file. With ``time_in_file_name: true`` the UTC time of the file's first
+  frame comes before the counter, ``<file_name>.<YYYYMMDDTHHMMSS>.<frame:08d>.h5``.
 
 The counter starts at 0 in each run, so a restart overwrites the previous
 files. With ``acq_dir: true`` the files go to
@@ -261,6 +262,12 @@ Configuration
    * - ``file_name``
      - required
      - Base file name; also the dataset name in CHORD mode.
+   * - ``time_in_file_name``
+     - false
+     - Put the UTC time of the file's first frame, from its ``fpga_seq_num``,
+       before the frame counter (CHORD mode only, not with
+       ``create_single_file``). For frames that come now and then, such as
+       one per event. ``hdf5FileRead`` does not read such files.
    * - ``prefix_hostname``
      - true
      - Prepend the hostname to file names.
