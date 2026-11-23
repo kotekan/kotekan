@@ -134,7 +134,13 @@ DETECTOR = TimeBaseDetector()
 
 
 def observe(ctx, log_rl):
-    """Feed this cycle's fresh, strong detections of one chain to the shared detector."""
+    """Feed this cycle's fresh, strong detections of one chain to the shared detector. Only a
+    chain whose model is the broadcast ephemeris votes: GuoWang's elements (--gw-table) and
+    TLEs are km-level, so their Doppler residuals spread by ~200 Hz whatever the epoch (11-23:
+    gw_1202 alone raised the verdict, and with gps_l5's locked satellites unsearched nothing
+    cleared it)."""
+    if ctx.alm_sys == "W" or ctx.args.almanac_source != "brdc":
+        return
     pairs = {}
     for p, b in ctx.best.items():
         q = ctx.pred.get(p)
