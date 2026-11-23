@@ -91,6 +91,9 @@ COLD_BACKOFF_MAX = (
 SYM_MAX = 9600  # keep ~3 min of L2C symbols per PRN
 DECODED_MAX = 80  # keep the last ~80 decoded messages (~16 min)
 TRY_EVERY_SYMS = 200  # attempt a decode once per ~4 s of new symbols per PRN
+# A PRN takes part in the decode rotation while its emits keep arriving: nav_decode polls an
+# L2C source every ~22 s, the broker every second.
+ROUND_LIVE_S = 60.0
 
 
 def _crc_msgs(bits):
@@ -124,6 +127,7 @@ class _PrnState:
     def __init__(self):
         self.emits = {}  # slot0 -> np.array(+-1 signs), one sign island per stored emit
         self.last_obs = None  # (utc_ref, phase, br) dedup
+        self.t_seen = 0.0  # wall time of the newest emit
         self.try_slot = None
         self.phase = (
             None  # per-PRN locked pair_phase (pseudorange shifts the symbol grid)
@@ -180,6 +184,7 @@ class CnavPredictor:
         if key == st.last_obs:
             return
         st.last_obs = key
+        st.t_seen = time.time()
         sym_s = br * rec_dt
         # Build this emit's absolute slot -> sign map (no polarity applied: each emit is its own
         # sign island; the decoder resolves inter-emit polarity by CRC).
@@ -245,14 +250,16 @@ class CnavPredictor:
         ):
             st.try_slot = newest
             self._round.add(prn)
-            # a round is complete once every currently-eligible PRN has had a turn (backed-off cold
-            # PRNs are not eligible, so they don't stall the rotation among the active ones).
-            eligible = sum(
-                1
-                for s2 in self._p.values()
-                if s2.phase is not None or now >= s2.cold_next_t
-            )
-            if len(self._round) >= max(1, eligible):
+            # a round is complete once every currently-eligible PRN has had a turn. Backed-off
+            # cold PRNs are not eligible, nor PRNs whose emits stopped (a satellite that set):
+            # counting those, the round never completed and every PRN stopped decoding.
+            eligible = [
+                p2
+                for p2, s2 in self._p.items()
+                if now - s2.t_seen < ROUND_LIVE_S
+                and (s2.phase is not None or now >= s2.cold_next_t)
+            ]
+            if all(p2 in self._round for p2 in eligible):
                 self._round.clear()
             self._try_decode(prn, st)
             self._last_decode = time.time()
