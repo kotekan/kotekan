@@ -742,9 +742,10 @@ gputrack:
           cuda_stream: 3
           # GLONASS L3OC-p with the NH10 tiled in: one 102300-chip, 10 ms code; dataless. The
           # PRN is the code index, taken to be the orbital slot as on CHORD. The L3OC-capable
-          # slots per the IGS registry: GLO-K1/K1B/K1+/K2 and the modernised GLO-M+.
+          # slots per the IGS registry (11-23 copy: slot 10 now, not 9): GLO-K1/K1B/K1+/K2 and
+          # the modernised GLO-M+.
           signal: GLO_L3OC_P_NH
-          prns: &l3oc_prns [4, 5, 6, 8, 9, 11, 12, 16, 19, 20, 21, 22, 23, 24]
+          prns: &l3oc_prns [4, 5, 6, 8, 10, 11, 12, 16, 19, 20, 21, 22, 23, 24]
           f_offset_hz: -22.975e6
           n_channels: 8
           channel_ids: [49, 50, 51, 52, 53, 54, 55, 56]
@@ -1133,6 +1134,16 @@ glo_combine:
     n_prn: 26
     integration_length: 200
     record_export: 64
+# GLONASS's 50 bps bits (the 10 ms meander is in the tracker code) for nav_decode's GLO_L2OF: a
+# 2 s window, one string, each bit decided against the phase of the +-5 bits around it, as B3I's.
+glo_bits:
+    kotekan_stage: GnssCoherentCombiner
+    in_bufs: [glo_rec_buf]
+    n_prn: 26
+    integration_length: 2000
+    navwipe_bit_records: 20
+    bit_export: true
+    bit_export_track: 5
 
 l3oc_assemble:
     kotekan_stage: GnssGpuRecordAssemble
