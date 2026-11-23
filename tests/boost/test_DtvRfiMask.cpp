@@ -6,6 +6,7 @@
 #include "buffer.hpp"
 #include "bufferContainer.hpp"
 #include "chordMetadata.hpp"
+#include "configUpdater.hpp"
 #include "kotekanLoggingFixture.hpp"
 
 #include <boost/test/included/unit_test.hpp>
@@ -303,8 +304,9 @@ struct V3Pipeline {
     std::unique_ptr<kotekan::Stage> stage;
 
     // As the templates wire it: fine support beside the statistic, (-1,-1) on every v3 row.
+    // With enabled false, the mask starts switched off through enabled_updatable_config.
     explicit V3Pipeline(bool mask_control, bool with_stat = true, std::vector<int> permanent = {},
-                        uint64_t power_limit_word = 4 * 65536) :
+                        uint64_t power_limit_word = 4 * 65536, bool enabled = true) :
         pool(metadataPool::create(32, sizeof(chordMetadata), "pool", "chordMetadata")),
         rfi(2, samples / 8 * F, pool, "rfi", "standard", 0, false, false, std::vector<int>{}, true),
         dtv(2, F, pool, "dtv", "standard", 0, false, false, std::vector<int>{}, true),
@@ -330,7 +332,14 @@ struct V3Pipeline {
                                 {"require_fine_freq_ids", {11}}}}};
         if (with_stat)
             cfg["mask"]["stat_buf"] = "stat";
+        if (!enabled) {
+            cfg["dtv_mask_enabled"] = {
+                {"kotekan_update_endpoint", "json"}, {"enabled", false}, {"valid_at_time_ns", 0}};
+            cfg["mask"]["enabled_updatable_config"] = "/dtv_mask_enabled";
+        }
         config.update_config(cfg);
+        if (!enabled)
+            kotekan::configUpdater::instance().apply_config(config);
         auto mask_desc =
             kotekan::GenericNDArray::describe(kotekan::uint1x8, "RFImask", {samples / 1024, F, 128},
                                               {"T8hi128", "F", "T8lo128"}, {1024, 1, 8});
@@ -444,4 +453,39 @@ BOOST_AUTO_TEST_CASE(v3_permanent_frequency_is_masked) {
 
 BOOST_AUTO_TEST_CASE(v3_word_must_be_positive) {
     BOOST_CHECK_THROW(V3Pipeline(false, true, {}, 0), FatalError);
+}
+
+BOOST_AUTO_TEST_CASE(v3_rows_pass_while_the_mask_is_off) {
+    const uint64_t not_evaluated = std::numeric_limits<uint64_t>::max();
+    V3Pipeline p(true, true, {10}, 4 * 65536, false);
+    p.stage->start();
+    // with the mask on every row would be masked: 10 is permanent and above its word, 11 is
+    // required but not evaluated, 12 is not a v3 channel and its byte is set, and 13 is the
+    // control above its word with mask_control
+    p.fill(0, {3, 2, 0, not_evaluated, 0, not_evaluated, 100, 1}, {0, 0, 1, 0});
+    BOOST_CHECK(p.rejected(0).empty());
+}
+
+static bool is_statistic_identity_refusal(const FatalError& e) {
+    return std::string(e.what()).find("statistic identity mismatch") != std::string::npos;
+}
+
+BOOST_AUTO_TEST_CASE(v3_reject_statistic_identity) {
+    for (int fault = 0; fault < 3; ++fault) {
+        V3Pipeline p(false);
+        p.fill(0, {3, 2, 3, 1, 0, 0, 100, 1});
+        auto meta = get_chord_metadata(&p.stat, 0);
+        switch (fault) {
+            case 0:
+                meta->set_fpga_seq_num(meta->get_fpga_seq_num() + V3Pipeline::samples * 4);
+                break;
+            case 1:
+                meta->set_time_downsampling_fpga(V3Pipeline::samples * 8);
+                break;
+            case 2:
+                meta->set_coarse_freq({11, 10, 12, 13});
+                break;
+        }
+        BOOST_CHECK_EXCEPTION(p.stage->main_thread(), FatalError, is_statistic_identity_refusal);
+    }
 }
