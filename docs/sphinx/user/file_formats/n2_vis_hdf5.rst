@@ -647,7 +647,9 @@ verifies consistency, within ns-level tolerance, as frames arrive).
      - float32 (:math:`N_f`, :math:`N_t`)
      - Fraction of the bin during which the DTV mask (DtvRfiMask) was applied.
        A switch applies from the first input frame starting at or after its
-       scheduled time, in DtvRfiMask and in this count. N2Accumulate reads the
+       scheduled time, in DtvRfiMask and in this count. A time of 0, or one
+       already passed, applies at each stage's next frame, so this count then
+       switches up to about a second before the data do. N2Accumulate reads the
        switch only when ``dtv_mask_enabled_updatable_config`` is set; otherwise
        this is 0.0.
    * - ``fringestop_enabled``

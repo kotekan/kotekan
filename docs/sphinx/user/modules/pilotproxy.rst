@@ -232,10 +232,14 @@ support, and the largest ``uint64`` for the powers, fine powers and both values
 of ``dtv_stat``. A reader treats such a ``dtv_stat`` row as missing; it is not a
 statistic to pass to ``pilotproxy_v3_keep``.
 
-POST ``{"enabled": true, "valid_at_time_ns": 0}`` to ``/dtv_mask_enabled`` to
-apply the mask from the next frame, and ``false`` to stop. A nonzero
-``valid_at_time_ns`` applies the change at the first frame starting at or after
-that instrument time, in ``DtvRfiMask`` and in the recorded fraction. POST
+POST ``{"enabled": true, "valid_at_time_ns": t}`` to ``/dtv_mask_enabled`` to
+apply the mask from the first frame starting at or after instrument time ``t``,
+in ``DtvRfiMask`` and in the recorded fraction, and ``false`` to stop. Use a
+time a few seconds ahead, as PilotProxy's ``tools/pathfinder_dtv_switch.py``
+does. ``0``, or a time already passed, applies at each stage's next frame.
+``N2Accumulate`` is downstream of ``DtvRfiMask``, so it then records the switch
+up to about a second before the data change, and ``frac_dtv_mask_enabled`` is
+wrong in that bin. POST
 ``{"enabled": true}`` or ``{"enabled": false}`` to ``/dtv_write_enabled`` to
 start or stop sending; the change applies to whole frames. A restart returns
 both to off. The ``DtvRfiMask`` log line ``DTV mask on``
