@@ -186,8 +186,12 @@ sbas_search:
     acquire_windows: 3
     acquire_snr: 5
     acquire_fine_step: 4
-    refine_span: 4
-    refine_hops: 960
+    # The acquire surface leaves the GEOs' code phase a whole hop (64 samples, 5.3 chips)
+    # ambiguous: detections alternated between two clusters a hop apart at equal SNR (11-23), and
+    # each re-anchor on the wrong one lost the lock. A refine across +-1 hop picks the peak.
+    refine_span: 72
+    refine_step: 2
+    refine_hops: 480
     hint_ttl_s: 30
     pass_interval_s: 2.0
     use_cuda_acquire: false
@@ -976,7 +980,10 @@ sbas_bits:
     integration_length: 1000
     navwipe_bit_records: 2
     bit_export: true
-    bit_export_track: 50
+    # Each 2 ms symbol against the carrier phase of the +-4 symbols around it: the GEOs keep a
+    # few Hz of carrier residual, which turns a wider window's phase by radians (11-23: at +-50
+    # the symbols stood 0.2-0.6 sigma and nothing decoded; at +-2..5, 6-9 sigma, every message).
+    bit_export_track: 4
 
 b2b_assemble:
     kotekan_stage: GnssGpuRecordAssemble
