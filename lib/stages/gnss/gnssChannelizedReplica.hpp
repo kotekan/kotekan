@@ -168,6 +168,19 @@ public:
                              const std::function<float(long long)>& nav_bit, int nh_phase,
                              std::vector<std::vector<std::complex<float>>>& out) const;
 
+    /// The adjoint of @ref hoprate_stream_into: each chip's matched-filter output. For channel
+    /// streams @c data (one pointer per channel of @c f, @c n_hops hops from
+    /// @c window_start_sample), adds to @c z[c - chip_lo], for every chip c in
+    /// [chip_lo, chip_lo + z.size()), the sum over hops and channels of the data times the
+    /// conjugate of chip c's contribution to the replica. The despread of any code on this chip
+    /// grid is then sum_c code(c) * z[c - chip_lo], as gnss::channelized_despread gives it
+    /// against that code's replica, so a bank of codes (GW_1202's 64 CSK shifts) costs one pass
+    /// over the data.
+    void hoprate_adjoint(const HopRateFilter& f, long long window_start_sample,
+                         double code_phase_chips, double doppler_hz, int n_hops,
+                         const std::vector<const std::complex<float>*>& data, long long chip_lo,
+                         std::vector<std::complex<double>>& z) const;
+
     /// Global channel indices whose passband covers the carrier at @c doppler_hz.
     /// @c prn_index selects that PRN's carrier offset (FDMA); -1 = the band offset alone.
     std::vector<int> covering_bins(double doppler_hz, double doppler_margin_hz,
@@ -337,6 +350,11 @@ public:
     }
 
 private:
+    /// The taps of the hop whose newest sample is @p n_m that each chip covers: chip
+    /// chip0 - d owns taps [k_lo[d], k_hi[d]] (empty when k_hi < k_lo). Returns chip0. Shared by
+    /// @ref hoprate_stream_into and @ref hoprate_adjoint.
+    long long hop_chip_taps(const HopRateFilter& f, double cp0, double cps, long long n_m,
+                            std::vector<int>& k_lo, std::vector<int>& k_hi) const;
     /// The chip span, truncation and carrier shared by @ref hoprate_filter and
     /// @ref hoprate_filter_f32.
     HopRateFilter hoprate_header(double doppler_hz, int prn_index) const;

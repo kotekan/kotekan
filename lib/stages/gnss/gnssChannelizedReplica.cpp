@@ -758,7 +758,6 @@ void ChannelizedReplicaBank::hoprate_stream_into(
     // would give a well-formed replica at the wrong carrier. -1 (CDMA) matches any p.
     assert(f.prn_index < 0 || f.prn_index == p);
     const double wc = 2.0 * M_PI * (carrier_offset(p) + doppler_hz) / _sample_rate;
-    const int Lf = _fft_len * _num_taps;
     const int nw = (int)f.PhiA.size();
 
     // Reuse the caller's buffer; only grow when it does not already fit.
@@ -785,44 +784,12 @@ void ChannelizedReplicaBank::hoprate_stream_into(
 
     for (int m = 0; m < n_hops; ++m) {
         const long long n_m = n0 + (long long)m * _fft_len;
-        // The code's absolute-sample product is in long double too: n_m*cps ~ 3.8e14 chips lies
-        // in [2^48, 2^49), where a double's ULP is 0.0625 chips, ~30% of the tap spacing (cps).
-        // That would hand taps to the neighbouring chip. This function is the reference the GPU
-        // replica is checked against.
-        const long double CL = (long double)cp0 + (long double)n_m * (long double)cps;
-        const long long chip0 = (long long)std::floor(CL);
-        const double phi = (double)(CL - (long double)chip0);
+        const long long chip0 = hop_chip_taps(f, cp0, cps, n_m, k_lo, k_hi);
         const std::complex<double> pb = std::conj(pa);
-
-        // The chip channels() assigns to tap k, at absolute sample n_m - k. The tap ranges below
-        // must agree with it exactly, since channels() is what matches the F-engine, so it uses
-        // the same precision as CL.
-        auto chip_at = [&](int k) {
-            return (long long)std::floor((long double)cp0
-                                         + (long double)(n_m - (long long)k) * (long double)cps);
-        };
-
-        // Chip d owns the taps k with floor(C - k*cps) == chip0 - d, i.e.
-        // k in ((phi+d-1)/cps, (phi+d)/cps]. In floating point the boundary tap lands on the
-        // wrong side whenever (phi+d)/cps is an exact integer, and since cps is rational
-        // (1023/320000 on CHORD L5) that happens systematically, ~8 times per replica period.
-        // The partition stays exact (chip d+1's klo is chip d's khi+1), but the tap would take
-        // its neighbour's code sign, an error of 2*proto[k]; so each bound is snapped against
-        // chip_at().
-        int klo = 0;
         for (int d = 0; d < f.n_chips; ++d) {
-            int khi = (int)std::floor((phi + (double)d) / cps);
             const long long want_chip = chip0 - (long long)d;
-            if (khi >= 0 && khi < Lf && chip_at(khi) < want_chip)
-                --khi; // one tap too far: khi belongs to the next chip down
-            else if (khi + 1 >= 0 && khi + 1 < Lf && chip_at(khi + 1) >= want_chip)
-                ++khi; // one tap short: khi+1 is still this chip's
-            if (khi > Lf - 1)
-                khi = Lf - 1;
-            k_lo[(size_t)d] = klo;
-            k_hi[(size_t)d] = khi;
             double cv = 0.0;
-            if (khi >= klo && d >= f.d_first) {
+            if (k_hi[(size_t)d] >= k_lo[(size_t)d] && d >= f.d_first) {
                 cv = (double)code_chip(p, (double)want_chip);
                 if (nav_bit)
                     cv *= nav_bit(want_chip);
@@ -832,7 +799,6 @@ void ChannelizedReplicaBank::hoprate_stream_into(
                         nh_phase);
             }
             cvs[(size_t)d] = cv;
-            klo = khi + 1;
         }
 
         for (int ci = 0; ci < nw; ++ci) {
@@ -848,6 +814,108 @@ void ChannelizedReplicaBank::hoprate_stream_into(
                 sB += cv * dB;
             }
             chan[ci][m] = (cf)(0.5 * (pa * sA + pb * sB));
+        }
+        pa *= pstep;
+        pa /= std::abs(pa);
+    }
+}
+
+long long ChannelizedReplicaBank::hop_chip_taps(const HopRateFilter& f, double cp0, double cps,
+                                                long long n_m, std::vector<int>& k_lo,
+                                                std::vector<int>& k_hi) const {
+    const int Lf = _fft_len * _num_taps;
+    // The code's absolute-sample product is in long double: n_m*cps ~ 3.8e14 chips lies in
+    // [2^48, 2^49), where a double's ULP is 0.0625 chips, ~30% of the tap spacing (cps). That
+    // would hand taps to the neighbouring chip. hoprate_stream_into is the reference the GPU
+    // replica is checked against.
+    const long double CL = (long double)cp0 + (long double)n_m * (long double)cps;
+    const long long chip0 = (long long)std::floor(CL);
+    const double phi = (double)(CL - (long double)chip0);
+
+    // The chip channels() assigns to tap k, at absolute sample n_m - k. The tap ranges below
+    // must agree with it exactly, since channels() is what matches the F-engine, so it uses
+    // the same precision as CL. It is evaluated in double relative to chip0 first: the two
+    // differ by under 1e-4 chip (CL's long-double rounding at CHORD's ~4e14 chips), so away
+    // from a chip boundary they floor alike, and only the rare value within CHIP_TIE of one
+    // takes the long double (software arithmetic on aarch64, ten times the cost of the rest).
+    constexpr double CHIP_TIE = 1e-3;
+    auto chip_at = [&](int k) {
+        const double x = phi - (double)k * cps;
+        const double fx = std::floor(x);
+        if (x - fx > CHIP_TIE && fx + 1.0 - x > CHIP_TIE)
+            return chip0 + (long long)fx;
+        return (long long)std::floor((long double)cp0
+                                     + (long double)(n_m - (long long)k) * (long double)cps);
+    };
+
+    // Chip d owns the taps k with floor(C - k*cps) == chip0 - d, i.e.
+    // k in ((phi+d-1)/cps, (phi+d)/cps]. In floating point the boundary tap lands on the
+    // wrong side whenever (phi+d)/cps is an exact integer, and since cps is rational
+    // (1023/320000 on CHORD L5) that happens systematically, ~8 times per replica period.
+    // The partition stays exact (chip d+1's klo is chip d's khi+1), but the tap would take
+    // its neighbour's code sign, an error of 2*proto[k]; so each bound is snapped against
+    // chip_at().
+    int klo = 0;
+    for (int d = 0; d < f.n_chips; ++d) {
+        int khi = (int)std::floor((phi + (double)d) / cps);
+        const long long want_chip = chip0 - (long long)d;
+        if (khi >= 0 && khi < Lf && chip_at(khi) < want_chip)
+            --khi; // one tap too far: khi belongs to the next chip down
+        else if (khi + 1 >= 0 && khi + 1 < Lf && chip_at(khi + 1) >= want_chip)
+            ++khi; // one tap short: khi+1 is still this chip's
+        if (khi > Lf - 1)
+            khi = Lf - 1;
+        k_lo[(size_t)d] = klo;
+        k_hi[(size_t)d] = khi;
+        klo = khi + 1;
+    }
+    return chip0;
+}
+
+void ChannelizedReplicaBank::hoprate_adjoint(const HopRateFilter& f, long long window_start_sample,
+                                             double code_phase_chips, double doppler_hz, int n_hops,
+                                             const std::vector<const cf*>& data, long long chip_lo,
+                                             std::vector<std::complex<double>>& z) const {
+    // The replica's hop m is R_m = sum_d code(chip0 - d) G_{m,d}, with G_{m,d} =
+    // 1/2 (e^{+i wc n_m} (PhiA over chip d's taps) + e^{-i wc n_m} (PhiB ...)), as in
+    // hoprate_stream_into; the despread sums data * conj(R). So chip c collects
+    // data * conj(G_{m,d}) from every (m, d) with chip0(m) - d == c.
+    assert(f.prn_index < 0);
+    const double cps =
+        _eff_chip_rate / _sample_rate * (1.0 + code_doppler_sign * doppler_hz / _sig.carrier_hz);
+    const double cp0 = (double)_comb_mult * code_phase_chips;
+    const double wc = 2.0 * M_PI * (carrier_offset(-1) + doppler_hz) / _sample_rate;
+    const int nw = (int)f.PhiA.size();
+    if ((int)data.size() != nw)
+        throw std::invalid_argument("hoprate_adjoint: one data stream per filter channel");
+    const long long n0 = window_start_sample + _fft_len - 1;
+    const long double wcL = 2.0L * (long double)M_PI
+                            * (long double)(carrier_offset(-1) + doppler_hz)
+                            / (long double)_sample_rate;
+    std::complex<double> pa =
+        std::polar(1.0, (double)std::fmod(wcL * (long double)n0, 2.0L * (long double)M_PI));
+    const std::complex<double> pstep =
+        std::polar(1.0, std::fmod(wc * (double)_fft_len, 2.0 * M_PI));
+    std::vector<int> k_lo((size_t)f.n_chips), k_hi((size_t)f.n_chips);
+    const long long chip_hi = chip_lo + (long long)z.size();
+
+    for (int m = 0; m < n_hops; ++m) {
+        const long long n_m = n0 + (long long)m * _fft_len;
+        const long long chip0 = hop_chip_taps(f, cp0, cps, n_m, k_lo, k_hi);
+        const std::complex<double> pb = std::conj(pa);
+        for (int d = f.d_first; d < f.n_chips; ++d) {
+            const long long c = chip0 - (long long)d;
+            if (c < chip_lo || c >= chip_hi || k_hi[(size_t)d] < k_lo[(size_t)d])
+                continue;
+            const size_t t1 = (size_t)k_hi[(size_t)d] + 1, t0 = (size_t)k_lo[(size_t)d];
+            std::complex<double> acc(0.0, 0.0);
+            for (int ci = 0; ci < nw; ++ci) {
+                const std::complex<double> g = 0.5
+                                               * (pa * (f.PhiA[ci][t1] - f.PhiA[ci][t0])
+                                                  + pb * (f.PhiB[ci][t1] - f.PhiB[ci][t0]));
+                acc += std::complex<double>(data[(size_t)ci][m]) * std::conj(g);
+            }
+            z[(size_t)(c - chip_lo)] += acc;
         }
         pa *= pstep;
         pa /= std::abs(pa);

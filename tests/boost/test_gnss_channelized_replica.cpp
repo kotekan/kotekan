@@ -417,6 +417,52 @@ BOOST_AUTO_TEST_CASE(iq_time_order_fold_matches_fftwengine_fold) {
     }
 }
 
+// hoprate_adjoint is the transpose of hoprate_stream: the despread of any data against the
+// bank's own replica equals the chip outputs weighted by the code. GW_1202 at the bladeRF
+// geometry, where GnssCskDespread uses it on the CSK half.
+BOOST_AUTO_TEST_CASE(hoprate_adjoint_is_transpose) {
+    const gnss::SignalDescriptor* sig = gnss::signal_by_name("GW_1202");
+    BOOST_REQUIRE(sig != nullptr);
+    const double fs = 122.88e6, f_off = 1202.025e6 - 1225.0e6;
+    gnss::Channelization chz{fs, 64, 4, dsp::Window::Hamming, true, true};
+    gnss::ChannelizedReplicaBank bank(*sig, chz, f_off, {1145});
+    const std::vector<int> want = {50, 51, 52, 53, 54};
+    const long long ws = 122880LL * 100000 + 640;
+    const int n_hops = 2000;
+    std::vector<std::vector<cf>> data(want.size(), std::vector<cf>(n_hops));
+    unsigned seed = 7;
+    auto rnd = [&]() {
+        seed = seed * 1103515245u + 12345u;
+        return (float)((seed >> 8) & 0xffff) / 32768.0f - 1.0f;
+    };
+    for (auto& row : data)
+        for (auto& x : row)
+            x = cf(rnd(), rnd());
+    std::vector<const cf*> ptr;
+    for (auto& row : data)
+        ptr.push_back(row.data());
+    for (double dop : {0.0, 21000.0, -17500.0}) {
+        const double cp = 1234.5;
+        const auto f = bank.hoprate_filter(want, dop, -1);
+        const auto rep = bank.hoprate_stream(f, 0, ws, cp, dop, n_hops);
+        std::complex<double> g_ref(0.0, 0.0);
+        for (size_t ci = 0; ci < want.size(); ++ci)
+            for (int m = 0; m < n_hops; ++m)
+                g_ref +=
+                    std::complex<double>(data[ci][m]) * std::conj(std::complex<double>(rep[ci][m]));
+        const double cps =
+            bank.eff_chip_rate() / fs * (1.0 + bank.code_doppler_sign * dop / sig->carrier_hz);
+        const long long chip_lo = (long long)std::floor(cp + (double)(ws - 512) * cps);
+        std::vector<std::complex<double>> z((size_t)((n_hops * 64 + 1024) * cps));
+        bank.hoprate_adjoint(f, ws, cp, dop, n_hops, ptr, chip_lo, z);
+        std::complex<double> g_adj(0.0, 0.0);
+        for (size_t i = 0; i < z.size(); ++i)
+            g_adj += (double)bank.code_chip(0, (double)(chip_lo + (long long)i)) * z[i];
+        BOOST_CHECK_MESSAGE(std::abs(g_adj - g_ref) < 1e-5 * std::abs(g_ref),
+                            "dop " << dop << ": adjoint " << g_adj << " vs replica " << g_ref);
+    }
+}
+
 // Real samples through the same time-order fold, at the airspy geometry: 20 MSPS, 10 channels
 // of 1 MHz, 1000 hops per millisecond.
 BOOST_AUTO_TEST_CASE(real_time_order_fold_matches_fftwengine_fold) {
