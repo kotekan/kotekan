@@ -43,10 +43,11 @@ class _PrnState:
         self.words = {}  # word_type -> (iodnav, word_bits[128], t_decoded)
         self.n_pages = 0  # page parts decoded (sync-valid)
         self.n_words = 0  # words assembled with valid CRC
-        # start slots already counted: every decode rescans the cached emits, so a page part or
-        # word is counted only the first time it is found
-        self.seen_pages = set()
-        self.seen_words = set()
+        # start slot -> decoded page part content (None: the FEC failed). The stitched run does
+        # not change under a slot once covered (the earlier emit's signs win), so each sync
+        # candidate is decoded once.
+        self.parts = {}
+        self.seen_words = set()  # even-part start slots whose word is counted
         self.last_decode = 0.0
 
 
@@ -108,7 +109,7 @@ class InavPredictor:
             for s in sorted(st.emits)[:-EMIT_MAX]:
                 st.emits.pop(s, None)
             lo = min(st.emits)
-            st.seen_pages = {s for s in st.seen_pages if s >= lo}
+            st.parts = {s: v for s, v in st.parts.items() if s >= lo}
             st.seen_words = {s for s in st.seen_words if s >= lo}
         # Per-PRN decode throttle: the broker ingests every PRN each poll, so a single shared gate
         # would let only the first PRN in row order decode and starve the rest. Per-PRN gating
@@ -145,58 +146,47 @@ class InavPredictor:
         return runs
 
     def _decode(self, prn, st):
+        # The sync of every page part, in either polarity (each emit's carrier sign is its own),
+        # by one correlation per run: +-N_SYNC where all ten symbols match. Do not jump on a
+        # bare sync: a false one (~1/1024 in FEC data) would skip the real page parts; every
+        # candidate is decoded and the word CRC rejects the false ones.
+        sync = 1.0 - 2.0 * np.array(G.SYNC, dtype=float)
         for run0, signs in self._runs(st):
+            n = len(signs)
+            if n < PAGE:
+                continue
             soft = signs.astype(float)
-            # collect sync-aligned page parts (both polarities)
-            parts = {}  # start_slot -> content_bits[114]
-            i = 0
-            n = len(soft)
-            while i + PAGE <= n:
-                # Always try both polarities: each emit's carrier sign is independent, so a
-                # single locked polarity would miss page parts from opposite-sign emits. The
-                # sync anchors each part to the true polarity frame, so the decoded content is
-                # absolute regardless of the raw emit sign.
-                got = None
-                for pol in (1, -1):
-                    seg = pol * soft[i : i + PAGE]
-                    hard = (seg[: G.N_SYNC] < 0).astype(np.int8)
-                    if np.array_equal(hard, np.array(G.SYNC, dtype=np.int8)):
-                        bits, ok = G.decode_page_part(seg, want_sync=True)
-                        if ok and bits is not None:
-                            got = bits
-                            break
-                if got is not None:
-                    parts[run0 + i] = got
-                    if run0 + i not in st.seen_pages:
-                        st.seen_pages.add(run0 + i)
-                        st.n_pages += 1
-                # Do not jump on a bare sync: a false sync (10 symbols matching 0101100000
-                # by chance, ~1/1024 in FEC data) would jump past the real page parts and
-                # derail alignment. The CRC at the word level (below) is the true filter, so
-                # collect every sync-valid candidate and let CRC reject the false ones.
-                i += 1
-            # pair even (flag 0) at slot s with odd (flag 1) at slot s+PAGE; assemble+CRC
-            for s in sorted(parts):
-                even = parts[s]
-                odd = parts.get(s + PAGE)
-                if odd is None:
+            c = np.correlate(soft[: n - PAGE + G.N_SYNC], sync, "valid")
+            for i in np.nonzero(np.abs(c) == G.N_SYNC)[0]:
+                s = run0 + int(i)
+                if s in st.parts:
                     continue
-                # even/odd raw polarities may differ (opposite-sign emits) -- each part's
-                # content is already in the true frame via its sync, so only the even/odd
-                # flags gate the pairing, not the raw signs.
-                if int(even[0]) != 0 or int(odd[0]) != 1:
-                    continue
-                res = G.assemble_word(even, odd)
-                if res is None:
-                    continue
-                word, crc_ok, wt = res
-                if not crc_ok:
-                    continue
-                iod = G._uint(word[6:16])
-                st.words[wt] = (iod, word, time.time())
-                if s not in st.seen_words:
-                    st.seen_words.add(s)
-                    st.n_words += 1
+                pol = 1.0 if c[i] > 0 else -1.0
+                bits, ok = G.decode_page_part(pol * soft[i : i + PAGE], want_sync=True)
+                st.parts[s] = bits if (ok and bits is not None) else None
+                if st.parts[s] is not None:
+                    st.n_pages += 1
+                    self._pair(st, s, s + PAGE)
+                    self._pair(st, s - PAGE, s)
+
+    def _pair(self, st, s_even, s_odd):
+        """Assemble the word of the even page part at s_even and the odd one 250 symbols on, once
+        both have decoded. Each part's content is already in the true frame via its sync, so
+        only the even/odd flags gate the pairing, not the raw emit signs."""
+        even, odd = st.parts.get(s_even), st.parts.get(s_odd)
+        if even is None or odd is None or int(even[0]) != 0 or int(odd[0]) != 1:
+            return
+        res = G.assemble_word(even, odd)
+        if res is None:
+            return
+        word, crc_ok, wt = res
+        if not crc_ok:
+            return
+        iod = G._uint(word[6:16])
+        st.words[wt] = (iod, word, time.time())
+        if s_even not in st.seen_words:
+            st.seen_words.add(s_even)
+            st.n_words += 1
 
     # ----------------------------------------------------------------- serve
     def ephemeris(self, prn):
