@@ -36,6 +36,7 @@ SIGNAL_BAND = {
     "BDS_B2B_BCNAV3": ("C", "L5"),
     "BDS_B3I_D1": ("C", "L2"),
     "SBAS_L5_DFMC": ("S", "L5"),
+    "GLO_L2OF": ("R", "L2"),
     "GW_1202": ("W", "L5"),
     "GW_CSK": ("W", "L5"),
 }

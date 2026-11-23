@@ -44,6 +44,7 @@ sys.path.insert(0, HERE)
 import bds_d1_predictor  # noqa: E402
 import decode_health  # noqa: E402
 import gnss_ephemeris as ge  # noqa: E402
+import glonass_nav_predictor  # noqa: E402
 import sbas_l5_predictor  # noqa: E402
 from gnss_broker import sky  # noqa: E402
 
@@ -113,6 +114,13 @@ DECODERS = {
         "SbasL5Predictor",
         sbas_l5_predictor.brdc_xcheck,
         "toe_sow",
+    ),
+    "GLO_L2OF": (
+        "R",
+        "glonass_nav_predictor",
+        "GloNavPredictor",
+        glonass_nav_predictor.brdc_xcheck,
+        "toe_gpst",
     ),
 }
 
