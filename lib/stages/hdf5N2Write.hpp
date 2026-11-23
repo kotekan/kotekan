@@ -51,9 +51,9 @@
  *   /index_map/dish_positions_in_grid_coords per dish.
  * - Per-(f, p, t)/(f, t) datasets: /vis, /eval, /evec, /erms, /gain, /radiometer_chi2,
  * /frames_added, /frac_rfi_first_stage_enabled, /frac_dtv_mask_enabled; vis_weight, flags,
- *   frac_lost, frac_rfi, and variance_pair_count live at the root (CHORD) or under
- *   /flags/{vis_weight, flags, frac_lost, frac_rfi, variance_pair_count} when
- *   file_mode == CHIME.
+ *   valid_fpga_count, rfi_fpga_count, rfi_only_fpga_count, pl_fpga_count,
+ *   variance_pair_count, frac_lost, frac_rfi, frac_rfi_only, and frac_pl live at the root
+ *   (CHORD) or under /flags when file_mode == CHIME.
  * - Per-time metadata: /fpga_start_tick, /frame_length_fpga_ticks,
  *   /time_center_ut1_ns, /bin_ut1_ns, /bin_start_ERA_deg, /bin_end_ERA_deg,
  *   /bin_start_ERAL, /bin_end_ERAL, /rfi_frame_excision_enabled, /rfi_frame_excision_num,
