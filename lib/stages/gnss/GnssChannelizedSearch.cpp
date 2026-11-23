@@ -494,6 +494,8 @@ void GnssChannelizedSearch::search_snapshot() {
     int best_any_prn = -1;
     int best_any_nh = -1;
     int n_unhinted = 0;
+    long n_dop_scanned = 0; // Doppler bins over the hinted PRNs, for the pass log
+    double t_refine = 0.0;  // seconds in the refines, for the pass log
 
     for (int p = 0; p < n_prn; ++p) {
         if (cov_local.empty()) { // carrier not in this subband: nothing to find
@@ -525,6 +527,7 @@ void GnssChannelizedSearch::search_snapshot() {
                     pgrid.push_back(f);
             }
         }
+        n_dop_scanned += (long)pgrid.size();
         if (!hinted) { // not in the active set this pass
             ++n_unhinted;
             std::lock_guard<std::mutex> lk(_det_mtx);
@@ -749,6 +752,7 @@ void GnssChannelizedSearch::search_snapshot() {
             const double dop = -a.doppler_hz;
             // Refine the code phase with refine_peak or refine_peak_cuda (gnssSeedTransport.hpp),
             // which scripts/gnss/e2e.cpp also drives.
+            const double t_ref0 = steady_s();
             double best_cp;
 #ifdef GNSS_CUDA
             if (!_cuda_ref_groups.empty()) {
@@ -771,6 +775,7 @@ void GnssChannelizedSearch::search_snapshot() {
                     *_replica, p, d, cov_global, a.code_phase_chips, (_n_nh > 1) ? best_nh : -1,
                     dop, anchor, rh, _sample_rate, _refine_span, _refine_step, _acquire_threads);
             }
+            t_refine += steady_s() - t_ref0;
             // Peak to reported phases (gnssSeedTransport.hpp, also driven by scripts/gnss/e2e.cpp).
             const gnss::DetectionPhase dp =
                 gnss::detection_phase(*_replica, best_cp, best_nh, _n_nh, dop, _snap_start_hop,
@@ -824,10 +829,12 @@ void GnssChannelizedSearch::search_snapshot() {
             ceiling = kx / (double)kwin;
         }
         INFO("GnssChannelizedSearch[{:s}]: pass best snr {:.2f} (PRN {:d}{:s}), threshold {:.2f}, "
-             "pure-noise ceiling ~{:.2f}, done {:.0f} ms after its snapshot closed{:s}",
+             "pure-noise ceiling ~{:.2f}, done {:.0f} ms after its snapshot closed ({:d} PRNs, "
+             "{:d} Doppler bins, {:d} channels, {:.0f} ms refining){:s}",
              unique_name, best_any, best_any_prn,
              (_n_nh > 1) ? fmt::format(", nh {:d}/{:d}", best_any_nh, _n_nh) : std::string(),
-             _acquire_snr, ceiling, 1e3 * (steady_s() - _snap_taken_s),
+             _acquire_snr, ceiling, 1e3 * (steady_s() - _snap_taken_s), n_prn - n_unhinted,
+             n_dop_scanned, (int)cov_local.size(), 1e3 * t_refine,
              (_acquire_snr < ceiling) ? "  [THRESHOLD BELOW NOISE CEILING -- every \"detection\" "
                                         "is meaningless]"
                                       : "");
