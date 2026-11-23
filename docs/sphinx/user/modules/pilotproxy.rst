@@ -84,6 +84,14 @@ stays 0 and its support ``(-1, -1)``. The knee word ``cfar_multiplier_q16`` is
 the default for a backend that has not set its own. ``dtv_mask_control`` masks
 the v3 control in ``DtvRfiMask``.
 
+A bundle that PilotProxy calibrates with its power-limit test gives each
+``fine_decision_v3`` channel with no passing power-limit word, or no captures,
+the reject word 1 as ``power_limit_multiplier_q16``. ``DtvRfiMask`` then keeps
+a block only when ``n_peak * 2^16 <= d_rho``, which noise does not meet, so,
+with the mask on, the channel's pilot frequency is cleared in every evaluated
+block. A bundle without power-limit words, such as the
+``pathfinder-commissioning`` bundles, has no such channel.
+
 ``dtv_fine_support`` records the validity of each test. A row of ``(1, n)`` is
 a valid test with ``n`` bulk bins. A row of ``(0, n)`` has too few usable bulk
 bins, and its mask of 0 does not mark the block as clean. A row of
