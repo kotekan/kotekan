@@ -291,8 +291,9 @@ it:
   ``fine_decision_v3`` bundle without ``receiver_channel_id_namespace`` or, in
   ``DtvRfiMask``, without ``stat_buf``, or a malformed configuration
 * at the first frame, missing or miscounted ``coarse_freq`` metadata, a listed
-  receiver ID that is not on the node, or a bound channel that is not
-  calibrated
+  receiver ID that is not on the node, a bound channel that is not
+  calibrated, or a bound channel whose thresholds are qualified for archive
+  review only
 * during the run, a ``coarse_freq`` change after binding, or a CUDA or
   detector error
 * in ``DtvRfiMask``, mismatched timestamps, frequencies, or layouts, a malformed
