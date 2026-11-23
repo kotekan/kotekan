@@ -190,14 +190,16 @@ def _dops(Ninv3):
 def hatch_smooth(rows, window_s, wrap_m=None):
     """Carrier-smoothed code residual for one satellite-band: (resid_m, n, sd_m, method).
 
-    Hatch filtering, in its simplest exact form. Within one carrier arc the code residual and
-    the carrier residual differ by a constant (the arc's ambiguity) plus what the carrier does
-    not see: code noise, code multipath, and twice the ionosphere (the code-carrier
-    divergence, slow). So the mean of (code - carrier) over a window is a low-noise estimate
-    of that constant, and carrier_now + that mean is the code range with the carrier's noise
-    and the code's absoluteness. Carrier phase must never be averaged across an arc break (the
-    constant changes there), so only rows on the newest row's carrier arc (`carr_arc`, else
-    `adr_arc`) enter.
+    Hatch filtering. Within one carrier arc the code residual and the carrier residual differ
+    by a constant (the arc's ambiguity) plus what the carrier does not see: code noise, code
+    multipath, twice the ionosphere (the code-carrier divergence, slow), and on a receiver
+    whose LO is offset from its sample clock that offset times the wavelength, a steady drift
+    (the bladeRF: ~0.3 Hz, ~0.08 m/s). So a line fitted to (code - carrier) over the window and
+    evaluated at the newest row is a low-noise estimate of that difference now, and
+    carrier_now + it is the code range with the carrier's noise and the code's absoluteness. A
+    mean would lag the drift by half the window. Carrier phase must never be smoothed across an
+    arc break (the constant changes there), so only rows on the newest row's carrier arc and
+    source (`carr_arc` and `carr_resid_src`, else `adr_arc`) enter.
 
     `rows` are obs-log dicts (t, code_resid_m, carr_resid_m, carr_arc or adr_arc) for one
     (sys, prn, band); the newest row is the epoch reported. `wrap_m` is the code period in
@@ -218,9 +220,10 @@ def hatch_smooth(rows, window_s, wrap_m=None):
     new = rows[-1]
 
     def _arc(r):
-        # the arc the carrier residual lives on (carr_arc), falling back to the ADR's
+        # the arc the carrier residual lives on (carr_arc), falling back to the ADR's, and its
+        # source: an adr and an fadr arc can share a number
         a = r.get("carr_arc")
-        return a if a is not None else r.get("adr_arc")
+        return (r.get("carr_resid_src"), a if a is not None else r.get("adr_arc"))
 
     t_new, arc = new["t"], _arc(new)
     sel = [r for r in rows if r["t"] >= t_new - window_s and _arc(r) == arc]
@@ -248,9 +251,28 @@ def hatch_smooth(rows, window_s, wrap_m=None):
     )
     if carr_ok:
         d = [ci - float(r["carr_resid_m"]) for ci, r in zip(c, sel)]
-        m_h, sd_h = _msd(d)
-        if sd_h < sd_box:
-            return float(new["carr_resid_m"]) + m_h, len(d), sd_h, "hatch"
+        n = len(d)
+        if n < 3:
+            m_h, sd_h = _msd(d)
+            res = sd_h
+        else:
+            # Least-squares line through (t, d), evaluated at the newest row. Whether the
+            # carrier helps is judged on the line's residual scatter against the code's; the
+            # sd returned is per row, as the boxcar's is (solve divides by sqrt(n)): the
+            # endpoint's standard error times sqrt(n), about twice that scatter.
+            ts = [r["t"] - t_new for r in sel]
+            mt, md = sum(ts) / n, sum(d) / n
+            sxx = sum((x - mt) ** 2 for x in ts)
+            slope = (
+                sum((x - mt) * (y - md) for x, y in zip(ts, d)) / sxx if sxx else 0.0
+            )
+            m_h = md - slope * mt
+            res = math.sqrt(
+                sum((y - md - slope * (x - mt)) ** 2 for x, y in zip(ts, d)) / (n - 2)
+            )
+            sd_h = res * math.sqrt(n * (1.0 / n + (mt * mt / sxx if sxx else 0.0)))
+        if res < sd_box:
+            return float(new["carr_resid_m"]) + m_h, n, sd_h, "hatch"
     return m_box, len(c), sd_box, "boxcar"
 
 
