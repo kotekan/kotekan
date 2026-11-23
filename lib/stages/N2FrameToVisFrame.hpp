@@ -29,8 +29,8 @@
  *
  * @conf  n2_buf  Buffers to hold the N2FrameView
  * @conf  vis_buf Buffers to hold the VisFrameView
- * @conf  freq_ids Array of UInt32. Optional. Frequencies of this stream, used when no
- *        metadata_source is given. Defaults to all channels of the telescope.
+ * @conf  freq_ids Array of UInt32. Optional. Defaults to all channels of the
+ *        telescope.
  * @conf  fake_git_tag String. Fake git hash in visMetadata to make receiver
  *        accept it. Leave empty to use actual git tag.
  *
