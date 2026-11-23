@@ -597,7 +597,7 @@ private:
  * @conf dtv_fine_powers_name       String. Optional uint64[1,R,3,256] output (default empty).
  *                                  The fine powers behind each decision, for calibration
  *                                  from a detect-only run. Bound channel i is in row i, and
- *                                  coarse_freq names the row (-1 for an unused row).
+ *                                  coarse_freq names the row (-2 for an unused row).
  * @conf dtv_fine_powers_rows       Int. Rows R of dtv_fine_powers, required with it. More
  *                                  bound channels than R on a node is a fatal error.
  * @conf permanent_mask_freq_ids    List of unique receiver coarse_freq IDs for
@@ -1019,7 +1019,7 @@ cudaEvent_t cudaPilotProxyDetector::execute(cudaPipelineState& /*pipestate*/,
         dtv_fine_powers->set_metadata(in_metadata);
         const auto metadata = dtv_fine_powers->get_metadata();
         // row i holds bound channel i
-        std::vector<int> row_freq(dtv_fine_powers_rows, -1);
+        std::vector<int> row_freq(dtv_fine_powers_rows, CHORD_META_COARSE_FREQ_UNUSED);
         for (std::size_t i = 0; i < state.bound_channels.size(); ++i)
             row_freq[i] = state.bound_coarse_freq[state.bound_channels[i].freq_index];
         metadata->set_coarse_freq(row_freq);
