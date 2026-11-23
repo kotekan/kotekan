@@ -37,10 +37,9 @@ class _PrnState:
         self.pages = {}  # page_type -> (iodnav, content_bits[238], t_decoded)
         self.n_pages = 0  # pages decoded (sync-valid)
         self.n_crc = 0  # pages assembled with valid CRC
-        # start slots already counted: every decode rescans the cached emits, so a page is
-        # counted only the first time it is found
-        self.seen_pages = set()
-        self.seen_crc = set()
+        # page candidate slots already tried: the stitched run does not change under a covered
+        # slot, so each sync match is decoded once
+        self.tried = set()
         self.last_decode = 0.0
 
 
@@ -90,8 +89,7 @@ class FnavPredictor:
             for s in sorted(st.emits)[:-EMIT_MAX]:
                 st.emits.pop(s, None)
             lo = min(st.emits)
-            st.seen_pages = {s for s in st.seen_pages if s >= lo}
-            st.seen_crc = {s for s in st.seen_crc if s >= lo}
+            st.tried = {s for s in st.tried if s >= lo}
         # Per-PRN decode throttle (see inav_predictor.ingest): a shared gate starves every PRN but
         # the first in the broker's row order.
         now = time.time()
@@ -126,34 +124,32 @@ class FnavPredictor:
         return runs
 
     def _decode(self, prn, st):
+        # The sync of every page, in either polarity (each emit's carrier sign is its own), by
+        # one correlation per run: +-N_SYNC where all twelve symbols match. Do not jump on a
+        # bare sync (a false one, ~1/4096, would derail alignment): every candidate is decoded
+        # and the CRC is the true filter.
+        sync = 1.0 - 2.0 * np.array(G.SYNC, dtype=float)
         for run0, signs in self._runs(st):
+            n = len(signs)
+            if n < PAGE:
+                continue
             soft = signs.astype(float)
-            n = len(soft)
-            i = 0
-            while i + PAGE <= n:
-                # Always try both polarities: each emit's carrier sign is independent, so a
-                # single locked polarity would miss pages from opposite-sign emits. The sync
-                # anchors each page to the true polarity frame; decoded content is absolute.
-                # Do not jump on a bare sync (a false 12-symbol sync ~1/4096 would derail
-                # alignment) -- step by 1 and let the CRC be the true filter.
-                for pol in (1.0, -1.0):
-                    seg = pol * soft[i : i + PAGE]
-                    hard = (seg[: G.N_SYNC] < 0).astype(np.int8)
-                    if np.array_equal(hard, np.array(G.SYNC, dtype=np.int8)):
-                        bits, ok = G.decode_page(seg, want_sync=True)
-                        if ok and bits is not None:
-                            if run0 + i not in st.seen_pages:
-                                st.seen_pages.add(run0 + i)
-                                st.n_pages += 1
-                            crc_ok, pt = G.check_page(bits)
-                            if crc_ok and pt is not None:
-                                iod = G._uint(bits[6:16])
-                                st.pages[pt] = (iod, bits, time.time())
-                                if run0 + i not in st.seen_crc:
-                                    st.seen_crc.add(run0 + i)
-                                    st.n_crc += 1
-                            break
-                i += 1
+            c = np.correlate(soft[: n - PAGE + G.N_SYNC], sync, "valid")
+            for i in np.nonzero(np.abs(c) == G.N_SYNC)[0]:
+                at = run0 + int(i)
+                if at in st.tried:
+                    continue
+                st.tried.add(at)
+                pol = 1.0 if c[i] > 0 else -1.0
+                bits, ok = G.decode_page(pol * soft[i : i + PAGE], want_sync=True)
+                if not ok or bits is None:
+                    continue
+                st.n_pages += 1
+                crc_ok, pt = G.check_page(bits)
+                if crc_ok and pt is not None:
+                    iod = G._uint(bits[6:16])
+                    st.pages[pt] = (iod, bits, time.time())
+                    st.n_crc += 1
 
     # ----------------------------------------------------------------- serve
     def ephemeris(self, prn):

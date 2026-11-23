@@ -35,11 +35,11 @@ class _PrnState:
         self.emits = {}  # slot0 -> np.array(+-1) one per distinct nav_obs emit
         self.last_obs = None
         self.frames = {}  # mestype -> (frame_bits[288], sow, t_decoded, start slot)
-        self.n_frames = 0  # frames decoded (find_frames yields only CRC-OK frames)
+        self.n_frames = 0  # frames decoded (decode_frame returns only CRC-OK frames)
         self.n_crc = 0  # frames with valid CRC
-        # frame start slots already counted: every decode rescans the cached emits, so a frame
-        # is counted only the first time it is found
-        self.seen = set()
+        # frame candidate slots already tried: the stitched run does not change under a covered
+        # slot, so each preamble match is decoded once
+        self.tried = set()
         # start slot of the type 10 whose IODE differs from the one before it: a type 11 found
         # earlier in the stream may belong to the old issue
         self.issue_at = None
@@ -92,7 +92,7 @@ class Bcnav2Predictor:
             for s in sorted(st.emits)[:-EMIT_MAX]:
                 st.emits.pop(s, None)
             lo = min(st.emits)
-            st.seen = {s for s in st.seen if s >= lo}
+            st.tried = {s for s in st.tried if s >= lo}
         # Per-PRN decode throttle (see inav_predictor.ingest): a shared gate starves every PRN but
         # the first in the broker's row order.
         now = time.time()
@@ -128,17 +128,22 @@ class Bcnav2Predictor:
         for run0, signs in self._runs(st):
             if len(signs) < FRAME:
                 continue
-            # find_frames does preamble sync (both polarities) + NB-LDPC + CRC internally
-            for i, _pol, bits, fprn, mt, sow in B.find_frames(signs.astype(float)):
+            soft = signs.astype(float)
+            for i, pol in B.frame_candidates(soft):
+                at = run0 + i
+                if at in st.tried:
+                    continue
+                st.tried.add(at)
+                r = B.decode_frame(soft, i, pol)  # NB-LDPC + CRC
+                if r is None:
+                    continue
+                bits, fprn, mt, sow = r
                 # the frame names its own PRN: a CRC-valid frame from another satellite (a
                 # mislabelled chain or a cross-correlation lock) must not be stored under this one
                 if fprn != prn:
                     continue
-                at = run0 + i
-                if at not in st.seen:
-                    st.seen.add(at)
-                    st.n_frames += 1
-                    st.n_crc += 1
+                st.n_frames += 1
+                st.n_crc += 1
                 old = st.frames.get(mt)
                 if old is not None and at < old[3]:
                     continue  # a rescan finds frames older than the cached one again
