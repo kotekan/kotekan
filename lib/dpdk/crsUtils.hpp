@@ -4,9 +4,6 @@
 #include <rte_mbuf.h>
 
 #define CRS_PACKET_COOKIE 0xCF
-#define NUM_FREQUENCY_BINS 48
-#define TIME_SHORT_LEN 16
-#define ELEMENT_SHORT_LEN 8
 
 #pragma pack(push, 1)
 struct ethernet_header {
@@ -60,19 +57,10 @@ struct packet_headers {
     struct crs_packet_header crs_hdr;
 };
 
-struct crs_packet_payload {
-    uint8_t data[NUM_FREQUENCY_BINS * TIME_SHORT_LEN * ELEMENT_SHORT_LEN];
-};
-
-struct crs_packet {
-    struct packet_headers headers;
-    struct crs_packet_payload payload;
-};
 #pragma pack(pop)
 
-// Packet headers are 64 bytes and payload is 48*16*8 = 6144 bytes
+// Packet headers are 64 bytes
 static_assert(sizeof(struct packet_headers) == 64);
-static_assert(sizeof(struct crs_packet) == 64 + 48 * 16 * 8);
 static_assert(sizeof(struct source_id_t) == 2);
 
 inline uint64_t get_crs_packet_seq_num(struct rte_mbuf* cur_mbuf) {

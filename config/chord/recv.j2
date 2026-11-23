@@ -15,10 +15,10 @@
 # stall with margin, at ~0.7 GB per bin (recv1 has 1 TB).
 {% set subset_recv_depth = 16 %}
 
-# The frequency IDs the F-engine sends, 1536 + 128 index + stream for 48 indices and 128
-# streams: 1536 to 7679, the 300-1500 MHz band in telescope.j2. Rows of the auto spectrum.
-{% set first_freq_id = 1536 %}
-{% set num_sent_freq = 6144 %}
+# The frequency IDs the F-engine sends, 768 + 128 index + stream for 58 indices and 128
+# streams: 768 to 8191, the 150-1600 MHz band in telescope.j2. Rows of the auto spectrum.
+{% set first_freq_id = 768 %}
+{% set num_sent_freq = 7424 %}
 
 
 # num_dishes: dishes/antennas to simulate.
