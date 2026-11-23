@@ -58,6 +58,14 @@ from gnss_broker.gdvmap import GdvMap
 from gnss_broker.trkresid import wrap
 
 
+
+def _publish_dr_clock(ctx, *a, **kw):
+    """Contribute this chain's clock to the shared Receiver, unless --dr-clock-publish is off: a
+    chain whose solve carries a model bias of its own (the SBAS GEOs sit ~16 chips off their
+    BRDC model in common) must not become another band's bootstrap donor."""
+    if getattr(ctx.args, "dr_clock_publish", True):
+        ctx.rx.contribute_dr_clock(*a, **kw)
+
 def t_mod_code(t_s, lc_seg, code_len, chip_rate_hz):
     """t_s reduced modulo the code period lc_seg * code_len / chip_rate_hz, exactly.
 
@@ -395,7 +403,8 @@ def dr_clock_quality(ctx):
         # Carried with its code length and chip rate, because chips are modular and a unit: a
         # value mod 10230 says nothing about a 1023000-chip code, and a consumer at another
         # chip rate must convert it as a time.
-        ctx.rx.contribute_dr_clock(
+        _publish_dr_clock(
+            ctx,
             ctx.chain_id,
             ctx.band_id,
             ctx.dr_state["clk"],
@@ -559,7 +568,8 @@ def dr_clock_hold(ctx):
     if ctx.dr_state.get("drift") is not None:
         ctx.dr_state["drift_t"] = ctx.drp.now_w
     ctx.dr_state.pop("raw_prev", None)
-    ctx.rx.contribute_dr_clock(
+    _publish_dr_clock(
+        ctx,
         ctx.chain_id,
         ctx.band_id,
         ctx.dr_state["clk"],
@@ -686,7 +696,8 @@ def _dr_clock_step_gate(ctx):
                 ctx.drp.now_w - _cand["t"],
             )
         )
-        ctx.rx.contribute_dr_clock(
+        _publish_dr_clock(
+            ctx,
             ctx.chain_id,
             ctx.band_id,
             ctx.dr_state["clk"],
