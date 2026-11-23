@@ -61,10 +61,10 @@ the 128 inputs.
 Frequencies and time bins
 =========================
 
-**Frequency axis.** The science band is 300--1500 MHz in channels of width
-:math:`3200/16384 = 0.1953125` MHz, giving :math:`N_f = 6145` channels
-(``freq_id`` 1536--7680 of the telescope's 8192). ``/index_map/freq`` runs
-from centre 300.0 to 1500.0 MHz.
+**Frequency axis.** The science band is 150--1600 MHz in channels of width
+:math:`3200/16384 = 0.1953125` MHz, giving :math:`N_f = 7424` channels
+(``freq_id`` 768--8191 of the telescope's 8192). ``/index_map/freq`` runs
+from centre 150.0 to 1599.8046875 MHz.
 
 **Time bins.** The upstream accumulator runs in ERA-binning mode
 (``bin_in_ERA: true``, ``num_bins_per_rotation: 4096``): bins are
@@ -128,10 +128,10 @@ Reading example
     path = "vis_<abs_idx>_<YYYYMMDDT_HHMMSS>_<ns>.h5"  # a subset-stream file
 
     with h5py.File(path) as f:
-        freq = f["index_map/freq"]["centre"]      # MHz, (6145,)
+        freq = f["index_map/freq"]["centre"]      # MHz, (7424,)
         prod = f["index_map/prod"][:]             # (input_a, input_b), (36,)
-        good = f["frames_added"][:].astype(bool)  # (6145, 20) validity mask
-        vis  = f["vis"][:]                        # (6145, 36, 20) complex64
+        good = f["frames_added"][:].astype(bool)  # (7424, 20) validity mask
+        vis  = f["vis"][:]                        # (7424, 36, 20) complex64
         w    = f["vis_weight"][:]
         t    = f["time_center_t_inst_ns"][:] * 1e-9   # UNIX seconds
         vis[~good[:, None, :].repeat(vis.shape[1], 1)] = np.nan
