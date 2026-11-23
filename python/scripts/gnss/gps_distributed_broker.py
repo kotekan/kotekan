@@ -410,7 +410,7 @@ def main(argv=None, rx=None, publisher=None):
     _tg = _telem.parse_endpoint(
         telem_gather_endpoint(args.telem_gather, args.transcript_read)
     )
-    telem_client = _telem.shared_client(*_tg) if _tg else None
+    telem_client = _telem.shared_client(*_tg, depth=args.telem_depth) if _tg else None
     _gcpace.start_once(args.gc_interval_s)
     telem_chain = log_tag() or (args.signal or "")
     if telem_client is not None:

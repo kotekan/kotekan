@@ -144,6 +144,7 @@ class SatAdr(object):
         "n_silent",
         "silent",
         "run",
+        "zq",
         "proj",
         "last_break",
     )
@@ -190,6 +191,7 @@ class SatAdr(object):
             False  # the satellite's prompts have lost the signal (see fold_record)
         )
         self.run = 0  # records in a row towards entering or leaving silence
+        self.zq = []  # min_inst 1: (z, n_r) of the last SOLO_POOL_REC records
         # this cycle's projection basis over the instances' records: [sum of b over records
         # with a basis in force, their count, the largest rank, the OR of the sources]
         self.proj = [0.0, 0, 0, 0]
@@ -200,6 +202,13 @@ DARK_DB = 10.0  # the instances' prompt power this far below their level is down
 R_MIN = 0.5  # agreement of the instances' phase steps below this is noise (signal ~1, noise ~0.25)
 R_MIN_INST = 6  # instances needed for an agreement or level verdict
 SILENT_MIN_REC = 5  # records in a row to enter (or, still down, leave) silence (~50 ms)
+# A one-instance receiver (min_inst 1) has no instances to agree: it judges one instance's
+# steps over SOLO_POOL_REC records against SOLO_R_MIN instead. A steady carrier keeps its
+# steps aligned at any frequency, its mean resultant exp(-sigma^2/2) for step noise sigma:
+# ~0.7 at 37 dB-Hz in 1 ms records, 0.3 near 32 dB-Hz, where a 1 ms carrier slips half
+# cycles anyway. Noise reaches 0.3 over 150 records with probability ~exp(-13.5).
+SOLO_POOL_REC = 150
+SOLO_R_MIN = 0.3
 LVL_DECAY_DB_H = 20.0  # the level follows a fade slower than this (dB per hour)
 LVL_EMA_REC = 10000  # records (~100 s) the level averages over, once warm
 LVL_WARM_REC = 100  # records (~1 s) an instance must have been seen before it counts
@@ -214,6 +223,7 @@ def fold_record(
     hps=HPS,
     max_gap_rec=3,
     min_inst=2,
+    grid_hops=GRID_HOPS,
     dark_db=DARK_DB,
     lvl_decay_db_h=LVL_DECAY_DB_H,
 ):
@@ -293,19 +303,32 @@ def fold_record(
                 h[1] += 1
             else:
                 dips.append((h, p_db))
-    coherent = n_r >= R_MIN_INST and abs(z) >= R_MIN * n_r
-    incoherent = n_r >= R_MIN_INST and not coherent
-    down = len(drops) >= R_MIN_INST and sorted(drops)[len(drops) // 2] < -dark_db
-    if not st.silent:
-        st.run = st.run + 1 if (down and incoherent) else 0
+    if min_inst == 1:
+        # One instance: judge its steps over the last SOLO_POOL_REC records. There is no power
+        # verdict either: a noise-only arc learns its level from noise and never drops.
+        st.zq.append((z, n_r))
+        del st.zq[:-SOLO_POOL_REC]
+        zt = sum(q[0] for q in st.zq)
+        nt = sum(q[1] for q in st.zq)
+        coherent = nt >= R_MIN_INST and abs(zt) >= SOLO_R_MIN * nt
+        incoherent = nt >= R_MIN_INST and not coherent
+        st.run = st.run + 1 if (coherent if st.silent else incoherent) else 0
         if st.run >= SILENT_MIN_REC:
-            st.silent, st.run = True, 0
-    elif not down:
-        st.silent, st.run = False, 0
+            st.silent, st.run = not st.silent, 0
     else:
-        st.run = st.run + 1 if coherent else 0
-        if st.run >= SILENT_MIN_REC:
+        coherent = n_r >= R_MIN_INST and abs(z) >= R_MIN * n_r
+        incoherent = n_r >= R_MIN_INST and not coherent
+        down = len(drops) >= R_MIN_INST and sorted(drops)[len(drops) // 2] < -dark_db
+        if not st.silent:
+            st.run = st.run + 1 if (down and incoherent) else 0
+            if st.run >= SILENT_MIN_REC:
+                st.silent, st.run = True, 0
+        elif not down:
             st.silent, st.run = False, 0
+        else:
+            st.run = st.run + 1 if coherent else 0
+            if st.run >= SILENT_MIN_REC:
+                st.silent, st.run = False, 0
     for h, p_db in dips:
         if coherent:
             h[0] += (p_db - h[0]) / min(h[1] + 1, LVL_EMA_REC)
@@ -402,7 +425,7 @@ def fold_record(
         here = set(live)
         for i in [i for i in st.inst_x if i not in here]:
             del st.inst_x[i]  # gone: it rejoins at the fleet's phase
-    if hop % GRID_HOPS == 0:
+    if hop % grid_hops == 0:
         st.grid.append((hop, st.adr, st.arc, st.n))
         del st.grid[:-GRID_KEEP]
     return ok
@@ -464,13 +487,27 @@ def records_of_frame(f, want):
 class FleetAdr(object):
     """Per-chain state: {prn: SatAdr} plus the newest window already folded."""
 
-    def __init__(self, hpr=2048, max_gap_rec=3, min_inst=2, log=None):
+    def __init__(
+        self, hpr=2048, max_gap_rec=3, min_inst=2, log=None, hps=HPS, grid_s=None
+    ):
+        """hps: the hop rate (exact). grid_s: None keeps GRID_HOPS, CHORD's; else the grid is the
+        whole number of records nearest grid_s seconds, recomputed when the frames' record
+        length (which overrides hpr) changes."""
         self.log = log
         self.sats = {}
         self.last_win = None
         self.hpr = int(hpr)
         self.max_gap_rec = int(max_gap_rec)
         self.min_inst = int(min_inst)
+        self.hps = Fraction(hps)
+        self.grid_s = grid_s
+        self.grid_hops = GRID_HOPS
+        self._set_hpr(self.hpr)
+
+    def _set_hpr(self, hpr):
+        self.hpr = int(hpr)
+        if self.grid_s is not None:
+            self.grid_hops = self.hpr * max(1, round(self.grid_s * self.hps / self.hpr))
 
     def fold_windows(self, client, chain, prns, now, lag=1):
         """Fold every window newer than the last one folded. Returns the number of windows."""
@@ -501,6 +538,8 @@ class FleetAdr(object):
             frames = client.frame_set(chain, w)
             by_hop = {}  # hop -> prn -> inst -> the records_of_frame tuple
             for inst, f in frames.items():
+                if f.hops_per_record != self.hpr:
+                    self._set_hpr(f.hops_per_record)
                 hops = {}  # record slot -> hop, for the slots this frame filled
                 for r in range(f.n_rec):
                     if f.has_record(r):
@@ -534,8 +573,10 @@ class FleetAdr(object):
                         hop,
                         per_inst,
                         self.hpr,
+                        hps=self.hps,
                         max_gap_rec=self.max_gap_rec,
                         min_inst=self.min_inst,
+                        grid_hops=self.grid_hops,
                     )
                     st.t = now
             self.last_win = w
@@ -586,7 +627,7 @@ class FleetAdr(object):
         for prn, s in self.sats.items():
             if s.hop is None or s.n < 2:
                 continue
-            nominal = Fraction(s.hop - s.hop0) / HPS * fc
+            nominal = Fraction(s.hop - s.hop0) / self.hps * fc
             out[prn] = {
                 "dop_cycles": s.adr,
                 "hop": s.hop,
@@ -619,14 +660,14 @@ class FleetAdr(object):
                         "g_dop_cycles": ga,
                         "g_n_rec": gn,
                         "g_cycles": float(
-                            Fraction(ga) + Fraction(gh - s.hop0) / HPS * fc
+                            Fraction(ga) + Fraction(gh - s.hop0) / self.hps * fc
                         ),
                     }
                 )
                 # g_hist: [hop, dop_cycles, cycles, n_rec] for each retained grid hop of this
                 # arc, newest last; the g_* scalars above are its last entry.
                 out[prn]["g_hist"] = [
-                    [h, a, float(Fraction(a) + Fraction(h - s.hop0) / HPS * fc), n]
+                    [h, a, float(Fraction(a) + Fraction(h - s.hop0) / self.hps * fc), n]
                     for h, a, _arc, n in g
                 ]
         return out
@@ -643,7 +684,16 @@ def stage_fleet_adr(ctx):
     if fa is None:
         from gnss_broker.transport import _log
 
-        fa = _STATE[ctx.chain_id] = FleetAdr(log=_log)
+        # CHORD's F-engine geometry by default; another receiver's hop rate (--hops-per-sec)
+        # with a 1 s grid, and its instance count (--dll-min-instances, 1 for a one-receiver
+        # instrument).
+        hps = Fraction(ctx.args.hops_per_sec).limit_denominator(1000)
+        fa = _STATE[ctx.chain_id] = FleetAdr(
+            log=_log,
+            hps=hps,
+            grid_s=None if hps == HPS else 1.0,
+            min_inst=min(2, int(ctx.args.dll_min_instances)),
+        )
     now = ctx.drp.now_w or 0.0
     fa.fold_windows(
         ctx.telem_client,

@@ -772,3 +772,61 @@ class TestFrames(unittest.TestCase):
         # One missing record is bridged (max_gap_rec), so the arc is the one begun at window 100.
         self.assertEqual(lines, [])
    
+
+class OneInstance(unittest.TestCase):
+    """A one-receiver instrument (min_inst 1, the bladeRF): its own hop rate and record length,
+    and no instances to agree, so silence is judged on one instance's steps over
+    SOLO_POOL_REC records."""
+
+    BHPS = Fraction(1920000)
+    BHPR = 1920
+
+    def fold(self, st, rec, n, hop0=1920 * 10**6):
+        out = []
+        for k in range(n):
+            hop = hop0 + k * self.BHPR
+            out.append(
+                fa.fold_record(
+                    st,
+                    hop,
+                    rec(hop),
+                    self.BHPR,
+                    hps=self.BHPS,
+                    min_inst=1,
+                    grid_hops=1920000,
+                )
+            )
+        return out
+
+    def test_steady_carrier_is_one_arc(self):
+        sky = Sky(n_inst=1, noise_rad=0.3, seed=3)
+        st = fa.SatAdr()
+        ok = self.fold(st, lambda hop: sky.record(hop, None, insts=[0]), 3000)
+        self.assertTrue(all(ok[1:]), "every record after the first extends the arc")
+        self.assertFalse(st.silent)
+        self.assertEqual(st.n, 3000)
+        self.assertTrue(st.grid, "1 s grid hops are snapshotted at the receiver's rate")
+
+    def test_noise_goes_silent_then_a_carrier_starts_a_new_arc(self):
+        rng = random.Random(5)
+
+        def noise(hop):
+            return {0: (-2182.9, 0.0, cmath.exp(1j * rng.uniform(-math.pi, math.pi)))}
+
+        st = fa.SatAdr()
+        ok = self.fold(st, noise, 400)
+        self.assertTrue(st.silent, "noise steps disagree over the pool")
+        self.assertLess(
+            ok.count(True), 80, "the arc stopped extending within tens of records"
+        )
+        arc = st.arc
+        sky = Sky(n_inst=1, noise_rad=0.3, seed=4)
+        self.fold(
+            st,
+            lambda hop: sky.record(hop, None, insts=[0]),
+            600,
+            hop0=1920 * 10**6 + 400 * 1920,
+        )
+        self.assertFalse(st.silent, "a steady carrier leaves silence")
+        self.assertGreater(st.arc, arc, "and starts a new arc")
+        self.assertGreater(st.n, 400)

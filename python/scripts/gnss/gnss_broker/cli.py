@@ -1856,6 +1856,15 @@ def build_parser(description):
         "take the gather's depth instead (FLEET_TRIM_TAPS_WINDOWS in "
         "config/gen_chord_gnss_config.py), which must equal this.",
     )
+    ap.add_argument(
+        "--telem-depth",
+        type=int,
+        default=256,
+        help="windows each chain's gathered-telemetry ring holds (telem.shared_client). The "
+        "fleet ADR folds every window since its last pass, so the ring must outlast the "
+        "longest broker cycle or its arcs break: 256 is ~10.7 s of CHORD's 42 ms windows. A "
+        "receiver with shorter windows needs more (the bladeRF's 4 ms windows: 768, ~3 s).",
+    )
     # -- Per-element gains (gnss_broker/elemgain.py) -------------------------------------------
     ap.add_argument(
         "--element-poll",
