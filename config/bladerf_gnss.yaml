@@ -1314,3 +1314,17 @@ telem_gather:
     serve_host: 127.0.0.1
     serve_port: 11061
     stale_after_s: 5.0
+# The fast code loop, as the site's gather runs it (config/gen_chord_gnss_config.py): a second
+# consumer of telem_buf that forms the fleet discriminator, integrates the trims and posts them
+# to the trackers' set_trim; the broker posts the policy (fleet-trim-url). The trims carry each
+# band's delay against the clock, so keeping them here, and in the store across a kotekan
+# restart, is what stops a broker restart from displacing every chain by its band delay.
+fleet_trim:
+    kotekan_stage: GnssFleetTrim
+    in_buf: telem_buf
+    n_win: 2
+    # One sender here (telem_pack's gx10.0), so one instance completes a record.
+    min_instances: 1
+    trim_state_file: /home/lwlab/gnss/bladerf/fleet_trim_state.json
+    trim_state_max_age_s: 300.0
+    post_threads: 4
