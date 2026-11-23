@@ -4,11 +4,28 @@
   Included by pathfinder.j2 (X-engine) and recv.j2 (receiver) so both label the same
   element axis from one dish_inputs table; the receiver's hdf5N2Write would write files
   mislabeled if its table ever diverged from the X-engine's at the same connected count.
-  It also sets num_local_freq, which both configs import from here.
+  It also sets num_local_freq and the DTV values below, which both configs import from here.
 -#}
 {#- Frequency IDs per X-engine GPU: pathfinder.j2 sizes the pipeline with it and recv.j2 the DTV
     products it receives. Must be divisible by 4 because pl_mask shapes use num_local_freq/4. -#}
 {% set num_local_freq = 464 -%}
+{#- DTV, for pathfinder.j2 (with dtv.j2) and recv.j2. Import these with context, so that both
+    sides read the same two render variables:
+    dtv_enabled (default true): false leaves the detector, the mask and the recording out of
+    both configs.
+    dtv_calibration_mode (default false): also send and write the powers, fine support and
+    fine powers. Only the mask is sent without it. -#}
+{% set dtv_enabled = dtv_enabled|default(true) -%}
+{#- Blocks of 8192 samples that NDArrayTimeConcat packs into one sent frame (~43 s). -#}
+{% set dtv_blocks_per_frame = 1024 -%}
+{#- Product, value type, extents after the time axis, dimnames, dimscalings, recv port. -#}
+{% set dtv_products = [
+    ("mask", "int8", num_local_freq ~ "", '"F"', "1", 11031),
+    ("powers", "uint64", num_local_freq ~ ", 3", '"F", "W"', "1, 1", 11033),
+    ("fine_support", "int32", num_local_freq ~ ", 2", '"F", "S"', "1, 1", 11035),
+    ("fine_powers", "uint64", "2, 3, 256", '"F", "W", "B"', "1, 1, 1", 11037),
+] -%}
+{% set dtv_sent = dtv_products if dtv_calibration_mode|default(false) else dtv_products|selectattr("0", "equalto", "mask")|list -%}
 telescope:
     name: CHORDTelescope
     sampling_rate_MHz: 3200.0

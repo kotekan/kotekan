@@ -1,31 +1,25 @@
 {#-
-  dtv.j2, included by pathfinder.j2. The detector always runs, and needs the bundle.
-  dtv_apply_mask and dtv_write_enabled set the starting values of /dtv_mask_enabled
-  (apply the DTV mask to N2) and /dtv_write_enabled (send the products to the recv node).
+  dtv.j2, included by pathfinder.j2 unless dtv_enabled is false. The detector always runs,
+  and needs the bundle in dtv_runtime_bundle_dir (below).
+  /dtv_mask_enabled applies the DTV mask to N2 and /dtv_write_enabled sends the products to
+  the recv node. Both start off.
   Only the mask is sent unless dtv_calibration_mode is set, which also sends the powers,
-  fine support and fine powers. recv.j2 must be rendered with the same dtv_calibration_mode.
-  dtv_mask_control masks the control, channel 37, like a pilot (default: never masked).
+  fine support and fine powers (telescope.j2, which recv.j2 reads too).
   The detector zeroes the inputs flagged by bufferBadInputs, the RFI antennas too.
   Disable /rfi_first_stage_enabled for a DTV-only first-stage mask.
   Profiles bind by receiver_channel_id against each NUMA half's coarse_freq.
   Every bound channel must be calibrated; halves without matches emit zero masks/powers.
   See docs/sphinx/user/modules/pilotproxy.rst for bundle setup and runtime controls.
 -#}
-{% set dtv_runtime_bundle_dir = dtv_runtime_bundle_dir|default("data/pilotproxy_bundle") %}
+{% from "telescope.j2" import dtv_blocks_per_frame, dtv_products, dtv_sent with context %}
+{#- make install puts the bundles under <prefix>/etc/kotekan/chord/dtv_bundles. #}
+{% set dtv_runtime_bundle_dir = "/usr/local/etc/kotekan/chord/dtv_bundles/pathfinder-commissioning-e2e90219" %}
 
 # One frame per 8192-sample block: mask, target/lower/upper powers
 # (sums of 256 fine powers), per-frequency fine support, and the fine powers of the
 # bound channels (a half binds one or two). NDArrayTimeConcat packs
 # dtv_blocks_per_frame blocks (~43 s) into one _concat frame, which is sent to the recv
-# node (recv.j2, which must use the same shapes and ports) and written there as one file.
-{% set dtv_blocks_per_frame = 1024 %}
-{% set dtv_products = [
-    ("mask", "int8", "num_local_freq", '"F"', "1", 11031),
-    ("powers", "uint64", "num_local_freq, 3", '"F", "W"', "1, 1", 11033),
-    ("fine_support", "int32", "num_local_freq, 2", '"F", "S"', "1, 1", 11035),
-    ("fine_powers", "uint64", "2, 3, 256", '"F", "W", "B"', "1, 1, 1", 11037),
-] %}
-{% set dtv_sent = dtv_products if dtv_calibration_mode|default(false) else dtv_products|selectattr("0", "equalto", "mask")|list %}
+# node and written there as one file.
 {% for n in numa_halves %}
 {% for product, value_type, extents, dimnames, dimscalings, port in dtv_products %}
 {% for suffix, rows, depth in [("", 1, "host_side_buffer_depth"),
@@ -54,12 +48,12 @@ host_dtv_{{ product }}{{ suffix }}_buffer{{ n.sfx }}:
 # records the fraction of each bin the mask was on (frac_dtv_mask_enabled).
 dtv_mask_enabled:
     kotekan_update_endpoint: json
-    enabled: {{ dtv_apply_mask|default(false)|lower }}
+    enabled: false
     valid_at_time_ns: 0
 
 dtv_write_enabled:
     kotekan_update_endpoint: json
-    enabled: {{ dtv_write_enabled|default(false)|lower }}
+    enabled: false
 
 run_dtv_detector:
 {% for n in numa_halves %}
@@ -94,7 +88,6 @@ run_dtv_detector:
           pilot_profiles_path: {{ dtv_runtime_bundle_dir }}/pilot_profiles.json
           weights_path: {{ dtv_runtime_bundle_dir }}/weights.bin
           bf_mask_name: bf_mask
-          mask_control: {{ dtv_mask_control|default(false)|lower }}
         - name: cudaSyncOutput
         - name: cudaOutputData
           gpu_mem: dtv_mask_buffer

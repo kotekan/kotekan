@@ -253,9 +253,7 @@ def test_pathfinder_sends_what_recv_expects(calibration):
     yaml = pytest.importorskip("yaml")
     env = jinja2.Environment(loader=jinja2.FileSystemLoader(ROOT / "config/chord"))
     config = yaml.safe_load(
-        env.get_template("pathfinder.j2").render(
-            dtv_write_enabled=True, dtv_calibration_mode=calibration
-        )
+        env.get_template("pathfinder.j2").render(dtv_calibration_mode=calibration)
     )
     recv = yaml.safe_load(
         env.get_template("recv.j2").render(dtv_calibration_mode=calibration)
@@ -281,26 +279,38 @@ def test_pathfinder_sends_what_recv_expects(calibration):
         )
 
 
-@pytest.mark.parametrize(
-    "apply_mask, write", [(False, False), (True, False), (False, True), (True, True)]
-)
-def test_pathfinder_dtv_switches(apply_mask, write):
+def test_pathfinder_dtv_switches():
     jinja2 = pytest.importorskip("jinja2")
     yaml = pytest.importorskip("yaml")
     env = jinja2.Environment(loader=jinja2.FileSystemLoader(ROOT / "config/chord"))
-    config = yaml.safe_load(
-        env.get_template("pathfinder.j2").render(
-            dtv_apply_mask=apply_mask, dtv_write_enabled=write
-        )
-    )
-    # The pipeline is the same, and the switches set the endpoints' starting values.
+    config = yaml.safe_load(env.get_template("pathfinder.j2").render())
+    # The detector runs, and both endpoints start off.
     assert "run_dtv_detector" in config
-    assert config["dtv_mask_enabled"]["enabled"] is apply_mask
-    assert config["dtv_write_enabled"]["enabled"] is write
+    assert config["dtv_mask_enabled"]["enabled"] is False
+    assert config["dtv_write_enabled"]["enabled"] is False
     merge = config["merge_dtv_mask"]["half_0"]
     assert merge["enabled_updatable_config"] == "/dtv_mask_enabled"
     accumulate = config["n2_accumulate"]
     assert accumulate["dtv_mask_enabled_updatable_config"] == "/dtv_mask_enabled"
+    n2k = config["run_n2k"]["gpu_0"]["commands"]
+    assert [c["rfi_RFImask_name"] for c in n2k if "rfi_RFImask_name" in c] == [
+        "dtv_RFImask"
+    ]
+
+
+def test_pathfinder_without_dtv():
+    jinja2 = pytest.importorskip("jinja2")
+    yaml = pytest.importorskip("yaml")
+    env = jinja2.Environment(loader=jinja2.FileSystemLoader(ROOT / "config/chord"))
+    config = yaml.safe_load(env.get_template("pathfinder.j2").render(dtv_enabled=False))
+    recv = yaml.safe_load(env.get_template("recv.j2").render(dtv_enabled=False))
+    assert not [key for key in list(config) + list(recv) if "dtv" in key]
+    assert "dtv_mask_enabled_updatable_config" not in config["n2_accumulate"]
+    # The correlator reads the SK mask itself.
+    n2k = config["run_n2k"]["gpu_0"]["commands"]
+    assert [c["rfi_RFImask_name"] for c in n2k if "rfi_RFImask_name" in c] == [
+        "rfi_RFImask"
+    ]
 
 
 @pytest.mark.parametrize("apply_mask", [False, True])
