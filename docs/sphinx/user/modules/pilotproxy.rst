@@ -304,5 +304,6 @@ Monitoring
   have this status. Calibration uses it to set the noise floor. With the
   detector's ``mask_control`` set, the control is masked like a pilot, so its false
   alarms show what the mask does to a channel without DTV. A v3 control is
-  decided in ``DtvRfiMask``, whose ``mask_control`` the template sets from
-  ``dtv_mask_control`` in ``config/chord/dtv.j2``.
+  decided in ``DtvRfiMask``, whose ``mask_control`` the templates set from
+  ``dtv_mask_control`` in ``config/chord/dtv.j2`` and
+  ``config/fengine/include/dtv_chord.j2``.

@@ -9,6 +9,7 @@
 # n2k use the default streams (copies in on 0, copies out on 1, kernels on 2),
 # so the detector kernels run on stream 3 and the detector products are copied
 # out on stream 4. The detector therefore queues behind neither of them.
+# dtv_mask_control masks the control, channel 37, like a pilot in DtvRfiMask (default: never masked).
 
 
 ################################################################################
@@ -130,6 +131,7 @@ run_combine_dtv_mask:
     dtv_buf: host_dtv_mask_buffer
     fine_support_buf: host_dtv_fine_support_buffer
     stat_buf: host_dtv_stat_buffer
+    mask_control: {{ dtv_mask_control|default(false)|lower }}
     permanent_mask_freq_ids: {{ dtv_permanent_mask_freq_ids|default([]) }}
     require_fine_freq_ids: {{ dtv_require_fine_freq_ids|default([]) }}
     out_buf: host_dtv_RFImask_buffer
