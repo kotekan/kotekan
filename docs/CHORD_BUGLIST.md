@@ -89,6 +89,17 @@ the aggregator and gather. #184–#187 below are what the removal left for later
 
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
 
+### #242 — in a boresight transit the trk chains fall back to the search-fed joint state, which runs up to 2.6 chips from the tracker state (2026-11-23, from the restart analysis)
+**What [archive, 11-21 log]:** the tracker-fed joint state (TRK_STATE) takes no updates while a satellite is in the transit
+cone (jtrk withholds its feed), goes stale, and every `joint-source trk` chain (gal_e5a, bds_b2a, gal_e5b, bds_b2b, bds_b3i,
+gal_e6) switches to the search-fed state. 8 such fallbacks on 11-21, 13-23 min each (~2.3 h/day). The search-fed state keeps
+updating from gps_l5's search solve, and tracker minus search runs to +2.6 chips there; in steady state it is -0.08 chips
+(p10/p90 -0.14/-0.01). Log extracts: cf06:/var/tmp/kvand-restart-1121/joint_all.log.
+**Open:** whether the consuming chains adopt the offset (joint_clk_max_chips is 5, so a 2.6-chip step passes the bound), and
+whether it explains #155's Galileo transit losses since the repoint (E5a x E6 arcs survive 67-75% of transits against 91-92%
+before). The #119 gate keeps false detections out of the cp-fit history, not out of the clock solve the search state reads.
+**Next:** per transit, the consumers' JOINT-CLK adoptions and their code_resid_m against the slips in transit_arcs_1121.
+
 ### #241 — retire the site's GuoWang beam-dump capture: the standalone system now covers GuoWang (2026-11-23, KV: "We might want to consider pulling that out altogether; the standalone system already handles it now, so let's make a note.")
 **What:** the site still runs the GuoWang beam-dump chain: the scheduler on the gnss VM (`beam_dump_sched.py`, from
 `~/gnss/gw1202-wt`) arms the nodes' beamdump gates every pass, the nodes write `/tmp/gnss/beamdump` (~0.8 TB per node in five
