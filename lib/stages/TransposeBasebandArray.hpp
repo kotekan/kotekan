@@ -71,6 +71,7 @@ private:
 
     /// Configuration parameter (runtime)
     uint32_t timesamples_per_frame;
+    uint32_t num_local_freq;
 
     /// Frame processing mode: which frames this instance should handle
     enum class FrameMode { All, Even, Odd };
