@@ -18,11 +18,12 @@ TLE table changes; the broker reloads it by mtime (gw-table).
 
 With --decode-health-file it also exports each code's decode state for the viewer's
 decode-health panel (decode_health.py): subframes decoded, whether its symbols decode now, and
-whether a broadcast arc is in the table.
+whether a broadcast arc is in the table. With --progress-file it writes nav_decode's progress
+file: each code's subframe count and when each subframe ended, over the last 2 minutes.
 
     gw_nav_table.py --tle-table gw_ephem_tle.json --out gw_ephem.json [--clock-offset-us 0]
                     [--symbols http://localhost:12048/gw_symbols] [--every 5] [--log PATH]
-                    [--decode-health-file PATH]
+                    [--decode-health-file PATH] [--progress-file PATH]
 """
 
 import argparse
@@ -52,6 +53,11 @@ MATCH_M = 20e3
 # nanoseconds (PAYLOAD.md).
 CLK_SIGMA_TLE_S = 5e-6
 CLK_SIGMA_NAV_S = 50e-9
+# An issue needs all four pages, and the symbols hold only 6 s of a 12 s page cycle, so a fresh
+# start takes a few cycles to rebuild its issues. Until then the table on disk keeps its arcs
+# (each good to toe + 600 s).
+FIRST_WRITE_S = 60.0
+PROGRESS_KEEP_S = 120.0
 
 
 def gpst(bdt_week, sow):
@@ -120,6 +126,12 @@ def nav_record(prn, eph, w, offset_s, step_s, like):
     return r
 
 
+def unix_of(sow, t_now):
+    """The unix time of BDT second of week `sow`, in the week up to t_now."""
+    now_sow = (t_now - 315964800 + 18 + BDT_GPST) % 604800  # GPST = UTC + 18 s
+    return t_now - (now_sow - sow) % 604800
+
+
 def cut(rec, t0, t1):
     """The parts of a gridded record outside [t0, t1], as records on its own grid (at least two
     points each)."""
@@ -185,11 +197,16 @@ def main():
     ap.add_argument(
         "--decode-health-file", help="the viewer's decode-health JSON for this decoder"
     )
+    ap.add_argument(
+        "--progress-file", help="subframes decoded per code, as nav_decode's"
+    )
     a = ap.parse_args()
     dhw = decode_health.DecodeHealthWriter(
         a.decode_health_file, chain="gw_1202", sys="W", log=print
     )
     n_sf = {}  # prn -> subframes decoded
+    ev = {}  # prn -> [(unix time the subframe ended, 1)]
+    t_start = time.time()
     offset_s = a.clock_offset_us * 1e-6
     ephs, seen = {}, set()
     tle, tle_mtime, written = None, None, None
@@ -222,6 +239,9 @@ def main():
                     continue
                 seen.add((prn, sf.sow))
                 n_sf[prn] = n_sf.get(prn, 0) + 1
+                ev.setdefault(prn, []).append(
+                    (round(unix_of(sf.sow + 3, time.time()), 2), 1)
+                )
                 # The shell is the sender's, found once an issue is complete (nav_record).
                 if not is_fill(sf):
                     ephs.setdefault(prn, gn.Ephemeris(shell=50)).add(sf)
@@ -239,6 +259,19 @@ def main():
                         + "\n"
                     )
                     logf.flush()
+        if a.progress_file:
+            t = time.time()
+            for prn in ev:
+                ev[prn] = [e for e in ev[prn] if t - e[0] < PROGRESS_KEEP_S]
+            prns = {str(p): {"n": n_sf[p], "ev": ev[p]} for p in sorted(n_sf)}
+            write(
+                {
+                    "schema": 1,
+                    "t": round(t, 2),
+                    "signals": {"GW_1202": {"sys": "W", "prns": prns}},
+                },
+                a.progress_file,
+            )
         if tle is None:
             time.sleep(a.every)
             continue
@@ -274,7 +307,9 @@ def main():
             )
         dhw.flush(time.time())
         state = (tle_mtime, tuple(keys))
-        if state != written:
+        if state != written and (
+            written is not None or time.time() - t_start >= FIRST_WRITE_S
+        ):
             write(build(tle, nav), a.out)
             written = state
             print(
