@@ -15,6 +15,8 @@
 #include <highfive/H5PropertyList.hpp> // for RawPropertyList, PropertyType
 #include <highfive/H5Selection.hpp>    // for Selection
 #include <iomanip>                     // for operator<<, setfill, setw
+#include <memory>                      // for shared_ptr, weak_ptr, make_shared
+#include <mutex>                       // for mutex, lock_guard
 #include <sstream>                     // for basic_ostream, operator<<, basic_ostringstream
 #include <stdexcept>                   // for runtime_error
 #include <string>                      // for string
@@ -83,6 +85,19 @@ std::string acq_dir_path(const std::string& base_dir,
     oss << dir << "/acq_" << std::put_time(&tm_buf, "%Y%m%d_%H%M%S") << "_" << std::setfill('0')
         << std::setw(9) << ns;
     return oss.str();
+}
+
+std::shared_ptr<const std::chrono::system_clock::time_point> acq_run_time() {
+    static std::mutex mutex;
+    static std::weak_ptr<const std::chrono::system_clock::time_point> current;
+    std::lock_guard<std::mutex> lock(mutex);
+    auto t = current.lock();
+    if (!t) {
+        t = std::make_shared<const std::chrono::system_clock::time_point>(
+            std::chrono::system_clock::now());
+        current = t;
+    }
+    return t;
 }
 
 std::string file_path_prefix(const std::string& dir, const std::string& file_name,
