@@ -15,6 +15,7 @@
 #include "chordMetadata.hpp"
 #include "configUpdater.hpp"
 #include "kotekanLoggingFixture.hpp"
+#include "prometheusMetrics.hpp"
 #include "restClient.hpp"
 #include "restServer.hpp"
 
@@ -24,6 +25,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <functional>
 #include <memory>
 #include <string>
 #include <thread>
@@ -40,6 +42,12 @@ BOOST_AUTO_TEST_CASE(switch_time_rounds_up_to_whole_5_s) {
     BOOST_CHECK_EQUAL(N2::switch_time_ns(now, now), next);
     BOOST_CHECK_EQUAL(N2::switch_time_ns(0, whole), next);
     BOOST_CHECK_EQUAL(N2::switch_time_ns(now + 1, now), now + 1);
+    // Less than 1 s before a whole 5 s, the next one is used.
+    const int64_t early = next - 1'000'000'001, late = next - 999'999'999;
+    BOOST_CHECK_EQUAL(N2::switch_time_ns(0, early), next);
+    BOOST_CHECK_EQUAL(N2::switch_time_ns(0, late), next + 5'000'000'000);
+    // A second stage reading its clock later keeps the time the first one wrote back.
+    BOOST_CHECK_EQUAL(N2::switch_time_ns(N2::switch_time_ns(0, early), late), next);
 }
 
 /// DtvRfiMask and N2Accumulate on one /dtv_mask_enabled block, with frames of the same span.
@@ -56,8 +64,12 @@ struct SwitchPipeline {
     Buffer rfi, dtv, mask_out, corr, counts, rficounts, plcounts, framemask, vis;
     kotekan::bufferContainer buffers;
     std::unique_ptr<kotekan::Stage> mask, accumulate;
+    // Set by wait_for_whole_5_s, which runs between the two stages' callbacks
+    int boundary_calls = 0;
+    int64_t passed_time_ns = -1, before_wait_ns = -1, after_wait_ns = -1;
 
-    SwitchPipeline() :
+    /// The config value and its valid_at_time_ns, and whether the bundle may mask.
+    SwitchPipeline(bool enabled = false, int64_t valid_at_time_ns = 0, bool qualified = true) :
         pool(metadataPool::create(64, sizeof(chordMetadata), "pool", "chordMetadata")),
         n2_pool(metadataPool::create(8, sizeof(N2Metadata), "n2_pool", "N2Metadata")),
         rfi(4, samples / 8, pool, "rfi", "standard", 0, false, false, std::vector<int>{}, true),
@@ -80,15 +92,15 @@ struct SwitchPipeline {
         // Force metadata registration from the static library.
         chordMetadata chord_metadata;
         N2Metadata n2_metadata;
+        nlohmann::json provenance = nlohmann::json::object();
+        if (qualified)
+            provenance["mask_qualification"] = {{"test_report_sha256", std::string(64, 'a')},
+                                                {"reviewer", "test"}};
         std::ofstream(profiles_path)
             << nlohmann::json({{"profiles",
                                 {{{"physical_channel", 30},
                                   {"fine_calibration",
-                                   {{"status", "calibrated"},
-                                    {"provenance",
-                                     {{"mask_qualification",
-                                       {{"test_report_sha256", std::string(64, 'a')},
-                                        {"reviewer", "test"}}}}}}}}}}})
+                                   {{"status", "calibrated"}, {"provenance", provenance}}}}}}})
                    .dump();
         // Seq 0 an hour ago, so that now is well inside the stream.
         const int64_t time0_ns = N2::current_system_time_ns() - 3'600'000'000'000;
@@ -130,6 +142,8 @@ struct SwitchPipeline {
               {"in_rfiframemask_buf", "framemask"},
               {"out_buf", "vis"},
               {"dtv_mask_enabled_updatable_config", "/dtv_mask_enabled"}}}};
+        cfg["dtv_mask_enabled"]["enabled"] = enabled;
+        cfg["dtv_mask_enabled"]["valid_at_time_ns"] = valid_at_time_ns;
         config.update_config(cfg);
         kotekan::configUpdater::instance().apply_config(config);
         Telescope::instance(config);
@@ -166,7 +180,24 @@ struct SwitchPipeline {
         vis.register_consumer("test");
         auto makers = kotekan::StageFactoryRegistry::get_registered_stages();
         mask.reset(makers.at("DtvRfiMask")->create(config, "/mask", buffers));
+        kotekan::configUpdater::instance().subscribe(
+            "/dtv_mask_enabled",
+            std::bind(&SwitchPipeline::wait_for_whole_5_s, this, std::placeholders::_1));
         accumulate.reset(makers.at("N2Accumulate")->create(config, "/accumulate", buffers));
+    }
+
+    /// On a POST, record the time DtvRfiMask passed on, then wait until just after the next
+    /// whole 5 s, so N2Accumulate reads its clock on the other side of it.
+    bool wait_for_whole_5_s(nlohmann::json& update) {
+        if (boundary_calls++ == 0)
+            return true;
+        const int64_t step = 5'000'000'000;
+        passed_time_ns = update.at("valid_at_time_ns").get<int64_t>();
+        before_wait_ns = N2::current_system_time_ns();
+        std::this_thread::sleep_for(
+            std::chrono::nanoseconds(step - before_wait_ns % step + 100'000'000));
+        after_wait_ns = N2::current_system_time_ns();
+        return true;
     }
 
     ~SwitchPipeline() {
@@ -177,6 +208,7 @@ struct SwitchPipeline {
         for (auto* stage : {mask.get(), accumulate.get()}) {
             stage->stop();
             stage->join();
+            kotekan::prometheus::Metrics::instance().remove_stage_metrics(stage->get_unique_name());
         }
         std::remove(profiles_path.c_str());
     }
@@ -233,14 +265,15 @@ BOOST_AUTO_TEST_CASE(both_stages_switch_at_the_same_frame) {
     p.mask->start();
     p.accumulate->start();
 
-    const int64_t step = 5'000'000'000;
-    // Keep clear of a 5 s boundary, so the stages round to the same time as the test.
+    // Post 0.2 to 0.4 s before a whole 5 s, so DtvRfiMask reads its clock before it, and
+    // N2Accumulate, after wait_for_whole_5_s, after it.
+    const int64_t step = 5'000'000'000, offset = 4'600'000'000;
     int64_t now = N2::current_system_time_ns();
-    if (now % step > step - 1'000'000'000) {
-        std::this_thread::sleep_for(std::chrono::nanoseconds(step - now % step + 100'000'000));
-        now = N2::current_system_time_ns();
-    }
-    const int64_t switch_ns = (now / step + 1) * step;
+    std::this_thread::sleep_for(std::chrono::nanoseconds((offset - now % step + step) % step));
+    now = N2::current_system_time_ns();
+    BOOST_REQUIRE_LT(now % step, offset + 200'000'000);
+    // The next whole 5 s at least 1 s ahead
+    const int64_t switch_ns = (now / step + 2) * step;
     const int64_t switch_seq = Telescope::instance().to_seq(switch_ns);
     // Frames 0 and 1 start before the switch, frame 3 after it.
     const int64_t seq0 = (switch_seq / p.span - 2) * p.span;
@@ -251,7 +284,11 @@ BOOST_AUTO_TEST_CASE(both_stages_switch_at_the_same_frame) {
         "/dtv_mask_enabled", nlohmann::json{{"enabled", true}, {"valid_at_time_ns", 0}},
         "127.0.0.1", kotekan::restServer::instance().port());
     BOOST_REQUIRE_MESSAGE(reply.first, reply.second);
-    BOOST_REQUIRE_EQUAL(N2::current_system_time_ns() / step, now / step);
+    BOOST_REQUIRE_EQUAL(p.before_wait_ns / step, now / step);
+    BOOST_REQUIRE_EQUAL(p.after_wait_ns / step, now / step + 1);
+    // DtvRfiMask passes the resolved time on, and the config stores it.
+    BOOST_CHECK_EQUAL(p.passed_time_ns, switch_ns);
+    BOOST_CHECK_EQUAL(p.config.get<int64_t>("/dtv_mask_enabled", "valid_at_time_ns"), switch_ns);
 
     for (int k = 1; k < 4; ++k)
         BOOST_CHECK_EQUAL(p.mask_frame(k, seq0 + k * p.span), seq0 + k * p.span >= switch_seq);
@@ -263,5 +300,21 @@ BOOST_AUTO_TEST_CASE(both_stages_switch_at_the_same_frame) {
         BOOST_CHECK_EQUAL(meta->n_dtv_mask_enabled_fpga_ticks,
                           seq0 + k * p.span >= switch_seq ? p.span : 0);
         p.vis.mark_frame_empty("test", k);
+    }
+}
+
+BOOST_AUTO_TEST_CASE(config_value_applies_from_startup) {
+    // On from an hour ahead, and off from before the stream start with a detect-only bundle
+    const int64_t later = N2::current_system_time_ns() + 3'600'000'000'000;
+    for (const bool enabled : {true, false}) {
+        SwitchPipeline p(enabled, enabled ? later : 1, enabled);
+        p.mask->start();
+        p.accumulate->start();
+        BOOST_CHECK_EQUAL(p.mask_frame(0, 0), enabled);
+        p.accumulate_frame(0, 0);
+        BOOST_REQUIRE(p.vis.wait_for_full_frame("test", 0));
+        BOOST_CHECK_EQUAL(get_N2_metadata(&p.vis, 0)->n_dtv_mask_enabled_fpga_ticks,
+                          enabled ? p.span : 0);
+        p.vis.mark_frame_empty("test", 0);
     }
 }

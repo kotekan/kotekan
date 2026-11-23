@@ -202,7 +202,7 @@ def setup(request, accum_setup):
             "/rfi_first_stage_enabled"
         )
         request.param["first_stage_off_seq"] = off_seq
-        # The DTV mask switches on at the same time
+        # The DTV mask config names the same time, but applies from startup
         config["dtv_mask_enabled"] = dict(
             config["rfi_first_stage_enabled"], enabled=True
         )
@@ -1379,20 +1379,14 @@ def test_dtv_mask_enabled(accum_data, accum_list, setup):
         return
 
     config = setup["config"]
-    frame_len = config["samples_per_data_set"]
     sub_len = config["sub_integration_ntime"]
-    on_seq = setup.get("first_stage_off_seq")
+    with_endpoint = setup.get("first_stage_off_seq") is not None
 
     for idx, frame in enumerate(accum_data):
         accum = accum_list[idx // config["num_local_freq"]]
-        # Without the endpoint the count is zero
-        expected = 0
-        if on_seq is not None:
-            sub_seqs = (
-                config["first_frame_index"] * frame_len + sub_len * accum["sub_idx"]
-            )
-            frame_starts = sub_seqs - sub_seqs % frame_len
-            expected = sub_len * np.count_nonzero(frame_starts >= on_seq)
+        # Without the endpoint the count is zero. The config value applies from
+        # startup, whatever its valid_at_time_ns.
+        expected = sub_len * len(accum["sub_idx"]) if with_endpoint else 0
         assert frame.metadata.n_dtv_mask_enabled_fpga_ticks == expected
 
 

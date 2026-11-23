@@ -196,9 +196,11 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  *                                          DtvRfiMask subscribes to. Used to count the FPGA
  *                                          ticks of each output frame during which the mask
  *                                          was applied. Without this key the count is zero.
- *                                          A POST of 0, or of a time already passed,
- *                                          applies from the next whole 5 s, as in
- *                                          DtvRfiMask; 0 in the config means from startup.
+ *                                          The config value applies from startup. A POST
+ *                                          applies at valid_at_time_ns in the node's system
+ *                                          time; 0, or a time already passed, applies from
+ *                                          the next whole 5 s at least 1 s ahead, as in
+ *                                          DtvRfiMask.
  */
 class N2Accumulate : public kotekan::Stage {
 public:

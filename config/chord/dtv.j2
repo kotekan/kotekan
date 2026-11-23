@@ -48,8 +48,9 @@ host_dtv_{{ product }}{{ suffix }}_buffer{{ n.sfx }}:
 # POST {"enabled": ...} to switch the mask or recording until the next restart. Mask updates
 # also require valid_at_time_ns. DtvRfiMask and N2Accumulate both apply a mask update from
 # the first frame starting at or after that time, and N2Accumulate records the fraction of
-# each bin the mask was on (frac_dtv_mask_enabled). Both round a posted 0, or a time
-# already passed, up to the next whole 5 s, so they switch at the same frame.
+# each bin the mask was on (frac_dtv_mask_enabled). A posted 0, or a time the node's system
+# clock has passed, becomes the next whole 5 s at least 1 s ahead, and both switch at that
+# time. The value here applies from startup.
 dtv_mask_enabled:
     kotekan_update_endpoint: json
     enabled: false

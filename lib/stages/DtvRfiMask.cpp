@@ -189,11 +189,13 @@ std::map<int, bool> calibrated_channels(const std::string& path) {
  * @conf    mask_control Bool. Reject the fine_decision_v3 control (channel 37) like a pilot,
  *          so its false alarms show what the mask does without DTV (default false).
  * @conf    enabled_updatable_config Optional path to a block with `enabled` and
- *          `valid_at_time_ns` (0: from startup). While disabled, the RFImask is copied
- *          unchanged and require_fine_freq_ids is not checked. A change applies from the
- *          first frame starting at or after valid_at_time_ns. A POST of 0, or of a time
- *          already passed, applies from the next whole 5 s, as in N2Accumulate. Without
- *          this key the mask is always applied.
+ *          `valid_at_time_ns`. While disabled, the RFImask is copied unchanged and
+ *          require_fine_freq_ids is not checked. The config value applies from startup,
+ *          whatever its valid_at_time_ns. A POST applies from the first frame starting at or
+ *          after valid_at_time_ns, in the node's system time. A POST of 0, or of a time
+ *          already passed, applies from the next whole 5 s at least 1 s ahead, as in
+ *          N2Accumulate, and the resolved time is stored in the block. Without this key the
+ *          mask is always applied.
  */
 class DtvRfiMask : public kotekan::Stage {
 public:
@@ -467,18 +469,6 @@ private:
             WARN("Failed to read update to {:s}: {:s}", enabled_config_path, e.what());
             return false;
         }
-        // 0 in the config means from startup. A POST of 0 or of a time already passed
-        // applies from the next whole 5 s, so N2Accumulate switches at the same frame.
-        // A time before the stream start would underflow in to_seq.
-        int64_t seq = 0;
-        if (time_ns != 0 && time_ns < Telescope::instance().to_time_ns(0)) {
-            WARN("Got invalid start time: {:d} - keeping the current DTV mask state", time_ns);
-            return true;
-        }
-        if (posted)
-            time_ns = N2::switch_time_ns(time_ns, N2::current_system_time_ns());
-        if (time_ns != 0)
-            seq = Telescope::instance().to_seq(time_ns);
         if (new_enabled && !unqualified_reason.empty()) {
             // a refused update stops Kotekan, so a detect-only bundle never masks data
             ERROR("DtvRfiMask: refusing to switch the DTV mask on: the bundle {:s} is "
@@ -486,8 +476,19 @@ private:
                   pilot_profiles_path, unqualified_reason);
             return false;
         }
-        INFO("{:s} the DTV mask from seq {:d}", new_enabled ? "Enabling" : "Disabling", seq);
         std::lock_guard<std::mutex> lock(enabled_mutex);
+        if (!posted) {
+            enabled = next_enabled = new_enabled;
+            return true;
+        }
+        // The resolved time goes back into the update, so N2Accumulate keeps it
+        time_ns = N2::switch_time_ns(time_ns, N2::current_system_time_ns());
+        json["valid_at_time_ns"] = time_ns;
+        const auto& tel = Telescope::instance();
+        // to_seq underflows before the stream start
+        const int64_t seq = time_ns < tel.to_time_ns(0) ? 0 : tel.to_seq(time_ns);
+        INFO("{:s} the DTV mask from time {:d} ns, seq {:d}",
+             new_enabled ? "Enabling" : "Disabling", time_ns, seq);
         next_enabled = new_enabled;
         next_enabled_valid_at_seq = seq;
         return true;

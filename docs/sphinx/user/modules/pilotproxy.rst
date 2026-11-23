@@ -237,11 +237,14 @@ of ``dtv_stat``. A reader treats such a ``dtv_stat`` row as missing; it is not a
 statistic to pass to ``pilotproxy_v3_keep``.
 
 POST ``{"enabled": true, "valid_at_time_ns": t}`` to ``/dtv_mask_enabled`` to
-apply the mask from the first frame starting at or after instrument time ``t``,
-in ``DtvRfiMask`` and in the recorded fraction, and ``false`` to stop. ``0``,
-or a time already passed, applies from the next whole 5 s of instrument time.
-Both stages round it the same way, so ``N2Accumulate``, downstream of
-``DtvRfiMask``, records the switch at the frame where the data change. POST
+apply the mask from the first frame starting at or after ``t`` (ns since the
+UNIX epoch), in ``DtvRfiMask`` and in the recorded fraction, and ``false`` to
+stop. ``0``, or a time the node's system clock has passed, applies from the
+next whole 5 s at least 1 s ahead on that clock. The first stage to get the
+POST resolves the time and the other keeps it, so ``N2Accumulate``, downstream
+of ``DtvRfiMask``, records the switch at the frame where the data change. Both
+log the resolved time, and ``GET /config`` shows it. The configured value
+applies from startup, whatever its ``valid_at_time_ns``. POST
 ``{"enabled": true}`` or ``{"enabled": false}`` to ``/dtv_write_enabled`` to
 start or stop sending; the change applies to whole frames. A restart returns
 both to off. The ``DtvRfiMask`` log line ``DTV mask on``
