@@ -89,6 +89,37 @@ the aggregator and gather. #184–#187 below are what the removal left for later
 
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
 
+### #240 — GuoWang track beam: the code epoch wanders 20-100 ns over a minute or two at high elevation (2026-11-18, KV: "add to the buglist") (was kv/docs-tree #230)
+**What:** on DIGUI-55, DIGUI-134 and DIGUI-96 the code epoch wanders 20 to 100 ns over one to two minutes,
+growing toward the top of the pass; per-run slopes scatter four times more at 75-90 deg than at 15-30 deg.
+No term found (orbit, troposphere, ionosphere and the clock words are modelled). Once #239 is gone this is
+what limits a pass. Open: whether DIGUI-134's late fall (20-65 ns two minutes after its clock-word step) is
+this wander. **Check:** `[archive]` note 18c parts 3 and 5, `scripts/gw_arc_el_slope.py`.
+
+### #239 — GuoWang track-beam loop: a per-pass offset of 1.1 us rms (2026-11-18, KV: "add these to the buglist") (was kv/docs-tree #229)
+**What:** each pass of the track beam carries an offset of its own against the dump's code epoch, 1.1 us rms
+over 71 passes (the mean, -78 ns, agrees with the dump). It makes absolute levels from the track beam
+untestable. **Confirmed 2026-11-18 `[archive]`:** it is the free phase origin of the target weights. The node builds
+them per frame and channel from the lane (calibration x steering) with no fixed phase per channel; at a live
+input the phase holds to ~1 deg frame to frame and then jumps (1-2 times a minute per channel); the header's
+beam_ref_input 100 is dead (its weight phase is random). On DIGUI-98's surviving raw frames (11-11 19:50:55Z
+to 19:52:00Z, blocks 16332-16337) the loop's code epoch steps -4.05 -> -2.15 us between two blocks; with each
+channel-frame's beam multiplied by conj(w_r)/|w_r| for one live input (50, 17 or 25 alike) it holds at -2.95
+to -2.90 us, and the level against the dump becomes +41 and +50 ns on the two well-covered blocks (was -1048
+and +1203). **Fixed in the loop (KV go), not live:** load_block re-references every channel-frame to the first
+of `--ref-inputs` (default 50,17,25,32) with a non-zero weight (builds/gw1202/rawref_1118: rawref_check.py,
+loop_test.py and their logs). Past blocks cannot be redone: their raw frames are gone. Open: confirm on sky
+that runs no longer step; which inputs are live when the array returns.
+
+### #238 — GuoWang track-beam loop: block start times rounded in a float64, 238 ns steps (2026-11-18, KV: "add these to the buglist") (was kv/docs-tree #228)
+**What:** the track-beam loop (cf05, `blocks.jsonl`) forms each block's start time in a float64 of unix
+seconds, which steps by 238.4 ns at these epochs, and places its code replica on the rounded time. The code
+epoch then alternates by about 118 ns between blocks. Known exactly and removable offline (`gw_arc_model.py` in
+~/gnss/guowang_paper models it). **Fixed in the loop 2026-11-18 (KV go), not live:** builds/gw1202/track_beam_loop.py keeps frame0 as
+(integer, fraction) and forms each sample's time as (frame0_int - day0) + (frac + seq * HOP + t_rel - rho/c),
+never the absolute unix time in a float64 (backup `.bak_20261118_pre_reref`). Open: whether the dump's reducer
+rounds a time tag the same way (not looked at); confirm on sky when the loop runs again.
+
 ### #233 — the viewer's metrics should be a Prometheus endpoint for the CHORD Grafana (2026-11-20, KV: "Ultimately we should be publishing all the viewer metrics to a prometheus endpoint so it can be scraped and viewed in our larger CHORD grafana setup")
 The /alerts panel (#171) is the stopgap. Serve the viewer's numbers (and the ALERT/heartbeat states) as /metrics in the
 Prometheus text format, so the site's Grafana scrapes and alerts on them.
@@ -1132,6 +1163,33 @@ shifted). No live config sets `secondary_overlay` or `navwipe_bit_records`, so t
 The reference-weight defect is fixed (`978561481`, closed). Left from the same review: an element whose
 rho² exceeds 0.99 is dropped, so a very bright satellite's own cal can end with zero weights. Unmeasured.
 
+---
+
+## Open — bench or offline, no deployment at all
+
+### #237 — the array-mean beam's own phase and amplitude from fast GuoWang crossings: think it through once the GW birds track well (2026-11-22, KV: "we should keep this option in mind, maybe add a todo to think it through carefully once the GW birds track well")
+**What:** the complex beam maps (`~/gnss/fixtures/beamjones_1121/`, 11-21) give every feed over the coherent array
+mean, g_e(u)/Ḡ(u), per channel, X and Y. Ḡ(u) itself (pieces 2 and 3: magnitude and the phase every feed shares) cancels in
+every product, and along a MEO pass its phase is degenerate with the carrier (range, clocks, ionosphere), which drift on the
+same minutes. A GuoWang LEO bird moves ~0.4 deg/s: the 3-deg main lobe in ~8 s, a sidelobe in 2-3 s. Orbit and slant TEC
+are smooth over that, so the fast part of the records' carrier phase and amplitude would be Ḡ, broad shape included.
+**What must hold:** the satellite clock over ~10 s (~1e-12 for a few deg at 1.2 GHz; unknown); per-element or steered data
+at <= 1 s (the 12-s cube smears a crossing over ~4.5 deg); and tracking good enough to hold phase through a crossing,
+which waits on the precise ephemerides and nav bits fed forward for the overlay (11-22). GuoWang is at 1194-1208 and
+1250-1285 MHz, so the clean product is both pieces at those frequencies; the L5 maps tie in through the main lobe only.
+**Next:** once GW tracks well, see what is recorded at <= 1 s; on a few main-lobe passes remove a smooth trend and check
+that crossing passes agree in shared cells (the beam is fixed on the sky, clock noise is not).
+
+### #236 — a 10 Hz carrier-phase pattern common to every satellite caps record coherence at ~0.946 (2026-11-21, paper item 5)
+**What [live]:** in a 120-s read-only capture of the gather's :11061 records (11-21 23:12-23:14Z, 12 instances,
+`~/gnss/fixtures/record_phase_1121/`, gnss_paper `86c957b`), the per-record prompt phase carries a 10.0 Hz pattern locked to
+F-engine time modulo 100 ms: 0.76 rad peak-to-peak, sharp in the last ~15 ms of each 100 ms, identical on every satellite of
+gps_l5 and gal_e5a. It sets the coherence ceiling: |r_1| saturates at 0.946 on the strong satellites, and |r_m| recovers at
+multiples of 100 ms rather than of a frame. Present on 10-12 at 0.36 rad. Not the frame boundary: that phase is continuous
+(lag-1 pairs across a boundary 0.945 against 0.946 inside).
+**Next:** a capture of a chain at another RF (gal_e6 or bds_b3i) says whether the pattern scales with frequency (a timing
+term) or not (a phase term); then look for a 100 ms period in the node or F-engine chain.
+
 ### #223 — GDV map, after a few days' soak: the day/night amplitude, direct surface evaluation, gps_l5 (2026-10-30, KV: "file the GDV questions as todo for once we've soaked a few days")
 Live since 10-30 17:41Z: config/gdvmap_taua_20261030.json, a per-band penalised (az, el) surface fitted on 66 h
 (builds/gdv_refit_1030/out/RESULTS.md), sampled into the broker's cells and read by the 2-deg kernel lookup. Open:
@@ -1232,6 +1290,7 @@ about a minute of N² gap — and every recv1 restart is a #164 exposure.
 
 ### Smaller, still true
 - **R09 as a noise probe** (K1B, no CDMA signals) logs ~30 `FADR BREAK glo_l2oc` lines a minute (2026-11-21 review).
+- **Atmosphere applied twice in the resurvey tools** (gx10, 2026-11-21): gnss_resurvey.py and gnss_resid_vs_el.py subtract their own troposphere/Klobuchar from a code residual whose model (the broker's cp_predicted, --tropo saastamoinen, Klobuchar where coefficients exist) already carries them; right only for logs from before the broker modelled the atmosphere. Check before the next resurvey.
 - **sbas_l5 readback offset** +0.48 chip median (PRN 133 ~+1.5) on 11-21, outside #191's +-0.05 gate; no entry yet (stale sweep; glo_l2oc's -0.18 is #220's).
 - **#37** GPS block map vs sky: the registry exists; the join to the beam maps does not.
 - **#40** the deep fold's rate search wrong-bins onto overlay sidebands — **demoted**: the coarse
