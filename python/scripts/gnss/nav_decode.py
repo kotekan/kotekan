@@ -48,6 +48,7 @@ import decode_health  # noqa: E402
 import decoded_eph  # noqa: E402
 import gnss_ephemeris as ge  # noqa: E402
 import glonass_nav_predictor  # noqa: E402
+import nav_fields  # noqa: E402
 import sbas_l5_predictor  # noqa: E402
 from gnss_broker import sky  # noqa: E402
 
@@ -167,34 +168,56 @@ def note_progress(src, prn, now):
 
 
 def message_types(signal, st):
-    """{message type: [count or None, newest decode time or None]} from a decoder's per-PRN
-    state: I/NAV words, F/NAV pages, B-CNAV2/3 message types, D1 subframes, GLONASS strings,
-    SBAS message types (counts), CNAV message types (counts, from the decoded bits)."""
+    """{message type: [count or None, newest decode time or None, title, fields]} from a
+    decoder's per-PRN state: I/NAV words, F/NAV pages, B-CNAV2/3 message types, D1 subframes
+    (subframe 5's time-offset pages on their own), GLONASS strings, SBAS message types (counts),
+    CNAV message types (counts); fields as nav_fields.parse reads the newest of each."""
     out = {}
+
+    def put(key, kind, num, n, t, bits, frame=None):
+        title, rows = nav_fields.parse(
+            signal, kind, num, bits if bits is not None else [], frame
+        )
+        out[key] = [n, t, title, rows]
+
     if signal in ("GAL_E5BI_INAV", "GAL_E1B_INAV"):
         for k, v in st.words.items():
-            out["word %d" % k] = [None, v[2]]
+            put("word %d" % k, "word", k, None, v[2], v[1])
     elif signal == "GAL_E5AI_FNAV":
         for k, v in st.pages.items():
-            out["page %d" % k] = [None, v[2]]
+            put("page %d" % k, "page", k, None, v[2], v[1])
     elif signal in ("BDS_B2A_BCNAV2", "BDS_B2B_BCNAV3"):
         for k, v in st.frames.items():
-            out["type %d" % k] = [None, v[2]]
+            put("type %d" % k, "type", k, None, v[2], v[0])
     elif signal == "BDS_B3I_D1":
-        for (fra, _), v in st.subframes.items():
-            k = "subframe %d" % fra
-            out[k] = [None, max(v[1], (out.get(k) or [0, 0])[1])]
+        newest = {}
+        for (fra, _), (bits, t) in st.subframes.items():
+            key = "subframe %d" % fra
+            if fra == 5 and nav_fields._read(bits, 43, 7, "u") in (9, 10):
+                key += " page %d" % nav_fields._read(bits, 43, 7, "u")
+            if key not in newest or t > newest[key][1]:
+                newest[key] = (fra, t, bits)
+        for key, (fra, t, bits) in newest.items():
+            put(key, "subframe", fra, None, t, bits)
     elif signal == "GLO_L2OF":
-        for m, _, t in st.strings.values():
-            k = "string %d" % m
-            out[k] = [None, max(t, (out.get(k) or [0, 0])[1])]
+        newest = {}
+        for ts, (m, b, t) in st.strings.items():
+            if m not in newest or t > newest[m][1]:
+                newest[m] = (ts, t, b)
+        for m, (ts, t, b) in newest.items():
+            put("string %d" % m, "string", m, None, t, b, int(ts % 150 // 30) + 1)
     elif signal == "SBAS_L5_DFMC":
         for k, n in st.types.items():
-            out["type %d" % k] = [n, None]
+            put("type %d" % k, "type", k, n, None, None)
     elif signal in ("GPS_L5_CNAV", "GPS_L2C_CNAV"):
-        for bits in st.decoded.values():
-            k = "type %d" % int("".join(str(int(b)) for b in bits[14:20]), 2)
-            out[k] = [(out.get(k) or [0])[0] + 1, None]
+        count, newest = {}, {}
+        for slot, bits in st.decoded.items():
+            k = nav_fields._read(bits, 14, 6, "u")
+            count[k] = count.get(k, 0) + 1
+            if k not in newest or slot > newest[k][0]:
+                newest[k] = (slot, bits)
+        for k, (_, bits) in newest.items():
+            put("type %d" % k, "type", k, count[k], None, bits)
     return out
 
 
