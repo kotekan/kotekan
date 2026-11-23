@@ -205,7 +205,7 @@ struct chordMetadataFormat {
     int32_t nfreq;
 
     // frequencies -- integer (0-CHORD_META_MAX_FREQ-1) identifier for FPGA coarse frequencies;
-    // unset when coarse_freq[0] == -1, an invalid frequency index
+    // unset when coarse_freq[0] == CHORD_META_COARSE_FREQ_UNSET, an invalid frequency index
     int32_t coarse_freq[CHORD_META_MAX_FREQ];
 
     // the upchannelization factor that each frequency has gone through (1 for =
@@ -321,7 +321,7 @@ size_t chordMetadata::set_from_bytes(const char* bytes, size_t length) {
     offset = fmt_data->offset;
 
     const int nfreq = fmt_data->nfreq;
-    if (fmt_data->coarse_freq[0] != -1)
+    if (fmt_data->coarse_freq[0] != CHORD_META_COARSE_FREQ_UNSET)
         this->set_coarse_freq(
             std::vector<int>(fmt_data->coarse_freq, fmt_data->coarse_freq + nfreq));
     if (fmt_data->freq_upchan_factor[0] != 0)
@@ -434,7 +434,7 @@ size_t chordMetadata::serialize(char* bytes) {
 
     fmt_data->nfreq = int32_t(nfreq);
     if (coarse_freq.empty())
-        fmt_data->coarse_freq[0] = -1;
+        fmt_data->coarse_freq[0] = CHORD_META_COARSE_FREQ_UNSET;
     else
         std::copy_n(coarse_freq.data(), nfreq, fmt_data->coarse_freq);
     if (!freq_upchan_factor.empty())

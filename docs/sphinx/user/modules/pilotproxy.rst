@@ -316,8 +316,10 @@ Monitoring
   the recv node, on port 11037. PilotProxy calibrates a bundle from these files,
   so a detect-only run replaces baseband captures for calibration. The output has
   ``dtv_fine_powers_rows`` rows (R, 2 on the Pathfinder), with bound channel i
-  in row i and its ``coarse_freq`` in the metadata (-1 for an unused row). A
-  node that binds more than R channels stops at its first frame.
+  in row i and its ``coarse_freq`` in the metadata (-2 for an unused row, so
+  that the frames of a half that binds no channel keep their ``coarse_freq``
+  on the way to the recv node). A node that binds more than R channels stops at
+  its first frame.
 * A bundle profile with the status ``control`` (channel 37, which has no DTV) is
   decided and recorded like a pilot, and its mask stays zero. Its fine support
   stays ``(-1, -1)``, so ``DtvRfiMask`` never clears it. Only channel 37 can
