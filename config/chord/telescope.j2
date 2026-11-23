@@ -24,7 +24,7 @@
     ("powers", "uint64", num_local_freq ~ ", 3", '"F", "W"', "1, 1", 11033),
     ("fine_support", "int32", num_local_freq ~ ", 2", '"F", "S"', "1, 1", 11035),
     ("fine_powers", "uint64", "2, 3, 256", '"F", "W", "B"', "1, 1, 1", 11037),
-    ("stat", "uint64", num_local_freq ~ ", 2", '"F", "S"', "1, 1", 11039),
+    ("stat", "uint64", num_local_freq ~ ", 2", '"F", "S"', "1, 1", 11041),
 ] -%}
 {% set dtv_sent = dtv_products if dtv_calibration_mode|default(false) else dtv_products|selectattr("0", "in", ["mask", "stat"])|list -%}
 telescope:

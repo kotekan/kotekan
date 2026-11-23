@@ -281,6 +281,22 @@ def test_pathfinder_sends_what_recv_expects(calibration):
         assert recv["buffer_recv_dtv"][product]["listen_port"] == (
             config["send_dtv"][f"{product}_0"]["server_port"]
         )
+    # every stage of the recv node listens on its own port (11039 is the incoherent beam on chord)
+    ports = list(_values(recv, "listen_port"))
+    assert len(ports) == len(set(ports)), sorted(ports)
+
+
+def _values(tree, key):
+    """Every value of key anywhere in a rendered config."""
+    if isinstance(tree, dict):
+        for k, v in tree.items():
+            if k == key:
+                yield v
+            else:
+                yield from _values(v, key)
+    elif isinstance(tree, list):
+        for v in tree:
+            yield from _values(v, key)
 
 
 def test_pathfinder_dtv_switches():
