@@ -503,6 +503,11 @@ write_data:
         create_single_file: false
         in_buf: host_dtv_powers_buffer
         file_name: dtv_powers
+    write_dtv_stat:
+        kotekan_stage: hdf5FileWrite
+        create_single_file: false
+        in_buf: host_dtv_stat_buffer
+        file_name: dtv_stat
 {% endif %}
 {% if dtv_apply_mask|default(false) %}
     write_dtv_RFImask:

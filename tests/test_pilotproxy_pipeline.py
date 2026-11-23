@@ -258,7 +258,8 @@ def test_pathfinder_sends_what_recv_expects(calibration):
     recv = yaml.safe_load(
         env.get_template("recv.j2").render(dtv_calibration_mode=calibration)
     )
-    products = ["mask"]
+    # the fine_decision_v3 statistic is sent with the mask in both modes
+    products = ["mask", "stat"]
     if calibration:
         products += ["powers", "fine_support", "fine_powers"]
     assert sorted(recv["buffer_recv_dtv"]) == sorted(products)
@@ -268,8 +269,11 @@ def test_pathfinder_sends_what_recv_expects(calibration):
     )
     detector = config["run_dtv_detector"]["gpu_0"]["commands"][0]
     assert ("dtv_fine_powers_name" in detector) is calibration
-    # DtvRfiMask reads the fine support in both modes.
+    # DtvRfiMask reads the fine support and the statistic in both modes.
     assert "host_dtv_fine_support_buffer_0" in config
+    merge = config["merge_dtv_mask"]["half_0"]
+    assert merge["stat_buf"] == "host_dtv_stat_buffer_0"
+    assert detector["dtv_stat_name"] == "dtv_stat"
     for product in products:
         sent = config[f"host_dtv_{product}_send_buffer_0"]["extents"]
         sent = [config[e] if isinstance(e, str) else e for e in sent]
@@ -277,6 +281,22 @@ def test_pathfinder_sends_what_recv_expects(calibration):
         assert recv["buffer_recv_dtv"][product]["listen_port"] == (
             config["send_dtv"][f"{product}_0"]["server_port"]
         )
+    # every stage of the recv node listens on its own port (11039 is the incoherent beam on chord)
+    ports = list(_values(recv, "listen_port"))
+    assert len(ports) == len(set(ports)), sorted(ports)
+
+
+def _values(tree, key):
+    """Every value of key anywhere in a rendered config."""
+    if isinstance(tree, dict):
+        for k, v in tree.items():
+            if k == key:
+                yield v
+            else:
+                yield from _values(v, key)
+    elif isinstance(tree, list):
+        for v in tree:
+            yield from _values(v, key)
 
 
 def test_pathfinder_dtv_switches():
@@ -342,7 +362,7 @@ def test_detector_runs_on_its_own_cuda_streams(apply_mask):
     assert detector["num_cuda_streams"] == 5
     commands = [(c["name"], c["cuda_stream"]) for c in detector["commands"]]
     assert commands[:2] == [("cudaPilotProxyDetector", 3), ("cudaSyncOutput", 4)]
-    assert commands[2:] == [("cudaOutputData", 4)] * 3
+    assert commands[2:] == [("cudaOutputData", 4)] * 4
 
     # Every other stage keeps the default streams 0 to 2, so 3 and 4 are free.
     def stream_keys(node, path=""):

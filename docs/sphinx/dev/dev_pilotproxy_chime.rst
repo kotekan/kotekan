@@ -19,7 +19,7 @@ when ``dtv_enabled`` is set, and ``dtv_runtime_bundle_dir`` and ``dtv_output_dir
 name the bundle and the output directory. No visibility or count consumer is
 routed through the detector.
 The detector drops the inputs flagged by ``bufferBadInputs``.
-It writes only the mask unless ``dtv_calibration_mode`` is set, which also writes
+It writes only the mask and ``dtv_stat`` unless ``dtv_calibration_mode`` is set, which also writes
 the powers, fine support, and fine powers (HDF5, about 2.3 MB/s per NUMA domain)
 for calibration and debugging.
 

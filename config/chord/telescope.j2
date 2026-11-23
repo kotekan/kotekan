@@ -14,7 +14,7 @@
     dtv_enabled (default true): false leaves the detector, the mask and the recording out of
     both configs.
     dtv_calibration_mode (default false): also send and write the powers, fine support and
-    fine powers. Only the mask is sent without it. -#}
+    fine powers. Only the mask and the fine_decision_v3 statistic are sent without it. -#}
 {% set dtv_enabled = dtv_enabled|default(true) -%}
 {#- Blocks of 8192 samples that NDArrayTimeConcat packs into one sent frame (~43 s). -#}
 {% set dtv_blocks_per_frame = 1024 -%}
@@ -24,8 +24,9 @@
     ("powers", "uint64", num_local_freq ~ ", 3", '"F", "W"', "1, 1", 11033),
     ("fine_support", "int32", num_local_freq ~ ", 2", '"F", "S"', "1, 1", 11035),
     ("fine_powers", "uint64", "2, 3, 256", '"F", "W", "B"', "1, 1, 1", 11037),
+    ("stat", "uint64", num_local_freq ~ ", 2", '"F", "S"', "1, 1", 11041),
 ] -%}
-{% set dtv_sent = dtv_products if dtv_calibration_mode|default(false) else dtv_products|selectattr("0", "equalto", "mask")|list -%}
+{% set dtv_sent = dtv_products if dtv_calibration_mode|default(false) else dtv_products|selectattr("0", "in", ["mask", "stat"])|list -%}
 telescope:
     name: CHORDTelescope
     sampling_rate_MHz: 3200.0

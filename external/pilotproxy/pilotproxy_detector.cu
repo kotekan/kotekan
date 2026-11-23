@@ -341,22 +341,13 @@ void debug_check_dot_int16_bounds(
     for (int n = 0; n < PILOTPROXY_NUM_WEIGHT_TERMS; ++n) {
         if (dot[n].x < SHRT_MIN || dot[n].x > SHRT_MAX ||
             dot[n].y < SHRT_MIN || dot[n].y > SHRT_MAX) {
-            if (batch_index >= 0) {
-                printf(
-                    "PilotProxy dot product exceeded int16 bound: batch=%d row=%d term=%d real=%d imag=%d\n",
-                    batch_index,
-                    detector_row,
-                    n,
-                    dot[n].x,
-                    dot[n].y);
-            } else {
-                printf(
-                    "PilotProxy dot product exceeded int16 bound: row=%d term=%d real=%d imag=%d\n",
-                    detector_row,
-                    n,
-                    dot[n].x,
-                    dot[n].y);
-            }
+            printf(
+                "PilotProxy dot product exceeded int16 bound: batch=%d row=%d term=%d real=%d imag=%d\n",
+                batch_index,
+                detector_row,
+                n,
+                dot[n].x,
+                dot[n].y);
         }
     }
 }
@@ -391,140 +382,10 @@ void debug_check_dot_int16_bounds(
  * bit-reproducible for any accumulation order. This buffer is the input of
  * the fine stage (PilotProxy_Compute_FinePowers_U64), and the frame powers
  * P_r are the sums over all bins of that stage's output.
- */
-__global__ void
-kernel_accumulate_row_sums(
-    const InputType* __restrict__ X,
-    const InputType* __restrict__ W,
-    const int*       __restrict__ W_Lanes,
-    int*             __restrict__ RowSums,
-    int detector_rows_per_block)
-{
-    #if PILOTPROXY_USE_DP4A
-    (void)W;
-    #if PILOTPROXY_USE_CONSTANT_WEIGHT_LANES
-    (void)W_Lanes;
-    #endif
-    #else
-    (void)W_Lanes;
-    #endif
-
-    __shared__ int2 warp_sums[PILOTPROXY_NUM_WEIGHT_TERMS][PILOTPROXY_WARPS_PER_BLOCK];
-
-    const int tid     = threadIdx.x;
-    const int warp_id = tid / PILOTPROXY_WARP_SIZE;
-    const int lane_id = tid % PILOTPROXY_WARP_SIZE;
-
-    #if PILOTPROXY_USE_DP4A && PILOTPROXY_USE_SHARED_WEIGHT_LANES && !PILOTPROXY_USE_CONSTANT_WEIGHT_LANES
-    const int* weight_lanes = W_Lanes;
-    __shared__ int shared_weight_lanes[PILOTPROXY_WEIGHT_LANE_COUNT];
-    for (int idx = tid; idx < PILOTPROXY_WEIGHT_LANE_COUNT; idx += blockDim.x) {
-        shared_weight_lanes[idx] = W_Lanes[idx];
-    }
-    __syncthreads();
-    weight_lanes = shared_weight_lanes;
-    #elif PILOTPROXY_USE_DP4A
-    const int* weight_lanes = W_Lanes;
-    #endif
-
-    for (int m = blockIdx.x; m < detector_rows_per_block; m += gridDim.x) {
-
-        int2 dot[PILOTPROXY_NUM_WEIGHT_TERMS];
-        #pragma unroll
-        for (int n = 0; n < PILOTPROXY_NUM_WEIGHT_TERMS; ++n) {
-            dot[n] = make_int2(0, 0);
-        }
-
-        #if PILOTPROXY_USE_DP4A
-        for (int pair = tid; pair < PILOTPROXY_DP4A_TAP_PAIRS; pair += blockDim.x) {
-            const int k0 = 2 * pair;
-            const int k1 = k0 + 1;
-
-            int a_re;
-            int a_im;
-            unpack_two_complex_bytes_to_dp4a_lanes(
-                X[m * PILOTPROXY_DETECTOR_WINDOW_SAMPLES + k0],
-                X[m * PILOTPROXY_DETECTOR_WINDOW_SAMPLES + k1],
-                a_re,
-                a_im);
-
-            #pragma unroll
-            for (int n = 0; n < PILOTPROXY_NUM_WEIGHT_TERMS; ++n) {
-                const int w_lane =
-                    load_weight_lane(weight_lanes, n * PILOTPROXY_DP4A_TAP_PAIRS + pair);
-                dot[n].x = __dp4a(a_re, w_lane, dot[n].x);
-                dot[n].y = __dp4a(a_im, w_lane, dot[n].y);
-            }
-        }
-        #else
-        for (int k = tid; k < PILOTPROXY_DETECTOR_WINDOW_SAMPLES; k += blockDim.x) {
-            short2 x_val = unpack_sample(X[m * PILOTPROXY_DETECTOR_WINDOW_SAMPLES + k]);
-
-            #pragma unroll
-            for (int n = 0; n < PILOTPROXY_NUM_WEIGHT_TERMS; ++n) {
-                short2 w_val = unpack_sample(W[n * PILOTPROXY_DETECTOR_WINDOW_SAMPLES + k]);
-                dot[n] = complex_add(dot[n], complex_multiply(x_val, w_val));
-            }
-        }
-        #endif
-
-        #pragma unroll
-        for (int n = 0; n < PILOTPROXY_NUM_WEIGHT_TERMS; ++n) {
-            dot[n] = warp_reduce_sum(dot[n]);
-        }
-
-        if (lane_id == 0) {
-            #pragma unroll
-            for (int n = 0; n < PILOTPROXY_NUM_WEIGHT_TERMS; ++n) {
-                warp_sums[n][warp_id] = dot[n];
-            }
-        }
-        __syncthreads();
-
-        if (warp_id == 0) {
-            if (lane_id < PILOTPROXY_WARPS_PER_BLOCK) {
-                #pragma unroll
-                for (int n = 0; n < PILOTPROXY_NUM_WEIGHT_TERMS; ++n) {
-                    dot[n] = warp_sums[n][lane_id];
-                }
-            } else {
-                #pragma unroll
-                for (int n = 0; n < PILOTPROXY_NUM_WEIGHT_TERMS; ++n) {
-                    dot[n] = make_int2(0, 0);
-                }
-            }
-
-            #pragma unroll
-            for (int n = 0; n < PILOTPROXY_NUM_WEIGHT_TERMS; ++n) {
-                dot[n] = warp_reduce_sum(dot[n]);
-            }
-
-            if (tid == 0) {
-                #ifndef NDEBUG
-                debug_check_dot_int16_bounds(dot, m, -1);
-                #endif
-
-                #pragma unroll
-                for (int n = 0; n < PILOTPROXY_NUM_WEIGHT_TERMS; ++n) {
-                    const size_t out_index =
-                        (static_cast<size_t>(n) * detector_rows_per_block + m)
-                        * 2;
-                    RowSums[out_index + 0] = dot[n].x;
-                    RowSums[out_index + 1] = dot[n].y;
-                }
-            }
-        }
-        __syncthreads();
-    }
-}
-
-/**
- * @brief Write the exact complex row sums of a batch of input blocks.
  *
- * Batch entry b (blockIdx.y) reads input block b and writes
- * RowSums + b * num_weight_terms * detector_rows_per_block * 2. Each batch
- * entry keeps the term-major, stream-major, interleaved layout of
- * kernel_accumulate_row_sums.
+ * Batch entry b (blockIdx.y) reads input block b and writes the layout above
+ * at RowSums + b * num_weight_terms * detector_rows_per_block * 2. A handle
+ * of batch 1 launches one entry.
  */
 __global__ void
 kernel_accumulate_row_sums_batched(
@@ -923,6 +784,7 @@ kernel_fused_fine(
     int*             __restrict__ MaskOut,
     int*             __restrict__ RankValidOut,
     int*             __restrict__ BulkCountOut,
+    unsigned long long* __restrict__ StatOut,
     int anchor_bin,
     int designated_half_width,
     unsigned long long bulk_mask_w0,
@@ -1145,6 +1007,59 @@ kernel_fused_fine(
     }
     __syncthreads();
 
+    if (decision_version == 3) {
+        /* Fine decision v3 writes the statistic and leaves the decision to the
+         * consumer. d_rho is the median of den over the 128 even bins, rank 63
+         * by value with zeros included, and n_peak the largest num over all 256
+         * bins. The rank is selected by counting, as for v1 and v2,
+         * and the lowest even bin holding the value represents it. */
+        __shared__ unsigned long long s_peak[PILOTPROXY_BLOCK_THREADS];
+        {
+            int best = PILOTPROXY_FINE_NUM_BINS;
+            for (int i = tid * PILOTPROXY_FINE_PAD_FACTOR; i < PILOTPROXY_FINE_NUM_BINS;
+                 i += blockDim.x * PILOTPROXY_FINE_PAD_FACTOR) {
+                int c_lt = 0;
+                int c_eq = 0;
+                for (int j = 0; j < PILOTPROXY_FINE_NUM_BINS; j += PILOTPROXY_FINE_PAD_FACTOR) {
+                    if (s_den[j] < s_den[i]) {
+                        c_lt++;
+                    } else if (s_den[j] == s_den[i]) {
+                        c_eq++;
+                    }
+                }
+                if (c_lt <= PILOTPROXY_V3_RANK && PILOTPROXY_V3_RANK < c_lt + c_eq && i < best) {
+                    best = i;
+                }
+            }
+            s_int[tid] = best;
+        }
+        {
+            unsigned long long peak = 0ULL;
+            for (int bin = tid; bin < PILOTPROXY_FINE_NUM_BINS; bin += blockDim.x) {
+                if (s_num[bin] > peak) {
+                    peak = s_num[bin];
+                }
+            }
+            s_peak[tid] = peak;
+        }
+        __syncthreads();
+        if (tid == 0) {
+            int best = PILOTPROXY_FINE_NUM_BINS;
+            unsigned long long peak = 0ULL;
+            for (int i = 0; i < static_cast<int>(blockDim.x); ++i) {
+                if (s_int[i] < best) {
+                    best = s_int[i];
+                }
+                if (s_peak[i] > peak) {
+                    peak = s_peak[i];
+                }
+            }
+            StatOut[2 * static_cast<size_t>(b)] = peak;
+            StatOut[2 * static_cast<size_t>(b) + 1] = s_den[best];
+        }
+        return;
+    }
+
     const unsigned long long bulk_words[4] = {
         bulk_mask_w0, bulk_mask_w1, bulk_mask_w2, bulk_mask_w3};
     #define PILOTPROXY_BULK_BIT(i) \
@@ -1331,6 +1246,7 @@ struct PilotProxyHandle {
     bool       weights_cached; ///< Host cache validity for avoiding repeated uploads
     InputType  h_weight_cache[PILOTPROXY_WEIGHT_COUNT]; ///< Last packed weights supplied by caller
     cudaStream_t stream;   ///< Stream for all device work (0 = legacy default stream)
+    int*       d_completion; ///< [batch] block counters of the v3 entry
 };
 
 #if PILOTPROXY_USE_DP4A
@@ -1505,6 +1421,7 @@ static PilotProxyHandle* pilotproxy_create(
     h->d_weight_lanes = nullptr;
     h->weights_cached = false;
     h->stream = 0;
+    h->d_completion = nullptr;
 
     #if PILOTPROXY_USE_DP4A && !PILOTPROXY_USE_CONSTANT_WEIGHT_LANES
     if (!record_cuda_error(cudaMalloc(
@@ -1528,6 +1445,18 @@ static PilotProxyHandle* pilotproxy_create(
         return nullptr;
     }
     #endif
+
+    /* Allocated here, so that no compute entry allocates device memory. */
+    if (!record_cuda_error(cudaMalloc(
+            &h->d_completion,
+            static_cast<size_t>(batch) * sizeof(int)),
+            __FILE__,
+            __LINE__)) {
+        if (h->d_weights) cudaFree(h->d_weights);
+        if (h->d_weight_lanes) cudaFree(h->d_weight_lanes);
+        delete h;
+        return nullptr;
+    }
 
     return h;
 }
@@ -1645,6 +1574,10 @@ void PilotProxy_Destroy(void* handle)
         ok &= record_cuda_error(cudaFree(h->d_weight_lanes), __FILE__, __LINE__);
         h->d_weight_lanes = nullptr;
     }
+    if (h->d_completion) {
+        ok &= record_cuda_error(cudaFree(h->d_completion), __FILE__, __LINE__);
+        h->d_completion = nullptr;
+    }
     delete h;
     (void)ok;
 }
@@ -1690,25 +1623,15 @@ void PilotProxy_Compute_RowSums_I32(
         grid_size = PILOTPROXY_GRID_MAX_BLOCKS;
     }
 
-    if (h->batch <= 1) {
-        kernel_accumulate_row_sums<<<grid_size, PILOTPROXY_BLOCK_THREADS, 0, h->stream>>>(
-            h->d_in,
-            h->d_weights,
-            h->d_weight_lanes,
-            d_row_sums_out,
-            h->detector_rows_per_block
-        );
-    } else {
-        dim3 grid(grid_size, h->batch, 1);
-        kernel_accumulate_row_sums_batched<<<grid, PILOTPROXY_BLOCK_THREADS, 0, h->stream>>>(
-            h->d_in,
-            h->d_weights,
-            h->d_weight_lanes,
-            d_row_sums_out,
-            h->detector_rows_per_block,
-            h->batch
-        );
-    }
+    dim3 grid(grid_size, h->batch, 1);
+    kernel_accumulate_row_sums_batched<<<grid, PILOTPROXY_BLOCK_THREADS, 0, h->stream>>>(
+        h->d_in,
+        h->d_weights,
+        h->d_weight_lanes,
+        d_row_sums_out,
+        h->detector_rows_per_block,
+        h->batch
+    );
     CUDA_CHECK_LAST();
     CUDA_CHECK_SYNC(h->stream);
 }
@@ -1856,6 +1779,7 @@ void PilotProxy_Compute_FusedFine_U64(
         d_row_sums_out,
         NULL,            /* no decision epilogue */
         NULL, NULL,      /* no rank-support diagnostics */
+        NULL,            /* no statistic */
         0, 0, 0ULL, 0ULL, 0ULL, 0ULL, 0, 0ULL, 1,
         num_streams,
         h->detector_rows_per_block,
@@ -1965,6 +1889,7 @@ static void pilotproxy_compute_fused_fine_mask(
         d_mask_out,
         d_rank_valid_out,
         d_n_bulk_out,
+        nullptr,
         anchor_bin,
         designated_half_width,
         bulk_mask_words[0],
@@ -2039,6 +1964,75 @@ void PilotProxy_Compute_FusedFineMaskV2WithSupport_U64(
     pilotproxy_compute_fused_fine_mask(handle, w_in, anchor_bin, designated_half_width,
         bulk_mask_words, cfar_rank, multiplier_q16, d_fine_power_out, d_mask_out,
         d_rank_valid_out, d_n_bulk_out, d_power_out, d_row_sums_out, 2);
+}
+
+void PilotProxy_Compute_FineStatV3_U64(
+    void* handle, const InputType* w_in,
+    unsigned long long* d_fine_power_out, unsigned long long* d_stat_out,
+    unsigned long long* d_power_out, int* d_row_sums_out)
+{
+    clear_last_error();
+    PilotProxyHandle* h = static_cast<PilotProxyHandle*>(handle);
+    if (!h) {
+        record_api_error("handle is null.");
+        return;
+    }
+    if (d_fine_power_out == nullptr) {
+        record_api_error("fine power output pointer is null.");
+        return;
+    }
+    if (d_stat_out == nullptr) {
+        record_api_error("statistic output pointer is null.");
+        return;
+    }
+    if (h->detector_rows_per_block % PILOTPROXY_FINE_WINDOWS_PER_STREAM != 0) {
+        record_api_error(
+            "detector_rows_per_block must be a multiple of the frozen "
+            "fxfft256 window count (128).");
+        return;
+    }
+    if (PILOTPROXY_FINE_WINDOWS_PER_STREAM % PILOTPROXY_BLOCK_THREADS != 0) {
+        record_api_error("block size must divide the window count.");
+        return;
+    }
+    if (!pilotproxy_upload_weights(h, w_in)) return;
+
+    const int num_streams =
+        h->detector_rows_per_block / PILOTPROXY_FINE_WINDOWS_PER_STREAM;
+    const size_t fine_bytes = static_cast<size_t>(h->batch)
+        * PILOTPROXY_NUM_WEIGHT_TERMS * PILOTPROXY_FINE_NUM_BINS
+        * sizeof(unsigned long long);
+    CUDA_CHECK(cudaMemsetAsync(d_fine_power_out, 0, fine_bytes, h->stream));
+    CUDA_CHECK(cudaMemsetAsync(
+        h->d_completion, 0, static_cast<size_t>(h->batch) * sizeof(int), h->stream));
+
+    dim3 grid(num_streams, h->batch, 1);
+    kernel_fused_fine<<<grid, PILOTPROXY_BLOCK_THREADS, 0, h->stream>>>(
+        h->d_in,
+        h->d_weights,
+        h->d_weight_lanes,
+        d_fine_power_out,
+        d_row_sums_out,
+        h->d_completion,  /* completion counter only: v3 writes no mask */
+        nullptr,
+        nullptr,
+        d_stat_out,
+        0, 0,  /* v3 searches every bin */
+        0ULL, 0ULL, 0ULL, 0ULL, 0, 1ULL,
+        3,
+        num_streams,
+        h->detector_rows_per_block,
+        h->batch);
+    CUDA_CHECK_LAST();
+    if (d_power_out != nullptr) {
+        if (!pilotproxy_reduce_frame_powers(h, d_fine_power_out, d_power_out)) return;
+    }
+    CUDA_CHECK_SYNC(h->stream);
+}
+
+int PilotProxy_Supports_FineStatV3(void)
+{
+    return 1;
 }
 
 int PilotProxy_Supports_FusedFineMaskV2(void)
