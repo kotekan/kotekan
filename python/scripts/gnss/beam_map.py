@@ -16,24 +16,51 @@ half-zeroed frame makes noisy.
 The plot is orthographic: zenith at the centre, north up, east to the right.
 
     beam_map.py beam.jsonl [...] [--const GW] [--nside 64] [--el-min 5] [--cn0] [--png beam.png]
+                [--since 2026-11-22T18:00 --until 2026-11-23T06:00] [--dpi 120]
+
+--since/--until take ISO times, local unless they carry an offset, or unix seconds.
 """
 
 import argparse
+import datetime
 import json
+import re
 from collections import defaultdict
 
 import healpy as hp
 import numpy as np
 
 
-def load(paths, el_min):
-    """The present samples at or above el_min, as (satellite, az, el, snr_db, cn0_coh_db), the
-    satellite being (const, name) where the log names it (GuoWang) and (const, prn) where not.
+def when(s):
+    """Unix seconds from unix seconds or an ISO time (local unless it carries an offset)."""
+    try:
+        return float(s)
+    except ValueError:
+        return datetime.datetime.fromisoformat(s).timestamp()
+
+
+_T = re.compile(r'"t": ?([0-9.]+)')
+
+
+def load(paths, el_min, t0=None, t1=None):
+    """The present samples at or above el_min, between unix times t0 and t1 when given, as
+    (satellite, az, el, snr_db, cn0_coh_db), the satellite being (const, name) where the log names
+    it (GuoWang) and (const, prn) where not.
     """
     rows = []
     for path in paths:
         with open(path) as fh:
             for line in fh:
+                if t0 is not None or t1 is not None:
+                    # rows open with "t": a row outside the window is never parsed
+                    m = _T.search(line, 0, 32)
+                    t = float(m.group(1)) if m else None
+                    if (
+                        t is None
+                        or (t0 is not None and t < t0)
+                        or (t1 is not None and t >= t1)
+                    ):
+                        continue
                 r = json.loads(line)
                 if not r.get("present") or r["el"] < el_min or not r.get("p_med"):
                     continue
@@ -57,7 +84,8 @@ def fit(sat, pix, y, npix, el_pix, n_iter=100):
     for s, p, v in zip(sat, pix, y):
         cell[s, p].append(v)
     keys = list(cell)
-    sats = sorted({k[0] for k in keys})
+    # str: a log from before GuoWang names were logged keys some by code (int), some by name
+    sats = sorted({k[0] for k in keys}, key=str)
     index = {s: j for j, s in enumerate(sats)}
     js = np.array([index[k[0]] for k in keys])
     ip = np.array([k[1] for k in keys])
@@ -85,21 +113,41 @@ def median_map(pix, y, npix):
     return m
 
 
-def plot(path, nside, m, label, title):
+def smooth(m, fwhm_deg, min_frac=0.2):
+    """m smoothed on the sphere by a Gaussian of fwhm_deg, weighting seen pixels only: the map
+    times its coverage and the coverage are smoothed apart and divided, so empty pixels do not
+    pull it toward zero. NaN where the smoothed coverage is under min_frac of a fully seen
+    patch's, i.e. far from any data."""
+    seen = np.isfinite(m).astype(float)
+    fwhm = np.radians(fwhm_deg)
+    num = hp.smoothing(np.where(seen > 0, m, 0.0), fwhm=fwhm)
+    den = hp.smoothing(seen, fwhm=fwhm)
+    return np.where(den > min_frac, num / np.where(den > min_frac, den, 1.0), np.nan)
+
+
+def plot(path, nside, m, label, title, dpi=120, vrange=None):
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    x, y = np.meshgrid(np.linspace(-1, 1, 801), np.linspace(-1, 1, 801))
+    # the render grid resolves the pixels: ~6 image points per HEALPix pixel across the sky
+    n = max(801, 12 * nside + 1)
+    x, y = np.meshgrid(np.linspace(-1, 1, n), np.linspace(-1, 1, n))
     r = np.hypot(x, y)
     el = np.degrees(np.arccos(np.clip(r, 0, 1)))
     az = np.degrees(np.arctan2(x, y)) % 360
     img = m[hp.ang2pix(nside, np.radians(90 - el), np.radians(az))]
     img[r > 1] = np.nan
     fig, ax = plt.subplots(figsize=(6.4, 5.4))
+    vmin, vmax = vrange if vrange else (None, None)
     im = ax.imshow(
-        np.ma.masked_invalid(img), origin="lower", extent=(-1, 1, -1, 1), cmap="viridis"
+        np.ma.masked_invalid(img),
+        origin="lower",
+        extent=(-1, 1, -1, 1),
+        cmap="viridis",
+        vmin=vmin,
+        vmax=vmax,
     )
     t = np.linspace(0, 2 * np.pi, 361)
     for e in (0, 30, 60):
@@ -120,7 +168,7 @@ def plot(path, nside, m, label, title):
     ax.set_axis_off()
     fig.colorbar(im, ax=ax, shrink=0.8, label=label)
     ax.set_title(title)
-    fig.savefig(path, dpi=120, bbox_inches="tight")
+    fig.savefig(path, dpi=dpi, bbox_inches="tight")
     print("wrote", path)
 
 
@@ -132,8 +180,19 @@ def main():
     ap.add_argument("--el-min", type=float, default=5.0)
     ap.add_argument("--cn0", action="store_true", help="map C/N0, not the fitted gain")
     ap.add_argument("--png", help="write a plot here")
+    ap.add_argument("--dpi", type=int, default=120)
+    ap.add_argument("--since", help="first sample time (ISO, local, or unix s)")
+    ap.add_argument("--until", help="end of the window (exclusive)")
+    ap.add_argument(
+        "--smooth-deg",
+        type=float,
+        help="smooth the plotted map (FWHM, deg), seen pixels only",
+    )
+    ap.add_argument("--vrange", nargs=2, type=float, help="colour scale limits (dB)")
     a = ap.parse_args()
-    rows = load(a.logs, a.el_min)
+    t0 = when(a.since) if a.since else None
+    t1 = when(a.until) if a.until else None
+    rows = load(a.logs, a.el_min, t0, t1)
     cal = [r[4] - r[3] for r in rows if r[0][0] in "GEC" and r[4] is not None]
     if a.const:
         rows = [r for r in rows if r[0][0] in a.const]
@@ -170,7 +229,12 @@ def main():
             )
     if a.png:
         title = "%s: %d satellites, nside %d" % (a.const or "all", n_sat, a.nside)
-        plot(a.png, a.nside, m, label, title)
+        if a.since or a.until:
+            title += "\n%s to %s" % (a.since or "start", a.until or "end")
+        if a.smooth_deg:
+            m = smooth(m, a.smooth_deg)
+            title += ", smoothed %.1f deg" % a.smooth_deg
+        plot(a.png, a.nside, m, label, title, a.dpi, a.vrange)
 
 
 if __name__ == "__main__":
