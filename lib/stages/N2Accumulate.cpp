@@ -1311,6 +1311,7 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
         meta->n_pl_fpga_ticks = _n_pl_samples_in_vis.at(f);
         meta->n_rfi_first_stage_enabled_fpga_ticks = _n_rfi_first_stage_enabled_ticks;
         meta->n_dtv_mask_enabled_fpga_ticks = _n_dtv_mask_enabled_ticks;
+        meta->n_usable_variance_pairs = _n_usable_variance_pairs.at(f);
 
         meta->rfi_frame_excision_enabled = rfi_frame_excision_enabled;
         meta->fringestop_enabled = _do_fringestop;

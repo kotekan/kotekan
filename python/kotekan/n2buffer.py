@@ -35,6 +35,7 @@ class N2Metadata(ctypes.Structure):
         ("n_pl_fpga_ticks", ctypes.c_uint64),
         ("n_rfi_first_stage_enabled_fpga_ticks", ctypes.c_uint64),
         ("n_dtv_mask_enabled_fpga_ticks", ctypes.c_uint64),
+        ("n_usable_variance_pairs", ctypes.c_uint64),
         # RFI Excision
         ("rfi_frame_excision_enabled", ctypes.c_bool),
         ("fringestop_enabled", ctypes.c_bool),

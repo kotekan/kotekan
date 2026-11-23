@@ -152,7 +152,8 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  * all good.
  *         @buffer_format   NDArray int8 [1, num_polarizations, num_dishes]
  *         @buffer_metadata chordMetadata
- * @buffer  out_buf         The accumulated and tagged data.
+ * @buffer  out_buf         The accumulated and tagged data. The metadata carries k, in either
+ * variance mode, as n_usable_variance_pairs.
  *      @buffer_format N2Buffer. layout=FullUpperTri, num_ev=0
  *      @buffer_metadata N2Metadata
  *

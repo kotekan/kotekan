@@ -51,8 +51,8 @@
  *   /index_map/dish_positions_in_grid_coords per dish.
  * - Per-(f, p, t)/(f, t) datasets: /vis, /eval, /evec, /erms, /gain, /radiometer_chi2,
  * /frames_added, /frac_rfi_first_stage_enabled, /frac_dtv_mask_enabled; vis_weight, flags,
- *   frac_lost, and frac_rfi live
- *   at the root (CHORD) or under /flags/{vis_weight, flags, frac_lost, frac_rfi} when
+ *   frac_lost, frac_rfi, and variance_pair_count live at the root (CHORD) or under
+ *   /flags/{vis_weight, flags, frac_lost, frac_rfi, variance_pair_count} when
  *   file_mode == CHIME.
  * - Per-time metadata: /fpga_start_tick, /frame_length_fpga_ticks,
  *   /time_center_ut1_ns, /bin_ut1_ns, /bin_start_ERA_deg, /bin_end_ERA_deg,
@@ -116,6 +116,7 @@ protected:
     std::vector<uint64_t> rfi_fpga_count;      // (f, t)
     std::vector<uint64_t> rfi_only_fpga_count; // (f, t)
     std::vector<uint64_t> pl_fpga_count;       // (f, t)
+    std::vector<uint64_t> variance_pair_count; // (f, t) ; uses n_usable_variance_pairs
     std::vector<float> frac_lost;              // (f, t) ; uses n_valid_fpga_ticks
     std::vector<float> frac_rfi;               // (f, t) ; uses n_rfi_fpga_ticks
     std::vector<float> frac_rfi_only;          // (f, t) ; uses n_rfi_only_fpga_ticks

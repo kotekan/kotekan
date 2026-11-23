@@ -1016,7 +1016,8 @@ def expected_accum(
 
     Returns
     ------
-    NDArrays containing accum data: vis, weights, valid counts, RFI counts, PL counts
+    NDArrays containing accum data: vis, weights, valid counts, RFI counts, PL counts,
+    usable variance pairs
     """
 
     config = setup["config"]
@@ -1168,7 +1169,7 @@ def expected_accum(
     elif accum_setup["variance_mode"] == "EvenOddPosDef":
         w = safe_invert(accum_n2_var_pos, float)
 
-    return vis, w, accum_count, accum_rficount, accum_plcount
+    return vis, w, accum_count, accum_rficount, accum_plcount, accum_usable_pairs
 
 
 def test_structure(accum_data, accum_list, setup):
@@ -1336,7 +1337,7 @@ def test_counts(accum_data, expected_accum, accum_list, setup):
 
     config = setup["config"]
 
-    _, _, exp_cnts, exp_rficnts, exp_plcnts = expected_accum
+    _, _, exp_cnts, exp_rficnts, exp_plcnts, exp_pairs = expected_accum
 
     for idx, frame in enumerate(accum_data):
         t = idx // config["num_local_freq"]
@@ -1345,6 +1346,7 @@ def test_counts(accum_data, expected_accum, accum_list, setup):
         assert frame.metadata.n_valid_fpga_ticks == exp_cnts[t, f]
         assert frame.metadata.n_rfi_fpga_ticks == exp_rficnts[t, f]
         assert frame.metadata.n_pl_fpga_ticks == exp_plcnts[t, f]
+        assert frame.metadata.n_usable_variance_pairs == exp_pairs[t, f]
         assert frame.metadata.n_rfi_only_fpga_ticks == accum_list[t]["seq_len"] - (
             exp_cnts[t, f] + exp_plcnts[t, f]
         )
@@ -1403,7 +1405,7 @@ def test_vis(accum_data, expected_accum, accum_list, setup):
 
     config = setup["config"]
 
-    exp_vis, _, _, _, _ = expected_accum
+    exp_vis, _, _, _, _, _ = expected_accum
 
     for idx, frame in enumerate(accum_data):
         t = idx // config["num_local_freq"]
@@ -1447,7 +1449,7 @@ def test_weight(accum_data, expected_accum, accum_list, setup, accum_setup):
 
     config = setup["config"]
 
-    _, exp_w, _, _, _ = expected_accum
+    _, exp_w, _, _, _, _ = expected_accum
 
     for idx, frame in enumerate(accum_data):
         t = idx // config["num_local_freq"]
