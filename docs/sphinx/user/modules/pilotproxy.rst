@@ -207,6 +207,10 @@ powers for calibration and debugging. ``config/chord/telescope.j2`` holds the
 products' shapes and ports for both configs, so render ``config/chord/recv.j2``
 with the same ``dtv_enabled`` and ``dtv_calibration_mode``.
 
+``config/chord/dtv.j2`` passes neither ``dtv_permanent_mask_freq_ids`` nor
+``dtv_require_fine_freq_ids``, so they have no effect on the Pathfinder. An
+uncalibrated channel must be removed from the bundle.
+
 The detector reads the bad feed mask ring of ``bufferBadInputs``, and a flagged
 input is packed as zero. ``bufferBadInputs`` also flags every element outside
 the main array, which on CHORD are the Missing dishes and the 16 RFI antennas,
@@ -271,9 +275,10 @@ Pilot frequency only
 
 The stage masks only the coarse frequency that holds each pilot. A DTV channel
 spans about 30 CHORD coarse frequencies on several GPU nodes, and the pilot
-decision is not passed to the other coarse frequencies. A whole DTV channel is
-removed by setting ``dtv_apply_mask`` and listing its receiver IDs in each
-node's ``dtv_permanent_mask_freq_ids``.
+decision is not passed to the other coarse frequencies. With
+``config/fengine/chord.j2``, a whole DTV channel is removed by setting
+``dtv_apply_mask`` and listing its receiver IDs in each node's
+``dtv_permanent_mask_freq_ids``. The Pathfinder template has no such list.
 
 
 Fatal errors
@@ -294,8 +299,9 @@ it:
   support row, or an unevaluated row for a required frequency or, while the
   mask is on, for a calibrated channel
 
-An uncalibrated channel must therefore be removed from the bundle or listed in
-``dtv_permanent_mask_freq_ids`` before the run starts. A node with no bundle
+An uncalibrated channel must therefore be removed from the bundle before the
+run starts, or, with ``config/fengine/chord.j2``, listed in
+``dtv_permanent_mask_freq_ids``. A node with no bundle
 pilot runs with the detector disabled and writes all-zero masks. These zero
 masks mean that the blocks were not tested.
 
