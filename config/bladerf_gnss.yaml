@@ -861,7 +861,9 @@ gw_csk:
     # Shift k puts code chip j - k at chip j: the sync word 56 36 55 40 opens each UTC second.
     shift_sign: -1
     n_workers: 2
-    cpu_affinity: [12, 13]
+    # Small cores beside the nav decoders (taskset, mostly idle): 10-13 and 19 are the CPU
+    # searches', which lagged ~20-45 % more with this stage on 12-13.
+    cpu_affinity: [1, 2, 3]
 
 # GuoWang's low-rate symbols (4 ms, two 2 ms frames, the sign of the ranging half), decided from
 # its own records: no pilot.
