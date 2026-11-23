@@ -93,7 +93,7 @@ the aggregator and gather. #184–#187 below are what the removal left for later
 **What:** the site still runs the GuoWang beam-dump chain: the scheduler on the gnss VM (`beam_dump_sched.py`, from
 `~/gnss/gw1202-wt`) arms the nodes' beamdump gates every pass, the nodes write `/tmp/gnss/beamdump` (~0.8 TB per node in five
 days before the 11-23 cleanup, 4.5 TB deleted across eight nodes), and `gw_catchup.py` on cf05 pulls and reduces it (it
-never pruned the node originals; it died in cf05's 11-22 03:03Z reboot). KV 11-23: stop it for the F-engine work (guowang stops it on KV's confirmation in its session).
+never pruned the node originals; it died in cf05's 11-22 03:03Z reboot). Stopped 11-23 before the 21:16Z window (KV go; guowang): the VM loop is gone and all 12 gates on the six nodes read armed "no"; cx42/cx47 have not been armed since 11-21. The unreduced dumps are being caught up (corrcal first, then the cf05 follow loop with node pruning).
 **Decide:** remove it altogether (scheduler, arm cron, the node beamdump stages and gates, the catch-up), or keep a minimal
 capture for cross-checks against the standalone system. Until then: if it runs, gw_catchup's retain step must prune the
 node originals (`gw_retain_cf05.py --nodes`), and ~1.4 TB of unreduced dumps from 11-22 03:28Z onward remain on the nodes.
