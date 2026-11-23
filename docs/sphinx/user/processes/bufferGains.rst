@@ -1,0 +1,5 @@
+***********
+bufferGains
+***********
+
+.. doxygenclass:: bufferGains
