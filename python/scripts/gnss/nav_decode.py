@@ -17,6 +17,9 @@ broker did, and writes:
                         fallback
   --decode-health-file  the viewer's decode-health panel (decode_health.py)
 
+and, with --progress-file, each second: per satellite its decoded-message count and the times
+it grew over the last two minutes, so a viewer can show messages arriving.
+
 and a line of CPU per decoder (ingest, and fetch plus JSON), so the load is visible. One process
 is one interpreter: to spread decoders over cores, run several instances with disjoint sources
 and their own output files.
@@ -27,6 +30,7 @@ and their own output files.
 """
 
 import argparse
+import collections
 import importlib
 import json
 import os
@@ -113,6 +117,8 @@ DECODERS = {
 }
 
 BRDC_REFRESH_S = 1800.0
+PROGRESS_EVERY_S = 1.0
+PROGRESS_KEEP_S = 120.0
 
 
 def log(msg):
@@ -125,6 +131,37 @@ def get_rows(url, timeout=5.0):
         d = json.load(r)
     rows = d if isinstance(d, list) else d.get("prns", [])
     return {int(x["prn"]): x for x in rows if isinstance(x, dict) and x.get("prn")}
+
+
+def decoded_count(h):
+    """The decoded-message count in a decoder's health(): words, messages, frames or pages."""
+    return h.get("words") or h.get("decoded") or h.get("frames") or h.get("pages") or 0
+
+
+def note_progress(src, prn, now):
+    """Record when a satellite's decoded-message count grows (a restart that lowers it is not
+    an event)."""
+    h = src["dec"].health(prn)
+    n = decoded_count(h) if h else 0
+    p = src["prog"].setdefault(prn, {"n": n, "ev": collections.deque()})
+    if n > p["n"]:
+        p["ev"].append((round(now, 2), n - p["n"]))
+    p["n"] = n
+    while p["ev"] and now - p["ev"][0][0] > PROGRESS_KEEP_S:
+        p["ev"].popleft()
+
+
+def write_progress(srcs, path, now):
+    doc = {"schema": 1, "t": round(now, 2), "signals": {}}
+    for s in srcs:
+        doc["signals"][s["signal"]] = {
+            "sys": DECODERS[s["signal"]][0],
+            "prns": {
+                str(prn): {"n": p["n"], "ev": list(p["ev"])}
+                for prn, p in sorted(s["prog"].items())
+            },
+        }
+    write_atomic(doc, path)
 
 
 def window_s(obs):
@@ -210,12 +247,7 @@ def report(srcs, store, dhw, eph_out):
                         xc,
                     )
                 )
-                cnt = (
-                    h.get("words")
-                    or h.get("decoded")
-                    or h.get("frames")
-                    or h.get("pages")
-                )
+                cnt = decoded_count(h)
                 syn = h.get("synced")
                 if syn is None:
                     syn = bool(cnt) or eph is not None
@@ -263,6 +295,10 @@ def main():
     ap.add_argument(
         "--decode-health-file", help="decode-health export (decode_health.py)"
     )
+    ap.add_argument(
+        "--progress-file",
+        help="per satellite, the decoded-message count and when it grew (rewritten each second)",
+    )
     ap.add_argument("--every", type=float, default=1.0, help="shortest poll period, s")
     ap.add_argument(
         "--window-frac",
@@ -290,6 +326,7 @@ def main():
                 "io": 0.0,
                 "fail": 0,
                 "next_t": 0.0,
+                "prog": {},
             }
         )
     dhw = None
@@ -305,6 +342,7 @@ def main():
 
     t_report = time.time()
     t_cpu = time.time()
+    t_prog = 0.0
     while True:
         for s in srcs:
             if time.time() < s["next_t"]:
@@ -325,9 +363,14 @@ def main():
                 if obs:
                     s["dec"].ingest(prn, obs)
                     span = max(span, window_s(obs))
+                    if args.progress_file:
+                        note_progress(s, prn, time.time())
             s["next_t"] = max(s["next_t"], time.time() + args.window_frac * span)
             s["io"] += t1 - t0
             s["cpu"] += time.process_time() - t1
+        if args.progress_file and time.time() - t_prog >= PROGRESS_EVERY_S:
+            t_prog = time.time()
+            write_progress(srcs, args.progress_file, t_prog)
         if time.time() - store["t"] > BRDC_REFRESH_S:
             load_brdc(store, block=False)
         if time.time() - t_report >= args.report_every:
