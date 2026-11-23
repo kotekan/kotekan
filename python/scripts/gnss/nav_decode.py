@@ -43,6 +43,7 @@ sys.path.insert(0, HERE)
 
 import bds_d1_predictor  # noqa: E402
 import decode_health  # noqa: E402
+import decoded_eph  # noqa: E402
 import gnss_ephemeris as ge  # noqa: E402
 import glonass_nav_predictor  # noqa: E402
 import sbas_l5_predictor  # noqa: E402
@@ -125,6 +126,9 @@ DECODERS = {
 }
 
 BRDC_REFRESH_S = 1800.0
+# A decoder keeps the last ephemeris it decoded for a satellite long after the satellite set;
+# one whose reference time is further than this from now is not reported, checked or exported.
+EPH_FRESH_S = 4 * 3600.0
 PROGRESS_EVERY_S = 1.0
 PROGRESS_KEEP_S = 120.0
 
@@ -198,6 +202,17 @@ def write_atomic(doc, path):
     os.replace(tmp, path)
 
 
+def eph_age_s(sysc, eph, toef, t_unix):
+    """Seconds from the ephemeris's reference time to t_unix, or None when it carries none."""
+    toe = eph.get(toef)
+    if toe is None:
+        return None
+    now = ge.gpst_of_utc(t_unix)
+    if toef != "toe_gpst":
+        toe = decoded_eph.toe_gpst_near(sysc, toe, now)
+    return now - toe
+
+
 def make_decoder(signal):
     _, mod, cls, _, _ = DECODERS[signal]
     c = getattr(importlib.import_module(mod), cls)
@@ -238,6 +253,9 @@ def report(srcs, store, dhw, eph_out):
                 if not h:
                     continue
                 eph = dec.ephemeris(prn)
+                age = eph_age_s(sysc, eph, toef, now) if eph is not None else None
+                if age is not None and abs(age) > EPH_FRESH_S:
+                    eph = None
                 xc = (
                     xcheck(brdc, sysc, prn, eph, log)
                     if (eph is not None and brdc)
