@@ -396,13 +396,14 @@ def measurements_from_obs(globs, max_age_s, t_now, smooth_s=90.0):
     arc (hatch_smooth). One row per satellite-chain. Residuals are wrapped,
     clock-dominated ranges, de-wrapped per group to the group median so the common clock is
     a single free parameter and no satellite straddles a code-period edge. Returns a list of
-    {group, sys, prn, az, el, resid_m}, plus n, sd_m and method where smoothing succeeded.
+    {group, sys, prn, az, el, resid_m, t, f_hz} (the newest row's epoch and carrier), plus n,
+    sd_m and method where smoothing succeeded.
 
     The group is the obs row's band, i.e. the chain: one chain, one clock.
     """
     t_floor = t_now - max(max_age_s, smooth_s) - 5.0
     hist = {}  # (sys, prn, band) -> rows inside the smoothing window
-    latest = {}  # (sys, prn, band) -> (t, group, az, el, resid_m, L_m)
+    latest = {}  # (sys, prn, band) -> (t, group, az, el, resid_m, L_m, carrier_hz)
     for pat in globs:
         for path in glob.glob(pat):
             try:
@@ -455,7 +456,15 @@ def measurements_from_obs(globs, max_age_s, t_now, smooth_s=90.0):
                             continue
                         cl, ch = d.get("code_len"), d.get("chip_rate_hz")
                         L = (cl / ch * C_LIGHT) if (cl and ch) else None
-                        latest[key] = (t, fr, az, el, float(res), L)
+                        latest[key] = (
+                            t,
+                            fr,
+                            az,
+                            el,
+                            float(res),
+                            L,
+                            d.get("carrier_hz"),
+                        )
             except Exception:
                 continue
     # Carrier-smooth each satellite's code residual over its own arc (hatch_smooth):
@@ -467,7 +476,7 @@ def measurements_from_obs(globs, max_age_s, t_now, smooth_s=90.0):
         if hs is None:
             continue
         r_s, n, sd, method = hs
-        latest[key] = (v[0], v[1], v[2], v[3], float(r_s), v[5])
+        latest[key] = (v[0], v[1], v[2], v[3], float(r_s), v[5], v[6])
         extra[key] = {"n": n, "sd_m": sd, "method": method}
 
     # de-wrap each group's residuals to the group median (handles the clock straddling a
@@ -479,7 +488,7 @@ def measurements_from_obs(globs, max_age_s, t_now, smooth_s=90.0):
     for group, rows in by_group.items():
         med = statistics.median([r[3][4] for r in rows])
         for sysid, prn, fr, v in rows:
-            _t0, g, az, el, res, L = v
+            t_m, g, az, el, res, L, f_hz = v
             if L:
                 res = res - L * round(
                     (res - med) / L
@@ -491,6 +500,8 @@ def measurements_from_obs(globs, max_age_s, t_now, smooth_s=90.0):
                 "az": az,
                 "el": el,
                 "resid_m": res,
+                "t": t_m,
+                "f_hz": f_hz,
             }
             m.update(extra.get((sysid, prn, fr), {}))
             out.append(m)

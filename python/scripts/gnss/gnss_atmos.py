@@ -173,3 +173,167 @@ def iono_params(paths, cache_dir=None, write=True):
         except Exception:
             return None
     return None
+
+
+# -- global ionosphere maps (IONEX) ---------------------------------------------------------------
+
+# CODE's daily maps, best first: final, rapid (the next day), today's prediction and yesterday's.
+IONEX_PRODUCTS = ("FIN", "RAP", "P0D", "P1D")
+# how often a day served by a lesser product looks for a better one
+IONEX_RECHECK_S = 3600.0
+_IONEX_CHECKED = {}  # (year, doy) -> wall time of the last look for a better product
+
+
+class Ionex(object):
+    """One IONEX file's TEC maps, interpolated as the format's description recommends (Schaer):
+    bilinear in space, linear in time between the two maps around the epoch, each rotated by the
+    Earth's turn since its own epoch so the ionosphere stays sun-fixed between them."""
+
+    def __init__(self, path):
+        import datetime
+        import gzip
+
+        op = gzip.open if str(path).endswith(".gz") else open
+        self.maps = []  # [(unix t, {lat: [TECU over lon]})]
+        exp, cur, lat, vals, in_map, t = -1, None, None, [], False, None
+        with op(path, "rt") as f:
+            for line in f:
+                lab = line[60:].strip()
+                if lab == "EXPONENT":
+                    exp = int(line[:6])
+                elif lab == "HGT1 / HGT2 / DHGT":
+                    self.h_km = float(line[2:8])
+                elif lab == "BASE RADIUS":
+                    self.r_km = float(line[:8])
+                elif lab == "LAT1 / LAT2 / DLAT":
+                    self.lat1, self.lat2, self.dlat = (
+                        float(line[i : i + 6]) for i in (2, 8, 14)
+                    )
+                elif lab == "LON1 / LON2 / DLON":
+                    self.lon1, self.lon2, self.dlon = (
+                        float(line[i : i + 6]) for i in (2, 8, 14)
+                    )
+                elif lab == "START OF TEC MAP":
+                    in_map, cur, lat = True, {}, None
+                elif lab == "END OF TEC MAP":
+                    if lat is not None:
+                        cur[lat] = vals
+                    self.maps.append((t, cur))
+                    in_map = False
+                elif lab == "START OF RMS MAP":
+                    break
+                elif in_map and lab == "EPOCH OF CURRENT MAP":
+                    y, mo, d, h, mi, s = (int(x) for x in line[:36].split())
+                    t = datetime.datetime(
+                        y, mo, d, h, mi, s, tzinfo=datetime.timezone.utc
+                    ).timestamp()
+                elif in_map and lab == "LAT/LON1/LON2/DLON/H":
+                    if lat is not None:
+                        cur[lat] = vals
+                    lat, vals = float(line[2:8]), []
+                elif in_map and lat is not None:
+                    vals += [
+                        float(v) * 10.0 ** exp if int(v) != 9999 else float("nan")
+                        for v in line.split()
+                    ]
+        self.nlon = int(round((self.lon2 - self.lon1) / self.dlon)) + 1
+        self.nlat = int(round((self.lat2 - self.lat1) / self.dlat)) + 1
+        self.t0, self.t1 = self.maps[0][0], self.maps[-1][0]
+
+    def _grid(self, m, lat, lon):
+        lon = (lon + 180.0) % 360.0 - 180.0
+        i = (lat - self.lat1) / self.dlat
+        j = (lon - self.lon1) / self.dlon
+        i0 = min(max(int(math.floor(i)), 0), self.nlat - 2)
+        j0 = min(max(int(math.floor(j)), 0), self.nlon - 2)
+        p, q = i - i0, j - j0
+        a = m[self.lat1 + i0 * self.dlat]
+        b = m[self.lat1 + (i0 + 1) * self.dlat]
+        return (
+            (1 - p) * (1 - q) * a[j0]
+            + (1 - p) * q * a[j0 + 1]
+            + p * (1 - q) * b[j0]
+            + p * q * b[j0 + 1]
+        )
+
+    def vtec(self, t, lat, lon):
+        """Vertical TEC (TECU) at the pierce point (lat, lon) and unix time t, or None outside
+        the file's span."""
+        if not self.t0 <= t <= self.t1:
+            return None
+        k = 0
+        while k < len(self.maps) - 2 and self.maps[k + 1][0] <= t:
+            k += 1
+        (ta, ma), (tb, mb) = self.maps[k], self.maps[k + 1]
+        ea = self._grid(ma, lat, lon + (t - ta) * 360.0 / 86400.0)
+        eb = self._grid(mb, lat, lon + (t - tb) * 360.0 / 86400.0)
+        return ((tb - t) * ea + (t - ta) * eb) / (tb - ta)
+
+    def slant_delay_m(self, t, lat_deg, lon_deg, el_deg, az_deg, f_hz):
+        """Slant ionospheric group delay (m) at f_hz, from the map's single layer: the VTEC at the
+        pierce point times the thin-shell obliquity. None outside the file's span."""
+        r, h = self.r_km, self.h_km
+        e, a = math.radians(max(el_deg, 0.0)), math.radians(az_deg)
+        la, lo = math.radians(lat_deg), math.radians(lon_deg)
+        z = math.asin(r / (r + h) * math.cos(e))  # zenith angle at the pierce point
+        psi = math.pi / 2.0 - e - z
+        lat_p = math.asin(
+            math.sin(la) * math.cos(psi) + math.cos(la) * math.sin(psi) * math.cos(a)
+        )
+        lon_p = lo + math.asin(math.sin(psi) * math.sin(a) / math.cos(lat_p))
+        v = self.vtec(t, math.degrees(lat_p), math.degrees(lon_p))
+        if v is None:
+            return None
+        return 40.3e16 * v / math.cos(z) / (f_hz * f_hz)
+
+
+def ionex_path(t, cache_dir=None, fetch=True):
+    """The best CODE global ionosphere map for the UTC day of unix time t: final, rapid, today's
+    prediction or yesterday's (IONEX_PRODUCTS), from `cache_dir`/ionex, else fetched from
+    CDDIS with the Earthdata token (gnss_brdc_supply). A day held only as a lesser product is
+    looked up again at most every IONEX_RECHECK_S. The local path, or None."""
+    import os
+    import time
+    import urllib.request
+
+    from gnss_brdc_supply import CACHE, _earthdata_token
+
+    d = time.gmtime(t)
+    year, doy = d.tm_year, d.tm_yday
+    folder = os.path.join(cache_dir or CACHE, "ionex")
+    names = [
+        "COD0OPS%s_%04d%03d0000_01D_01H_GIM.INX.gz" % (p, year, doy)
+        for p in IONEX_PRODUCTS
+    ]
+    have = [n for n in names if os.path.exists(os.path.join(folder, n))]
+    best = have[0] if have else None
+    if best == names[0] or not fetch:
+        return os.path.join(folder, best) if best else None
+    if time.time() - _IONEX_CHECKED.get((year, doy), 0.0) < IONEX_RECHECK_S and best:
+        return os.path.join(folder, best)
+    _IONEX_CHECKED[(year, doy)] = time.time()
+    tok = _earthdata_token()
+    if tok:
+        os.makedirs(folder, exist_ok=True)
+        for n in names[: names.index(best) if best else len(names)]:
+            url = "https://cddis.nasa.gov/archive/gnss/products/ionex/%04d/%03d/%s" % (
+                year,
+                doy,
+                n,
+            )
+            try:
+                req = urllib.request.Request(
+                    url, headers={"Authorization": "Bearer " + tok}
+                )
+                with urllib.request.urlopen(req, timeout=60) as r:
+                    data = r.read()
+            except Exception:
+                continue
+            if data[:2] != b"\x1f\x8b":
+                continue  # not a gzip: an error page
+            tmp = os.path.join(folder, n + ".part")
+            with open(tmp, "wb") as f:
+                f.write(data)
+            os.replace(tmp, os.path.join(folder, n))
+            return os.path.join(folder, n)
+    return os.path.join(folder, best) if best else None
