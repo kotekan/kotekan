@@ -16,7 +16,7 @@
 
 struct sockaddr_in get_my_addr(const in_addr_t netaddr, const in_addr_t netmask) {
     // std::stringstream temp_ip[number_of_subnets];
-    char* my_host_name = (char*)malloc(sizeof(char) * 100);
+    char my_host_name[254]; // DNS entry limit is 253 chars (RFC 1035)
     // CHECK_MEM(my_host_name);
     gethostname(my_host_name, sizeof(my_host_name));
 
@@ -47,8 +47,8 @@ struct sockaddr_in get_my_addr(const in_addr_t netaddr, const in_addr_t netmask)
                 retval.sin_port = reinterpret_cast<const sockaddr_in*>(rp->ai_addr)->sin_port;
                 retval.sin_addr.s_addr =
                     reinterpret_cast<const sockaddr_in*>(rp->ai_addr)->sin_addr.s_addr;
+                break;
             }
-            break;
         }
     }
     if (retval.sin_addr.s_addr == 0) {
