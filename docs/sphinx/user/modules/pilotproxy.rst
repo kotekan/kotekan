@@ -110,8 +110,8 @@ which are not part of Kotekan. Each profile gives the ATSC channel, the
 receiver ``coarse_freq`` ID that it binds to (``chord_channel_id``), its
 weights, and its fine calibration. The status of the fine calibration is
 ``pending_campaign`` (exported, no values), ``calibrated`` (values filled in) or
-``control``. Only physical channel 37, the control, has status ``control``, and
-it must have it. ``calibrated`` does not mean the channel is qualified for
+``control``. Only physical channel 37, the control, can have status ``control``,
+and it must have it unless it is ``pending_campaign``. ``calibrated`` does not mean the channel is qualified for
 masking. Each bundle file and its fields are described in Section 5 of the
 `PilotProxy user guide
 <https://github.com/WVURAIL/pilotproxy/blob/main/docs/pdf/PilotProxy_UG001_User_Guide.pdf>`_.

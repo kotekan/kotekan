@@ -316,7 +316,7 @@ def test_only_channel_37_can_be_the_control(pipeline):
     pipeline.bundle["profiles"][0]["fine_calibration"]["status"] = "control"
     code, output = pipeline.run()
     assert code != 0
-    assert "only physical channel 37 can have status control" in output, output[-12000:]
+    assert "no other channel can be control" in output, output[-12000:]
 
 
 def test_independent_detectors_share_gpu(pipeline):
@@ -393,7 +393,11 @@ def test_pipeline_decisions(pipeline, reverse, mode):
         "time_reverse_detector_windows_before_kernel"
     ] = reverse
     if mode == "disabled":
-        for row in pipeline.bundle["profiles"]:
+        rows = pipeline.bundle["profiles"]
+        # the control channel may be pending too
+        if 37 not in [row["physical_channel"] for row in rows]:
+            rows[0]["physical_channel"] = 37
+        for row in rows:
             row["fine_calibration"]["status"] = "pending_campaign"
         pipeline.config["gen_voltage"]["manual_freq_ids"] = [1600, 4000, 1601, 4001]
     elif not reverse:
