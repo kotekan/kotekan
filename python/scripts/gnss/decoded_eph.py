@@ -52,7 +52,14 @@ CLOCK_FIELDS = {
     # GPS LNAV carries its clock in subframe 1 (af0/af1/af2 about toc), so unlike CNAV the L1
     # fallback can seed absolute code phase, not just geometry and Doppler.
     "GPS_L1_LNAV": ("af0", "af1", "af2", "toc", "toe"),
+    # GuoWang's relay (guowang_csk.py): its clocks with the relay's time-scale offset added back
+    "GW_CSK_RELAY": ("af0", "af1", "af2", "toc", "toe"),
 }
+# Sources for a satellite no other entry covers: an entry from another source replaces theirs,
+# and theirs never replaces another's. GuoWang's relay refits its orbits every minute, but as a
+# plain Kepler set without secular terms, which drifts 10-20 m in 15 min where the satellite's
+# own message does not.
+LAST_RESORT = {"GW_CSK_RELAY"}
 # Kepler fields the relativistic term reads; every decoder in CLOCK_FIELDS names them alike.
 KEPLER_FIELDS = ("M0", "dn", "sqrtA", "e")
 
@@ -168,6 +175,8 @@ def predict_from_decoders(entries, lat, lon, alt, t_utc, mask_deg=0.0, max_age=1
         # BeiDou runs on BDT (= GPST - 14 s) and its decoded t_oe is BDT-sow, so the propagator
         # must be fed BDT seconds-of-week. Galileo GST and GPS GPST share the sow origin here.
         ts = (t_sow + BDT_GPST) % 604800 if sys == "C" else t_sow
+        if signal in LAST_RESORT and (sys, prn) in out:
+            continue
         v = predict_one(sv_pos, eph, sys, signal, rx, lat, lon, ts, toe_age)
         if v is None or v["el"] < mask_deg:
             continue

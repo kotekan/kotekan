@@ -1266,6 +1266,7 @@ def main(argv=None, rx=None, publisher=None):
             from gps_nav_decode import sv_position_lnav as _svp_lnav
             from beidou_bcnav1 import sv_position_bcnav1 as _svp_bc1
             from beidou_bcnav2 import sv_position_bcnav2 as _svp_bc2
+            from guowang_csk import sv_position_relay as _svp_relay
         except Exception as e:
             _log("decoded-eph fallback DISABLED (import: %s)" % e)
             _decfb = None
@@ -1296,7 +1297,8 @@ def main(argv=None, rx=None, publisher=None):
     _dec_reg = [r for r in _dec_reg if r]
 
     # nav_decode.py's decoded ephemerides (--decoded-eph-file), by signal: the propagator each
-    # one's eph takes. B-CNAV3 has none here, so B2b's are skipped.
+    # one's eph takes. B-CNAV3 has none here, so B2b's are skipped. GuoWang's relay
+    # (guowang_csk.py --eph-out) stands behind the rest (decoded_eph.LAST_RESORT).
     _dec_svp = (
         {
             "GPS_L1_LNAV": _svp_lnav,
@@ -1307,6 +1309,7 @@ def main(argv=None, rx=None, publisher=None):
             "GAL_E5AI_FNAV": _svp_fnav,
             "BDS_B1C_BCNAV1": _svp_bc1,
             "BDS_B2A_BCNAV2": _svp_bc2,
+            "GW_CSK_RELAY": _svp_relay,
         }
         if _decfb
         else {}
