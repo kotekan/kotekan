@@ -15,6 +15,7 @@
 #include <cstring>
 #include <fstream>
 #include <limits>
+#include <map>
 #include <memory>
 #include <string>
 #include <thread>
@@ -24,18 +25,24 @@
 BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 /// Write a pilot_profiles.json with one calibrated channel, qualified or not, beside a
-/// control and a pending channel, which never need the record.
-static std::string write_profiles(bool qualified) {
+/// control and a pending channel, which never need the record. ids gives the receiver ID of a
+/// physical channel; a channel without one is bound nowhere.
+static std::string write_profiles(bool qualified, const std::map<int, int>& ids = {}) {
     nlohmann::json provenance = {{"note", "test"}};
     if (qualified)
         provenance["mask_qualification"] = {{"test_report_sha256", std::string(64, 'a')},
                                             {"reviewer", "test"}};
-    const nlohmann::json bundle = {
+    nlohmann::json bundle = {
         {"profiles",
          {{{"physical_channel", 30},
            {"fine_calibration", {{"status", "calibrated"}, {"provenance", provenance}}}},
           {{"physical_channel", 31}, {"fine_calibration", {{"status", "pending_campaign"}}}},
           {{"physical_channel", 37}, {"fine_calibration", {{"status", "control"}}}}}}};
+    for (auto& row : bundle["profiles"]) {
+        const auto id = ids.find(row["physical_channel"].get<int>());
+        if (id != ids.end())
+            row["receiver_channel_id"] = id->second;
+    }
     const std::string path = "/tmp/test_DtvRfiMask_" + std::to_string(getpid())
                              + (qualified ? "_qualified" : "_detect_only") + ".json";
     std::ofstream(path) << bundle.dump();
@@ -54,7 +61,7 @@ struct MaskPipeline {
     std::unique_ptr<kotekan::Stage> stage;
 
     MaskPipeline(int samples, bool fine = true, bool time_axis = false, bool declared = true,
-                 bool qualified = true) :
+                 bool qualified = true, const std::map<int, int>& ids = {}) :
         samples(samples), has_fine(fine),
         pool(metadataPool::create(32, sizeof(chordMetadata), "pool", "chordMetadata")),
         rfi(2, samples / 8 * F, pool, "rfi", "standard", 0, false, false, std::vector<int>{}, true),
@@ -71,7 +78,7 @@ struct MaskPipeline {
             {"num_local_freq", F},
             {"num_times", samples},
             {"mask",
-             {{"pilot_profiles_path", write_profiles(qualified)},
+             {{"pilot_profiles_path", write_profiles(qualified, ids)},
               {"rfi_buf", "rfi"},
               {"dtv_buf", "dtv"},
               {"out_buf", "output"},
@@ -417,8 +424,8 @@ BOOST_AUTO_TEST_CASE(v3_channels_are_decided_with_their_word) {
             want.push_back(3);
         BOOST_CHECK(p.rejected(0) == want);
         // at the boundary n 2^16 = word d the frame is kept; d_rho = 0 has no decision and is
-        // rejected; [0, 2^64 - 1] was not evaluated and is kept
-        p.fill(1, {1, 1, 0, 0, 0, 0, 0, not_evaluated});
+        // rejected; 12 is not a v3 channel, and [0, 2^64 - 1] on it was not evaluated and is kept
+        p.fill(1, {1, 1, 0, 0, 0, not_evaluated, 1, 1});
         BOOST_CHECK(p.rejected(1) == std::vector<int>({1}));
     }
 }
@@ -488,4 +495,64 @@ BOOST_AUTO_TEST_CASE(v3_reject_statistic_identity) {
         }
         BOOST_CHECK_EXCEPTION(p.stage->main_thread(), FatalError, is_statistic_identity_refusal);
     }
+}
+
+static bool is_not_evaluated_refusal(const FatalError& e) {
+    return std::string(e.what()).find("was not evaluated") != std::string::npos;
+}
+
+/// Run one frame through a mask pipeline and return whether it reached the output.
+static bool passes_one_frame(MaskPipeline& p) {
+    p.stage->start();
+    p.fill(0);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (p.output.get_num_full_frames() == 0 && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    return p.output.get_num_full_frames() > 0;
+}
+
+BOOST_AUTO_TEST_CASE(calibrated_channel_must_be_evaluated) {
+    // channel 30 is calibrated on frequency 10, whose support row is (-1,-1). 10 is not in
+    // require_fine_freq_ids, but a calibrated channel must be evaluated while the mask is on.
+    MaskPipeline p(8192, true, false, true, true, {{30, 10}, {31, 11}, {37, 13}});
+    p.fill(0);
+    BOOST_CHECK_EXCEPTION(p.stage->main_thread(), FatalError, is_not_evaluated_refusal);
+}
+
+BOOST_AUTO_TEST_CASE(untested_control_pending_and_permanent_rows_pass) {
+    // the control (on 10, without mask_control) and the pending channel (on 13) need no test, and
+    // a calibrated channel on the permanently masked 12 is masked whatever its row
+    MaskPipeline control(8192, true, false, true, true, {{30, 11}, {31, 13}, {37, 10}});
+    BOOST_CHECK(passes_one_frame(control));
+    MaskPipeline permanent(8192, true, false, true, true, {{30, 12}});
+    BOOST_CHECK(passes_one_frame(permanent));
+}
+
+BOOST_AUTO_TEST_CASE(v3_calibrated_channel_must_be_evaluated) {
+    const uint64_t not_evaluated = std::numeric_limits<uint64_t>::max();
+    // 10 is calibrated but not in require_fine_freq_ids
+    V3Pipeline p(false);
+    p.fill(0, {0, not_evaluated, 3, 1, 0, 0, 0, 1});
+    BOOST_CHECK_EXCEPTION(p.stage->main_thread(), FatalError, is_not_evaluated_refusal);
+}
+
+BOOST_AUTO_TEST_CASE(v3_control_must_be_evaluated_only_with_mask_control) {
+    const uint64_t not_evaluated = std::numeric_limits<uint64_t>::max();
+    {
+        V3Pipeline p(false);
+        p.stage->start();
+        p.fill(0, {3, 2, 3, 1, 0, 0, 0, not_evaluated});
+        BOOST_CHECK(p.rejected(0) == std::vector<int>({0}));
+    }
+    V3Pipeline p(true);
+    p.fill(0, {3, 2, 3, 1, 0, 0, 0, not_evaluated});
+    BOOST_CHECK_EXCEPTION(p.stage->main_thread(), FatalError, is_not_evaluated_refusal);
+}
+
+BOOST_AUTO_TEST_CASE(v3_permanent_channel_needs_no_test) {
+    const uint64_t not_evaluated = std::numeric_limits<uint64_t>::max();
+    V3Pipeline p(false, true, {10});
+    p.stage->start();
+    p.fill(0, {0, not_evaluated, 3, 1, 0, 0, 0, 1});
+    BOOST_CHECK(p.rejected(0) == std::vector<int>({0}));
 }

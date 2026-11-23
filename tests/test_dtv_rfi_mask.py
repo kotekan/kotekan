@@ -15,11 +15,13 @@ T, F, D, FRAMES = 8192, 4, 64, 8
 # fine_decision_v3: words, and [n_peak, d_rho] pairs that cycle over the frames
 V3_DEFAULT_WORD, V3_LIMIT_WORD = 1 << 16, 4 << 16
 V3_UNEVALUATED = (0, 2**64 - 1)  # not evaluated: every word keeps it
-# control at the default word: above it, at the boundary, not evaluated, d_rho = 0
-V3_CONTROL_PAIRS = [(3, 1), (1, 1), V3_UNEVALUATED, (5, 0)]
+# control at the default word: above it, at the boundary, below it, d_rho = 0. A bound row is
+# always evaluated: DtvRfiMask stops on an untested row of a calibrated channel, and of the
+# control with mask_control, so the not-evaluated pair is only on the unbound rows.
+V3_CONTROL_PAIRS = [(3, 1), (1, 1), (1, 2), (5, 0)]
 # power-limit channel: kept at the power-limit word though above the default word, above
-# the power-limit word, at its boundary, d_rho = 0, not evaluated
-V3_CHANNEL_PAIRS = [(3, 1), (9, 2), (4, 1), (7, 0), V3_UNEVALUATED]
+# the power-limit word, at its boundary, d_rho = 0
+V3_CHANNEL_PAIRS = [(3, 1), (9, 2), (4, 1), (7, 0)]
 
 
 def v3_keep(n_peak, d_rho, word):
@@ -269,13 +271,20 @@ def setup_pipeline(
             decision[0] = v3_control and not v3_keep(*pairs[0], V3_DEFAULT_WORD)
             decision[2] = not v3_keep(*pairs[2], V3_LIMIT_WORD)
         if fine_support:
-            support = np.array([[1, 124], [0, 0], [-1, -1], [1, 126]], dtype="<i4")
+            # every row of a calibrated channel is tested; freq_ids[2] is one
+            support = np.array([[1, 124], [0, 0], [1, 125], [1, 126]], dtype="<i4")
             if index % 2:
                 support[[0, 1]] = support[[1, 0]]
             if fault == "support_value":
                 support[0] = [2, 124]
             if fault == "support_count":
                 support[0] = [1, 0]
+            # an untested row of the calibrated freq_ids[2], in no list, or of freq_ids[1],
+            # bound nowhere but in require_fine_freq_ids
+            if fault == "untested_calibrated":
+                support[2] = [-1, -1]
+            if fault == "untested_required":
+                support[1] = [-1, -1]
             raw_payload(source("dtv_fine_support"), (F * 2 * 4,))[:] = support.view(
                 np.uint8
             ).ravel()
@@ -685,7 +694,6 @@ def test_refuse_invalid_support_product(tmp_path, runtime, fault):
         ({"permanent_mask_freq_ids": [1 << 32]}, "exact nonnegative"),
         ({"permanent_mask_freq_ids": [5000]}, "absent"),
         ({"require_fine_freq_ids": [4000]}, "overlap"),
-        ({"require_fine_freq_ids": [2623]}, "not evaluated"),
     ],
 )
 def test_refuse_incomplete_or_ambiguous_threshold_binding(
@@ -696,6 +704,16 @@ def test_refuse_incomplete_or_ambiguous_threshold_binding(
     code, log = pipeline.run()
     assert code != 0, log[-12000:]
     assert "DtvRfiMask" in log and reason in log, log[-12000:]
+
+
+@pytest.mark.parametrize("fault", ["untested_calibrated", "untested_required"])
+def test_untested_decided_row_stops_the_mask(tmp_path, runtime, fault):
+    """While the mask is on, an untested row of a calibrated channel, or of a frequency in
+    require_fine_freq_ids, stops DtvRfiMask."""
+    pipeline, *_ = setup_pipeline(tmp_path, runtime, fine_support=True, fault=fault)
+    code, log = pipeline.run()
+    assert code != 0, log[-12000:]
+    assert "DtvRfiMask" in log and "not evaluated" in log, log[-12000:]
 
 
 def test_finite_threshold_requires_full_rate_support(tmp_path, runtime):

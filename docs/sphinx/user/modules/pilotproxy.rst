@@ -162,7 +162,12 @@ The other keys are listed below.
     Receiver IDs that must have a fine test in every block. A row of
     ``(-1, -1)`` for one of these IDs stops the run instead of counting as a
     pass. The list is enforced by ``DtvRfiMask`` and so applies only with
-    ``dtv_apply_mask``.
+    ``dtv_apply_mask``. While the mask is on, ``DtvRfiMask`` also requires a
+    test of every calibrated channel of the bundle in the frame, and of the
+    control with ``mask_control``, unless the frequency is permanently masked:
+    under v3 the untested pair ``(0, 2^64 - 1)``, and under v1 and v2 a support
+    of ``(-1, -1)``, stops the run. The list adds IDs that must also be present
+    on the node.
 
 Both lists hold receiver ``coarse_freq`` IDs. The ATSC channel number of a
 pilot is given only in the bundle. The two lists must not overlap, and every
@@ -277,7 +282,8 @@ it:
 * during the run, a ``coarse_freq`` change after binding, or a CUDA or
   detector error
 * in ``DtvRfiMask``, mismatched timestamps, frequencies, or layouts, a malformed
-  support row, an unevaluated row for a required frequency, or a
+  support row, an unevaluated row for a required frequency or, while the mask
+  is on, for a calibrated channel, or a
   ``fine_decision_v3`` bundle without ``stat_buf``
 
 An uncalibrated channel must therefore be removed from the bundle or listed in

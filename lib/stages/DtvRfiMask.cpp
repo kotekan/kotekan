@@ -107,6 +107,35 @@ std::map<int, V3Channel> v3_channels(const std::string& path) {
     return result;
 }
 
+/// Return the receiver ID of every calibrated channel and of the control of a bundle, with whether
+/// it is the control. A row without receiver_channel_id takes the legacy CHORD key
+/// chord_channel_id, and a row with neither is skipped.
+std::map<int, bool> calibrated_channels(const std::string& path) {
+    std::map<int, bool> result;
+    std::ifstream stream(path);
+    nlohmann::json bundle;
+    if (!stream)
+        return result; // mask_unqualified_reason reports it
+    try {
+        stream >> bundle;
+    } catch (const std::exception&) {
+        return result;
+    }
+    for (const auto& row : bundle.value("profiles", nlohmann::json::array())) {
+        if (!row.is_object() || !row.contains("fine_calibration")
+            || !row.at("fine_calibration").is_object())
+            continue;
+        const auto status = row.at("fine_calibration").value("status", "");
+        if (status != "calibrated" && status != "control")
+            continue;
+        const char* key =
+            row.contains("receiver_channel_id") ? "receiver_channel_id" : "chord_channel_id";
+        if (row.contains(key) && row.at(key).is_number_integer())
+            result[row.at(key).get<int>()] = status == "control";
+    }
+    return result;
+}
+
 } // namespace
 
 /**
@@ -149,7 +178,10 @@ std::map<int, V3Channel> v3_channels(const std::string& path) {
  * @conf    require_fine_freq_ids List of unique integer receiver coarse-frequency IDs
  *          in [0,CHORD_META_MAX_FREQ) that must have an evaluated fine decision (default []).
  *          Requires fine_support_buf when nonempty. Both lists must be disjoint and
- *          contain only IDs in the input frequency assignment.
+ *          contain only IDs in the input frequency assignment. While the mask is on, every
+ *          calibrated channel of the bundle in the frame, and the control with mask_control,
+ *          must also be evaluated unless it is permanently masked; under v1 and v2 this is
+ *          read from fine_support_buf.
  * @conf    pilot_profiles_path String. pilot_profiles.json of the detector's runtime bundle.
  *          The mask can be on only when every calibrated channel in it carries the
  *          mask_qualification record of pilotproxy's qualify-bundle. Otherwise the stage
@@ -202,6 +234,7 @@ public:
                 FATAL_ERROR("DtvRfiMask finite and permanent-mask thresholds overlap");
         pilot_profiles_path = config.get<std::string>(unique_name, "pilot_profiles_path");
         v3 = v3_channels(pilot_profiles_path);
+        calibrated = calibrated_channels(pilot_profiles_path);
         if (!v3.empty() && !stat)
             FATAL_ERROR(
                 "DtvRfiMask: the bundle has fine_decision_v3 channels, which need stat_buf");
@@ -343,14 +376,23 @@ public:
                     FATAL_ERROR("DtvRfiMask detector decision must be zero or one");
                 const bool permanent_freq =
                     std::find(permanent.begin(), permanent.end(), freq[f]) != permanent.end();
+                // a row this stage decides must have been tested while the mask is on: a required
+                // frequency, a calibrated channel, and the control with mask_control, unless the
+                // frequency is permanently masked
+                const auto bound = calibrated.find(freq[f]);
+                const bool must_test =
+                    std::find(required.begin(), required.end(), freq[f]) != required.end()
+                    || (bound != calibrated.end() && (!bound->second || mask_control)
+                        && !permanent_freq);
                 const auto channel = v3.find(freq[f]);
                 if (channel != v3.end()) {
                     // fine decision v3, decided here with the channel's word
                     const uint64_t n_peak = pair[2 * f], d_rho = pair[2 * f + 1];
                     const bool evaluated = !(n_peak == 0 && d_rho == UINT64_MAX);
-                    if (enabled && !evaluated
-                        && std::find(required.begin(), required.end(), freq[f]) != required.end())
-                        FATAL_ERROR("DtvRfiMask required fine threshold was not evaluated");
+                    if (enabled && !evaluated && must_test)
+                        FATAL_ERROR("DtvRfiMask required fine threshold was not evaluated for "
+                                    "frequency {:d}",
+                                    freq[f]);
                     const bool decided = !channel->second.control || mask_control;
                     excluded[f] =
                         enabled
@@ -366,9 +408,10 @@ public:
                           || ((valid == 0 || valid == 1) && count >= 0 && count <= 256
                               && (valid == 0 || count > 0))))
                         FATAL_ERROR("DtvRfiMask malformed fine support row");
-                    if (enabled && valid == -1
-                        && std::find(required.begin(), required.end(), freq[f]) != required.end())
-                        FATAL_ERROR("DtvRfiMask required fine threshold was not evaluated");
+                    if (enabled && valid == -1 && must_test)
+                        FATAL_ERROR("DtvRfiMask required fine threshold was not evaluated for "
+                                    "frequency {:d}",
+                                    freq[f]);
                     invalid = valid == 0;
                 }
                 excluded[f] = enabled && (reject[f] || invalid || permanent_freq);
@@ -461,6 +504,7 @@ private:
     Buffer *rfi, *dtv, *output, *support, *stat;
     const bool mask_control;
     std::map<int, V3Channel> v3;
+    std::map<int, bool> calibrated;
     std::vector<int> permanent, required;
     std::string pilot_profiles_path;
     // empty when the bundle may mask
