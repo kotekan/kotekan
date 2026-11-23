@@ -438,6 +438,34 @@ glo_rec_buf:
     num_frames: 64
     frame_size: 26 * 44 * 4 + 26 * 5 * 9 * 4
 
+# GLONASS L3OC-p (1202.025 MHz, GuoWang's carrier, 22.975 MHz below the LO): DFT bins 49 to 56,
+# frame positions 17 to 24, eight of the 10.23 Mcps main lobe's eleven channels.
+# gnss_gpu::frame_bytes(14 PRNs, 8 channels, 4 rows, 1 element).
+l3oc_epl_buf:
+    kotekan_buffer: standard
+    metadata_pool: gnss_pool
+    num_frames: 8
+    frame_size: 197296
+l3oc_rec_buf:
+    kotekan_buffer: standard
+    metadata_pool: gnss_pool
+    num_frames: 64
+    frame_size: 14 * 44 * 4 + 14 * 8 * 9 * 4
+
+# GLONASS L2OC-p (1248.06 MHz, 23.06 MHz above the LO): DFT bins 11 to 13, frame positions 43 to
+# 45, the whole lobe (1246.0-1250.1 MHz). gnss_gpu::frame_bytes(14 PRNs, 3 channels, 4 rows,
+# 1 element).
+l2oc_epl_buf:
+    kotekan_buffer: standard
+    metadata_pool: gnss_pool
+    num_frames: 8
+    frame_size: 89776
+l2oc_rec_buf:
+    kotekan_buffer: standard
+    metadata_pool: gnss_pool
+    num_frames: 64
+    frame_size: 14 * 44 * 4 + 14 * 3 * 9 * 4
+
 gputrack:
     kotekan_stage: cudaProcess
     gpu_id: 0
@@ -464,6 +492,8 @@ gputrack:
         b2b_epl_buf: b2b_epl_buf
         sbas_epl_buf: sbas_epl_buf
         glo_epl_buf: glo_epl_buf
+        l3oc_epl_buf: l3oc_epl_buf
+        l2oc_epl_buf: l2oc_epl_buf
     commands:
         - name: cudaInputData
           in_buf: q_valve_buf
@@ -706,6 +736,46 @@ gputrack:
           set_trim_endpoint: /glo_track/set_trim
           get_prns_endpoint: /glo_track/get_prns
           set_prns_endpoint: /glo_track/set_prns
+        - name: cudaGnssTrack
+          gpu_mem_input: gnss_chan_frame
+          gpu_mem_output: l3oc_epl
+          cuda_stream: 3
+          # GLONASS L3OC-p with the NH10 tiled in: one 102300-chip, 10 ms code; dataless. The
+          # PRN is the code index, taken to be the orbital slot as on CHORD. The L3OC-capable
+          # slots per the IGS registry: GLO-K1/K1B/K1+/K2 and the modernised GLO-M+.
+          signal: GLO_L3OC_P_NH
+          prns: &l3oc_prns [4, 5, 6, 8, 9, 11, 12, 16, 19, 20, 21, 22, 23, 24]
+          f_offset_hz: -22.975e6
+          n_channels: 8
+          channel_ids: [49, 50, 51, 52, 53, 54, 55, 56]
+          gnss_local_channels: [17, 18, 19, 20, 21, 22, 23, 24]
+          epl_from_prompt: true
+          dll_spacing: 0.5
+          seed_endpoint: /l3oc_track/set_seeds
+          set_trim_endpoint: /l3oc_track/set_trim
+          get_prns_endpoint: /l3oc_track/get_prns
+          set_prns_endpoint: /l3oc_track/set_prns
+        - name: cudaGnssTrack
+          gpu_mem_input: gnss_chan_frame
+          gpu_mem_output: l2oc_epl
+          cuda_stream: 3
+          # GLONASS L2OC-p with the 50-chip OC2 baked in: one 2,046,000-chip, 1 s code (a
+          # 40920-chip primary at 2.046 Mcps, its BOC and the time-multiplexed data slots in the
+          # code). The power sits +-0.8 MHz about the carrier with a null on it; the
+          # autocorrelation crosses zero at +-0.67 chip, so the taps sit at +-0.4, CHORD's
+          # spacing on the whole lobe. The K slots carry it; the M+ ones (4, 5, 12, 16, 21, 24)
+          # carry L3OC alone and serve as its noise probes.
+          signal: GLO_L2OC_P_OC
+          prns: *l3oc_prns
+          f_offset_hz: 23.06e6
+          n_channels: 3
+          channel_ids: [11, 12, 13]
+          gnss_local_channels: [43, 44, 45]
+          dll_spacing: 0.4
+          seed_endpoint: /l2oc_track/set_seeds
+          set_trim_endpoint: /l2oc_track/set_trim
+          get_prns_endpoint: /l2oc_track/get_prns
+          set_prns_endpoint: /l2oc_track/set_prns
         - name: cudaSyncOutput
         - name: cudaOutputData
           gpu_mem: l5_epl
@@ -770,6 +840,14 @@ gputrack:
         - name: cudaOutputData
           gpu_mem: glo_epl
           out_buf: glo_epl_buf
+          in_buf: q_valve_buf
+        - name: cudaOutputData
+          gpu_mem: l3oc_epl
+          out_buf: l3oc_epl_buf
+          in_buf: q_valve_buf
+        - name: cudaOutputData
+          gpu_mem: l2oc_epl
+          out_buf: l2oc_epl_buf
           in_buf: q_valve_buf
 
 l5_assemble:
@@ -1056,6 +1134,37 @@ glo_combine:
     integration_length: 200
     record_export: 64
 
+l3oc_assemble:
+    kotekan_stage: GnssGpuRecordAssemble
+    in_buf: l3oc_epl_buf
+    out_buf: l3oc_rec_buf
+    prns: *l3oc_prns
+    chan_export: true
+    channel_ids: [49, 50, 51, 52, 53, 54, 55, 56]
+l3oc_combine:
+    kotekan_stage: GnssCoherentCombiner
+    in_bufs: [l3oc_rec_buf]
+    n_prn: 14
+    integration_length: 200
+    record_export: 64
+
+l2oc_assemble:
+    kotekan_stage: GnssGpuRecordAssemble
+    in_buf: l2oc_epl_buf
+    out_buf: l2oc_rec_buf
+    prns: *l3oc_prns
+    chan_export: true
+    channel_ids: [11, 12, 13]
+    # The 2,046,000-chip baked code costs a float32 code phase 0.125 chip: keep it mod the
+    # 40920-chip primary.
+    record_cp_mod_chips: 40920.0
+l2oc_combine:
+    kotekan_stage: GnssCoherentCombiner
+    in_bufs: [l2oc_rec_buf]
+    n_prn: 14
+    integration_length: 200
+    record_export: 64
+
 b2b_assemble:
     kotekan_stage: GnssGpuRecordAssemble
     in_buf: b2b_epl_buf
@@ -1174,6 +1283,20 @@ telem_pack:
             max_prn: 26
             n_chan: 5
             channel_ids: [9, 10, 11, 12, 13]
+        l3oc:
+            in_buf: l3oc_rec_buf
+            chain: glo_l3oc
+            n_prn: 14
+            max_prn: 14
+            n_chan: 8
+            channel_ids: [49, 50, 51, 52, 53, 54, 55, 56]
+        l2oc:
+            in_buf: l2oc_rec_buf
+            chain: glo_l2oc
+            n_prn: 14
+            max_prn: 14
+            n_chan: 3
+            channel_ids: [11, 12, 13]
 telem_gather:
     kotekan_stage: GnssTelemGather
     in_buf: telem_buf
