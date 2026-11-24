@@ -66,6 +66,12 @@ DECLARED = [
         "gnss_n2_proj_buffer{,_1} written by gnss_n2_project",
     ),
     (
+        "host_side_buffer_depth",
+        "~",
+        "data lag (--data-lag-s, default off): the host buffers hold the frames the GPU copy "
+        "holds back",
+    ),
+    (
         "n2_accumulate.accum_*.in_proj_basis_buf",
         "+",
         "mean projector (--proj-mean, default off): gnss_n2_project's basis record in",
