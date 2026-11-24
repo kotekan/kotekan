@@ -38,3 +38,7 @@ if(CUDAToolkit_FOUND)
         endif()
     endforeach()
 endif()
+
+# pilotproxy_decision.h is header only, for consumers built without CUDA (DtvRfiMask).
+add_library(pilotproxy_decision INTERFACE)
+target_include_directories(pilotproxy_decision SYSTEM INTERFACE pilotproxy)

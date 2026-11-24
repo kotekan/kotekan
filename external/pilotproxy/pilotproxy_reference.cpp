@@ -5,15 +5,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Frozen fxfft256 v1 reference transform, compiled into this translation
- * unit without its standalone file harness and with internal linkage: the
- * anonymous namespace keeps fxfft256(in[128][2], out[256][2]) private to
- * this file, so a host harness that links it (kotekan's
- * testPilotProxyDetector.cpp links the vendored static library) may include
- * fxfft256_ref.c at file scope for its own use without a duplicate
- * definition. The four C headers the file includes are included above so
- * that, inside the namespace, their include guards leave them empty. The
- * FX_N and FX_NIN macros remain visible. */
+/* The frozen fxfft256 v1 reference transform is compiled into this
+ * translation unit with internal linkage and without its standalone file
+ * harness. The anonymous namespace keeps fxfft256(in[128][2], out[256][2])
+ * private to this file. A host harness that links this file, such as
+ * kotekan's testPilotProxyDetector.cpp with the vendored static library,
+ * may then include fxfft256_ref.c at file scope for its own use without a
+ * duplicate definition. The four C headers that fxfft256_ref.c includes are
+ * included above, so their include guards leave them empty in the
+ * namespace. The FX_N and FX_NIN macros stay visible. */
 #define FXFFT256_REF_NO_MAIN
 namespace {
 #include "fxfft256_ref.c"

@@ -493,6 +493,7 @@ BOOST_AUTO_TEST_CASE(test_metadata_dataset_identity_roundtrip) {
     N2Metadata source;
     source.dataset_id = id;
     source.freq_id = 614;
+    source.n_usable_variance_pairs = 7;
 
     N2MetadataFormat wire;
     auto* bytes = reinterpret_cast<char*>(&wire);
@@ -503,6 +504,7 @@ BOOST_AUTO_TEST_CASE(test_metadata_dataset_identity_roundtrip) {
     BOOST_CHECK_EQUAL(binary_copy.set_from_bytes(bytes, sizeof(wire)), sizeof(wire));
     BOOST_CHECK(binary_copy.dataset_id == id);
     BOOST_CHECK_EQUAL(binary_copy.freq_id, source.freq_id);
+    BOOST_CHECK_EQUAL(binary_copy.n_usable_variance_pairs, 7);
 
     auto encoded = source.to_json();
     BOOST_REQUIRE(encoded.contains("dataset_id"));
@@ -510,8 +512,11 @@ BOOST_AUTO_TEST_CASE(test_metadata_dataset_identity_roundtrip) {
     from_json(encoded, json_copy);
     BOOST_CHECK(json_copy.dataset_id == id);
     BOOST_CHECK_EQUAL(json_copy.freq_id, source.freq_id);
+    BOOST_CHECK_EQUAL(json_copy.n_usable_variance_pairs, 7);
 
     encoded.erase("dataset_id");
+    encoded.erase("n_usable_variance_pairs");
     from_json(encoded, json_copy);
     BOOST_CHECK(json_copy.dataset_id == dset_id_t::null);
+    BOOST_CHECK_EQUAL(json_copy.n_usable_variance_pairs, 0);
 }

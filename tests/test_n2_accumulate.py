@@ -204,7 +204,7 @@ def setup(request, accum_setup):
             "/rfi_first_stage_enabled"
         )
         request.param["first_stage_off_seq"] = off_seq
-        # The DTV mask switches on at the same time
+        # The DTV mask config names the same time, but applies from startup
         config["dtv_mask_enabled"] = dict(
             config["rfi_first_stage_enabled"], enabled=True
         )
@@ -1068,7 +1068,8 @@ def expected_accum(
 
     Returns
     ------
-    NDArrays containing accum data: vis, weights, valid counts, RFI counts, PL counts
+    NDArrays containing accum data: vis, weights, valid counts, RFI counts, PL counts,
+    usable variance pairs
     """
 
     config = setup["config"]
@@ -1220,7 +1221,7 @@ def expected_accum(
     elif accum_setup["variance_mode"] == "EvenOddPosDef":
         w = safe_invert(accum_n2_var_pos, float)
 
-    return vis, w, accum_count, accum_rficount, accum_plcount
+    return vis, w, accum_count, accum_rficount, accum_plcount, accum_usable_pairs
 
 
 def test_structure(accum_data, accum_list, setup):
@@ -1392,7 +1393,7 @@ def test_counts(accum_data, expected_accum, accum_list, setup):
 
     config = setup["config"]
 
-    _, _, exp_cnts, exp_rficnts, exp_plcnts = expected_accum
+    _, _, exp_cnts, exp_rficnts, exp_plcnts, exp_pairs = expected_accum
 
     for idx, frame in enumerate(accum_data):
         t = idx // config["num_local_freq"]
@@ -1401,6 +1402,7 @@ def test_counts(accum_data, expected_accum, accum_list, setup):
         assert frame.metadata.n_valid_fpga_ticks == exp_cnts[t, f]
         assert frame.metadata.n_rfi_fpga_ticks == exp_rficnts[t, f]
         assert frame.metadata.n_pl_fpga_ticks == exp_plcnts[t, f]
+        assert frame.metadata.n_usable_variance_pairs == exp_pairs[t, f]
         assert frame.metadata.n_rfi_only_fpga_ticks == accum_list[t]["seq_len"] - (
             exp_cnts[t, f] + exp_plcnts[t, f]
         )
@@ -1435,20 +1437,14 @@ def test_dtv_mask_enabled(accum_data, accum_list, setup):
         return
 
     config = setup["config"]
-    frame_len = config["samples_per_data_set"]
     sub_len = config["sub_integration_ntime"]
-    on_seq = setup.get("first_stage_off_seq")
+    with_endpoint = setup.get("first_stage_off_seq") is not None
 
     for idx, frame in enumerate(accum_data):
         accum = accum_list[idx // config["num_local_freq"]]
-        # Without the endpoint the count is zero
-        expected = 0
-        if on_seq is not None:
-            sub_seqs = (
-                config["first_frame_index"] * frame_len + sub_len * accum["sub_idx"]
-            )
-            frame_starts = sub_seqs - sub_seqs % frame_len
-            expected = sub_len * np.count_nonzero(frame_starts >= on_seq)
+        # Without the endpoint the count is zero. The config value applies from
+        # startup, whatever its valid_at_time_ns.
+        expected = sub_len * len(accum["sub_idx"]) if with_endpoint else 0
         assert frame.metadata.n_dtv_mask_enabled_fpga_ticks == expected
 
 
@@ -1459,7 +1455,7 @@ def test_vis(accum_data, expected_accum, accum_list, setup):
 
     config = setup["config"]
 
-    exp_vis, _, _, _, _ = expected_accum
+    exp_vis, _, _, _, _, _ = expected_accum
 
     for idx, frame in enumerate(accum_data):
         t = idx // config["num_local_freq"]
@@ -1503,7 +1499,7 @@ def test_weight(accum_data, expected_accum, accum_list, setup, accum_setup):
 
     config = setup["config"]
 
-    _, exp_w, _, _, _ = expected_accum
+    _, exp_w, _, _, _, _ = expected_accum
 
     for idx, frame in enumerate(accum_data):
         t = idx // config["num_local_freq"]

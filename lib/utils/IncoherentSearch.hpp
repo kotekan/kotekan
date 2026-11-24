@@ -28,6 +28,8 @@ struct IncoherentSearchParams {
     double thermal = 0;
     /// Frequency ranges that are always masked, MHz
     std::vector<std::pair<double, double>> mask_bands_mhz;
+    /// A channel that becomes masked is also masked for this long before, seconds
+    double mask_margin_s = 0.17;
     /// Candidates are reported above this S/N
     double threshold = 8.0;
     /// No candidates before this time after the first sample, seconds
@@ -46,6 +48,8 @@ struct IncoherentCandidate {
     /// channel in samples since the first one
     double snr = 0;
     double dm = 0;
+    /// Index of dm in IncoherentSearchParams::dms
+    int dm_index = 0;
     int width = 0;
     int64_t sample = 0;
     /// Samples above threshold that were merged into the candidate
@@ -53,6 +57,24 @@ struct IncoherentCandidate {
     /// S/N of each block of channels along the dispersion curve. A pulse fills most blocks;
     /// narrow-band interference fills one or two.
     std::array<float, num_blocks> block_snr{};
+    /// Channels with data along the dispersion curve
+    int num_channels = 0;
+    /// Other candidates more than 20 DM units away that fit the same arrival without dispersion,
+    /// with their highest S/N in or beside a block where this one has half its own highest
+    int num_partners = 0;
+    /// The candidate has two or more partners, and with them covers more than 50 DM units:
+    /// interference, not a pulse.
+    bool undispersed = false;
+    /// 8 samples or wider, with more than 0.8 times its S/N in one block. Interference a few MHz
+    /// wide looks like this; so may a wide burst in a narrow band.
+    bool one_band = false;
+    /// The highest S/N of the candidate in a contiguous part of the band, of 2 to 16 sixteenths
+    /// of the channels with data, after the sum of every 8 adjacent channels over the window is
+    /// limited to 3 sigma, or to what a pulse in two sixteenths would give; and its ratio to the
+    /// S/N of the whole band from the same samples. The ratio is about 1 for noise, below 1 for
+    /// interference a few MHz wide, and above 1 for a pulse that fills part of the band.
+    float part_snr = 0;
+    float part_ratio = 0;
 };
 
 /**
@@ -61,9 +83,10 @@ struct IncoherentCandidate {
  *
  * Each channel keeps an exponential running mean and variance and is normalized by them. Channels
  * that are missing, in a fixed band, noisier than their neighbours or drifting (the means of
- * 64-sample blocks vary more than white noise allows) are masked. So is, for one time sample, a
- * sixteenth of the band whose channels add up to far more than their noise: interference in
- * part of the band, which the limit on single samples does not stop. The channel average is
+ * 64-sample blocks vary more than white noise allows) are masked, with two channels on each side
+ * of a noisy or drifting one and with the mask_margin_s before the mask. So is, for one time
+ * sample, a sixteenth of the band whose channels add up to far more than their noise: interference
+ * in part of the band, which the limit on single samples does not stop. The channel average is
  * subtracted at each time (zero DM). The normalized samples are summed along
  * each trial DM's dispersion curve with delays rounded to the nearest sample, relative to the top
  * channel. Each sum is tried at several widths against a baseline from the samples on both sides,
@@ -74,6 +97,16 @@ struct IncoherentCandidate {
  * DM or much weaker (the residue of a bright pulse at another DM, which falls as one over the
  * difference of DM).
  *
+ * Interference in part of the band has no dispersion, and is found at every DM: at a higher DM
+ * earlier at the top channel, by the sweep from its own frequency to the top. A pulse is found
+ * at its own DM. A partner of a candidate is another one of at least half its S/N and of at
+ * least 6 sigma, more than 20 DM units away at such a time, with its highest S/N in or beside a
+ * block of the band where the candidate has at least half its own highest: a pulse that arrives
+ * during interference has little S/N where the interference is. A candidate is marked
+ * undispersed when it has two or more partners and they cover, with it, more than 50 DM units.
+ * For that a candidate is reported only when the same arrival has been searched at the highest
+ * DM: the sweep of the highest DM after it reached the top channel.
+ *
  * Widths of 1 to 16 samples are tried, in passes of `chunk` samples; the widths and the mask
  * thresholds are constants in the source.
  *
@@ -83,6 +116,10 @@ class IncoherentSearch {
 public:
     /// Samples per search pass
     static constexpr int chunk = 256;
+    /// Time samples in a cutout
+    static constexpr int cutout_samples = 256;
+    /// A stored sample is in units of 1 / sample_scale sigma of its channel: int8 reaches 4 sigma
+    static constexpr double sample_scale = 32.0;
 
     explicit IncoherentSearch(const IncoherentSearchParams& params);
 
@@ -95,6 +132,20 @@ public:
 
     /// Returns the candidates completed since the last call.
     std::vector<IncoherentCandidate> take_candidates();
+
+    /**
+     * @brief Copies the samples around a candidate as the search saw them, dedispersed at its DM.
+     *
+     * A sample is the channel's power less its running mean, in units of 1 / sample_scale of
+     * its sigma, limited to 3 sigma, less the average of the channels at that time; 0 where
+     * the channel was masked or the sample is not held.
+     *
+     * @param cand  A candidate of the last take_candidates(), before the next add_sample().
+     * @param out   [channel][cutout_samples]. Column k is the top channel's sample
+     *              cand.sample - cutout_samples / 2 + k, and in each channel the sample that
+     *              the candidate's DM delays to it.
+     */
+    void cutout(const IncoherentCandidate& cand, int8_t* out) const;
 
     /// Highest S/N of any DM and width since the last call, after the hold-off.
     double take_max_snr();
@@ -144,6 +195,7 @@ private:
         int num_hits;
         int64_t created; // value of ns when the event was opened
         bool reported;
+        int block; // the block of channels with the highest S/N of `best`
     };
 
     void update_reference();
@@ -152,7 +204,12 @@ private:
                    std::vector<Hit>& hits, double& max_snr);
     void merge_hits(const std::vector<Hit>& hits);
     void close_events();
+    int count_partners(const Event& e,
+                       const std::array<float, IncoherentCandidate::num_blocks>& block_snr,
+                       double& dm_range) const;
+    int strongest_block(const Hit& hit) const;
     void band_occupancy(IncoherentCandidate& cand, const Hit& hit) const;
+    void band_parts(IncoherentCandidate& cand) const;
     const int8_t* row(int channel, int64_t sample) const {
         return &w[(size_t)channel * buffer_len + (size_t)(sample - base)];
     }
@@ -174,6 +231,7 @@ private:
     int64_t holdoff = 0;
     int64_t min_count = 0;    // updates a statistic needs before it is used
     int64_t close_after = 0;  // a candidate is reported this long after its first sample
+    int64_t mask_margin = 0;  // masked before a channel's mask
     int64_t ref_interval = 0; // between updates of the neighbours' reference
     int64_t lookahead = 0;    // sums needed after a window's start
 
@@ -184,6 +242,8 @@ private:
     std::vector<uint8_t> band_ok;    // 0 in a fixed masked band
     std::vector<ChannelState> state; // in the sample being added
     std::vector<float> scratch;      // normalized value in the sample being added
+    std::vector<uint8_t> noisy;      // fails its own test in the sample being added
+    std::vector<uint8_t> was_used;   // used in the last sample, before the cut of blocks
     // Drift test: the sum of the current block of normalized samples, and the running variance
     // of the block means in units of that of white noise.
     std::vector<double> block_sum, drift;
@@ -214,7 +274,8 @@ private:
     std::vector<float> pass_sums;    // [D][chunk] when p.keep_sums: see last_sums()
     std::vector<float> pass_max;     // [D]: see last_max_snr()
 
-    std::vector<Event> events; // open candidates, and reported ones that still absorb residue
+    // Open candidates, and reported ones that still absorb residue and mark others undispersed
+    std::vector<Event> events;
     std::vector<IncoherentCandidate> candidates;
     double max_snr_seen = 0;
 };

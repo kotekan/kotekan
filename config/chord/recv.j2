@@ -33,17 +33,9 @@
 
 
 # DTV detector products from the X-engine halves (dtv.j2): one frame of dtv_blocks_per_frame
-# 8192-sample blocks per half, over num_local_freq frequencies (telescope.j2, shared with
-# pathfinder.j2). Shapes and ports must match dtv.j2.
-{% from "telescope.j2" import num_local_freq %}
-{% set dtv_blocks_per_frame = 1024 %}
-{% set dtv_products = [
-    ("mask", "int8", num_local_freq ~ "", '"F"', "1", 11031),
-    ("powers", "uint64", num_local_freq ~ ", 3", '"F", "W"', "1, 1", 11033),
-    ("fine_support", "int32", num_local_freq ~ ", 2", '"F", "S"', "1, 1", 11035),
-    ("fine_powers", "uint64", "2, 3, 256", '"F", "W", "B"', "1, 1, 1", 11037),
-] %}
-{% set dtv_sent = dtv_products if dtv_calibration_mode|default(false) else dtv_products|selectattr("0", "equalto", "mask")|list %}
+# 8192-sample blocks per half. telescope.j2 holds the shapes and ports for both sides, and
+# dtv_enabled false leaves the DTV buffers and stages out.
+{% from "telescope.j2" import num_local_freq, dtv_enabled, dtv_blocks_per_frame, dtv_sent with context %}
 
 ---
 {% include "common.j2" %}
@@ -130,7 +122,7 @@ bad_feed_mask_buffer:
 
 # DTV frames from all 16 halves share one buffer per product. Each half sends one frame per
 # ~43 s, so 32 frames cover two rounds while the writer catches up.
-{% for product, value_type, extents, dimnames, dimscalings, port in dtv_sent %}
+{% for product, value_type, extents, dimnames, dimscalings, port in dtv_sent if dtv_enabled %}
 dtv_{{ product }}_buffer:
     kotekan_buffer: ndarray
     num_frames: 32
@@ -171,6 +163,7 @@ buffer_recv_bad_feed_mask:
     buf: bad_feed_mask_buffer
     listen_port: 11029
 
+{% if dtv_enabled %}
 buffer_recv_dtv:
 {% for p in dtv_sent %}
     {{ p[0] }}:
@@ -179,6 +172,7 @@ buffer_recv_dtv:
         buf: dtv_{{ p[0] }}_buffer
         listen_port: {{ p[5] }}
 {% endfor %}
+{% endif %}
 
 # Live autocorrelation power vs frequency from the full N2 stream, for the
 # peek endpoint. num_pending_bins is left at its default (2).
@@ -235,8 +229,11 @@ hdf5_N2_write_subset:
 #     num_file_t: 20
 
 
-# DTV products, one file per received frame: one half's ~43 s. File numbers follow arrival
-# order; the coarse_freq and fpga_seq_num attributes identify the half and the window.
+# DTV products, 448 frames per file: 28 frames of ~43 s from each of the 16 halves, about 20
+# minutes. Every half sends every product, whether or not it binds a channel, so that holds
+# for each of them. The frames are in arrival order; frame_metadata/COARSE_FREQ and
+# frame_metadata/FPGA_SEQ_NUM identify the half and the window of each.
+{% if dtv_enabled %}
 write_dtv:
 {% for p in dtv_sent %}
     {{ p[0] }}:
@@ -248,7 +245,10 @@ write_dtv:
         acq_dir: true
         file_name: dtv_{{ p[0] }}
         prefix_hostname: false
+        frames_per_file: 448
+        record_per_frame_metadata: true
 {% endfor %}
+{% endif %}
 
 # Incoherent-beam power from the X-engine halves (incoherent.j2): frames of 32 time samples
 # (1.31 ms each) over a half's num_local_freq frequencies, 24 per second from each of 16
@@ -296,22 +296,55 @@ incoherent_snr_buffer:
     dimscalings: [65536, 1]
     metadata_pool: incoherent_power_pool
 
+# The samples around each candidate without a flag, as the search saw them and shifted by the
+# candidate's DM: 1.7 MB before compression, one file per candidate. A pulse is a column in
+# the middle. A file is cutouts/acq_<start of kotekan>/cutout.<UTC of its first sample>.<n>.h5
+# with n the "cutout" of the candidate's line in candidates.jsonl, counted from the start.
+incoherent_cutout_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 8
+    value_type: int8
+    extents: [6656, 256]
+    quantity_name: "incoherent_beam_cutout"
+    dimnames: ["F", "Trfi"]
+    dimscalings: [1, 256]
+    metadata_pool: incoherent_power_pool
+
+write_incoherent_cutouts:
+    kotekan_stage: hdf5FileWrite
+    log_level: warn
+    in_buf: incoherent_cutout_buffer
+    base_dir: /mnt/cs00/data/incoherent_beam_search/cutouts
+    acq_dir: true
+    file_name: cutout
+    time_in_file_name: true
+    prefix_hostname: false
+
 incoherent_beam_search:
     kotekan_stage: IncoherentBeamSearch
     cpu_affinity: [4,5,6,7,8,9,10,11]
     num_threads: 8
     in_buf: incoherent_power_buffer
     snr_buf: incoherent_snr_buffer
+    cutout_buf: incoherent_cutout_buffer
     freq_id_base: 1536
     num_local_freq: 6656
     num_feeds: num_elements
     dm_min: 3
     dm_knee: 100
-    # Candidates are listed from 7 sigma at every DM, to learn the real false-alarm rate and
-    # to see the pulsars in the beam. Thermal noise alone should give one or two a day. This
-    # is not a level for triggering a baseband dump: that wants DM >= 100 and a rate set from
-    # these candidates.
-    threshold: 7
+    # Candidates are listed from 5.5 sigma at every DM (the reporting cut), to see the
+    # pulsars in the beam and what the flags in the candidate file take out; thermal noise
+    # alone gives about 23000 a day. A candidate gets a cutout (the intensity dump cut) from
+    # 6 sigma at DM 100 and above (the default of trigger_min_dm) when it has no other flag,
+    # and from 6.5 sigma with any flag but "undispersed": about 1500 a day at the rates of
+    # 2026-11-22, most of them thermal noise.
+    threshold: 5.5
+    trigger_min_snr: 6
+    cutout_flagged_min_snr: 6.5
+    # No cutouts of the Crab pulsar: its pulses were found at DM 56.2-56.9 and Earth rotation
+    # angles 192-215 degrees on 2026-11-22, 1241 cutouts in the hour of its transit.
+    cutout_exclude:
+        - [54, 60, 192, 216]
     # CHORD's static RFI mask, chord_util.rfi.BAD_FREQUENCIES["chord"] (bdfd697), with two
     # changes for a search for pulses: all of 1010-1130 MHz, where aircraft transmit in
     # pulses, in place of its two Mode S lines, and GNSS L1, which is above its data.
@@ -339,6 +372,9 @@ incoherent_beam_search:
         - [1559, 1610]      # GNSS L1
     candidate_file: /mnt/cs00/data/incoherent_beam_search/candidates.jsonl
     dm_file: /mnt/cs00/data/incoherent_beam_search/trial_dms.json
+{%- if incoherent_write_power | default(false) %}
+    power_buf: incoherent_power_record_buffer
+{%- endif %}
 {%- if incoherent_write_sums | default(false) %}
     out_buf: incoherent_sums_buffer
 
@@ -365,4 +401,39 @@ write_incoherent_sums:
     file_name: incoherent_sums
     prefix_hostname: false
     frames_per_file: 64
+{%- endif %}
+{%- if incoherent_write_power | default(false) %}
+
+# For a run of a few days: the power of every time sample as the search received it, before any
+# mask, 10 MB/s (880 GB a day) before compression. Render with incoherent_write_power true. The
+# search can be run again on these files with other masks and cuts. A file is
+# power/acq_<start of kotekan>/power.<UTC of its first sample>.<n>.h5 and holds 256 frames of
+# 256 samples (86 s), [time, channel] with 0 for a missing value. The search does not wait for
+# the writer: with the 600 frames (205 s, 2 GB) full a frame is left out, the stage counts it in
+# power_skipped_total, and the next frame starts a new file. The writer stops for 60 to 80 s
+# while hdf5N2Write finalizes a subset file, and 64 frames (21 s) lost 40 to 60 s each time.
+incoherent_power_record_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: 610
+
+incoherent_power_record_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 600
+    value_type: uint16
+    extents: [256, 6656]
+    quantity_name: "incoherent_beam_power"
+    dimnames: ["Trfi", "F"]
+    dimscalings: [256, 1]
+    metadata_pool: incoherent_power_record_pool
+
+write_incoherent_power:
+    kotekan_stage: hdf5FileWrite
+    log_level: warn
+    in_buf: incoherent_power_record_buffer
+    base_dir: /mnt/cs00/data/incoherent_beam_search/power
+    acq_dir: true
+    file_name: power
+    time_in_file_name: true
+    prefix_hostname: false
+    frames_per_file: 256
 {%- endif %}

@@ -199,8 +199,8 @@ rather than holding a sentinel.
 **CHIME file mode.**
 With ``file_mode == CHIME`` (legacy), the flag-like datasets
 (``vis_weight``, ``flags``, ``valid_fpga_count``, ``rfi_fpga_count``,
-``rfi_only_fpga_count``, ``pl_fpga_count``, ``frac_lost``, ``frac_rfi``,
-``frac_rfi_only``, ``frac_pl``) live under a ``/flags`` group instead of the
+``rfi_only_fpga_count``, ``pl_fpga_count``, ``variance_pair_count``,
+``frac_lost``, ``frac_rfi``, ``frac_rfi_only``, ``frac_pl``) live under a ``/flags`` group instead of the
 root. Everything below assumes the default ``CHORD`` mode (all datasets at
 the root).
 
@@ -555,6 +555,16 @@ uncompressed.
      - (:math:`N_f`, :math:`N_t`)
      - uint64
      - FPGA ticks lost to packet loss.
+   * - ``variance_pair_count``
+     - (:math:`N_f`, :math:`N_t`)
+     - uint64
+     - Number of accepted frame pairs with samples in both frames, the
+       :math:`k` of the ``EvenOddPosDef`` weight :math:`N k / Q` (see
+       ``N2Accumulate``). Counted in either ``variance_mode``; summed by
+       ``N2TimeDownsample``. Weights from fewer than about 4 pairs are
+       heavy-tailed, so cut on this count before using ``vis_weight``. 0 in
+       slots with no received frame. Files from older builds lack this
+       dataset.
    * - ``frac_lost``
      - (:math:`N_f`, :math:`N_t`)
      - float32
@@ -637,7 +647,8 @@ the datasets with a frequency axis, which hold one value per stream.
      - bool (:math:`N_f`, :math:`N_t`)
      - Whether second-stage (frame-level) RFI excision was active for this
        frequency and bin. Each frequency comes from one stream, and the
-       streams switch independently.
+       streams switch independently. Channels listed in RfiFrameMask's
+       ``rfi_first_stage_excision_exempt_freq_ids`` are not excised.
    * - ``rfi_frame_excision_num``
      - int32 (:math:`N_f`, :math:`N_t`)
      - Number of active excision thresholds (<= :math:`N_k`); only the
@@ -663,9 +674,11 @@ the datasets with a frequency axis, which hold one value per stream.
      - float32 (:math:`N_f`, :math:`N_t`)
      - Fraction of the bin during which the DTV mask (DtvRfiMask) was applied.
        A switch applies from the first input frame starting at or after its
-       scheduled time, in DtvRfiMask and in this count. N2Accumulate reads the
-       switch only when ``dtv_mask_enabled_updatable_config`` is set; otherwise
-       this is 0.0.
+       scheduled time, in DtvRfiMask and in this count. A posted time of 0, or
+       one the node's system clock has passed, applies from the next whole 5 s
+       at least 1 s ahead in both. N2Accumulate
+       reads the switch only when ``dtv_mask_enabled_updatable_config`` is set;
+       otherwise this is 0.0.
    * - ``fringestop_enabled``
      - bool (:math:`N_f`, :math:`N_t`)
      - Whether the visibilities of this frequency and bin were

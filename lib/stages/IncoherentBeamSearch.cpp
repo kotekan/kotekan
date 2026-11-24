@@ -9,6 +9,7 @@
 #include "chordMetadata.hpp"
 #include "kotekanLogging.hpp"
 #include "prometheusMetrics.hpp"
+#include "timeUtil.hpp"
 #include "visUtil.hpp"
 
 #include <algorithm>
@@ -19,6 +20,7 @@
 #include <functional>
 #include <json.hpp>
 #include <memory>
+#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -43,8 +45,27 @@ using kotekan::prometheus::Metrics;
  *
  * Each candidate is logged, and appended to candidate_file as a line of JSON: the FPGA sequence
  * number of its arrival at the top channel (and its UNIX time, with GPS time), its S/N, DM,
- * width in samples, the number of samples above threshold merged into it, and the S/N in each
- * of 16 blocks of channels along its dispersion curve.
+ * width in samples, the number of samples above threshold merged into it, the S/N in each
+ * of 16 blocks of channels along its dispersion curve, and the number of channels with data
+ * there. A candidate is written once the highest DM has been searched for its arrival: the
+ * sweep of dm_max after it reached the top channel.
+ *
+ * The line's "flags" list every reason the candidate is not one to act on, and is empty when
+ * there is none:
+ *  - "undispersed": it is one of several over a wide range of DM that fit one arrival without
+ *    dispersion, which is interference in part of the band ("partners" is the number of the
+ *    others). Such a candidate is in the file but is not counted or logged as one.
+ *  - "low_dm": its DM is below trigger_min_dm.
+ *  - "low_snr": its S/N is below trigger_min_snr.
+ *  - "one_band": it is 8 samples or wider and one of 16 blocks of channels has more than 0.8
+ *    times its S/N, which is how interference a few MHz wide looks. A wide burst in a narrow
+ *    band looks the same.
+ *
+ * "part_snr" is the candidate's highest S/N in a contiguous part of the band and "part_ratio"
+ * its ratio to the whole band (IncoherentCandidate::part_snr): about 1 for noise, below 1 for
+ * interference a few MHz wide, above 1 for a pulse that fills part of the band.
+ *
+ * Nothing acts on a candidate yet.
  *
  * With out_buf, every search pass also writes its dedispersed sums (IncoherentSearch::last_sums)
  * as one frame, for tests: 13 MB/s with the default DMs. Row k of a frame holds, for each trial
@@ -55,6 +76,21 @@ using kotekan::prometheus::Metrics;
  * With snr_buf, every search pass also writes an image for monitoring: the highest S/N of each
  * trial DM (IncoherentSearch::last_max_snr) in each of the last passes, one row per pass, the
  * newest last. The buffer is meant to be peeked (peek_hold), not consumed.
+ *
+ * With cutout_buf, a candidate without a flag, or one of at least cutout_flagged_min_snr that is
+ * not "undispersed", also gets a frame of the samples around it as
+ * the search saw them (IncoherentSearch::cutout): each channel's power less its running mean,
+ * in units of 1/32 of its sigma, less the average of the channels at each time, 0 where the
+ * channel was masked. The channels are shifted by the candidate's DM, so that a pulse is a
+ * column in the middle of the frame, and the frame's fpga_seq_num is the first column at the
+ * top channel. The candidate's line gets "cutout", the number of its frame since the stage
+ * started, which is the number hdf5FileWrite puts in the file name. The search does not wait
+ * for cutout_buf: when it is full the candidate has no cutout.
+ *
+ * With power_buf, the power of every time sample also goes out as the search received it, before
+ * any mask, in frames of 256 samples: 2 bytes per channel and sample, 10 MB/s for 6656 channels.
+ * The search does not wait for power_buf: when it is full the frame is left out, which leaves a
+ * gap in the stream.
  *
  * The search runs in this stage's thread and its OpenMP threads, between frames. in_buf must
  * hold the frames that arrive during one search pass (0.3 s).
@@ -71,8 +107,16 @@ using kotekan::prometheus::Metrics;
  *     @buffer_format   NDArray float32 [Trfi, DM], 256 time samples by the number of trial DMs
  *                      (logged at start); 0 where there is no sum.
  *     @buffer_metadata chordMetadata
+ * @buffer cutout_buf  Optional. The samples around each candidate without a flag, and around
+ *                     those of cutout_flagged_min_snr.
+ *     @buffer_format   NDArray int8 [F, Trfi]: the channels searched by 256 time samples.
+ *     @buffer_metadata chordMetadata
+ * @buffer power_buf  Optional. The power of every time sample, one frame per 256 samples.
+ *     @buffer_format   NDArray uint16 [Trfi, F]: 256 time samples by the channels searched;
+ *                      0 marks a missing value.
+ *     @buffer_metadata chordMetadata
  *
- * @conf freq_id_base      Int. FPGA frequency id of the lowest channel searched.
+ * @conf freq_id_base     Int. FPGA frequency id of the lowest channel searched.
  * @conf num_local_freq    Int. Number of channels searched, upward from freq_id_base.
  * @conf num_feeds         Int. Feeds summed in the power; sets the expected noise.
  * @conf dm_min            Double. Lowest trial DM, pc/cm^3. Default 100.
@@ -88,6 +132,16 @@ using kotekan::prometheus::Metrics;
  * @conf mask_bands_mhz    List of [low, high]. Frequency ranges that are never searched.
  * @conf mask_freq_ids     List of int. FPGA frequency ids that are never searched.
  * @conf threshold         Double. S/N above which a candidate is reported. Default 8.
+ * @conf trigger_min_snr   Double. A candidate below this S/N gets the flag "low_snr".
+ *                         Default 7.5.
+ * @conf trigger_min_dm    Double. A candidate below this DM gets the flag "low_dm".
+ *                         Default 100.
+ * @conf cutout_flagged_min_snr  Double. A candidate of at least this S/N gets a cutout with any
+ *                         flag but "undispersed". Default 0: none does.
+ * @conf cutout_exclude    List of [DM low, DM high, ERA low, ERA high]. No cutout for a candidate
+ *                         with its DM in the range and the Earth rotation angle of its arrival
+ *                         (degrees, with UT1 taken as UTC) in the range, which may pass through
+ *                         360: a known pulsar in the beam. Needs GPS time. Default none.
  * @conf holdoff_s         Double. No candidates for this long after a (re)start. Default 120.
  * @conf tau_s             Double. Time constant of the running statistics. Default 5.
  * @conf num_threads       Int. OpenMP threads of the search. Default 4.
@@ -97,7 +151,12 @@ using kotekan::prometheus::Metrics;
  * @conf candidate_file    String. File the candidates are appended to. Default none.
  *
  * @metric kotekan_incoherent_beam_search_candidates_total   Candidates reported.
- * @metric kotekan_incoherent_beam_search_max_snr   Highest S/N in the last 32 search passes.
+ * @metric kotekan_incoherent_beam_search_undispersed_total   Candidates left out as undispersed.
+ * @metric kotekan_incoherent_beam_search_cutouts_skipped_total   Candidates without a cutout
+ *         because cutout_buf was full.
+ * @metric kotekan_incoherent_beam_search_power_skipped_total   Frames left out because power_buf
+ *         was full.
+ * @metric kotekan_incoherent_beam_search_max_snr  Highest S/N in the last 32 search passes.
  * @metric kotekan_incoherent_beam_search_channels_used   Channels used in the newest sample.
  * @metric kotekan_incoherent_beam_search_dropped_frames_total   Frames late, far or off the grid.
  * @metric kotekan_incoherent_beam_search_restarts_total   Restarts of the search.
@@ -110,9 +169,17 @@ public:
         in_buf(get_buffer("in_buf")),
         out_buf(config.exists(unique_name, "out_buf") ? get_buffer("out_buf") : nullptr),
         snr_buf(config.exists(unique_name, "snr_buf") ? get_buffer("snr_buf") : nullptr),
+        cutout_buf(config.exists(unique_name, "cutout_buf") ? get_buffer("cutout_buf") : nullptr),
+        power_buf(config.exists(unique_name, "power_buf") ? get_buffer("power_buf") : nullptr),
         freq_id_base(config.get<int>(unique_name, "freq_id_base")),
         candidates_counter(Metrics::instance().add_counter(
             "kotekan_incoherent_beam_search_candidates_total", unique_name)),
+        undispersed_counter(Metrics::instance().add_counter(
+            "kotekan_incoherent_beam_search_undispersed_total", unique_name)),
+        cutouts_skipped_counter(Metrics::instance().add_counter(
+            "kotekan_incoherent_beam_search_cutouts_skipped_total", unique_name)),
+        power_skipped_counter(Metrics::instance().add_counter(
+            "kotekan_incoherent_beam_search_power_skipped_total", unique_name)),
         max_snr_gauge(
             Metrics::instance().add_gauge("kotekan_incoherent_beam_search_max_snr", unique_name)),
         channels_used_gauge(Metrics::instance().add_gauge(
@@ -184,6 +251,21 @@ public:
             snr_desc = snr_buf->get_frame_desc<kotekan::GenericNDArray>();
             snr_image.assign(snr_buf->frame_size / sizeof(float), 0.0f);
         }
+        if (cutout_buf != nullptr) {
+            cutout_buf->register_producer(unique_name);
+            cutout_buf->ensure_frame_desc(kotekan::GenericNDArray::describe(
+                kotekan::int8, "incoherent_beam_cutout",
+                {params.num_freq, IncoherentSearch::cutout_samples}, {"F", "Trfi"}, {1, period}));
+            cutout_desc = cutout_buf->get_frame_desc<kotekan::GenericNDArray>();
+        }
+        if (power_buf != nullptr) {
+            power_buf->register_producer(unique_name);
+            power_buf->ensure_frame_desc(kotekan::GenericNDArray::describe(
+                kotekan::uint16, "incoherent_beam_power",
+                {IncoherentSearch::chunk, params.num_freq}, {"Trfi", "F"}, {period, 1}));
+            power_desc = power_buf->get_frame_desc<kotekan::GenericNDArray>();
+            power_frame.assign((size_t)IncoherentSearch::chunk * params.num_freq, 0);
+        }
         params.mask_bands_mhz = config.get_default<std::vector<std::pair<double, double>>>(
             unique_name, "mask_bands_mhz", {});
         for (int id : config.get_default<std::vector<int>>(unique_name, "mask_freq_ids", {})) {
@@ -191,6 +273,16 @@ public:
             params.mask_bands_mhz.push_back({f - params.dfreq_mhz / 4, f + params.dfreq_mhz / 4});
         }
         params.threshold = config.get_default<double>(unique_name, "threshold", params.threshold);
+        trigger_min_snr = config.get_default<double>(unique_name, "trigger_min_snr", 7.5);
+        trigger_min_dm = config.get_default<double>(unique_name, "trigger_min_dm", 100.0);
+        cutout_flagged_min_snr =
+            config.get_default<double>(unique_name, "cutout_flagged_min_snr", 0.0);
+        cutout_exclude =
+            config.get_default<std::vector<std::vector<double>>>(unique_name, "cutout_exclude", {});
+        for (const std::vector<double>& e : cutout_exclude)
+            if (e.size() != 4 || e[0] > e[1])
+                FATAL_ERROR("IncoherentBeamSearch: an entry of cutout_exclude must be [DM low, "
+                            "DM high, ERA low, ERA high]");
         params.holdoff_s = config.get_default<double>(unique_name, "holdoff_s", params.holdoff_s);
         params.tau_s = config.get_default<double>(unique_name, "tau_s", params.tau_s);
         params.num_threads =
@@ -315,6 +407,7 @@ private:
             search = std::make_unique<IncoherentSearch>(params);
         }
         origin = next_sample = newest_end = sample;
+        power_rows = 0;
         std::fill(ring.begin(), ring.end(), 0);
         std::fill(recent_max.begin(), recent_max.end(), 0.0);
         std::fill(snr_image.begin(), snr_image.end(), 0.0f);
@@ -324,10 +417,40 @@ private:
         uint16_t* const row = &ring[(size_t)(next_sample % ring_len) * params.num_freq];
         for (int c = 0; c < params.num_freq; ++c)
             power[c] = row[c];
+        if (power_buf != nullptr)
+            std::copy(row, row + params.num_freq,
+                      &power_frame[(size_t)power_rows * params.num_freq]);
         std::fill(row, row + params.num_freq, 0);
         ++next_sample;
+        if (power_buf != nullptr && ++power_rows == IncoherentSearch::chunk)
+            write_power();
         if (search->add_sample(power.data()))
             report();
+    }
+
+    // Writes the IncoherentSearch::chunk samples before next_sample to power_buf, unless it is
+    // full.
+    void write_power() {
+        power_rows = 0;
+        if (!power_buf->is_frame_empty(power_id)) {
+            power_skipped_counter.inc();
+            return;
+        }
+        uint8_t* const frame = power_buf->wait_for_empty_frame(unique_name, power_id);
+        if (frame == nullptr)
+            return;
+        std::copy(power_frame.begin(), power_frame.end(), (uint16_t*)frame);
+
+        power_buf->allocate_new_metadata_object(power_id);
+        const auto meta = get_chord_metadata(power_buf, power_id);
+        meta->set_from_frame_desc(power_desc);
+        meta->set_fpga_seq_num((next_sample - IncoherentSearch::chunk) * period + phase);
+        meta->set_time_downsampling_fpga(period);
+        std::vector<int> freq_ids(params.num_freq);
+        std::iota(freq_ids.begin(), freq_ids.end(), freq_id_base);
+        meta->set_coarse_freq(freq_ids);
+        power_buf->mark_frame_full(unique_name, power_id);
+        power_id = (power_id + 1) % power_buf->num_frames;
     }
 
     // Writes the sums of the search pass that just ran to out_buf, as [time][DM].
@@ -375,6 +498,48 @@ private:
         snr_id = (snr_id + 1) % snr_buf->num_frames;
     }
 
+    // True when an entry of cutout_exclude holds the DM and the Earth rotation angle of the
+    // arrival at FPGA sequence number seq.
+    bool cutout_excluded(double dm, int64_t seq) const {
+        const Telescope& tel = Telescope::instance();
+        if (cutout_exclude.empty() || !tel.gps_time_enabled())
+            return false;
+        const double era = get_ERA_from_time(tel.to_time(seq), 0.0);
+        for (const std::vector<double>& e : cutout_exclude) {
+            const bool in_era =
+                e[2] <= e[3] ? era >= e[2] && era <= e[3] : era >= e[2] || era <= e[3];
+            if (dm >= e[0] && dm <= e[1] && in_era)
+                return true;
+        }
+        return false;
+    }
+
+    // Writes the samples around a candidate to cutout_buf and returns the number of the frame
+    // since the stage started, or -1 when the buffer is full.
+    int64_t write_cutout(const IncoherentCandidate& c) {
+        if (!cutout_buf->is_frame_empty(cutout_id)) {
+            cutouts_skipped_counter.inc();
+            return -1;
+        }
+        uint8_t* const frame = cutout_buf->wait_for_empty_frame(unique_name, cutout_id);
+        if (frame == nullptr)
+            return -1;
+        search->cutout(c, (int8_t*)frame);
+
+        cutout_buf->allocate_new_metadata_object(cutout_id);
+        const auto meta = get_chord_metadata(cutout_buf, cutout_id);
+        meta->set_from_frame_desc(cutout_desc);
+        const int64_t first = origin + c.sample - IncoherentSearch::cutout_samples / 2;
+        meta->set_fpga_seq_num(first * period + phase);
+        meta->set_time_downsampling_fpga(period);
+        std::vector<int> freq_ids(params.num_freq);
+        std::iota(freq_ids.begin(), freq_ids.end(), freq_id_base);
+        meta->set_coarse_freq(freq_ids);
+        cutout_buf->mark_frame_full(unique_name, cutout_id);
+        cutout_id = (cutout_id + 1) % cutout_buf->num_frames;
+        return num_cutouts++;
+    }
+
     // Called after each search pass.
     void report() {
         if (out_buf != nullptr)
@@ -388,10 +553,29 @@ private:
         const Telescope& tel = Telescope::instance();
         for (const IncoherentCandidate& c : search->take_candidates()) {
             const int64_t seq = (origin + c.sample) * period + phase;
-            candidates_counter.inc();
-            INFO("IncoherentBeamSearch: candidate S/N {:.1f}, DM {:.1f}, width {:d} samples, "
-                 "FPGA seq {:d}",
-                 c.snr, c.dm, c.width, seq);
+            if (c.undispersed) {
+                undispersed_counter.inc();
+            } else {
+                candidates_counter.inc();
+                INFO("IncoherentBeamSearch: candidate S/N {:.1f}, DM {:.1f}, width {:d} samples, "
+                     "FPGA seq {:d}",
+                     c.snr, c.dm, c.width, seq);
+            }
+            std::vector<std::string> flags;
+            if (c.undispersed)
+                flags.push_back("undispersed");
+            if (c.dm < trigger_min_dm)
+                flags.push_back("low_dm");
+            if (c.snr < trigger_min_snr)
+                flags.push_back("low_snr");
+            if (c.one_band)
+                flags.push_back("one_band");
+            const bool bright_flagged =
+                cutout_flagged_min_snr > 0 && c.snr >= cutout_flagged_min_snr && !c.undispersed;
+            const int64_t cutout = cutout_buf != nullptr && (flags.empty() || bright_flagged)
+                                           && !cutout_excluded(c.dm, seq)
+                                       ? write_cutout(c)
+                                       : -1;
             if (!candidate_file.is_open())
                 continue;
             nlohmann::json line = {{"fpga_seq", seq},
@@ -400,7 +584,15 @@ private:
                                    {"width", c.width},
                                    {"num_hits", c.num_hits},
                                    {"block_snr", c.block_snr},
+                                   {"num_channels", c.num_channels},
+                                   {"flags", flags},
+                                   {"partners", c.num_partners},
+                                   {"one_band", c.one_band},
+                                   {"part_snr", c.part_snr},
+                                   {"part_ratio", c.part_ratio},
                                    {"reported_unix", current_time()}};
+            if (cutout >= 0)
+                line["cutout"] = cutout;
             if (tel.gps_time_enabled())
                 line["unix_time"] = ts_to_double(tel.to_time(seq));
             candidate_file << line.dump() << std::endl;
@@ -413,6 +605,15 @@ private:
     std::shared_ptr<const kotekan::GenericNDArray> snr_desc;
     std::vector<float> snr_image; // [pass][DM], the newest pass last
     int snr_id = 0;
+    Buffer* const cutout_buf; // nullptr when no cutouts are written
+    std::shared_ptr<const kotekan::GenericNDArray> cutout_desc;
+    int cutout_id = 0;
+    int64_t num_cutouts = 0;
+    Buffer* const power_buf; // nullptr when the power is not written
+    std::shared_ptr<const kotekan::GenericNDArray> power_desc;
+    std::vector<uint16_t> power_frame; // [time][channel]: the samples since the last frame
+    int power_rows = 0;
+    int power_id = 0;
     const int freq_id_base;
     std::shared_ptr<const kotekan::GenericNDArray> in_desc;
     std::shared_ptr<const kotekan::GenericNDArray> out_desc;
@@ -430,6 +631,10 @@ private:
     int64_t ring_len = 0;
     int64_t delay_samples = 0;
     int64_t restart_gap = 0;
+    double trigger_min_snr = 0;
+    double trigger_min_dm = 0;
+    double cutout_flagged_min_snr = 0;
+    std::vector<std::vector<double>> cutout_exclude;
     int64_t phase = 0;       // fpga_seq modulo period of the sample grid
     int64_t origin = 0;      // the search's first sample
     int64_t next_sample = 0; // the next sample to search
@@ -439,6 +644,9 @@ private:
 
     std::ofstream candidate_file;
     kotekan::prometheus::Counter& candidates_counter;
+    kotekan::prometheus::Counter& undispersed_counter;
+    kotekan::prometheus::Counter& cutouts_skipped_counter;
+    kotekan::prometheus::Counter& power_skipped_counter;
     kotekan::prometheus::Gauge& max_snr_gauge;
     kotekan::prometheus::Gauge& channels_used_gauge;
     kotekan::prometheus::Counter& dropped_frames_counter;

@@ -1,0 +1,41 @@
+{
+  "all_rows_coarse_power_ratio_definition": "R_coarse = 2 * sum(sum_f S_target[f]) / (sum(sum_f S_ref_lower[f]) + sum(sum_f S_ref_upper[f])); S = fxfft256_v1 fine powers",
+  "coarse_power_ratio_definition": "R_coarse = 2 * sum_f S_target[f] / (sum_f S_ref_lower[f] + sum_f S_ref_upper[f]); S = fxfft256_v1 fine powers",
+  "combine_mode": "all_rows_summed_before_ratio",
+  "detector_window_samples": 64,
+  "equivalent_mask_rule": "R_coarse > R_null; R_null = 2*target_norm_sq/reference_norm_sum_sq",
+  "input_coordinate_system": "post_nyquist_zone_normalized",
+  "input_format": "complex_int4_packed_int8",
+  "input_preprocessing": {
+    "time_reverse_detector_windows_before_kernel": true
+  },
+  "mask_rule": "valid && (p_target * reference_norm_sum_sq > target_norm_sq * p_ref_sum)",
+  "mask_source": "normalized_positive_excess_decision",
+  "num_weight_terms": 3,
+  "per_frequency_threshold": false,
+  "power_accumulator": "uint64",
+  "power_accumulator_bits": 64,
+  "reference_offset_bins": 2,
+  "reference_placement_summary": {
+    "channels_with_adaptive_reference": [],
+    "channels_with_dc_shifted_reference": [],
+    "channels_with_edge_wrapped_reference": [],
+    "channels_with_forbidden_tone_in_skipped_guard": [],
+    "forbidden_tone_policy": {
+      "forbidden_tone": "physical_data_dc"
+    },
+    "num_channels_with_adaptive_reference": 0,
+    "num_dc_shifted_references": 0,
+    "num_edge_wrapped_references": 0,
+    "num_forbidden_tone_in_skipped_guard": 0,
+    "reference_offset_bins": 2,
+    "reference_placement_status": "nominal",
+    "skipped_guard_bins": 1
+  },
+  "sample_bits_per_component": 4,
+  "schema_version": "pilotproxy_detector_contract_v2",
+  "skipped_guard_bins": 1,
+  "threshold_mode": "none",
+  "valid_rule": "p_ref_sum != 0",
+  "weight_coordinate_system": "post_nyquist_zone_normalization"
+}

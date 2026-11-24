@@ -104,8 +104,13 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  * Q/(k*N) estimates the variance of the mean for independent sample errors with a common
  * variance and equal expected visibility within each pair after fringestopping. Masking
  * based on the data can break these assumptions. Taking its reciprocal does not give an
- * unbiased estimate of inverse variance. The mean is V = sum_accepted corr / N, and the
- * output conjugates the lower-triangular input into upper-triangular order.
+ * unbiased estimate of inverse variance. For Gaussian errors the weight's mean is
+ * k/(k-1) times the inverse variance for cross-correlations and k/(k-2) for
+ * autocorrelations, so it is infinite at k = 1 (k <= 2 for autocorrelations). Weights
+ * from fewer than about 4 pairs are heavy-tailed and should be cut on k. Masking that
+ * leaves single-frame pairs makes small k common.
+ * The mean is V = sum_accepted corr / N, and the output conjugates the lower-triangular
+ * input into upper-triangular order.
  *
  * The five input streams must agree on coarse frequencies and on the correlation period, which
  * must equal sub_integration_ntime; correlation frames must be consecutive and start on a frame
@@ -177,7 +182,8 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  *    int64 n_valid (their valid samples, the visibilities' normalisation); complex<float> C's
  *    upper triangle over the stations (i <= j, row-major).
  *         @buffer_format   Raw bytes, no metadata
- * @buffer  out_buf         The accumulated and tagged data.
+ * @buffer  out_buf         The accumulated and tagged data. The metadata carries k, in either
+ * variance mode, as n_usable_variance_pairs.
  *      @buffer_format N2Buffer. layout=FullUpperTri, num_ev=0
  *      @buffer_metadata N2Metadata
  *
@@ -225,6 +231,11 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  *                                          DtvRfiMask subscribes to. Used to count the FPGA
  *                                          ticks of each output frame during which the mask
  *                                          was applied. Without this key the count is zero.
+ *                                          The config value applies from startup. A POST
+ *                                          applies at valid_at_time_ns in the node's system
+ *                                          time; 0, or a time already passed, applies from
+ *                                          the next whole 5 s at least 1 s ahead, as in
+ *                                          DtvRfiMask.
  */
 class N2Accumulate : public kotekan::Stage {
 public:
@@ -386,6 +397,8 @@ private:
     bool _dtv_mask_enabled;
     bool _next_dtv_mask_enabled;
     int64_t _next_dtv_mask_valid_at_seq;
+    /// Whether receive_dtv_mask_enabled has had the config value, so later calls are POSTs
+    bool _dtv_mask_config_read = false;
 
 
     // Some derived parameters

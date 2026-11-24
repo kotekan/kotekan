@@ -34,6 +34,13 @@
 // Maximum number of frequencies in metadata array
 const int CHORD_META_MAX_FREQ = 12288;
 
+// The first entry of coarse_freq in the serialized metadata when the array is unset
+const int CHORD_META_COARSE_FREQ_UNSET = -1;
+
+// An entry of coarse_freq that names no frequency. An array of these is still set, which an
+// array that starts with CHORD_META_COARSE_FREQ_UNSET is not after it has been serialized.
+const int CHORD_META_COARSE_FREQ_UNUSED = -2;
+
 // Maximum number of dimensions for arrays
 const int CHORD_META_MAX_DIM = 10;
 static_assert(CHORD_META_MAX_DIM == int(kotekan::GenericNDArray::max_rank),
