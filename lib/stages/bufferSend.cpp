@@ -39,8 +39,7 @@ using kotekan::prometheus::Metrics;
 REGISTER_KOTEKAN_STAGE(bufferSend);
 
 bufferSend::bufferSend(Config& config, const std::string& unique_name,
-                       bufferContainer& buffer_container,
-                       std::string buffer_name) :
+                       bufferContainer& buffer_container, std::string buffer_name) :
     Stage(config, unique_name, buffer_container, std::bind(&bufferSend::main_thread, this)),
     dropped_frame_counter(
         Metrics::instance().add_counter("kotekan_buffer_send_dropped_frame_count", unique_name)) {
@@ -90,10 +89,10 @@ void bufferSend::main_thread() {
 
     int frame_id = 0;
 
-    //std::string dest_name = "bufferSend()", buffer_name
+    // std::string dest_name = "bufferSend()", buffer_name
 
-    //dest.connect_thread = std::thread(&networkDestination::test_thread, std::ref(dest),
-    //unique_name);
+    // dest.connect_thread = std::thread(&networkDestination::test_thread, std::ref(dest),
+    // unique_name);
 
     dest.connect_thread = std::thread(&networkDestination::connect_to_server, std::ref(dest),
                                       unique_name, std::ref(stop_thread));
@@ -124,8 +123,8 @@ void bufferSend::main_thread() {
                 dest.close_connection();
                 continue;
             }
-            DEBUG("Sent frame: {:s}[{:d}] to {:s}:{:d}", buf->buffer_name, frame_id,
-                  dest.server_ip, dest.server_port);
+            DEBUG("Sent frame: {:s}[{:d}] to {:s}:{:d}", buf->buffer_name, frame_id, dest.server_ip,
+                  dest.server_port);
         } else {
             // Wait for connection and block
             INFO("Waiting for connection to {:s}:{:d}...", dest.server_ip, dest.server_port);
@@ -150,13 +149,13 @@ bool bufferSend::send_frame(uint8_t* frame, int frame_id, networkDestination& de
 
     auto meta = buf->get_metadata(frame_id);
     if (!meta) {
-      // FATAL_ERROR throws out of this function, so end the connect thread first.
-      stop();
-      dest.close_connection();
-      dest.connect_thread.join();
-      FATAL_ERROR("Frame {:s}[{:d}] has no metadata object: its producer did not "
-		  "allocate one",
-		  buf->buffer_name, frame_id);
+        // FATAL_ERROR throws out of this function, so end the connect thread first.
+        stop();
+        dest.close_connection();
+        dest.connect_thread.join();
+        FATAL_ERROR("Frame {:s}[{:d}] has no metadata object: its producer did not "
+                    "allocate one",
+                    buf->buffer_name, frame_id);
     }
     auto metadata_size = meta->get_serialized_size();
     auto frame_size = buf->frame_size;
@@ -168,22 +167,22 @@ bool bufferSend::send_frame(uint8_t* frame, int frame_id, networkDestination& de
     // (re)started after us holds no upstream configs and has no way to
     // ask for them, so the first frame it sees must carry the flag.
     header.config_tracker_update =
-      !first_transmission_sent
-      || config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash();
+        !first_transmission_sent
+        || config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash();
     // for legacy CHIME, do not send last field (config_tracker_update)
-    size_t header_len = use_config_tracker ? sizeof(bufferFrameHeader)
-                                           : sizeof(bufferFrameHeaderNoConfigTracker);
+    size_t header_len =
+        use_config_tracker ? sizeof(bufferFrameHeader) : sizeof(bufferFrameHeaderNoConfigTracker);
 
     if (header.config_tracker_update)
         DEBUG("Config tracker data has been updated, sending new config tracker data.");
-    DEBUG2("frame_size: {:d}, metadata_size: {:d}, config_tracker_update: {:d}",
-           header.frame_size, header.metadata_size, header.config_tracker_update);
+    DEBUG2("frame_size: {:d}, metadata_size: {:d}, config_tracker_update: {:d}", header.frame_size,
+           header.metadata_size, header.config_tracker_update);
 
     // Recover from partial sends
     DEBUG2("Sending header");
-    while ((n = send(dest.socket_fd, &((uint8_t*)&header)[n_sent], header_len - n_sent,
-                     MSG_NOSIGNAL))
-           > 0) {
+    while (
+        (n = send(dest.socket_fd, &((uint8_t*)&header)[n_sent], header_len - n_sent, MSG_NOSIGNAL))
+        > 0) {
         n_sent += n;
     }
     // Handle errors
@@ -192,8 +191,8 @@ bool bufferSend::send_frame(uint8_t* frame, int frame_id, networkDestination& de
               dest.server_port);
         return false;
     }
-    DEBUG("Sent frame header: {:s}[{:d}] to {:s}:{:d}", buf->buffer_name, frame_id,
-	  dest.server_ip, dest.server_port);
+    DEBUG("Sent frame header: {:s}[{:d}] to {:s}:{:d}", buf->buffer_name, frame_id, dest.server_ip,
+          dest.server_port);
 
     // If the frame sent successfully,
     if (config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash()) {
@@ -214,8 +213,8 @@ bool bufferSend::send_frame(uint8_t* frame, int frame_id, networkDestination& de
                > 0)
             n_sent += n;
         if (n < 0) {
-            ERROR("Error {:s}, failed to send frame_desc size to {:s}:{:d}",
-                  strerror(errno), server_ip, server_port);
+            ERROR("Error {:s}, failed to send frame_desc size to {:s}:{:d}", strerror(errno),
+                  server_ip, server_port);
             close_connection();
             continue;
         }
@@ -376,5 +375,4 @@ bool bufferSend::got_frame(uint8_t*, int) {
     return true;
 }
 
-void bufferSend::done_with_frame(int) {
-}
+void bufferSend::done_with_frame(int) {}

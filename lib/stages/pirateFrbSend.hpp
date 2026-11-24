@@ -38,7 +38,7 @@ private:
     float drop_threshold;
 
     /// Pirate FRB node destinations
-    std::vector<std::shared_ptr<pirateDestination > > dests;
+    std::vector<std::shared_ptr<pirateDestination>> dests;
 
     /// The input buffer containing intensity values
     Buffer* intensity_buf;
@@ -57,11 +57,8 @@ private:
     size_t frb_chunk_size;
     size_t frb_num_output_times;
 
-    bool send_frame(int frame_id,
-                    int64_t fpga_seq,
-                    int time_downsampling_fpga,
-                    uint8_t* intensity_frame,
-                    uint8_t* offset_scale_frame,
+    bool send_frame(int frame_id, int64_t fpga_seq, int time_downsampling_fpga,
+                    uint8_t* intensity_frame, uint8_t* offset_scale_frame,
                     std::shared_ptr<pirateDestination> dest);
 };
 

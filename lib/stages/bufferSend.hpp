@@ -10,8 +10,8 @@
 #include "Stage.hpp"             // for Stage
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
+#include "kotekanLogging.hpp"    // for kotekanLogging
 #include "prometheusMetrics.hpp" // for Counter
-#include "kotekanLogging.hpp"  // for kotekanLogging
 
 #include <atomic>             // for atomic
 #include <condition_variable> // for condition_variable
@@ -70,7 +70,7 @@ public:
 
     /// Thread for connecting to the remote server
     void test_thread(std::string name);
-    
+
     /// Thread for connecting to the remote server
     void connect_to_server(std::string name, std::atomic_bool const& stop_thread);
 
@@ -122,8 +122,7 @@ class bufferSend : public kotekan::Stage {
 public:
     /// Standard constructor
     bufferSend(kotekan::Config& config, const std::string& unique_name,
-               kotekan::bufferContainer& buffer_container,
-               std::string buffer_name="buf");
+               kotekan::bufferContainer& buffer_container, std::string buffer_name = "buf");
 
     /// Destructor
     ~bufferSend();
