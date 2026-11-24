@@ -27,6 +27,9 @@
 #include <sys/resource.h>
 #include <thread>
 
+static_assert(GnssCudaDespread::Spec::NAV_N == gnss_cuda::PSI_NAV_N,
+              "Spec::nav must match PsiJob::nav");
+
 namespace {
 void ck(cudaError_t e, const char* what) {
     if (e != cudaSuccess)
@@ -1120,6 +1123,9 @@ int GnssCudaDespread::enqueue_psi_pack(long long window_start_sample,
             if (sp.nav_frame >= 0 && sp.nav_pages != nullptr) {
                 guowang::gw1202_nav_signs(*sp.nav_pages, sp.nav_frame, gnss_cuda::PSI_NAV_N,
                                           pj.nav);
+                pj.nav_on = 1;
+            } else if (sp.nav_on) {
+                std::copy(sp.nav.begin(), sp.nav.end(), pj.nav);
                 pj.nav_on = 1;
             }
             // The interpolation ramp per channel at this job's carrier (trim included), in

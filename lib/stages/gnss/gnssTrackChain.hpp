@@ -13,10 +13,12 @@
 #include "gnssChannelizedReplica.hpp" // for ChannelizedReplicaBank
 #include "gnssGpuChain.hpp"           // for PrnCtl
 #include "gnssHostRows.hpp"           // for RestVerb
+#include "gnssNavSymbolRing.hpp"      // for NavSymbolRing
 #include "guowang1202Nav.hpp"         // for Gw1202NavPages
 #include "kotekanLogging.hpp"         // for kotekanLogging
 #include "restServer.hpp"             // for connectionInstance
 
+#include <map>    // for map
 #include <memory> // for shared_ptr, unique_ptr
 #include <mutex>  // for mutex
 #include <string> // for string
@@ -80,6 +82,12 @@ namespace gnss {
  * @conf set_trim_endpoint String. POST /set_trim.
  * @conf get_prns_endpoint String. GET /get_prns.
  * @conf set_prns_endpoint String. POST /set_prns.
+ * @conf set_nav_symbols_endpoint String. POST /set_nav_symbols, optional (empty: none). Data
+ *                       symbols streamed from another receiver, a JSON array of {prn, sym0,
+ *                       signs, stream_id}: signs a string of '+' and '-', sym0 the first's index
+ *                       as gnss::NavSymbolRing keys it. A seed's nav_frame_at_ref is then that
+ *                       index for the code period at its ref_hop, and a record whose periods
+ *                       are all held has their signs wiped from its replica (psi_synth only).
  */
 class TrackChain : public kotekan::kotekanLogging {
 public:
@@ -98,6 +106,8 @@ public:
     /// POST endpoint: the fleet controller's code trim, a JSON array of {prn, trim_chips}. See
     /// @ref trim_ttl_s for why this is not a /set_seeds field.
     void set_trim_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
+    /// POST endpoint: streamed data symbols (@c set_nav_symbols_endpoint).
+    void set_nav_symbols_callback(kotekan::connectionInstance& conn, nlohmann::json& request);
     /// The slot and clamped trim of each entry of a /set_trim request whose PRN is in the map,
     /// into @p upd, or why the request is refused. The caller holds prn_mtx.
     std::string parse_trims(const nlohmann::json& request,
@@ -292,7 +302,10 @@ public:
 
 private:
     /// The paths of its endpoints, from its config.
-    std::string _seed_ep, _set_trim_ep, _get_prns_ep, _set_prns_ep;
+    std::string _seed_ep, _set_trim_ep, _get_prns_ep, _set_prns_ep, _set_nav_ep;
+    /// Streamed data symbols per PRN, written by set_nav_symbols, read by record_specs.
+    std::mutex nav_mtx;
+    std::map<int, gnss::NavSymbolRing> nav_rings;
 };
 
 } // namespace gnss

@@ -6,6 +6,7 @@
 
 #include <array>
 #include <complex>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -86,6 +87,12 @@ public:
         /// = no wipe. Defaulted and last, as ctrim_hz.
         long long nav_frame = -1;
         const guowang::Gw1202NavPages* nav_pages = nullptr;
+        /// Streamed data signs (TrackChain's set_nav_symbols), used without nav_pages: nav[k]
+        /// is the sign of the k-th code period from this record's first, as
+        /// gnss_cuda::PsiJob::nav. psi_synth only.
+        static constexpr int NAV_N = 16;
+        std::array<int8_t, NAV_N> nav{};
+        bool nav_on = false;
     };
 
     /// Despread every spec's E/P/L in one kernel launch, against the uploaded window, and wait
