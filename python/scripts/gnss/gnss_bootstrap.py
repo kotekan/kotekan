@@ -37,6 +37,7 @@ Only offsets are printed; the fix itself goes to --fix-json.
 import argparse
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -406,6 +407,12 @@ def systemctl(*args):
     subprocess.run(["systemctl", "--user", *args], check=False)
 
 
+def _sigterm(signum, frame):
+    """SIGTERM (gnss-bootstrap-watch stopped mid-run) unwinds like an error, so the broker is
+    released."""
+    raise SystemExit(1)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument(
@@ -453,6 +460,7 @@ def main(argv=None):
     frame0 = gnss_fix.FRAME0_UTC
     units = ["gnss-nav-decode@%s" % BANDS[b]["unit"] for b in bands if BANDS[b]["unit"]]
 
+    signal.signal(signal.SIGTERM, _sigterm)
     open(a.hold, "w").close()
     systemctl("stop", "gnss-broker")
     if units:
