@@ -950,3 +950,81 @@ BOOST_AUTO_TEST_CASE(bds_b1c_single_window_acquire_recovers) {
     BOOST_TEST_MESSAGE("B1C refined cp=" << best_cp << " err " << cp_err);
     BOOST_CHECK_LT(cp_err, 0.5);
 }
+
+// gnss::sync_overlay on E5a-Q: data from the CS100-tiled code (GAL_E5A_Q_CS) at a known long
+// argument, searched with the primary-only bank (GAL_E5A_Q), as the 1 ms search sees them. From a
+// refined peak one hop and 180 Hz off, the sync must find the alignment, move the hop back and
+// refine the Doppler, so that detection_phase reports the long argument. Noise alone must leave
+// the alignment unresolved. Real and I/Q input both, since each bank conjugates its carrier.
+BOOST_AUTO_TEST_CASE(e5a_overlay_sync_finds_the_cs100_period) {
+    const gnss::SignalDescriptor* prim = gnss::signal_by_name("GAL_E5A_Q");
+    const gnss::SignalDescriptor* tiled = gnss::signal_by_name("GAL_E5A_Q_CS");
+    BOOST_REQUIRE(prim != nullptr && tiled != nullptr);
+    constexpr double FS = 20.0e6;
+    constexpr double FOFF = 5.0e6;
+    constexpr int N = 10;
+    constexpr int PRN = 11;
+    const double L = (double)prim->code_length;
+    const double LL = (double)tiled->code_length;
+    const double cps = prim->chip_rate_hz / FS;
+    const double arg0 = 437123.4; // in the 43rd of the 100 periods
+    const double dop = 1234.0;
+    const std::vector<int8_t> sec = gnss::prn_secondary("GAL_E5A_Q", PRN);
+    BOOST_REQUIRE_EQUAL(sec.size(), 100u);
+    auto wrap = [](double x, double m) {
+        double r = std::fmod(x, m);
+        if (r > 0.5 * m)
+            r -= m;
+        if (r <= -0.5 * m)
+            r += m;
+        return r;
+    };
+
+    for (bool iq : {false, true}) {
+        gnss::Channelization chz{FS, N, 4, dsp::Window::Hamming};
+        chz.complex_input = iq;
+        gnss::ChannelizedReplicaBank bank(*prim, chz, FOFF, {PRN});
+        gnss::ChannelizedReplicaBank sky(*tiled, chz, FOFF, {PRN});
+        const int fft_len = chz.fft_len();
+        const int Mp = bank.repl_period_hops(); // one 1 ms period
+        const long long anchor = (long long)Mp * fft_len;
+        const long long snap_hop = 1012345LL * 20 / fft_len; // ~a second in
+        const long long S_snap = snap_hop * fft_len;
+
+        const auto cov = energy_covering_n(bank.channels(0, anchor, 0.0, 0.0, Mp), N);
+        BOOST_REQUIRE(!cov.empty());
+        const auto sky_ch = sky.channels(0, S_snap, arg0, dop, 64 * Mp);
+        std::vector<std::vector<cf>> d;
+        for (int c : cov)
+            d.push_back(sky_ch[c]);
+        // The refined peak: the argument of a replica at the anchor that matches the data at
+        // S_snap.
+        const double cps_d = cps * (1.0 + bank.code_doppler_sign * dop / prim->carrier_hz);
+        const double best_cp = std::fmod(arg0 + (double)(S_snap - anchor) * cps_d, L);
+
+        const gnss::OverlaySync s = gnss::sync_overlay(
+            bank, 0, sec, d, cov, best_cp + fft_len * cps, dop + 180.0, anchor, FS, 300.0, 2.0);
+        BOOST_TEST_MESSAGE((iq ? "I/Q" : "real")
+                           << " sync: nh " << s.nh << " ratio " << s.ratio << " cp " << s.cp
+                           << " (want " << best_cp << ") dop " << s.dop);
+        BOOST_REQUIRE_GE(s.nh, 0);
+        BOOST_CHECK_GT(s.ratio, 5.0);
+        BOOST_CHECK_SMALL(wrap(s.cp - best_cp, L), 1e-3);
+        BOOST_CHECK_SMALL(s.dop - dop, 4.0);
+        const gnss::DetectionPhase dp = gnss::detection_phase(bank, s.cp, s.nh, (int)sec.size(),
+                                                              s.dop, snap_hop, anchor, FS, 0);
+        BOOST_TEST_MESSAGE("cp_long " << dp.cp_long << " (want " << arg0 << ") cp_at_ref "
+                                      << dp.cp_at_ref);
+        BOOST_CHECK_SMALL(wrap(dp.cp_long - arg0, LL), 0.05);
+        BOOST_CHECK_SMALL(wrap(dp.cp_at_ref - sky.phase_from_arg(arg0, S_snap, dop), LL), 0.05);
+
+        std::mt19937 rng(7);
+        for (auto& col : d)
+            for (auto& v : col)
+                v = cf((float)gauss(rng), (float)gauss(rng));
+        const gnss::OverlaySync z =
+            gnss::sync_overlay(bank, 0, sec, d, cov, best_cp, dop, anchor, FS, 300.0, 2.0);
+        BOOST_TEST_MESSAGE("noise: nh " << z.nh << " ratio " << z.ratio);
+        BOOST_CHECK_EQUAL(z.nh, -1);
+    }
+}

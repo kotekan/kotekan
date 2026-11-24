@@ -3,6 +3,7 @@
  * @brief The cross-stage code-phase conversions: what the search reports about a peak, and
  *        what the tracker despreads at given a seed.
  *  - gnss::refine_peak
+ *  - gnss::sync_overlay
  *  - gnss::detection_phase
  *  - gnss::propagate_seed
  *
@@ -21,6 +22,7 @@
 #include "gnssChannelizedReplica.hpp"
 
 #include <complex>
+#include <cstdint> // for int8_t
 #include <vector>
 
 /// The GPU despread driver (global namespace, CUDA builds only). Declared rather than included
@@ -91,6 +93,37 @@ double refine_peak_cuda(std::vector<CudaRefineGroup>& groups, const ChannelizedR
                         long long anchor, double coarse_cp, double dop, double sample_rate,
                         int refine_span, int refine_step);
 #endif
+
+/// Result of @ref sync_overlay.
+struct OverlaySync {
+    int nh = -1;        ///< overlay alignment (overlay_sign's convention), or -1 if unresolved
+    double cp = 0.0;    ///< the refined peak, moved by the hop the coherent despread chose
+    double dop = 0.0;   ///< Doppler refined over the whole snapshot, Hz
+    double ratio = 0.0; ///< best alignment's coherent power over the next best alignment's
+};
+
+/// Measure the secondary-code alignment of a detection whose coherent window is one primary
+/// period and so cannot see it (the per-PRN CS100 of E5a-Q and B2a-P under a 1 ms search).
+///
+/// The primary-only replica at (@c best_cp, @c dop) is despread against the whole snapshot,
+/// summed per primary period, and each alignment of @c secondary is wiped from the sums and
+/// summed coherently over a residual Doppler grid of +-@c dop_span_hz. The same is done one hop
+/// either side of @c best_cp, where the acquire surface leaves a lobe of equal height, and the
+/// largest coherent power picks the hop, the alignment and the Doppler.
+///
+/// @param data  the covering channels' columns over the whole snapshot, [chan][hop], in the
+///        order of @c cov_global
+/// @param best_cp  the refined peak (the argument of a replica at @c anchor), chips
+/// @param min_ratio  the best alignment's power must be this many times the next best's, or
+///        @c nh is -1
+/// @return @c nh in the convention of ChannelizedReplicaBank::overlay_sign, so
+///         @ref detection_phase takes it as @c best_nh with @c n_nh = secondary.size()
+OverlaySync sync_overlay(const ChannelizedReplicaBank& bank, int prn_index,
+                         const std::vector<int8_t>& secondary,
+                         const std::vector<std::vector<std::complex<float>>>& data,
+                         const std::vector<int>& cov_global, double best_cp, double dop,
+                         long long anchor, double sample_rate, double dop_span_hz,
+                         double min_ratio);
 
 /// What the search reports about one detected peak's code phase, in three forms for three
 /// kinds of consumer.

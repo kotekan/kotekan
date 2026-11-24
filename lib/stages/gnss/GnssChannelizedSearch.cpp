@@ -206,6 +206,26 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
              unique_name, _n_nh, _hops_per_record,
              1e3 * (double)_hops_per_record * _fft_len / _sample_rate);
 
+    // A per-PRN secondary (E5a-Q's CS100) is not in the bank, and a one-period window cannot
+    // see it anyway: nh_sync measures it after each detection from per-period despreads.
+    _signal = signal;
+    if (config.get_default<bool>(unique_name, "nh_sync", false)) {
+        if (_n_nh > 1)
+            FATAL_ERROR("GnssChannelizedSearch[{:s}]: nh_sync and nh_search exclude each other",
+                        unique_name);
+        _sync_sec.resize(_prns.size());
+        for (size_t p = 0; p < _prns.size(); ++p) {
+            _sync_sec[p] = gnss::prn_secondary(signal, _prns[p]);
+            if (_sync_sec[p].empty() || _sync_sec[p].size() != _sync_sec[0].size())
+                FATAL_ERROR("GnssChannelizedSearch[{:s}]: nh_sync needs a per-PRN secondary "
+                            "code of one length; {:s} PRN {:d} has none",
+                            unique_name, signal, _prns[p]);
+        }
+        INFO("GnssChannelizedSearch[{:s}]: measuring each detection's {:d}-period secondary "
+             "alignment over the {:d}-window snapshot",
+             unique_name, _sync_sec[0].size(), _acquire_windows);
+    }
+
     _detections.assign(_prns.size(), Detection{});
     _dop_hints.assign(_prns.size(), DopHint{});
     _nh_hints.assign(_prns.size(), NhHint{});
@@ -749,7 +769,7 @@ void GnssChannelizedSearch::search_snapshot() {
         det.snr = (float)a.snr;
         if (detected) {
             // r2c fold conjugates the channel frequency axis -> flip Doppler sign.
-            const double dop = -a.doppler_hz;
+            double dop = -a.doppler_hz;
             // Refine the code phase with refine_peak or refine_peak_cuda (gnssSeedTransport.hpp),
             // which scripts/gnss/e2e.cpp also drives.
             const double t_ref0 = steady_s();
@@ -775,18 +795,40 @@ void GnssChannelizedSearch::search_snapshot() {
                     *_replica, p, d, cov_global, a.code_phase_chips, (_n_nh > 1) ? best_nh : -1,
                     dop, anchor, rh, _sample_rate, _refine_span, _refine_step, _acquire_threads);
             }
+            int n_nh = _n_nh;
+            if (!_sync_sec.empty()) {
+                // The whole snapshot, not the refine's window: the alignment needs its periods.
+                std::vector<std::vector<cf>> d(cov_local.size(), std::vector<cf>(_snap_hops));
+                for (size_t i = 0; i < cov_local.size(); ++i)
+                    for (size_t m = 0; m < _snap_hops; ++m)
+                        d[i][m] = _snapshot[m * _n_chan + cov_local[i]];
+                // The residual Doppler is within half the grid step.
+                const gnss::OverlaySync sy =
+                    gnss::sync_overlay(*_replica, p, _sync_sec[(size_t)p], d, cov_global, best_cp,
+                                       dop, anchor, _sample_rate, 0.6 * _doppler_step, 2.0);
+                INFO("GnssChannelizedSearch[{:s}]: PRN {:d} NHSYNC nh {:d} (power {:.1f}x the "
+                     "next alignment) hop {:+.0f} dop {:+.1f} Hz",
+                     unique_name, _prns[p], sy.nh, sy.ratio,
+                     (sy.cp - best_cp) * _sample_rate / _replica->chip_rate_hz() / _fft_len,
+                     sy.dop - dop);
+                best_cp = sy.cp;
+                dop = sy.dop;
+                best_nh = sy.nh;
+                n_nh = (int)_sync_sec[(size_t)p].size();
+            }
             t_refine += steady_s() - t_ref0;
             // Peak to reported phases (gnssSeedTransport.hpp, also driven by scripts/gnss/e2e.cpp).
             const gnss::DetectionPhase dp =
-                gnss::detection_phase(*_replica, best_cp, best_nh, _n_nh, dop, _snap_start_hop,
+                gnss::detection_phase(*_replica, best_cp, best_nh, n_nh, dop, _snap_start_hop,
                                       anchor, _sample_rate, a.peak_tau_samples);
             det.doppler_hz = dop;
             det.code_phase_chips = dp.cp0;
-            det.ref_hop = _snap_start_hop;       // capture epoch (the broker's slope fit)
-            det.nh = (_n_nh > 1) ? best_nh : -1; // measured overlay alignment
+            det.ref_hop = _snap_start_hop;      // capture epoch (the broker's slope fit)
+            det.nh = (n_nh > 1) ? best_nh : -1; // measured overlay alignment
             det.code_phase_long_chips = dp.cp_long;
             det.code_phase_at_ref_chips = dp.cp_at_ref;
-            det.valid = true;
+            // An unresolved alignment leaves the long phase unknown: a miss, not a detection.
+            det.valid = n_nh <= 1 || best_nh >= 0;
             // Where the reported phases come from, one line per detection (unthrottled):
             //   hop    = snapshot start hop          coarse = acquire cp, before the refine
             //   refine = refine offset               nh     = measured overlay alignment
@@ -801,7 +843,7 @@ void GnssChannelizedSearch::search_snapshot() {
         // Latch: a fresh detection replaces the held one; a miss keeps the last valid one for
         // _hold_snapshots snapshots, so a momentary miss does not drop the seed.
         std::lock_guard<std::mutex> lk(_det_mtx);
-        if (detected) {
+        if (det.valid) {
             _detections[p] = det;
         } else {
             _detections[p].snr = det.snr;
@@ -1046,6 +1088,8 @@ void GnssChannelizedSearch::apply_prn_swaps() {
             if (e)
                 e->set_prn((int)p, _prns[p], nullptr);
 #endif
+        if (!_sync_sec.empty())
+            _sync_sec[p] = gnss::prn_secondary(_signal, _prns[p]);
         // The head/tail bank the acquire uses (_repl_head, _repl_tail) is not rebuilt here: it
         // is rebuilt only when the covering set changes, so the acquire keeps the old PRN's
         // code for this slot.
@@ -1076,6 +1120,7 @@ void GnssChannelizedSearch::get_detections_callback(kotekan::connectionInstance&
         const Detection& d = _detections[p];
         if (!d.valid)
             continue;
+        const int n_nh = _sync_sec.empty() ? _n_nh : (int)_sync_sec[p].size();
         reply.push_back({{"prn", _prns[p]},
                          {"doppler_hz", d.doppler_hz},
                          {"code_phase_chips", d.code_phase_chips},
@@ -1084,7 +1129,7 @@ void GnssChannelizedSearch::get_detections_callback(kotekan::connectionInstance&
                          {"code_phase_long_chips", d.code_phase_long_chips},
                          {"code_phase_at_ref_chips", d.code_phase_at_ref_chips},
                          // the modulus of the two phases above
-                         {"long_code_chips", (double)_replica->code_length() * _n_nh},
+                         {"long_code_chips", (double)_replica->code_length() * n_nh},
                          {"snr", d.snr}});
     }
     conn.send_json_reply(reply);

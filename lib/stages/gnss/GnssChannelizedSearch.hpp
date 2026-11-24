@@ -66,6 +66,10 @@
  *                        search fills whatever GPU time the trackers leave.
  * @conf nh_search        Bool (default false). Search every secondary-code alignment.
  * @conf nh_hint_span     Int (default 1). Alignments scanned either side of a hinted one.
+ * @conf nh_sync          Bool (default false). Measure each detection's per-PRN secondary-code
+ *                        alignment (E5a-Q, B2a-P) from per-period despreads over the snapshot
+ *                        (@ref gnss::sync_overlay), and report the long-code phases with it. A
+ *                        detection whose alignment does not resolve counts as a miss.
  * @conf acquire_threads  Int (default 1). Threads for the CPU acquire and the CPU refine.
  * @conf acquire_fine_step Int (default 1). Fine-lag decimation of the surface, samples.
  * @conf refine_span      Int (default fft_len). Refine half-width, samples.
@@ -132,16 +136,16 @@ private:
         /// Secondary-code alignment: the @c nh_phase of the winning replica (or the label vote's
         /// correction of it), so the overlay chip for primary period k
         /// is secondary[(k + nh) mod len]. Measured per satellite every pass; -1 unless
-        /// alignments were searched.
+        /// alignments were searched or synced (nh_sync).
         int nh = -1;
         /// Code phase mod the overlaid length (n_nh * code_length), or -1 unless alignments
-        /// were searched. @c code_phase_chips is mod the primary length and cannot carry the
-        /// overlay period.
+        /// were searched or synced. @c code_phase_chips is mod the primary length and cannot
+        /// carry the overlay period.
         double code_phase_long_chips = -1.0;
         /// Physical code phase at @c ref_hop, mod the overlaid length; -1 unless alignments were
-        /// searched. This is the one to transport: @c code_phase_chips is referred to sample 0
-        /// and carries a Doppler lever of thousands of chips per Hz at CHORD uptime, while this
-        /// one is referred to the search's fixed replica anchor (~1e-4 chips/Hz).
+        /// searched or synced. This is the one to transport: @c code_phase_chips is referred to
+        /// sample 0 and carries a Doppler lever of thousands of chips per Hz at CHORD uptime, while
+        /// this one is referred to the search's fixed replica anchor (~1e-4 chips/Hz).
         double code_phase_at_ref_chips = -1.0;
     };
 
@@ -210,6 +214,9 @@ private:
     std::vector<NhProfEntry> _nh_prof;
     /// Alignments scanned either side of the predicted one; 0 trusts the prediction exactly.
     int _nh_hint_span = 1;
+    std::string _signal; ///< the search signal's descriptor name
+    /// Per slot, the PRN's secondary code for nh_sync (gnss::prn_secondary); empty when off.
+    std::vector<std::vector<int8_t>> _sync_sec;
     std::mutex _hint_mtx;
     int _acquire_threads = 1;     ///< threads for channelized_accumulate and refine_peak
     double _pace_ms = 0.0;        ///< pause after each GPU acquire slice (config pace_ms)

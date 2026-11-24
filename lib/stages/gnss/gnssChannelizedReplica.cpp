@@ -259,6 +259,26 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
 }
 } // namespace
 
+std::vector<int8_t> prn_secondary(const std::string& name, int prn) {
+    if (name == "GAL_E5A_Q") {
+        auto s = galileo::e5aq_secondary(prn);
+        return std::vector<int8_t>(s.begin(), s.end());
+    }
+    if (name == "GAL_E5B_Q") {
+        auto s = galileo::e5bq_secondary(prn);
+        return std::vector<int8_t>(s.begin(), s.end());
+    }
+    if (name == "GAL_E6_C") {
+        auto s = galileo::generate_e6c_secondary(prn);
+        return std::vector<int8_t>(s.begin(), s.end());
+    }
+    if (name == "BDS_B2A_P") {
+        auto s = beidou::b2ap_secondary(prn);
+        return std::vector<int8_t>(s.begin(), s.end());
+    }
+    return {};
+}
+
 ChannelizedReplicaBank::ChannelizedReplicaBank(const SignalDescriptor& sig, double sample_rate,
                                                double f_offset, int spectrum_length, int num_taps,
                                                dsp::Window window, const std::vector<int>& prns) :

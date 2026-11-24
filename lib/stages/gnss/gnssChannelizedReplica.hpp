@@ -2,6 +2,7 @@
  * @file
  * @brief Channelized GNSS replicas: a PRN's replica analysed through the F-engine's PFB.
  *  - gnss::ChannelizedReplicaBank
+ *  - gnss::prn_secondary
  */
 
 #ifndef GNSS_CHANNELIZED_REPLICA_HPP
@@ -14,6 +15,7 @@
 #include <cstdint>    // for int8_t
 #include <fftw3.h>    // for fftwf_plan, fftwf_complex
 #include <functional> // for function
+#include <string>     // for string
 #include <vector>     // for vector
 
 namespace gnss {
@@ -395,6 +397,11 @@ private:
     fftwf_plan _p_fwd;
     std::vector<float> _replica_hist;
 };
+
+/// The per-PRN secondary code (+-1) that the @c *_CS signal tiles over primary-only signal
+/// @p name (GAL_E5A_Q, GAL_E5B_Q, GAL_E6_C, BDS_B2A_P); empty for any other signal. A bank on
+/// the primary does not hold it: its overlay slot carries only shared codes.
+std::vector<int8_t> prn_secondary(const std::string& name, int prn);
 
 } // namespace gnss
 

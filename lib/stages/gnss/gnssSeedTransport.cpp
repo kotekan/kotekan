@@ -67,6 +67,93 @@ double refine_peak(const ChannelizedReplicaBank& bank, int prn_index,
     return coarse_cp + (double)(-span + best_e * step) * cps;
 }
 
+OverlaySync sync_overlay(const ChannelizedReplicaBank& bank, int prn_index,
+                         const std::vector<int8_t>& secondary,
+                         const std::vector<std::vector<std::complex<float>>>& data,
+                         const std::vector<int>& cov_global, double best_cp, double dop,
+                         long long anchor, double sample_rate, double dop_span_hz,
+                         double min_ratio) {
+    using cd = std::complex<double>;
+    OverlaySync out;
+    out.cp = best_cp;
+    out.dop = dop;
+    const int n_sec = (int)secondary.size();
+    const int n_hops = data.empty() ? 0 : (int)data[0].size();
+    if (n_sec == 0 || n_hops == 0)
+        return out;
+    const int fft_len = bank.fft_len();
+    const double L = (double)bank.code_length();
+    const double cps = bank.chip_rate_hz() / sample_rate;
+    const double cps_d = cps * (1.0 + bank.code_doppler_sign * dop / bank.carrier_hz());
+    const double period_s = L / bank.chip_rate_hz();
+    const ChannelizedReplicaBank::HopRateFilter rf = bank.hoprate_filter(cov_global, dop);
+    std::vector<std::vector<std::complex<float>>> r;
+    double best_pw = -1.0;
+    for (int hop = -1; hop <= 1; ++hop) {
+        const double cp = best_cp + (double)(hop * fft_len) * cps;
+        bank.hoprate_stream_into(rf, prn_index, anchor, cp, dop, n_hops, {}, -1, r);
+        // Each hop's primary period, at its centre sample n: C(n) = cp + n * cps_d over the
+        // absolute sample index, the period index overlay_sign takes.
+        std::vector<long long> per((size_t)n_hops);
+        for (int m = 0; m < n_hops; ++m)
+            per[(size_t)m] = (long long)std::floor(
+                (cp + ((double)anchor + ((double)m + 0.5) * fft_len) * cps_d) / L);
+        const long long p0 = per[0];
+        const int n_per = (int)(per[(size_t)n_hops - 1] - p0) + 1;
+        std::vector<cd> y((size_t)n_per, cd(0.0, 0.0));
+        for (int m = 0; m < n_hops; ++m) {
+            cd g(0.0, 0.0);
+            for (size_t c = 0; c < data.size(); ++c)
+                g += cd(data[c][(size_t)m]) * std::conj(cd(r[c][(size_t)m]));
+            y[(size_t)(per[(size_t)m] - p0)] += g;
+        }
+        // Residual Doppler grid at a quarter of the snapshot's resolution. The r2c bank's
+        // channels conjugate the frequency axis, so a residual f turns the sums at -f.
+        const double df = 0.25 / (n_per * period_s);
+        const int n_f = (int)std::ceil(dop_span_hz / df);
+        std::vector<cd> rot((size_t)(2 * n_f + 1) * n_per);
+        for (int i = -n_f; i <= n_f; ++i)
+            for (int k = 0; k < n_per; ++k)
+                rot[(size_t)(i + n_f) * n_per + k] =
+                    std::polar(1.0, -2.0 * M_PI * i * df * k * period_s);
+        std::vector<double> pw_nh((size_t)n_sec, 0.0);
+        std::vector<int> f_nh((size_t)n_sec, 0);
+        std::vector<cd> u((size_t)n_per);
+        for (int nh = 0; nh < n_sec; ++nh) {
+            for (int k = 0; k < n_per; ++k)
+                u[(size_t)k] =
+                    y[(size_t)k]
+                    * (double)secondary[(size_t)(((p0 + k + nh) % n_sec + n_sec) % n_sec)];
+            for (int i = 0; i <= 2 * n_f; ++i) {
+                cd z(0.0, 0.0);
+                const cd* w = rot.data() + (size_t)i * n_per;
+                for (int k = 0; k < n_per; ++k)
+                    z += u[(size_t)k] * w[k];
+                if (std::norm(z) > pw_nh[(size_t)nh]) {
+                    pw_nh[(size_t)nh] = std::norm(z);
+                    f_nh[(size_t)nh] = i - n_f;
+                }
+            }
+        }
+        int nh_best = 0;
+        for (int nh = 1; nh < n_sec; ++nh)
+            if (pw_nh[(size_t)nh] > pw_nh[(size_t)nh_best])
+                nh_best = nh;
+        if (pw_nh[(size_t)nh_best] <= best_pw)
+            continue;
+        best_pw = pw_nh[(size_t)nh_best];
+        double next = 0.0;
+        for (int nh = 0; nh < n_sec; ++nh)
+            if (nh != nh_best)
+                next = std::max(next, pw_nh[(size_t)nh]);
+        out.cp = cp;
+        out.dop = dop - f_nh[(size_t)nh_best] * df;
+        out.ratio = next > 0.0 ? best_pw / next : 0.0;
+        out.nh = out.ratio >= min_ratio ? nh_best : -1;
+    }
+    return out;
+}
+
 #ifdef GNSS_CUDA
 double refine_peak_cuda(std::vector<CudaRefineGroup>& groups, const ChannelizedReplicaBank& bank,
                         int prn_index, const std::complex<float>* window, int window_stride,
