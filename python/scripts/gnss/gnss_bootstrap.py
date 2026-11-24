@@ -370,6 +370,8 @@ def start_decoder(here, run_dir, eph_path, marks_path, bands):
         [sys.executable, "-u", "nav_decode.py"]
         + sources
         + ["--eph-out", eph_path, "--timemarks-file", marks_path]
+        # and the receiver's cache, so the broker has these orbits when it is released
+        + ["--eph-cache", "--eph-cache-name", "bootstrap"]
         + ["--eph-fresh-s", "0", "--no-brdc", "--report-every", "15"],
         cwd=here,
         stdout=open(run_dir + "/bootstrap_nav_decode.log", "a"),

@@ -29,9 +29,11 @@ Every entry is guarded separately so one bad ephemeris cannot take out the rest,
 wraps the whole call so the fallback cannot worsen an outage.
 """
 
+import glob
 import importlib
 import json
 import math
+import os
 
 from gnss_ephemeris import (
     BDT_GPST,
@@ -181,12 +183,24 @@ def predict_one(sv_pos, eph, sys, signal, rx, lat, lon, t_sow, toe_age_s, dt=0.5
         return None
 
 
+def expand(paths):
+    """The files named, with a directory (an ephemeris cache, eph_cache.py) standing for the
+    *.json files in it."""
+    out = []
+    for path in paths:
+        if os.path.isdir(path):
+            out += sorted(glob.glob(os.path.join(path, "*.json")))
+        else:
+            out.append(path)
+    return out
+
+
 def load_files(paths):
     """{(sys, prn): [(signal, eph, toe_field)]} from nav_decode.py and guowang_csk.py --eph-out
-    files: the satellites' own ephemerides, for a receiver with no BRDC. A file that cannot be
-    read is skipped."""
+    files and ephemeris cache directories: the satellites' own ephemerides, for a receiver with
+    no BRDC. A file that cannot be read is skipped."""
     out = {}
-    for path in paths:
+    for path in expand(paths):
         try:
             with open(path) as fh:
                 doc = json.load(fh)
@@ -227,16 +241,23 @@ def predict_from_decoders(entries, lat, lon, alt, t_utc, mask_deg=0.0, max_age=1
         t - (t // 604800) * 604800
     )  # continuous GPST -> seconds-of-week for the propagators
     rx = _ecef_of_llh(lat, lon, alt)
-    out = {}
-    for sys, prn, signal, eph, sv_pos, toe_gpst in entries:
+    # One entry per satellite: the issue nearest now, any source's before the relay's. A cache
+    # holds a satellite's issues for days, so taking the last given would take any of them.
+    best = {}
+    for ent in entries:
+        sys, prn, signal, toe_gpst = ent[0], ent[1], ent[2], ent[5]
         toe_age = (t - toe_gpst) if toe_gpst is not None else None
         if toe_age is not None and abs(toe_age) > max_age:
             continue
+        rank = (signal in LAST_RESORT, abs(toe_age) if toe_age is not None else 0.0)
+        if (sys, prn) not in best or rank < best[(sys, prn)][0]:
+            best[(sys, prn)] = (rank, ent)
+    out = {}
+    for _, (sys, prn, signal, eph, sv_pos, toe_gpst) in best.values():
+        toe_age = (t - toe_gpst) if toe_gpst is not None else None
         # BeiDou runs on BDT (= GPST - 14 s) and its decoded t_oe is BDT-sow, so the propagator
         # must be fed BDT seconds-of-week. Galileo GST and GPS GPST share the sow origin here.
         ts = (t_sow + BDT_GPST) % 604800 if sys in BDT_SYS else t_sow
-        if signal in LAST_RESORT and (sys, prn) in out:
-            continue
         v = predict_one(sv_pos, eph, sys, signal, rx, lat, lon, ts, toe_age)
         if v is None or v["el"] < mask_deg:
             continue

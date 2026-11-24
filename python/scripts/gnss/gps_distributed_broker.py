@@ -1317,10 +1317,12 @@ def main(argv=None, rx=None, publisher=None):
     _dec_files = {}  # path -> (mtime_ns, its entries)
 
     def _file_entries():
-        """(sys, prn, signal, eph, sv_pos, toe_field) from each --decoded-eph-file, re-read when
-        its mtime changes. A file that cannot be read keeps its last entries."""
+        """(sys, prn, signal, eph, sv_pos, toe_field, toe_gpst or None) from each
+        --decoded-eph-file, a directory (an ephemeris cache) standing for its *.json, each file
+        re-read when its mtime changes. A file that cannot be read keeps its entries."""
         out = []
-        for path in filter(None, (args.decoded_eph_file or "").split(",")):
+        named = filter(None, (args.decoded_eph_file or "").split(","))
+        for path in _decfb.expand(named):
             try:
                 mt = os.stat(path).st_mtime_ns
                 if path not in _dec_files or _dec_files[path][0] != mt:
@@ -1338,6 +1340,7 @@ def main(argv=None, rx=None, publisher=None):
                                     r["eph"],
                                     svp,
                                     r["toe_field"],
+                                    r.get("toe_gpst"),
                                 )
                             )
                     _dec_files[path] = (mt, ents)
@@ -1349,26 +1352,20 @@ def main(argv=None, rx=None, publisher=None):
     def _decoded_entries(t_utc):
         """Build decoded_eph entries (sys, prn, signal, eph, sv_pos, toe_gpst) from whichever
         decoders exist, this broker's own and those in --decoded-eph-file. toe_gpst is the eph's
-        time-of-week field as GPST, placed within half a week of t_utc
-        (decoded_eph.toe_gpst_near), the epoch the caller evaluates at (deadreckon.dr_eph_epoch).
-        Never raises: a bad decoder or eph is skipped."""
+        time-of-week field as GPST: a cache entry's own (placed from the sky's week when it was
+        decoded), else within half a week of t_utc (decoded_eph.toe_gpst_near), the epoch the
+        caller evaluates at (deadreckon.dr_eph_epoch). Never raises: a bad decoder or eph is
+        skipped."""
         ents = []
         if not _decfb:
             return ents
         gpst_now = _decfb.gpst_of_utc(datetime.fromtimestamp(t_utc, tz=timezone.utc))
-        for gsys, prn, signal, e, svp, toef in _file_entries():
+        for gsys, prn, signal, e, svp, toef, toe_gpst in _file_entries():
             try:
                 if toef in e:
-                    ents.append(
-                        (
-                            gsys,
-                            prn,
-                            signal,
-                            e,
-                            svp,
-                            _decfb.toe_gpst_near(gsys, e[toef], gpst_now),
-                        )
-                    )
+                    if toe_gpst is None:
+                        toe_gpst = _decfb.toe_gpst_near(gsys, e[toef], gpst_now)
+                    ents.append((gsys, prn, signal, e, svp, toe_gpst))
             except Exception:
                 continue
         for signal, gsys, svp, toef, getter in _dec_reg:

@@ -1637,10 +1637,11 @@ def build_parser(description):
     )
     ap.add_argument(
         "--decoded-eph-file",
-        help="comma-separated decoded-ephemeris files (nav_decode.py --eph-out): their "
-        "ephemerides join this broker's own decoders' in the decoded-ephemeris fallback, "
-        "which dead-reckons while no BRDC ephemeris is loaded (decoded_eph.py). Each file is "
-        "re-read when it changes. Unset = the broker's own decoders only.",
+        help="comma-separated decoded-ephemeris files (nav_decode.py --eph-out) or ephemeris "
+        "cache directories (eph_cache.py, every *.json in it): their ephemerides join this "
+        "broker's own decoders' in the decoded-ephemeris fallback, which dead-reckons while no "
+        "BRDC ephemeris is loaded (decoded_eph.py). Each file is re-read when it changes. "
+        "Unset = the broker's own decoders only.",
     )
     ap.add_argument(
         "--fe-axis-future-s",

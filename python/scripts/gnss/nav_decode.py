@@ -47,9 +47,11 @@ import bds_d1_predictor  # noqa: E402
 import beidou_bcnav2  # noqa: E402
 import decode_health  # noqa: E402
 import decoded_eph  # noqa: E402
+import eph_cache  # noqa: E402
 import galileo_fnav  # noqa: E402
 import gnss_ephemeris as ge  # noqa: E402
 import glonass_nav_predictor  # noqa: E402
+import gnss_skytime  # noqa: E402
 import nav_fields  # noqa: E402
 import sbas_l5_predictor  # noqa: E402
 from gnss_broker import sky  # noqa: E402
@@ -225,7 +227,7 @@ def message_types(signal, st):
     return out
 
 
-def write_timemarks(srcs, path, now):
+def timemarks(srcs):
     """Each CRC-checked message as a time mark, to measure the capture's time anchor against
     (gnss_skytime.py): the host-labelled UTC of its first symbol's edge, to a record (1 ms), and
     the time count it carries, as broadcast: a CNAV TOW count (6 s), an F/NAV page's TOW (s), a
@@ -288,7 +290,11 @@ def write_timemarks(srcs, path, now):
                     if wn is not None:
                         mark["wn"] = wn
                     marks.append(mark)
-    write_atomic({"schema": 1, "t": round(now, 2), "marks": marks}, path)
+    return marks
+
+
+def write_timemarks(srcs, path, now):
+    write_atomic({"schema": 1, "t": round(now, 2), "marks": timemarks(srcs)}, path)
 
 
 def write_payload(srcs, path, now):
@@ -393,12 +399,16 @@ def load_brdc(store, block):
         log("BRDC unavailable for the cross-check (%s)" % e)
 
 
-def report(srcs, store, dhw, eph_out):
+def report(srcs, store, dhw, eph_out, cache=None):
     """Log each satellite's decode state and BRDC cross-check, feed the decode-health export, and
-    write the decoded ephemerides."""
-    out = []
+    write the decoded ephemerides: those within EPH_FRESH_S of the host clock to eph_out, and
+    every one to the cache (eph_cache.Writer), placed in the week the sky's own time marks give
+    (gnss_skytime.week_ref) where they give one, else the host clock's."""
+    out, cached = [], []
     now = time.time()
     brdc = store if store.get("eph") else None
+    g_sky = gnss_skytime.week_ref(timemarks(srcs)) if cache is not None else None
+    g_ref = g_sky if g_sky is not None else ge.gpst_of_utc(now)
     for s in srcs:
         sysc, _, _, xcheck, toef = DECODERS[s["signal"]]
         dec = s["dec"]
@@ -408,6 +418,22 @@ def report(srcs, store, dhw, eph_out):
                 if not h:
                     continue
                 eph = dec.ephemeris(prn)
+                if cache is not None and eph is not None and toef in eph:
+                    cached.append(
+                        {
+                            "sys": sysc,
+                            "prn": prn,
+                            "signal": s["signal"],
+                            "toe_field": toef,
+                            "eph": eph,
+                            "toe_gpst": (
+                                eph[toef]
+                                if toef == "toe_gpst"  # GLONASS's: continuous already
+                                else decoded_eph.toe_gpst_near(sysc, eph[toef], g_ref)
+                            ),
+                            "week_from": "sky" if g_sky is not None else "host",
+                        }
+                    )
                 age = eph_age_s(sysc, eph, toef, now) if eph is not None else None
                 if age is not None and abs(age) > EPH_FRESH_S:
                     eph = None
@@ -459,6 +485,11 @@ def report(srcs, store, dhw, eph_out):
         dhw.flush(now, force=True)
     if eph_out:
         write_atomic({"schema": 1, "t_unix": now, "eph": out}, eph_out)
+    if cache is not None and cached:
+        try:
+            cache.put(cached, now)
+        except (OSError, ValueError) as e:
+            log("ephemeris cache %s not written (%s)" % (cache.path, e))
 
 
 def main():
@@ -473,6 +504,17 @@ def main():
     )
     ap.add_argument(
         "--eph-out", help="the decoded ephemerides (the broker's --decoded-eph-file)"
+    )
+    ap.add_argument(
+        "--eph-cache",
+        nargs="?",
+        const=eph_cache.DEFAULT_DIR,
+        help="also keep every decoded issue in this ephemeris cache directory (eph_cache.py; "
+        "alone, %s), the broker's decoded orbit feed" % eph_cache.DEFAULT_DIR,
+    )
+    ap.add_argument(
+        "--eph-cache-name",
+        help="this decoder's file in the cache (default: its signals); one process per name",
     )
     ap.add_argument(
         "--decode-health-file", help="decode-health export (decode_health.py)"
@@ -540,6 +582,11 @@ def main():
             chain=os.path.basename(args.decode_health_file).rsplit(".", 1)[0],
             log=log,
         )
+    cache = None
+    if args.eph_cache:
+        name = args.eph_cache_name or "+".join(sorted({s["signal"] for s in srcs}))
+        cache = eph_cache.Writer(name, args.eph_cache)
+        log("ephemeris cache %s (%d issues held)" % (cache.path, len(cache.entries)))
     EPH_FRESH_S = args.eph_fresh_s if args.eph_fresh_s > 0 else float("inf")
     store = {"mod": ge, "eph": None, "t": 0.0 if not args.no_brdc else float("inf")}
     if not args.no_brdc:
@@ -589,7 +636,7 @@ def main():
             load_brdc(store, block=False)
         if time.time() - t_report >= args.report_every:
             t_report = time.time()
-            report(srcs, store, dhw, args.eph_out)
+            report(srcs, store, dhw, args.eph_out, cache)
             span = time.time() - t_cpu
             log(
                 "cpu over %.0f s: %s"
