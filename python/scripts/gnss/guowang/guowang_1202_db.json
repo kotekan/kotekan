@@ -1086,15 +1086,16 @@
    "sep_deg": 1.11,
    "ref_input": 116,
    "drift_ns_s": -0.87,
-   "last_observed_utc": "2026-11-19T16:19:15Z",
-   "last_checked_utc": "2026-11-19T16:19:15Z",
-   "last_checked_sep_deg": 0.1,
-   "passes_found": 3,
+   "last_observed_utc": "2026-11-23T19:48:14Z",
+   "last_checked_utc": "2026-11-23T19:48:14Z",
+   "last_checked_sep_deg": 6.08,
+   "passes_found": 4,
    "passes_silent": 0,
    "passes": [
     ["2026-11-03T01:47:47Z", 2.31, true],
     ["2026-11-10T23:14:30Z", 5.96, true],
-    ["2026-11-19T16:19:15Z", 0.1, true]
+    ["2026-11-19T16:19:15Z", 0.1, true],
+    ["2026-11-23T19:48:14Z", 6.08, true]
    ]
   },
   "DIGUI-56": {
