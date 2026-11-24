@@ -1,35 +1,38 @@
 #!/usr/bin/env python3
 """Bootstrap the bladeRF receiver from the sky alone: no cached orbits, no time, no position.
 
-    python3 gnss_bootstrap.py [--apply] [--max-wait-s 900] [--truth-yaml Y]
+    python3 gnss_bootstrap.py [--apply] [--bands gps_l5,gal_e5a,bds_b2a] [--max-wait-s 900]
+                              [--truth-yaml Y]
 
 The broker's model needs all three, so it is held off (the gnss-broker unit's
 ConditionPathExists on --hold) while this runs:
 
-1. Acquire with no date: every L5 slot hinted at 0 +- 5 kHz (the GPSDO leaves only the
-   satellites' own Doppler), each detection seeded, and the tracks held on the combiner's
-   discriminators (code by dll_disc, Doppler by carrier_hz_resid), as bladerf/track_live.py
-   does. Each tracked satellite's record is logged each second (--rows), with its measured
-   Doppler: the record's less the carrier residual.
-2. A CNAV decoder of its own (nav_decode.py in place of gnss-nav-decode@misc, into files that
-   start empty, with no freshness gate against the host clock and no BRDC) reads those tracks:
-   time marks, and orbits with clocks. Wait for a type 10 (the week) and clocks from four
-   satellites.
+1. Acquire with no date, on each of --bands (GPS L5, Galileo E5a, BeiDou B2a; one is enough):
+   every search slot hinted at 0 +- 5 kHz (the GPSDO leaves only the satellites' own Doppler),
+   each detection seeded, and the tracks held on the combiner's discriminators (code by
+   dll_disc, Doppler by carrier_hz_resid), as bladerf/track_live.py does. E5a and B2a
+   detections carry their 100 ms phase from the search's nh_sync. Each tracked satellite's
+   record is logged each second (--rows), with its measured Doppler: the record's less the
+   carrier residual.
+2. A decoder of its own (nav_decode.py: L5 CNAV, E5a F/NAV, B2a B-CNAV2, in place of the
+   gnss-nav-decode units for those bands, into files that start empty, with no freshness gate
+   against the host clock and no BRDC) reads those tracks: time marks, and orbits with clocks.
+   Wait for a week number and clocks from four satellites.
 3. Time: gnss_skytime on the marks and the decoded orbits, no site: the anchor's error to ~10 ms.
 4. Position: gnss_fix on the logged rows and the decoded orbits, no prior, that error taken off.
 5. Time again, the fix as the site: to ~1 ms.
 6. With --apply: the clock offset (gnss_set_clock) and, if the fix is over --site-tol-m from the
    configured site, the site (gnss_set_site --fix-json); restart kotekan and release the broker.
    Without it, report only and release the broker as it was.
-7. After a site move, once the broker has relocked what it can (--refine-after-s), fix again
-   from its own rows, every chain, and move again if needed: a bootstrap fix 163 m off left
-   the model-seeded chains at half strength; the chains together land within tens of metres.
+7. After a site move, once the broker has relocked what it can (--refine-after-s), refine the
+   site from its own rows (gnss_site_track refine, every chain) until it settles, and leave it
+   there: a bootstrap fix 163 m off left the model-seeded chains at half strength, and the
+   chains together land within metres.
 
 Only offsets are printed; the fix itself goes to --fix-json.
 """
 
 import argparse
-import glob
 import json
 import os
 import subprocess
@@ -43,6 +46,7 @@ import numpy as np
 import gnss_fix
 import gnss_pvt
 import gnss_set_clock
+import gnss_site_track
 import gnss_skytime
 
 KOTEKAN = "http://localhost:12048"
@@ -50,11 +54,49 @@ B = "/home/lwlab/gnss/bladerf"
 YAML = B + "/broker/chains_l5.yaml"
 FS = Decimal("122.88e6")
 NFFT = 64
+# every band here (L5, E5a, B2a) shares the carrier and the chip rate
 CARRIER_HZ = 1176.45e6
 CHIP_HZ = Decimal("10.23e6")
-CODE_CHIPS = 204600  # GPS_L5_Q_NH: the NH20 tiled into one 20 ms code
 HOPS_PER_S = 1920000
 DECODER_STALL_S = 240.0
+# band -> (search, tracker, combiner, tracker code chips, constellation, decoder, its symbols,
+# the gnss-nav-decode unit it stands in for, a detection's least SNR to seed). The SNRs are on
+# each search's own surface: L5's 3 x 20 ms windows, E5a's and B2a's 64 x 1 ms.
+BANDS = {
+    "gps_l5": (
+        "l5_search",
+        "l5_track",
+        "l5_combine",
+        204600,
+        "G",
+        "GPS_L5_CNAV",
+        "l5i_symbols",
+        "misc",
+        20.0,
+    ),
+    "gal_e5a": (
+        "e5a_search",
+        "e5a_track",
+        "e5a_combine",
+        1023000,
+        "E",
+        "GAL_E5AI_FNAV",
+        "e5ai_symbols",
+        "fnav",
+        8.0,
+    ),
+    "bds_b2a": (
+        "b2a_search",
+        "b2a_track",
+        "b2a_combine",
+        1023000,
+        "C",
+        "BDS_B2A_BCNAV2",
+        "b2ad_symbols",
+        "bcnav2",
+        8.0,
+    ),
+}
 
 
 def get(path):
@@ -79,42 +121,60 @@ def log(msg):
 
 
 class Tracker:
-    """L5 tracking with no model: blind hints, seeds from detections, held on the combiner."""
+    """One band's tracking with no model: blind hints, seeds from detections, held on the
+    combiner."""
 
-    def __init__(self, rows_path, snr=20.0, lock=5.0):
-        self.snr, self.lock = snr, lock
+    def __init__(self, band, rows, lock=5.0):
+        self.band = band
+        (
+            self.search,
+            self.track,
+            self.combine,
+            self.code_chips,
+            self.sys,
+            _,
+            _,
+            _,
+            self.snr,
+        ) = BANDS[band]
+        self.lock = lock
         self.st = {}
-        self.rows = open(rows_path, "w")
-        prns = get("/config")["l5_search"]["prns"]
+        self.rows = rows
+        prns = get("/config")[self.search]["prns"]
         post(
-            "/l5_search/set_doppler_hints",
+            "/%s/set_doppler_hints" % self.search,
             [{"prn": p, "doppler_hz": 0.0, "margin_hz": 5000.0} for p in prns],
         )
 
     def step(self, frame0):
         """One pass: seed new detections, nudge and log the tracked, drop the lost."""
-        for d in get("/l5_search/get_detections"):
+        for d in get("/%s/get_detections" % self.search):
             if d["snr"] < self.snr or d["prn"] in self.st:
                 continue
-            # the detection's argument is referred to sample 0 with its own Doppler; lift it to
-            # the phase at its reference hop, at the hop's last sample as the bank does
-            n = Decimal(d["ref_hop"]) * NFFT + NFFT - 1
-            ph = (
-                Decimal(d["code_phase_chips"])
-                + n * chips_per_hop(d["doppler_hz"]) / NFFT
-            ) % CODE_CHIPS
+            if d.get("long_code_chips", self.code_chips) != self.code_chips:
+                continue  # a primary-only phase: the long code's period is unknown
+            if d.get("code_phase_at_ref_chips", -1.0) >= 0.0:
+                ph = Decimal(d["code_phase_at_ref_chips"])
+            else:
+                # the argument is referred to sample 0 with its own Doppler; lift it to the
+                # phase at its reference hop, at the hop's last sample as the bank does
+                n = Decimal(d["ref_hop"]) * NFFT + NFFT - 1
+                ph = (
+                    Decimal(d["code_phase_chips"])
+                    + n * chips_per_hop(d["doppler_hz"]) / NFFT
+                ) % self.code_chips
             self.st[d["prn"]] = dict(
                 dop=d["doppler_hz"], ph=ph, ref=d["ref_hop"], miss=0
             )
             post(
-                "/l5_search/set_doppler_hints",
+                "/%s/set_doppler_hints" % self.search,
                 [{"prn": d["prn"], "doppler_hz": 0.0, "margin_hz": -1.0}],
             )
             log(
-                "PRN %d seeded: snr %.0f, %+.0f Hz"
-                % (d["prn"], d["snr"], d["doppler_hz"])
+                "%s PRN %d seeded: snr %.0f, %+.0f Hz"
+                % (self.band, d["prn"], d["snr"], d["doppler_hz"])
             )
-        rows = get("/l5_combine/get_status")
+        rows = get("/%s/get_status" % self.combine)
         rows = rows if isinstance(rows, list) else rows.get("prns", [])
         status = {r["prn"]: r for r in rows if isinstance(r, dict) and r.get("prn")}
         seeds = []
@@ -125,15 +185,15 @@ class Tracker:
                 # carry the seed to the combiner's newest hop, then correct it there
                 s["ph"] = (
                     s["ph"] + chips_per_hop(s["dop"]) * (hop - s["ref"])
-                ) % CODE_CHIPS
+                ) % self.code_chips
                 s["ref"] = hop
-                s["ph"] = (s["ph"] - Decimal(0.16 * cs["dll_disc"])) % CODE_CHIPS
+                s["ph"] = (s["ph"] - Decimal(0.16 * cs["dll_disc"])) % self.code_chips
                 s["dop"] -= 0.5 * cs["carrier_hz_resid"]
                 s["miss"] = 0
                 row = {
                     "t": frame0 + hop / HOPS_PER_S,
-                    "band": "gps_l5",
-                    "sys": "G",
+                    "band": self.band,
+                    "sys": self.sys,
                     "prn": prn,
                     "carrier_hz": CARRIER_HZ,
                     "rec_hop": hop,
@@ -157,25 +217,28 @@ class Tracker:
         self.rows.flush()
         for prn in [p for p, s in self.st.items() if s["miss"] > 15]:
             post(
-                "/l5_search/set_doppler_hints",
+                "/%s/set_doppler_hints" % self.search,
                 [{"prn": prn, "doppler_hz": self.st[prn]["dop"], "margin_hz": 500.0}],
             )
             del self.st[prn]
-            log("PRN %d lost" % prn)
+            log("%s PRN %d lost" % (self.band, prn))
         if seeds:
-            post("/l5_track/set_seeds", seeds)
+            post("/%s/set_seeds" % self.track, seeds)
         return sum(1 for s in self.st.values() if s["miss"] == 0)
 
 
-def start_decoder(here, run_dir, eph_path, marks_path):
-    """nav_decode.py on L5 CNAV into files that start empty, with no freshness gate against the
-    host clock and no BRDC, reporting every 15 s."""
+def start_decoder(here, run_dir, eph_path, marks_path, bands):
+    """nav_decode.py on the bands' messages into files that start empty, with no freshness gate
+    against the host clock and no BRDC, reporting every 15 s."""
     for p in (eph_path, marks_path):
         if os.path.exists(p):
             os.remove(p)
+    sources = []
+    for band in bands:
+        sources += ["--source", "%s=%s/%s" % (BANDS[band][5], KOTEKAN, BANDS[band][6])]
     return subprocess.Popen(
         [sys.executable, "-u", "nav_decode.py"]
-        + ["--source", "GPS_L5_CNAV=%s/l5i_symbols" % KOTEKAN]
+        + sources
         + ["--eph-out", eph_path, "--timemarks-file", marks_path]
         + ["--eph-fresh-s", "0", "--no-brdc", "--report-every", "15"],
         cwd=here,
@@ -185,15 +248,19 @@ def start_decoder(here, run_dir, eph_path, marks_path):
 
 
 def decoded_ready(eph_path, marks_path, t_start):
-    """(clocked satellites, marks' satellites, has a type 10), from files written since t_start."""
+    """(clocked satellites, marks' satellites, has a week number), from files written since
+    t_start. A clock is af0 (CNAV, F/NAV) or a0 (B-CNAV2)."""
     n_clk = n_marks = 0
     week = False
     try:
         if os.path.getmtime(eph_path) >= t_start:
-            n_clk = sum("af0" in r["eph"] for r in json.load(open(eph_path))["eph"])
+            n_clk = sum(
+                "af0" in r["eph"] or "a0" in r["eph"]
+                for r in json.load(open(eph_path))["eph"]
+            )
         if os.path.getmtime(marks_path) >= t_start:
             marks = json.load(open(marks_path))["marks"]
-            n_marks = len({m["prn"] for m in marks})
+            n_marks = len({(m["signal"], m["prn"]) for m in marks})
             week = any("wn" in m for m in marks)
     except (OSError, ValueError, KeyError):
         pass
@@ -208,6 +275,11 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument(
         "--apply", action="store_true", help="correct clock and site, restart"
+    )
+    ap.add_argument(
+        "--bands",
+        default="gps_l5,gal_e5a,bds_b2a",
+        help="comma-separated bands to acquire and decode (%s)" % ", ".join(BANDS),
     )
     ap.add_argument("--max-wait-s", type=float, default=900.0)
     ap.add_argument("--hold", default=B + "/broker/HOLD", help="the broker's hold file")
@@ -226,13 +298,17 @@ def main(argv=None):
         "--refine-after-s",
         type=float,
         default=180.0,
-        help="after a site move, let the broker relock this long, then fix again from its "
-        "own rows (every chain) and move again if over --site-tol-m; 0 skips",
+        help="after a site move, let the broker relock this long, then refine the site from "
+        "its own rows until it settles (gnss_site_track); 0 skips",
     )
     ap.add_argument(
         "--truth-yaml", help="print the fix's offsets from this yaml's site"
     )
     a = ap.parse_args(argv)
+    bands = a.bands.split(",")
+    for band in bands:
+        if band not in BANDS:
+            ap.error("unknown band %s" % band)
     run_dir = os.path.dirname(a.rows)
     eph_path = run_dir + "/bootstrap_eph.json"
     marks_path = run_dir + "/bootstrap_marks.json"
@@ -240,20 +316,22 @@ def main(argv=None):
         if os.path.exists(p):
             os.remove(p)
     frame0 = gnss_fix.FRAME0_UTC
+    units = ["gnss-nav-decode@%s" % BANDS[band][7] for band in bands]
 
     open(a.hold, "w").close()
     systemctl("stop", "gnss-broker")
-    systemctl("stop", "gnss-nav-decode@misc")
+    systemctl("stop", *units)
     here = os.path.dirname(os.path.abspath(__file__))
     t_start = time.time()
-    log("broker held; acquiring L5 with no date (0 +- 5 kHz on every slot)")
-    trk = Tracker(a.rows)
+    log("broker held; acquiring %s with no date (0 +- 5 kHz on every slot)" % a.bands)
+    rows = open(a.rows, "w")
+    trackers = [Tracker(band, rows) for band in bands]
     ready = False
     t_log = t_start
     decoder, t_dec, settled, progress = None, 0.0, None, (0, 0)
     while time.time() - t_start < a.max_wait_s:
         time.sleep(1.0)
-        n_trk = trk.step(frame0)
+        n_trk = sum(trk.step(frame0) for trk in trackers)
         # The decoder starts on settled tracks: symbols from seeds still converging leave it an
         # island of bad symbols whose failed cold decodes back off for minutes (11-24: the two
         # strongest satellites never decoded). It restarts when nothing new decodes for
@@ -262,30 +340,31 @@ def main(argv=None):
         n_clk, n_marks, week = decoded_ready(eph_path, marks_path, t_start)
         if decoder is None and settled and time.time() - settled >= 20.0:
             decoder, t_dec = (
-                start_decoder(here, run_dir, eph_path, marks_path),
+                start_decoder(here, run_dir, eph_path, marks_path, bands),
                 time.time(),
             )
-            log("CNAV decoder started on %d tracks" % n_trk)
+            log("decoder started on %d tracks" % n_trk)
         if decoder is not None:
             if (n_clk, n_marks) != progress:
                 progress, t_dec = (n_clk, n_marks), time.time()
             elif time.time() - t_dec > DECODER_STALL_S:
                 decoder.terminate()
                 decoder, t_dec = (
-                    start_decoder(here, run_dir, eph_path, marks_path),
+                    start_decoder(here, run_dir, eph_path, marks_path, bands),
                     time.time(),
                 )
-                log("CNAV decoder restarted: nothing new for %.0f s" % DECODER_STALL_S)
+                log("decoder restarted: nothing new for %.0f s" % DECODER_STALL_S)
         if time.time() - t_log >= 30.0:
             t_log = time.time()
             log(
-                "%d tracked; CNAV: %d satellites with clocks, marks from %d, week %s"
+                "%d tracked; decoded: %d satellites with clocks, marks from %d, week %s"
                 % (n_trk, n_clk, n_marks, "yes" if week else "not yet")
             )
         long_enough = time.time() - t_start >= a.min_track_s
         if n_clk >= 4 and n_marks >= 2 and week and long_enough:
             ready = True
             break
+    rows.close()
     ok = False
     if ready:
         res, _ = gnss_skytime.run([marks_path], decoded=[eph_path])
@@ -327,52 +406,21 @@ def main(argv=None):
         systemctl("restart", "gnss-kotekan")
     if decoder is not None:
         decoder.terminate()
-    systemctl("start", "gnss-nav-decode@misc")
+    systemctl("start", *units)
     os.remove(a.hold)
     systemctl("start", "gnss-broker")
     log("broker released")
     if ok and a.apply and moved > a.site_tol_m and a.refine_after_s > 0:
-        refine(a, here)
+        log("refining in %.0f s from the broker's own rows" % a.refine_after_s)
+        time.sleep(a.refine_after_s)
+        argv_ref = ["--mode", "refine", "--yaml", a.yaml]
+        argv_ref += ["--until-settled", "4", "--max-s", "900"]
+        gnss_site_track.main(argv_ref)
+        if a.truth_yaml:
+            truth = np.array(gnss_pvt._llh_to_ecef(*gnss_fix.site_of(a.truth_yaml)))
+            site = np.array(gnss_pvt._llh_to_ecef(*gnss_fix.site_of(a.yaml)))
+            log("site now %.1f m from the truth" % np.linalg.norm(site - truth))
     return 0 if ok else 1
-
-
-def refine(a, here):
-    """Fix again from the broker's observables rows, once the chains the moved site let it
-    lock have run --refine-after-s: every chain's rows, the first fix as the prior; move the
-    site again if it is over --site-tol-m off."""
-    log("refining in %.0f s from the broker's own rows" % a.refine_after_s)
-    time.sleep(a.refine_after_s)
-    newest = {}
-    for p in glob.glob(B + "/obs/*_*.jsonl"):
-        chain = os.path.basename(p).rsplit("_", 1)[0]
-        if chain != "gw_1202" and (
-            chain not in newest or os.path.getmtime(p) > os.path.getmtime(newest[chain])
-        ):
-            newest[chain] = p
-    lat, lon, alt = gnss_pvt._ecef_to_llh(np.array(json.load(open(a.fix_json))["ecef"]))
-    out = a.fix_json.replace(".json", "_refined.json")
-    argv_fix = sorted(newest.values()) + ["--prior", "%.9f,%.9f,%.3f" % (lat, lon, alt)]
-    argv_fix += ["--prior-km", "1", "--json", out]
-    if a.truth_yaml:
-        argv_fix += ["--truth-yaml", a.truth_yaml]
-    if gnss_fix.main(argv_fix) != 0 or not os.path.exists(out):
-        log("no refined fix")
-        return
-    fix = np.array(json.load(open(out))["ecef"])
-    site = np.array(gnss_pvt._llh_to_ecef(*gnss_fix.site_of(a.yaml)))
-    moved = float(np.linalg.norm(fix - site))
-    if moved <= a.site_tol_m:
-        log("refined fix %.0f m from the site: kept" % moved)
-        return
-    subprocess.run(
-        [sys.executable, "gnss_set_site.py", "--fix-json", out, "--yaml", a.yaml]
-        + ["--broker", "http://127.0.0.1:1"],
-        check=False,
-        cwd=here,
-    )
-    for u in ("gnss-broker", "gnss-obs", "gnss-sky", "gnss-viewer"):
-        systemctl("restart", u)
-    log("site moved %.0f m to the refined fix" % moved)
 
 
 if __name__ == "__main__":

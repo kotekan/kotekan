@@ -3,6 +3,7 @@
 
     python3 gnss_site_track.py --mode refine|mobile --yaml chains_l5.yaml [--every-s S]
                                [--move-m 10] [--broker URL] [--obs-glob G]
+                               [--until-settled N [--max-s S]]
 
 The solve is the Position menu's (its 15 deg mask, and the Klobuchar delay the observables
 apply): gnss_pvt over the observables rows (each chain's code
@@ -16,7 +17,9 @@ refine (default every 15 s): a solve over the last 90 s of carrier-smoothed rows
 site moves when the last --confirm solves agree, their median offset over --move-m and over
 five times their own scatter (the solves wander by metres within minutes, more than their
 formal sigma says). After a move nothing is judged until a whole smoothing window has passed,
-so no solve mixes rows from both sites.
+so no solve mixes rows from both sites. With --until-settled it stops once N judgments in a
+row (each over the last --confirm solves) have needed no move, or after --max-s, so a site
+found from the sky is then fixed and measurements stay comparable.
 
 mobile (default every 5 s): an unsmoothed solve of the newest rows, and the site follows it.
 Only the site moves: the model carries no receiver velocity, so a receiver moving faster than
@@ -103,11 +106,26 @@ def main(argv=None):
         "--dry-run", action="store_true", help="log the decisions, move nothing"
     )
     ap.add_argument("--restart-over-m", type=float, default=50.0)
+    ap.add_argument(
+        "--until-settled",
+        type=int,
+        default=0,
+        help="refine: stop once this many judgments in a row need no move",
+    )
+    ap.add_argument(
+        "--max-s", type=float, default=0.0, help="stop unsettled after this long"
+    )
     a = ap.parse_args(argv)
     every = a.every_s or (15.0 if a.mode == "refine" else 5.0)
-    hist, hold_until = [], 0.0
+    hist, hold_until, quiet, t_start = [], 0.0, 0, time.time()
     log("%s mode, every %.0f s" % (a.mode, every))
     while True:
+        if a.until_settled and quiet >= a.until_settled:
+            log("settled: %d judgments in a row needed no move" % quiet)
+            return 0
+        if a.max_s and time.time() - t_start > a.max_s:
+            log("not settled after %.0f s" % a.max_s)
+            return 1
         t0 = time.time()
         try:
             r = solve(a.obs_glob, a.yaml, SMOOTH_S if a.mode == "refine" else 0.0)
@@ -134,7 +152,9 @@ def main(argv=None):
                     and off > 5.0 * float(np.linalg.norm(spread))
                 ):
                     move(a, med)
-                    hist, hold_until = [], time.time() + SMOOTH_S + 30.0
+                    hist, hold_until, quiet = [], time.time() + SMOOTH_S + 30.0, 0
+                elif len(hist) == a.confirm:
+                    quiet += 1
         time.sleep(max(0.0, every - (time.time() - t0)))
 
 
