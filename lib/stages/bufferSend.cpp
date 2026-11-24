@@ -65,12 +65,12 @@ bufferSend::bufferSend(Config& config, const std::string& unique_name,
     const bool ct_enabled = ConfigTracker::instance().is_enabled();
     use_config_tracker =
         config.get_default<bool>(unique_name, "use_config_tracker", ct_enabled) && ct_enabled;
-    config_tracker_combined_hash = "";
 
     use_frame_desc = config.get_default<bool>(unique_name, "use_frame_desc", false);
-    desc_sent = false;
 
     dest.connected = false;
+    dest.desc_sent = false;
+    dest.config_tracker_combined_hash = "";
     dest.server_ip = config.get<std::string>(unique_name, "server_ip");
     dest.server_port = config.get_default<uint32_t>(unique_name, "server_port", 11024);
 
@@ -168,8 +168,8 @@ bool bufferSend::send_frame(uint8_t* frame, int frame_id, networkDestination& de
     // (re)started after us holds no upstream configs and has no way to
     // ask for them, so the first frame it sees must carry the flag.
     header.config_tracker_update =
-      !first_transmission_sent
-      || config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash();
+      !dest.first_transmission_sent
+      || dest.config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash();
     // for legacy CHIME, do not send last field (config_tracker_update)
     size_t header_len = use_config_tracker ? sizeof(bufferFrameHeader)
                                            : sizeof(bufferFrameHeaderNoConfigTracker);
@@ -196,43 +196,43 @@ bool bufferSend::send_frame(uint8_t* frame, int frame_id, networkDestination& de
 	  dest.server_ip, dest.server_port);
 
     // If the frame sent successfully,
-    if (config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash()) {
-        config_tracker_combined_hash = ConfigTracker::instance().getTrackerHash();
+    if (dest.config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash()) {
+        dest.config_tracker_combined_hash = ConfigTracker::instance().getTrackerHash();
     }
     DEBUG2("Sent header: {:d}", n_sent);
 
     // Send the frame descriptor once per connection (independent of the
     // config tracker), right after the first frame's header: a 4-byte
     // JSON length followed by that many bytes. Later frames send neither.
-    if (use_frame_desc && !desc_sent) {
+    if (use_frame_desc && !dest.desc_sent) {
         auto desc = buf->get_frame_desc();
         const std::string desc_json = desc ? desc->to_json().dump() : std::string();
         uint32_t frame_desc_size = static_cast<uint32_t>(desc_json.size());
         n_sent = 0;
-        while ((n = send(socket_fd, &((uint8_t*)&frame_desc_size)[n_sent],
+        while ((n = send(dest.socket_fd, &((uint8_t*)&frame_desc_size)[n_sent],
                          sizeof(frame_desc_size) - n_sent, MSG_NOSIGNAL))
                > 0)
             n_sent += n;
         if (n < 0) {
             ERROR("Error {:s}, failed to send frame_desc size to {:s}:{:d}",
-                  strerror(errno), server_ip, server_port);
-            close_connection();
-            continue;
+                  strerror(errno), dest.server_ip, dest.server_port);
+            dest.close_connection();
+	    return false;
         }
         if (frame_desc_size > 0) {
             n_sent = 0;
-            while ((n = send(socket_fd, desc_json.data() + n_sent, frame_desc_size - n_sent,
+            while ((n = send(dest.socket_fd, desc_json.data() + n_sent, frame_desc_size - n_sent,
                              MSG_NOSIGNAL))
                    > 0)
                 n_sent += n;
             if (n < 0) {
                 ERROR("Error {:s}, failed to send frame_desc to {:s}:{:d}", strerror(errno),
-                      server_ip, server_port);
-                close_connection();
-                continue;
+                      dest.server_ip, dest.server_port);
+                dest.close_connection();
+		return false;
             }
         }
-        desc_sent = true;
+        dest.desc_sent = true;
     }
 
     // Send metadata
@@ -269,7 +269,7 @@ bool bufferSend::send_frame(uint8_t* frame, int frame_id, networkDestination& de
     DEBUG2("Sent frame: {:d}", n_sent);
 
     // Set to true since we've sent a transmission.
-    first_transmission_sent = true;
+    dest.first_transmission_sent = true;
 
     return true;
 }
@@ -367,7 +367,7 @@ void bufferSend::add_graph_details(kotekan::PipelineGraph& graph) const {
     // sending to the same host:port stay distinct nodes.
     const std::string dest_id = fmt::format("{:s}/destination", get_unique_name());
     graph.add_node(dest_id)
-        .add_line(fmt::format(fmt("{:s}:{:d}"), server_ip, server_port))
+        .add_line(fmt::format(fmt("{:s}:{:d}"), dest.server_ip, dest.server_port))
         .set_category(kotekan::GraphCategory::Endpoint);
     graph.add_edge(get_unique_name(), dest_id);
 }

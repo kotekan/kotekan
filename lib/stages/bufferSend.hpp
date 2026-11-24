@@ -68,6 +68,18 @@ public:
     /// The thread we're using to connect
     std::thread connect_thread;
 
+    /// Set to true if this is the first transmission
+    std::atomic<bool> first_transmission_sent;
+
+    /// Set once the frame descriptor has been sent on the current connection.
+    /// Read and set by the send thread, and reset by the connect thread when a
+    /// new connection is established, so it is atomic (like first_transmission_sent).
+    std::atomic<bool> desc_sent;
+
+    /// Tracker hash as last signalled to the receiver. A differing current
+    /// hash, or the first frame of a connection, sets config_tracker_update.
+    std::string config_tracker_combined_hash;
+
     /// Thread for connecting to the remote server
     void test_thread(std::string name);
     
@@ -151,10 +163,6 @@ protected:
     /// (once per connection). Must match use_frame_desc on the receiver.
     bool use_frame_desc;
 
-    /// Tracker hash as last signalled to the receiver. A differing current
-    /// hash, or the first frame of a connection, sets config_tracker_update.
-    std::string config_tracker_combined_hash;
-
     /**
      * @brief Number of frame dropped because the send is too slow.
      * Only counts dropped data from caused by the send being too slow,
@@ -173,22 +181,8 @@ protected:
     /// The input buffer name to grab.
     std::string buffer_name;
 
-    /// Set once the frame descriptor has been sent on the current connection.
-    /// Read and set by the send thread, and reset by the connect thread when a
-    /// new connection is established, so it is atomic (like first_transmission_sent).
-    std::atomic<bool> desc_sent;
-
-    /// Internal server address struct
-    struct sockaddr_in server_addr;
-
     /// Whether to drop frames or block if buffer is full
     bool drop_frames;
-
-    /// Flag to indicate if config tracker header data should be sent
-    bool use_config_tracker;
-
-    /// Serialized list of current config tracker hashes
-    std::string config_tracker_combined_hash;
 
     /// Send a frame
     bool send_frame(uint8_t* frame, int frame_id, networkDestination& dest);
