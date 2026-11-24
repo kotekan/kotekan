@@ -19,12 +19,15 @@ import ast
 import os
 import sys
 import unittest
+import warnings
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import decoded_eph
 import gnss_ephemeris as ge
 from galileo_fnav import sv_position_fnav
+from glonass_nav_predictor import sv_position_glo
 from gps_nav_decode import sv_position_lnav
+from test_glonass_eph import R02_1215, _parse
 from test_range_rate import ALT, G05, TOL, parse, toe_utc, worst_rate_error
 
 E14_FNAV = (
@@ -154,6 +157,45 @@ class TestStaleIssue(unittest.TestCase):
 
     def test_galileo_fnav(self):
         self._check(*e14())
+
+
+class TestGlonass(unittest.TestCase):
+    """A decoded GLONASS record (glonass_nav_predictor.ephemeris_from builds BRDC's fields)
+    predicts as predict_all does from the same record, and is not used past its
+    MAX_AGE_S."""
+
+    def setUp(self):
+        self.eph = _parse(R02_1215)
+        self.rec = self.eph[("R", 2)][0]
+        self.ent = ("R", 2, "GLO_L2OF", self.rec, sv_position_glo, self.rec["toe_gpst"])
+
+    def test_matches_the_brdc_path(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            for dt in (-900, 0, 600, 3600, 8000):
+                t = toe_utc(self.rec) + dt
+                want = ge.predict_all(
+                    self.eph, LAT, LON, ALT, t, mask_deg=-90.0, health_gate=False
+                )[("R", 2)]
+                got = predict_decoded(self.ent, t, LAT, LON)
+                for f, tol in (
+                    ("range_m", 1.0),
+                    ("range_rate_mps", 1e-3),
+                    ("sat_clk_s", 1e-12),
+                ):
+                    self.assertLess(
+                        abs(got[f] - want[f]),
+                        tol,
+                        "R02 at tb%+d s: %s off predict_all's by %.3g"
+                        % (dt, f, got[f] - want[f]),
+                    )
+
+    def test_not_used_past_its_age(self):
+        t = toe_utc(self.rec) + decoded_eph.MAX_AGE_S["GLO_L2OF"] + 60.0
+        got = decoded_eph.predict_from_decoders(
+            [self.ent], LAT, LON, ALT, t, mask_deg=-90.0, max_age=1e9
+        )
+        self.assertEqual(got, {})
 
 
 class TestToeFold(unittest.TestCase):

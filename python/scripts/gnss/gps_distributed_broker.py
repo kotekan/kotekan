@@ -1321,6 +1321,7 @@ def main(argv=None, rx=None, publisher=None):
             from beidou_bcnav1 import sv_position_bcnav1 as _svp_bc1
             from beidou_bcnav2 import sv_position_bcnav2 as _svp_bc2
             from guowang_csk import sv_position_relay as _svp_relay
+            from glonass_nav_predictor import sv_position_glo as _svp_glo
         except Exception as e:
             _log("decoded-eph fallback DISABLED (import: %s)" % e)
             _decfb = None
@@ -1364,6 +1365,7 @@ def main(argv=None, rx=None, publisher=None):
             "BDS_B1C_BCNAV1": _svp_bc1,
             "BDS_B2A_BCNAV2": _svp_bc2,
             "GW_CSK_RELAY": _svp_relay,
+            "GLO_L2OF": _svp_glo,
         }
         if _decfb
         else {}

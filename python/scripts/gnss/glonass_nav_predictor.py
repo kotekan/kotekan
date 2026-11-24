@@ -148,6 +148,24 @@ def ephemeris_from(s1, s2, s3, s4, prn, t_rx):
     return e
 
 
+def _tk(eph, t, wrap=True):
+    """t (GPST seconds of week) less the record's epoch, wrapped to within half a week unless
+    wrap=False (t then counts on from the start of the epoch's week)."""
+    tk = t - eph["toe_gpst"] % 604800.0
+    return (tk + 302400.0) % 604800.0 - 302400.0 if wrap else tk
+
+
+def sv_position_glo(eph, t, wrap=True):
+    """decoded_eph's propagator for a decoded record: ECEF (PZ-90) at t, GPST seconds of week,
+    by gnss_ephemeris.glonass_state's integration from the record's state at tb."""
+    return ge.glonass_state(eph, eph["toe_gpst"] + _tk(eph, t, wrap))[0]
+
+
+def sv_clock_glo(eph, t):
+    """A decoded record's clock at t, GPST seconds of week: -tau_n + gamma_n (t - tb)."""
+    return eph["af0"] + eph["af1"] * _tk(eph, t)
+
+
 def _key(e):
     """What the next frame must repeat: everything but the frame time."""
     return (e["tb"], e["pos"], e["vel"], e["acc"], e["af0"], e["af1"], e["slot"])

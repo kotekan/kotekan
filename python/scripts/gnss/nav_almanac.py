@@ -174,6 +174,7 @@ GLO_OMEGA_E = 7.2921150e-5
 GLO_I0 = 63.0 / 180.0 * math.pi
 GLO_T_DR = 43200.0  # the nominal draconic period, s
 MSK_UTC_S = 3 * 3600.0  # GLONASS time is Moscow time, UTC + 3 h
+PAIR_KEEP_S = 3600.0  # how long a GLONASS almanac pair read once waits for its repeat
 GLO_EPOCH_DAY = (
     9496  # 1996-01-01 (the first 4-year span's day 1) in days from 1970-01-01
 )
@@ -316,6 +317,7 @@ class Collector:
         self.seen = {}  # (transmitting prn, message type) -> the decode time last read
         self.last = {}  # (transmitting prn, message type) -> (bits, time)
         self.got = []  # (sys, prn, wna, toa, eph)
+        self.pairs = {}  # GLONASS: a string pair's bits -> (prn, UTC start) first read
 
     def _messages(self, st):
         """(type, bits, time) of the almanac messages a decoder's PRN state holds: time is the
@@ -339,7 +341,10 @@ class Collector:
         """GLONASS: the decoder keeps every string by its UTC start, so each odd almanac string
         (7-15) read since the last scan is joined to the even one 2 s before it, with N^A from
         string 5 of its frame (or the newest one seen). Frame 5's strings 14 and 15 are not
-        almanac. Frames start on the 150 s superframe grid of UTC (Moscow midnight)."""
+        almanac. Frames start on the 150 s superframe grid of UTC (Moscow midnight). A pair is
+        taken once it has been read again, from another satellite or superframe: a string the
+        Hamming code "corrected" to the wrong word would otherwise put one slot's orbit and
+        channel on another."""
         for prn, st in list(dec._p.items()):
             for ts, (m, b, _t) in sorted(st.strings.items()):
                 if m == 5:
@@ -361,11 +366,17 @@ class Collector:
                 if n_a is None:
                     continue
                 self.seen[(prn, ts)] = True
+                first = self.pairs.setdefault(tuple(even[1]) + tuple(b), (prn, ts))
+                if first == (prn, ts):
+                    continue
                 a = glo_almanac(even[1], b, n_a)
                 if a[1] > 0:
                     self.got.append(a)
             for key in [k for k in self.seen if k[0] == prn and k[1] not in st.strings]:
                 del self.seen[key]
+        t_new = max((ts for _, ts in self.pairs.values()), default=0.0)
+        for key in [k for k, v in self.pairs.items() if t_new - v[1] > PAIR_KEEP_S]:
+            del self.pairs[key]
 
     def scan(self, dec):
         if self.signal == "GLO_L2OF":

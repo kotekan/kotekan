@@ -88,7 +88,11 @@ SV_POS = {
     "BDS_B2A_BCNAV2": ("beidou_bcnav2", "sv_position_bcnav2"),
     "GW_CSK_RELAY": ("guowang_csk", "sv_position_relay"),
     "GW_1202_NAV": ("gw_nav_predictor", "sv_position_gw"),
+    "GLO_L2OF": ("glonass_nav_predictor", "sv_position_glo"),
 }
+# Signals whose decoded records are good only near their epoch, by the most they are taken from
+# it, s: a GLONASS record is a state vector integrated from tb (gnss_ephemeris.GLONASS_MAX_AGE_S).
+MAX_AGE_S = {"GLO_L2OF": 9000.0}
 # The almanacs the decoders read (nav_almanac.py), by the same propagator interface. Only a Reader
 # made with almanac=True reads them, so nothing that wants an ephemeris predicts from one.
 ALM_POS = {
@@ -100,6 +104,7 @@ ALM_POS = {
 SV_CLK = {
     "GW_1202_NAV": ("gw_nav_predictor", "sv_clock_gw"),
     "GLO_ALM": ("nav_almanac", "sv_clock_glo_alm"),
+    "GLO_L2OF": ("glonass_nav_predictor", "sv_clock_glo"),
 }
 # Constellations on BDT (GPST - 14 s): BeiDou, and GuoWang, whose every time field is BDT.
 BDT_SYS = ("C", "W")
@@ -248,6 +253,8 @@ class Reader:
                 toe = r.get("toe_gpst")
                 if toe is None:
                     toe = toe_gpst_near(r["sys"], r["eph"][r["toe_field"]], gpst_now)
+                if abs(gpst_now - toe) > MAX_AGE_S.get(r["signal"], float("inf")):
+                    continue
                 sv_pos = getattr(importlib.import_module(mod), fn)
                 out.append(
                     (r["sys"], int(r["prn"]), r["signal"], r["eph"], sv_pos, toe)
@@ -307,7 +314,9 @@ def predict_from_decoders(entries, lat, lon, alt, t_utc, mask_deg=0.0, max_age=1
     for ent in entries:
         sys, prn, signal, toe_gpst = ent[0], ent[1], ent[2], ent[5]
         toe_age = (t - toe_gpst) if toe_gpst is not None else None
-        if toe_age is not None and abs(toe_age) > max_age:
+        if toe_age is not None and abs(toe_age) > min(
+            max_age, MAX_AGE_S.get(signal, max_age)
+        ):
             continue
         rank = (signal in LAST_RESORT, abs(toe_age) if toe_age is not None else 0.0)
         if (sys, prn) not in best or rank < best[(sys, prn)][0]:

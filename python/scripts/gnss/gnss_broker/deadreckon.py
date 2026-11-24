@@ -3215,7 +3215,7 @@ def stage_dead_reckon(ctx):
                     _use_decoded = (
                         ctx.decfb is not None
                         and ctx.args.decoded_eph_fallback
-                        and ctx.drp.tag in ("G", "E", "C")
+                        and ctx.drp.tag in ("G", "E", "C", "R")
                         and not any(k[0] == ctx.drp.tag for k in ctx.drp.pd)
                     )
                 if _use_decoded:

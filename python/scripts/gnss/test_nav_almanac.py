@@ -135,8 +135,34 @@ class TestGlonass(unittest.TestCase):
         )
         col = na.Collector("GLO_L2OF")
         col.scan(types.SimpleNamespace(_p={16: st}))
+        self.assertEqual(col.got, [])  # read once: not yet
+        # the same pair from another satellite at the same time is a second reading
+        col.scan(types.SimpleNamespace(_p={9: st}))
         got = col.take(2446 * 604800.0 + 2 * 86400.0)
         self.assertEqual([(e["signal"], e["prn"]) for e in got], [("GLO_ALM", 16)])
+
+    def test_collector_drops_a_pair_read_once(self):
+        """A miscorrected even string differs from every other reading of its pair, so it never
+        repeats; the true pair, read again in the next superframe, is taken."""
+        f0 = 1795546800.0
+        bad = glo_bits(GLO_EVEN)
+        bad[76] ^= 1  # slot 16 read as 24
+        col = na.Collector("GLO_L2OF")
+        for f, even in ((f0, bad), (f0 + 150.0, glo_bits(GLO_EVEN))):
+            st = types.SimpleNamespace(
+                strings={
+                    f + 8.0: (5, glo_bits(GLO_S5), 0.0),
+                    f + 10.0: (6, even, 0.0),
+                    f + 12.0: (7, glo_bits(GLO_ODD), 0.0),
+                }
+            )
+            col.scan(types.SimpleNamespace(_p={16: st}))
+        self.assertEqual(col.got, [])
+        st.strings = {
+            k + 150.0: v for k, v in st.strings.items()
+        }  # the superframe after
+        col.scan(types.SimpleNamespace(_p={16: st}))
+        self.assertEqual([a[1] for a in col.got], [16])
 
 
 class TestPlacement(unittest.TestCase):

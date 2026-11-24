@@ -69,6 +69,7 @@ class ChainContext(object):
         "fe_off",
         "capable",
         "capable_t",
+        "fdma_t",
         "alm_now",
         "trackers",
         "joint_consume",
@@ -195,6 +196,7 @@ class ChainContext(object):
         "fleet_hop_hist": dict,
         "unpredicted": set,
         "warm": _warm_state,
+        "fdma_t": float,
     }
 
     def __init__(self, **kw):

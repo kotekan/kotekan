@@ -19,6 +19,7 @@ from gnss_broker.transport import _now, _post, _log, _log_rl, axis_now_utc, now_
 from gnss_broker.sky import brdc_predict, lists_constellation, nearest_boresight
 from gnss_broker import timebase
 from gnss_broker import prnmap
+from gnss_broker import signals
 
 # The geometry post's cadence (--post-sat-geometry). A GNSS satellite takes many minutes to
 # cross the assemblers' 4-8 deg transit cones (elem_proj_deg, elem_sum_shared_freeze_deg, the
@@ -28,6 +29,8 @@ from gnss_broker import prnmap
 _POST_S = 30.0
 _LEO_POST_S = 1.5
 _LEO_NEAR_DEG = 10.0
+# How often an FDMA chain's missing carrier offsets are looked for (_refresh_fdma), s
+FDMA_REFRESH_S = 60.0
 # The PRNs a GPS, Galileo, BeiDou or GLONASS chain may warm-search (searchhint._warm_hints): each
 # constellation's range, BeiDou's GEO slots (1-5, 59-63) aside.
 _PRN_RANGE = {
@@ -87,6 +90,37 @@ def _refresh_capable(ctx):
     ctx.capable = new
 
 
+def _refresh_fdma(ctx):
+    """Every FDMA_REFRESH_S, fill an FDMA chain's missing carrier offsets (args.fdma_df) from the
+    store's BRDC records and the decoded almanacs, each GLONASS entry of which carries its
+    slot's k. At startup they come only from the BRDC files on disk, which a receiver with no
+    network may not have. A slot already there keeps its offset."""
+    df = getattr(ctx.args, "fdma_df", None)
+    if df is None or ctx.brdc_alm is None or _now() - ctx.fdma_t < FDMA_REFRESH_S:
+        return
+    ctx.fdma_t = _now()
+    ks = {}
+    rdr = ctx.brdc_alm.get("almanac")
+    if rdr is not None:
+        import decoded_eph
+
+        g = decoded_eph.gpst_of_utc(ctx.alm_now())
+        for e in sorted(rdr.entries(g, sys="R"), key=lambda e: e[5]):
+            if e[3].get("k") is not None:
+                ks[e[1]] = e[3]["k"]
+    for (sysc, prn), recs in ctx.brdc_alm["eph"].items():
+        for r in recs if sysc == "R" else ():
+            if r.get("k") is not None:
+                ks[prn] = r["k"]
+    new = {p: k * signals.FDMA_SPACING_HZ for p, k in ks.items() if p not in df}
+    if new:
+        df.update(new)
+        _log(
+            "signal %s: FDMA carrier offsets for %s from BRDC and the decoded almanacs"
+            % (ctx.args.signal, " ".join("R%02d" % p for p in sorted(new)))
+        )
+
+
 def stage_almanac_predict(ctx):
     """2: orbit-predicted Doppler and visibility, and the receiver clock-bias EMA (--almanac).
         
@@ -101,6 +135,7 @@ def stage_almanac_predict(ctx):
     if ctx.args.almanac:
         try:
             _refresh_capable(ctx)
+            _refresh_fdma(ctx)
             raw_dark = {}
             # The epoch: the hop-axis now (#208). It is also what the time-base detector below
             # needs: a stale sample-0 epoch from the nodes moves this prediction, never the

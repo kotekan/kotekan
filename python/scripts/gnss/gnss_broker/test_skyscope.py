@@ -1299,6 +1299,42 @@ def test_warm_search_only_while_unlisted():
     check(not almanac._unpredicted(ctx, now), "off: none")
 
 
+def test_fdma_channels_from_the_almanacs():
+    """almanac._refresh_fdma: an FDMA chain's missing carrier offsets come from the store's
+    BRDC records, else the newest almanac of the slot; an offset there already is
+    kept."""
+    from datetime import datetime, timezone
+    from types import SimpleNamespace as NS
+    from gnss_broker import almanac
+
+    print("\nFDMA channels: from BRDC records and almanacs when the files had none")
+    now = datetime(2026, 11, 24, tzinfo=timezone.utc)
+
+    class _Alm(object):
+        def entries(self, gpst_now, sys=None):
+            return [
+                ("R", 3, "GLO_ALM", {"k": 2}, None, 200.0),
+                ("R", 3, "GLO_ALM", {"k": 5}, None, 100.0),
+                ("R", 4, "GLO_ALM", {"k": 6}, None, 100.0),
+                ("R", 1, "GLO_ALM", {"k": -7}, None, 100.0),
+            ]
+
+    ctx = NS(
+        args=NS(fdma_df={1: 437500.0}, signal="glo_l2of"),
+        brdc_alm={"eph": {("R", 4): [{"k": -4}]}, "almanac": _Alm()},
+        fdma_t=0.0,
+        alm_now=lambda: now,
+    )
+    almanac._refresh_fdma(ctx)
+    check(
+        ctx.args.fdma_df == {1: 437500.0, 3: 2 * 437500.0, 4: -4 * 437500.0},
+        "kept R01, R03 the newest almanac's, R04 BRDC's (%s)" % ctx.args.fdma_df,
+    )
+    ctx.args.fdma_df.pop(3)
+    almanac._refresh_fdma(ctx)
+    check(3 not in ctx.args.fdma_df, "not again within FDMA_REFRESH_S")
+
+
 def main():
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if here not in sys.path:
@@ -1324,6 +1360,7 @@ def main():
     test_cache_falls_back_to_the_newest_daily()
     test_decoded_orbits_before_stale_brdc()
     test_warm_search_only_while_unlisted()
+    test_fdma_channels_from_the_almanacs()
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
     return 1 if _fails else 0
 
