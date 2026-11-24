@@ -5,7 +5,7 @@
 #include "visUtil.hpp"        // for current_time
 
 #include <arpa/inet.h>   // for inet_pton, htons
-#include <cerrno>        // for errno, EINPROGRESS, EINTR
+#include <cerrno>        // for errno, EINPROGRESS, EINTR, ETIMEDOUT
 #include <chrono>        // for duration
 #include <cstring>       // for memcpy, strerror
 #include <fcntl.h>       // for fcntl, F_GETFL, F_SETFL, O_NONBLOCK
@@ -126,12 +126,12 @@ bool GnssNavSymbolSend::try_connect() {
     int rc = connect(fd, (sockaddr*)&addr, sizeof(addr));
     if (rc < 0 && errno == EINPROGRESS) {
         pollfd pfd{fd, POLLOUT, 0};
-        int err = 0;
+        int err = ETIMEDOUT;
         socklen_t len = sizeof(err);
-        rc = (poll(&pfd, 1, (int)(_send_timeout_s * 1000.0)) == 1
-              && getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len) == 0 && err == 0)
-                 ? 0
-                 : -1;
+        if (poll(&pfd, 1, (int)(_send_timeout_s * 1000.0)) == 1)
+            getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len);
+        rc = err == 0 ? 0 : -1;
+        errno = err; // the connect's own error, for the caller's log
     }
     if (rc < 0) {
         close(fd);
