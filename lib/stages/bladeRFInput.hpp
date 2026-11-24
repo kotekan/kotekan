@@ -109,6 +109,10 @@
  *                         system clock when the first samples arrive, and frames start a
  *                         whole number of frames after it; the first frame is padded with
  *                         zeros. 0 counts from the first sample.
+ * @conf   clock_offset_file String (default none). A JSON file {"offset_s": x}, x added to the
+ *                         system clock when placing the first sample: the correction for a
+ *                         host clock known to be wrong (no NTP), which gnss_set_clock.py writes
+ *                         from gnss_skytime.py's measurement. A missing file is no correction.
  * @conf   adcstat_timeout_ms Int (default 250). How long a GET @c /adcstat waits for the
  *                         next frame before failing.
  *
@@ -213,6 +217,8 @@ private:
     uint64_t _startup_discard;
     /// UTC of sample 0, in seconds; 0 counts from the first sample.
     double _frame0_utc;
+    /// Added to the system clock when placing the first sample, s (clock_offset_file).
+    double _clock_offset_s = 0.0;
     /// Longest wait in @c adcstat_callback for the producer, in ms.
     int _adcstat_timeout_ms;
 

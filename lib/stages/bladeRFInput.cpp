@@ -17,6 +17,7 @@
 #include <chrono>     // for steady_clock, system_clock, milliseconds, seconds
 #include <cmath>      // for llround, sqrt
 #include <exception>  // for exception
+#include <fstream>    // for ifstream
 #include <functional> // for bind, _1, _2
 #include <future>     // for promise, future
 #include <json.hpp>   // for basic_json, json
@@ -93,6 +94,18 @@ bladeRFInput::bladeRFInput(Config& config, const std::string& unique_name,
     _frame0_utc = config.get_default<double>(unique_name, "frame0_utc", 0.0);
     if (_frame0_utc <= 0 && Telescope::instance().gps_time_enabled())
         _frame0_utc = Telescope::instance().to_time_ns(0) * 1e-9;
+    const std::string clock_offset_file =
+        config.get_default<std::string>(unique_name, "clock_offset_file", "");
+    std::ifstream clock_offset(clock_offset_file);
+    if (!clock_offset_file.empty() && clock_offset) {
+        try {
+            _clock_offset_s = nlohmann::json::parse(clock_offset).at("offset_s").get<double>();
+        } catch (const std::exception& e) {
+            FATAL_ERROR("{:s}: no offset_s ({:s})", clock_offset_file, e.what());
+            return;
+        }
+        INFO("The host clock is corrected by {:+.6f} s ({:s})", _clock_offset_s, clock_offset_file);
+    }
     _adcstat_timeout_ms = config.get_default<int>(unique_name, "adcstat_timeout_ms", 250);
     _force_filter_open = config.get_default<bool>(unique_name, "force_filter_open", false);
     _data_port_delay = config.get_default<int>(unique_name, "data_port_delay", -1);
@@ -641,7 +654,7 @@ void bladeRFInput::stream() {
                     return;
                 }
                 const double lag_s = (double)(ts_now - meta.timestamp) / _actual_sample_rate;
-                const double t_first = 0.5 * (t1 + t2) - lag_s;
+                const double t_first = 0.5 * (t1 + t2) - lag_s + _clock_offset_s;
                 INFO("The first sample was taken {:.3f} ms before the counter read, which took "
                      "{:.3f} ms",
                      lag_s * 1e3, (t2 - t1) * 1e3);
