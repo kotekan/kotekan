@@ -196,9 +196,9 @@ def parse_bcnav1_ephemeris(sf2_bits):
     return eph
 
 
-def sv_position_bcnav1(eph, t):
+def sv_position_bcnav1(eph, t, wrap=True):
     """ECEF -- identical BDS-3 CNAV propagation as B-CNAV2 (shared parameter set)."""
-    return sv_position_bcnav2(eph, t)
+    return sv_position_bcnav2(eph, t, wrap)
 
 
 # ------------------------------------------------------------------ self-test

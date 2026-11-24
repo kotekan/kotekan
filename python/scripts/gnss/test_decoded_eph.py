@@ -14,6 +14,7 @@ What each check guards:
 The records are G05 (LNAV) and E14's F/NAV record from BRDC00WRD_R day 292, renamed into the
 decoders' fields and propagated with the decoders' own sv_position functions.
 """
+
 import ast
 import os
 import sys
@@ -118,6 +119,40 @@ class TestDecodedClock(unittest.TestCase):
 
     def test_eccentric_galileo_fnav_clock_matches_the_brdc_path(self):
         """E14 is the strong case: its relativistic term swings by ~800 ns over an orbit."""
+        self._check(*e14())
+
+
+class TestStaleIssue(unittest.TestCase):
+    """An issue weeks old (the search hints take cache entries up to sky.HINT_MAX_AGE_S) is
+    propagated over its true age, as predict_all does, not wrapped to within half a week of
+    its toe: a wrap puts it in the wrong week, ~0.5-3 kHz off at L5."""
+
+    def _check(self, eph, rec, ent):
+        key = (ent[0], ent[1])
+        for days in (4, 10, 40, -10):
+            t = toe_utc(rec) + days * 86400.0
+            want = ge.predict_all(
+                eph, LAT, LON, ALT, t, mask_deg=-90.0, max_age=1e9, health_gate=False
+            )[key]
+            got = decoded_eph.predict_from_decoders(
+                [ent], LAT, LON, ALT, t, mask_deg=-90.0, max_age=1e9
+            )[key]
+            for f, tol in (
+                ("range_m", 1.0),
+                ("range_rate_mps", 1e-3),
+                ("sat_clk_s", 1e-9),
+            ):
+                self.assertLess(
+                    abs(got[f] - want[f]),
+                    tol,
+                    "%s%02d %+d days from toe: %s off predict_all's by %.3g"
+                    % (key[0], key[1], days, f, got[f] - want[f]),
+                )
+
+    def test_gps_lnav(self):
+        self._check(*g05())
+
+    def test_galileo_fnav(self):
         self._check(*e14())
 
 

@@ -237,11 +237,14 @@ def parse(b):
 CLOCK_OFFSET = {"G": 412e-9, "E": 416e-9, "C": 433e-9}
 
 
-def sv_position_relay(eph, t_sow):
+def sv_position_relay(eph, t_sow, wrap=True):
     """A relayed orbit at t_sow, the satellite system's seconds of week (BDT for BeiDou, as the
     broker's decoded-ephemeris fallback feeds them): decoded_eph's propagator for GW_CSK_RELAY.
+    wrap=False: t_sow counts on from the start of toe's week.
     """
-    tk = (t_sow - eph["toe"] + 302400) % 604800 - 302400
+    tk = t_sow - eph["toe"]
+    if wrap:
+        tk = (tk + 302400) % 604800 - 302400
     return ge.sat_pos_clk(eph, eph["toe_gpst"] + tk)[0]
 
 

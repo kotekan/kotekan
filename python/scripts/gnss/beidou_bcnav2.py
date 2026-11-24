@@ -276,14 +276,15 @@ def parse_bcnav2_ephemeris(frames_by_type):
     return eph
 
 
-def sv_position_bcnav2(eph, t):
+def sv_position_bcnav2(eph, t, wrap=True):
     """ECEF (x,y,z) m -- BDS-3 CNAV-style propagation (A from dA/Adot, n from dn0/dn0dot),
-    BDS constants. Handles the MEO/IGSO rotation; GEO (SatType 1) gets the extra -5deg tilt."""
+    BDS constants. Handles the MEO/IGSO rotation; GEO (SatType 1) gets the extra -5deg tilt.
+    wrap=False: t counts on from the start of t_oe's week (an issue more than half a week old)."""
     A0 = eph["A_ref"] + eph["dA"]
     tk = t - eph["t_oe"]
-    if tk > 302400:
+    if wrap and tk > 302400:
         tk -= 604800
-    elif tk < -302400:
+    elif wrap and tk < -302400:
         tk += 604800
     A = A0 + eph["A_dot"] * tk
     n0 = math.sqrt(BDS_MU / A0 ** 3)

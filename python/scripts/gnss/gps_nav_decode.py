@@ -247,15 +247,16 @@ def parse_lnav_ephemeris(sf1, sf2, sf3):
     return eph
 
 
-def sv_position_lnav(eph, t):
+def sv_position_lnav(eph, t, wrap=True):
     """ECEF (x,y,z) m from LNAV ephemeris (IS-GPS-200 Table 20-IV). Legacy Keplerian --
     identical math to gnss_ephemeris.sat_pos_clk / galileo sv_position_inav, GPS constants;
-    `t` in GPS seconds-of-week (the propagator week-wraps tk = t - toe)."""
+    `t` in GPS seconds-of-week (the propagator week-wraps tk = t - toe); with wrap=False, t
+    counts on from the start of toe's week, for an issue more than half a week old."""
     A = eph["sqrtA"] ** 2
     tk = t - eph["toe"]
-    if tk > 302400:
+    if wrap and tk > 302400:
         tk -= 604800
-    elif tk < -302400:
+    elif wrap and tk < -302400:
         tk += 604800
     n = math.sqrt(GPS_MU / A ** 3) + eph["dn"]
     M = eph["M0"] + n * tk

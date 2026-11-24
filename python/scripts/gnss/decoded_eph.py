@@ -113,10 +113,11 @@ def toe_gpst_near(sys, toe_sow, gpst_now):
     return toe_gpst
 
 
-def _sat_clock(eph, sys, signal, t_sow):
+def _sat_clock(eph, sys, signal, t_sow, wrap=True):
     """Broadcast SV clock bias (s): af0 + af1*dt + af2*dt^2 about t0c plus the relativistic
-    term F*e*sqrtA*sin(E), as sat_pos_clk computes them; dt and tk are week-wrapped. None when
-    the decoder does not carry clock terms for this signal."""
+    term F*e*sqrtA*sin(E), as sat_pos_clk computes them; dt and tk are week-wrapped unless
+    wrap=False (t_sow counting on from the start of toe's week). None when the decoder does
+    not carry clock terms for this signal."""
     if signal in SV_CLK:
         mod, fn = SV_CLK[signal]
         return getattr(importlib.import_module(mod), fn)(eph, t_sow)
@@ -124,8 +125,9 @@ def _sat_clock(eph, sys, signal, t_sow):
     if not fields or not all(k in eph for k in fields + KEPLER_FIELDS):
         return None
     a0, a1, a2, toc, toe = (eph[k] for k in fields)
-    dt = _week_wrap(t_sow - toc)
-    tk = _week_wrap(t_sow - toe)
+    dt, tk = t_sow - toc, t_sow - toe
+    if wrap:
+        dt, tk = _week_wrap(dt), _week_wrap(tk)
     a = eph["sqrtA"] ** 2
     n = math.sqrt(MU[sys] / a ** 3) + eph["dn"]
     m = eph["M0"] + n * tk
@@ -136,20 +138,24 @@ def _sat_clock(eph, sys, signal, t_sow):
     return a0 + a1 * dt + a2 * dt * dt + rel
 
 
-def predict_one(sv_pos, eph, sys, signal, rx, lat, lon, t_sow, toe_age_s, dt=0.5):
+def predict_one(
+    sv_pos, eph, sys, signal, rx, lat, lon, t_sow, toe_age_s, dt=0.5, wrap=True
+):
     """One satellite's az/el/range/range-rate/sat_clk, mirroring predict_all's per-sat block.
 
     `t_sow` and everything `sv_pos`/`_sat_clock` see is the constellation's seconds of week: the
     decoder propagators (`sv_position_*`) fold `tk = t - t0e` per week and so need a
     seconds-of-week time, not continuous GPST. `sv_pos(eph, t_sow) -> ECEF (x,y,z)`.
-    `toe_age_s` (continuous) is supplied by the caller for the report only. Returns
-    predict_all's dict without tgd_s, or None on any failure."""
+    `toe_age_s` (continuous) is supplied by the caller for the report only. wrap=False passes
+    t_sow counting on from the start of toe's week, unwrapped, for an issue more than half a
+    week old. Returns predict_all's dict without tgd_s, or None on any failure."""
     try:
+        kw = {} if wrap else {"wrap": False}
         om_e = OMEGA_E[sys]
         tau = 0.075
         pos_rx = az = el = rng = None
         for _ in range(2):  # light-time + Sagnac, two iterations (== predict_all)
-            pos = sv_pos(eph, t_sow - tau)
+            pos = sv_pos(eph, t_sow - tau, **kw)
             th = om_e * tau
             px = pos[0] * math.cos(th) + pos[1] * math.sin(th)
             py = -pos[0] * math.sin(th) + pos[1] * math.cos(th)
@@ -159,8 +165,8 @@ def predict_one(sv_pos, eph, sys, signal, rx, lat, lon, t_sow, toe_age_s, dt=0.5
         # velocity by central difference of the un-rotated position, then rotated into the
         # reception frame by the position's angle (== predict_all), so range rate matches
         # predict_all's to the finite-difference error
-        pa = sv_pos(eph, t_sow - tau + dt)
-        pb = sv_pos(eph, t_sow - tau - dt)
+        pa = sv_pos(eph, t_sow - tau + dt, **kw)
+        pb = sv_pos(eph, t_sow - tau - dt, **kw)
         vel = [(a - b) / (2.0 * dt) for a, b in zip(pa, pb)]
         vel_rx = (
             vel[0] * math.cos(th) + vel[1] * math.sin(th),
@@ -176,7 +182,7 @@ def predict_one(sv_pos, eph, sys, signal, rx, lat, lon, t_sow, toe_age_s, dt=0.5
             el=el,
             range_m=rng,
             range_rate_mps=rr,
-            sat_clk_s=_sat_clock(eph, sys, signal, t_sow - tau),
+            sat_clk_s=_sat_clock(eph, sys, signal, t_sow - tau, wrap),
             toe_age_s=toe_age_s,
         )
     except Exception:
@@ -298,7 +304,12 @@ def predict_from_decoders(entries, lat, lon, alt, t_utc, mask_deg=0.0, max_age=1
         # BeiDou runs on BDT (= GPST - 14 s) and its decoded t_oe is BDT-sow, so the propagator
         # must be fed BDT seconds-of-week. Galileo GST and GPS GPST share the sow origin here.
         ts = (t_sow + BDT_GPST) % 604800 if sys in BDT_SYS else t_sow
-        v = predict_one(sv_pos, eph, sys, signal, rx, lat, lon, ts, toe_age)
+        # The propagators wrap t - toe to within half a week, so an older issue is fed the time
+        # counting on from the start of its own week, unwrapped.
+        wrap = toe_age is None or abs(toe_age) <= 302400
+        if not wrap:
+            ts = (toe_gpst + (BDT_GPST if sys in BDT_SYS else 0.0)) % 604800 + toe_age
+        v = predict_one(sv_pos, eph, sys, signal, rx, lat, lon, ts, toe_age, wrap=wrap)
         if v is None or v["el"] < mask_deg:
             continue
         out[(sys, prn)] = v

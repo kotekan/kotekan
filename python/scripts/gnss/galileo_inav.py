@@ -283,15 +283,16 @@ def parse_inav_ephemeris(words_by_type):
     return eph
 
 
-def sv_position_inav(eph, t):
+def sv_position_inav(eph, t, wrap=True):
     """ECEF (x,y,z) m from I/NAV ephemeris. Standard Keplerian propagation (the GPS LNAV
     math with Galileo constants; Galileo transmits sqrtA directly). t in Galileo system time
-    of week (seconds)."""
+    of week (seconds); with wrap=False, counting on from the start of t0e's week, for an issue
+    more than half a week old."""
     A = eph["sqrtA"] ** 2
     tk = t - eph["t0e"]
-    if tk > 302400:
+    if wrap and tk > 302400:
         tk -= 604800
-    elif tk < -302400:
+    elif wrap and tk < -302400:
         tk += 604800
     n0 = math.sqrt(GAL_MU / A ** 3)
     n = n0 + eph["dn"]

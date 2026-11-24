@@ -137,15 +137,16 @@ def parse_cnav_ephemeris(msg10_bits, msg11_bits):
     return eph
 
 
-def sv_position_cnav(eph, t):
+def sv_position_cnav(eph, t, wrap=True):
     """ECEF (x,y,z) m from CNAV ephemeris (IS-GPS-200 Table 30-II). Like LNAV
     but with a reference semi-major axis + rate (A = AREF + dA + A_dot*tk) and a
-    rate-corrected mean motion."""
+    rate-corrected mean motion. wrap=False: t counts on from the start of toe's week (an issue
+    more than half a week old), not wrapped to within half a week of toe."""
     A0 = AREF + eph["dA"]
     tk = t - eph["toe"]
-    if tk > 302400:
+    if wrap and tk > 302400:
         tk -= 604800
-    elif tk < -302400:
+    elif wrap and tk < -302400:
         tk += 604800
     Ak = A0 + eph["A_dot"] * tk
     n0 = math.sqrt(MU / A0 ** 3)
