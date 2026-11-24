@@ -177,6 +177,15 @@ gnss_component() {
                    --status "$GNSS_OBS_OUT/lane_relay")
         ;;
 
+    navrelay)
+        # Data symbols streamed from the gx10's bladeRF receiver through its SSH tunnel to
+        # 127.0.0.1:12080, posted to the chains that wipe them (set_nav_symbols). Standalone:
+        # reads the generated configs and the sender's stream; a capture of every record for
+        # the offline checks. If it dies the chains simply stop wiping.
+        GNSS_EXEC=(/usr/bin/python3 -u "$GNSS_K/scripts/gnss/site/nav_symbol_relay.py" run
+                   --capture "$GNSS_OBS_OUT/nav_symbols")
+        ;;
+
     fengine)
         # The F-engine gain requests and the transit forecast, for choco and grafana: GET
         # /fengine_gains (the request), /transit_windows (the next 2 h of transits and quiet
