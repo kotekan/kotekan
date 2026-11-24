@@ -309,6 +309,16 @@ def test_stage():
             rx._joint.get(JOINT_STATE) is None,
             "the live state is untouched by the shadow feed",
         )
+        # A chain no orbit predicts any satellite of (the warm search's) has no model time:
+        # nothing is fed or predicted, and the stage does not raise on the missing epoch.
+        c = ctx_for(rx, {p: row(151.0, hop=2500) for p in (1, 2, 3)}, t=None)
+        n0 = rx.joint_receiver("1176", 10230, 10.23e6, which=TRK_STATE).n_updates
+        jtrk.stage_joint_trk(c)
+        check(
+            rx.joint_receiver("1176", 10230, 10.23e6, which=TRK_STATE).n_updates == n0
+            and "jtrk" not in c.dr_state,
+            "no model time: nothing fed or predicted",
+        )
 
         sky.nearest_boresight = lambda pd: (0.8, ("E", 7))
         c = ctx_for(rx, {p: row(151.0, hop=3000) for p in (1, 2, 3)})

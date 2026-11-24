@@ -121,7 +121,11 @@ def stage_joint_trk(ctx):
     """Feed this chain's gated tracker residuals to the shadow state (receiver.TRK_STATE).
 
     Runs on a chain with --joint-trk-feed once trkresid has produced this cycle's residuals.
-    Changes nothing any actuator reads; failure costs the loop nothing."""
+    Changes nothing any actuator reads; failure costs the loop nothing. A chain that has had no
+    model yet (ctx.drp.t_now_abs None: no orbit predicts any of its satellites) has no epoch to
+    put the state at, so nothing is fed or predicted."""
+    if ctx.drp.t_now_abs is None:
+        return
     from gnss_broker.deadreckon import _transit_pd
     from gnss_broker.receiver import JOINT_REF_RATE_HZ, TRK_STATE
     from gnss_broker.sky import nearest_boresight
