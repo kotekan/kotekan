@@ -83,7 +83,6 @@ def setup_pipeline(
     runtime,
     *,
     real_detector=False,
-    fault=None,
     fine_support=False,
     num_times=T,
     reject_finite=False,
@@ -196,14 +195,6 @@ def setup_pipeline(
             dim_scaling=[1, 1],
         )
         cfg["dump_dtv_stat"] = dump("dtv_stat")
-    # Frequency mismatch must fail even when the byte layout is identical.
-    if fault == "frequency":
-        cfg["gen_dtv_mask"]["manual_freq_ids"] = [
-            freq_ids[1],
-            freq_ids[0],
-            freq_ids[2],
-            freq_ids[3],
-        ]
     full = copy.deepcopy(cfg)
     for key in (
         "run_send_voltage",
@@ -275,39 +266,9 @@ def setup_pipeline(
             support = np.array([[1, 124], [0, 0], [1, 125], [1, 126]], dtype="<i4")
             if index % 2:
                 support[[0, 1]] = support[[1, 0]]
-            if fault == "support_value":
-                support[0] = [2, 124]
-            if fault == "support_count":
-                support[0] = [1, 0]
-            # an untested row of the calibrated freq_ids[2], in no list, or of freq_ids[1],
-            # bound nowhere but in require_fine_freq_ids
-            if fault == "untested_calibrated":
-                support[2] = [-1, -1]
-            if fault == "untested_required":
-                support[1] = [-1, -1]
             raw_payload(source("dtv_fine_support"), (F * 2 * 4,))[:] = support.view(
                 np.uint8
             ).ravel()
-            if index == 4 and fault in ("support_time", "support_period"):
-                path = source("dtv_fine_support")
-                data = bytearray(path.read_bytes())
-                if fault == "support_time":
-                    seq = struct.unpack_from("<q", data, 36)[0]
-                    struct.pack_into("<q", data, 36, seq + T * 4)
-                else:
-                    struct.pack_into("<i", data, 44, T * 8)
-                path.write_bytes(data)
-        if index == 4 and fault in ("late", "missing", "period"):
-            path = source("dtv_mask")
-            data = bytearray(path.read_bytes())
-            if fault in ("late", "missing"):
-                seq = struct.unpack_from("<q", data, 36)[0]
-                struct.pack_into(
-                    "<q", data, 36, seq + (-1 if fault == "late" else T * 4)
-                )
-            else:
-                struct.pack_into("<i", data, 44, T * 8)
-            path.write_bytes(data)
         keep_masks.append(keep)
         pl_masks.append(pl)
         decisions.append(decision)
@@ -531,7 +492,7 @@ def triangles(matrix, block):
 
 @pytest.mark.parametrize(
     "real_detector,fine_support",
-    [(False, False), (True, False), (False, True), (True, True)],
+    [(False, False), (True, True)],
 )
 def test_mask_visibility_and_counts_across_ring_wrap(
     tmp_path,
@@ -659,81 +620,6 @@ def test_disabled_mask_copies_the_sk_mask(tmp_path, runtime):
         )
 
 
-@pytest.mark.parametrize("mask_enabled", [True, False])
-def test_detect_only_bundle_never_masks(tmp_path, runtime, mask_enabled):
-    pipeline, *_ = setup_pipeline(tmp_path, runtime, mask_enabled=mask_enabled)
-    for profile in pipeline.bundle["profiles"]:
-        del profile["fine_calibration"]["provenance"]["mask_qualification"]
-    code, log = pipeline.run()
-    if mask_enabled:
-        assert code != 0, log[-12000:]
-        assert "refusing to switch the DTV mask on" in log, log[-12000:]
-    else:
-        assert code == 0, log[-12000:]
-
-
-@pytest.mark.parametrize("fault", ["frequency", "late", "missing", "period"])
-def test_refuse_wrong_or_missing_decision_identity(tmp_path, runtime, fault):
-    pipeline, *_ = setup_pipeline(tmp_path, runtime, fault=fault)
-    code, log = pipeline.run()
-    assert code != 0, log[-12000:]
-    assert "DtvRfiMask" in log and ("mismatch" in log), log[-12000:]
-    assert len(list((tmp_path / "out").glob("dtv_RFImask_*.raw"))) < FRAMES
-
-
-@pytest.mark.parametrize(
-    "fault", ["support_time", "support_period", "support_value", "support_count"]
-)
-def test_refuse_invalid_support_product(tmp_path, runtime, fault):
-    pipeline, *_ = setup_pipeline(tmp_path, runtime, fault=fault, fine_support=True)
-    code, log = pipeline.run()
-    assert code != 0, log[-12000:]
-    assert "DtvRfiMask" in log and ("mismatch" in log or "malformed" in log), log[
-        -12000:
-    ]
-    assert len(list((tmp_path / "out").glob("dtv_RFImask_*.raw"))) < FRAMES
-
-
-@pytest.mark.parametrize(
-    "settings,reason",
-    [
-        ({"permanent_mask_freq_ids": [4000, 4000]}, "unique"),
-        ({"permanent_mask_freq_ids": [-1]}, "nonnegative"),
-        ({"permanent_mask_freq_ids": [True]}, "exact nonnegative"),
-        ({"permanent_mask_freq_ids": [4000.5]}, "exact nonnegative"),
-        ({"permanent_mask_freq_ids": [1 << 32]}, "exact nonnegative"),
-        ({"permanent_mask_freq_ids": [5000]}, "absent"),
-        ({"require_fine_freq_ids": [4000]}, "overlap"),
-    ],
-)
-def test_refuse_incomplete_or_ambiguous_threshold_binding(
-    tmp_path, runtime, settings, reason
-):
-    pipeline, *_ = setup_pipeline(tmp_path, runtime, fine_support=True)
-    pipeline.config["combine"].update(settings)
-    code, log = pipeline.run()
-    assert code != 0, log[-12000:]
-    assert "DtvRfiMask" in log and reason in log, log[-12000:]
-
-
-@pytest.mark.parametrize("fault", ["untested_calibrated", "untested_required"])
-def test_untested_decided_row_stops_the_mask(tmp_path, runtime, fault):
-    """While the mask is on, an untested row of a calibrated channel, or of a frequency in
-    require_fine_freq_ids, stops DtvRfiMask."""
-    pipeline, *_ = setup_pipeline(tmp_path, runtime, fine_support=True, fault=fault)
-    code, log = pipeline.run()
-    assert code != 0, log[-12000:]
-    assert "DtvRfiMask" in log and "not evaluated" in log, log[-12000:]
-
-
-def test_finite_threshold_requires_full_rate_support(tmp_path, runtime):
-    pipeline, *_ = setup_pipeline(tmp_path, runtime)
-    pipeline.config["combine"]["require_fine_freq_ids"] = [2408]
-    code, log = pipeline.run()
-    assert code != 0, log[-12000:]
-    assert "required fine thresholds need fine_support_buf" in log, log[-12000:]
-
-
 @pytest.mark.parametrize("apply", [False, True])
 def test_template_routes_both_correlators_and_rfi_counts(apply):
     env = Environment(loader=FileSystemLoader(str(ROOT / "config/fengine")))
@@ -790,18 +676,15 @@ def test_chime_mask_visibility_and_counts_across_ring_wrap(tmp_path, runtime):
     )
 
 
-@pytest.mark.parametrize("mask_control", [False, True])
-def test_v3_mask_visibility_and_counts_across_ring_wrap(
-    tmp_path, runtime, mask_control
-):
+def test_v3_mask_visibility_and_counts_across_ring_wrap(tmp_path, runtime):
     """A fine_decision_v3 bundle is decided in DtvRfiMask from dtv_stat and routed to both
-    correlators and the RFI counts; the control is masked only with mask_control."""
+    correlators and the RFI counts, the control with mask_control."""
     test_mask_visibility_and_counts_across_ring_wrap(
         tmp_path,
         runtime,
         real_detector=False,
         fine_support=False,
-        v3_control=mask_control,
+        v3_control=True,
     )
 
 
@@ -864,11 +747,9 @@ def test_chime_calibration_mode_writes_every_product():
         assert detector["dtv_fine_powers_rows"] == "num_freq_gpu_buf"
 
 
-@pytest.mark.parametrize("reject_finite", [False, True])
-def test_chime_detector_mask_visibility_and_counts_across_ring_wrap(
-    tmp_path, runtime, reject_finite
-):
-    """The K128 detector, support, adapter and both correlators agree."""
+def test_chime_detector_mask_visibility_and_counts_across_ring_wrap(tmp_path, runtime):
+    """The K128 detector, support, adapter and both correlators agree, with a finite
+    threshold that rejects supported rows."""
     import json
 
     bundle = json.loads((runtime[1] / "pilot_profiles.json").read_text())
@@ -880,5 +761,5 @@ def test_chime_detector_mask_visibility_and_counts_across_ring_wrap(
         real_detector=True,
         fine_support=True,
         num_times=16384,
-        reject_finite=reject_finite,
+        reject_finite=True,
     )

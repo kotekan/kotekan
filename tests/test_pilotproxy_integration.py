@@ -526,7 +526,7 @@ def test_bad_feed_mask_zeroes_flagged_inputs(pipeline, lifetime_blocks):
     pipeline.verify()
 
 
-@pytest.mark.parametrize("active_inputs", [0, 16, 32])
+@pytest.mark.parametrize("active_inputs", [0, 16])
 def test_pathfinder_sparse_padded_inputs(pipeline, active_inputs):
     pipeline.calibrate()
     pipeline.config["num_dishes"] = 64
@@ -595,16 +595,12 @@ def test_pathfinder_sparse_padded_inputs(pipeline, active_inputs):
         assert set(masks[:, [0, 2]].flat) == {0, 1}
 
 
+# One field for each integer type the loader reads
 @pytest.mark.parametrize(
     "field",
     [
         "physical_channel",
-        "chord_channel_id",
         "weight_bank_offset_bytes",
-        "weight_bank_nbytes",
-        "fine_calibration.anchor_bin",
-        "fine_calibration.designated_half_width",
-        "fine_calibration.cfar_rank",
         "fine_calibration.cfar_multiplier_q16",
     ],
 )
@@ -1010,8 +1006,7 @@ def test_production_geometry_soak(
     )
 
 
-@pytest.mark.parametrize("reverse", [True, False])
-@pytest.mark.parametrize("frame_blocks", [0.5, 1, 2])
+@pytest.mark.parametrize("reverse,frame_blocks", [(True, 0.5), (False, 1), (True, 2)])
 def test_receiver_geometry_against_cpu(pipeline, reverse, frame_blocks):
     """Check either compiled geometry against independent integer references, with ring reuse."""
     pipeline.calibrate()

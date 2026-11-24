@@ -303,6 +303,11 @@ BOOST_AUTO_TEST_CASE(both_stages_switch_at_the_same_frame) {
     }
 }
 
+BOOST_AUTO_TEST_CASE(detect_only_bundle_refuses_the_mask_on) {
+    BOOST_CHECK_THROW(SwitchPipeline(true, 0, false), std::runtime_error);
+    std::remove(("/tmp/test_dtv_mask_enabled_" + std::to_string(getpid()) + ".json").c_str());
+}
+
 BOOST_AUTO_TEST_CASE(config_value_applies_from_startup) {
     // On from an hour ahead, and off from before the stream start with a detect-only bundle
     const int64_t later = N2::current_system_time_ns() + 3'600'000'000'000;
