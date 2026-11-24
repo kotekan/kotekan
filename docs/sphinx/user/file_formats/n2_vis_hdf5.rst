@@ -198,8 +198,8 @@ rather than holding a sentinel.
 **CHIME file mode.**
 With ``file_mode == CHIME`` (legacy), the flag-like datasets
 (``vis_weight``, ``flags``, ``valid_fpga_count``, ``rfi_fpga_count``,
-``rfi_only_fpga_count``, ``pl_fpga_count``, ``frac_lost``, ``frac_rfi``,
-``frac_rfi_only``, ``frac_pl``) live under a ``/flags`` group instead of the
+``rfi_only_fpga_count``, ``pl_fpga_count``, ``variance_pair_count``,
+``frac_lost``, ``frac_rfi``, ``frac_rfi_only``, ``frac_pl``) live under a ``/flags`` group instead of the
 root. Everything below assumes the default ``CHORD`` mode (all datasets at
 the root).
 
@@ -540,6 +540,16 @@ uncompressed.
      - (:math:`N_f`, :math:`N_t`)
      - uint64
      - FPGA ticks lost to packet loss.
+   * - ``variance_pair_count``
+     - (:math:`N_f`, :math:`N_t`)
+     - uint64
+     - Number of accepted frame pairs with samples in both frames, the
+       :math:`k` of the ``EvenOddPosDef`` weight :math:`N k / Q` (see
+       ``N2Accumulate``). Counted in either ``variance_mode``; summed by
+       ``N2TimeDownsample``. Weights from fewer than about 4 pairs are
+       heavy-tailed, so cut on this count before using ``vis_weight``. 0 in
+       slots with no received frame. Files from older builds lack this
+       dataset.
    * - ``frac_lost``
      - (:math:`N_f`, :math:`N_t`)
      - float32

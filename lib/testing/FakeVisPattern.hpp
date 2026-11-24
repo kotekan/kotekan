@@ -127,7 +127,7 @@ public:
  *
  * Fill the real part with the index of feed i and the imaginary part with
  * the index of j. Each frame is marked as missing two samples of data, one
- * of which is RFI.
+ * of which is RFI. N2 frames also count 3 variance pairs.
  *
  **/
 // TODO: merge with FillIJPattern

@@ -282,6 +282,7 @@ def test_masked_mean_counts_and_precision(masked_accumulation, case):
         context = f"{case}, bin={key[0]}, freq={key[1]}, N={total}, k={usable}"
         assert frame.metadata.n_valid_fpga_ticks == record["valid_ticks"], context
         assert frame.metadata.n_pl_fpga_ticks == record["packet_loss"], context
+        assert frame.metadata.n_usable_variance_pairs == usable, context
         assert frame.metadata.n_rfi_fpga_ticks == record["rfi_ticks"], context
         assert frame.metadata.n_rfi_only_fpga_ticks == (
             record["ticks"] - record["valid_ticks"] - record["packet_loss"]

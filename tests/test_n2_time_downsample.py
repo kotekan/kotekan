@@ -409,6 +409,10 @@ def test_metadata(n2_data):
         assert frame.metadata.frame_length_fpga_ticks == frame_meta[i]["seq_len"]
         assert frame.metadata.n_valid_fpga_ticks == frame_meta[i]["seq_valid"]
         assert frame.metadata.n_rfi_fpga_ticks == frame_meta[i]["seq_rfi"]
+        if fake_params["mode"] == "fill_ij_missing":
+            assert (
+                frame.metadata.n_usable_variance_pairs == 3 * frame_meta[i]["n_frames"]
+            )
 
 
 def test_time(n2_data):

@@ -576,7 +576,8 @@ void connInstance::internal_read_callback() {
                         return;
                     }
                     if (buf_frame_header.metadata_size != expected_metadata_size) {
-                        ERROR("Metadata size does not match between server and client!");
+                        ERROR("Metadata size does not match between server: {:d} and client: {:d}",
+                              expected_metadata_size, buf_frame_header.metadata_size);
                         decrement_ref_count();
                         close_instance();
                         return;

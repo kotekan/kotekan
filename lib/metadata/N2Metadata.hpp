@@ -69,6 +69,9 @@ struct N2MetadataFormat {
     uint64_t n_rfi_first_stage_enabled_fpga_ticks = 0;
     /// FPGA ticks of this frame during which the DTV mask was applied.
     uint64_t n_dtv_mask_enabled_fpga_ticks = 0;
+    /// Number of accepted frame pairs with samples in both frames, the k of the
+    /// EvenOddPosDef weight.
+    uint64_t n_usable_variance_pairs = 0;
     /// Whether second stage RFI excision was applied to this frame
     bool rfi_frame_excision_enabled = false;
     /// Whether the visibilities in this frame were fringestopped
