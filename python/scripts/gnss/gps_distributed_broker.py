@@ -610,7 +610,7 @@ def main(argv=None, rx=None, publisher=None):
             if (
                 args.warm_search_prns
                 and args.decoded_eph_file
-                and alm_sys in ("G", "E", "C")
+                and alm_sys in ("G", "E", "C", "R")
             ):
                 # No orbit source at all (a box with no network and nothing cached): rather
                 # than turn the hints off for good, start from an empty store, which the cache

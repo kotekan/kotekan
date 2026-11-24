@@ -78,6 +78,67 @@ class TestLayouts(unittest.TestCase):
         self._check([a])
 
 
+# GLONASS strings 6 and 7 (slot 16's almanac) and string 5 from R16, live 11-24, as
+# glonass_nav_predictor keeps them (b[i] = bit i), packed with bit 0 least significant.
+GLO_EVEN, GLO_ODD, GLO_S5 = (
+    "0d61078b06b827720699da",
+    "0ff34d0312ad3007857cac",
+    "0b08c0000001080000311a",
+)
+
+
+def glo_bits(h):
+    v = int(h, 16)
+    return [(v >> i) & 1 for i in range(86)]
+
+
+class TestGlonass(unittest.TestCase):
+    """Held to BRDC on 11-24 the live almanacs of all 24 slots put the Doppler within 1.1 Hz and
+    the range within 2.9 km, every channel as BRDC's."""
+
+    def setUp(self):
+        n_a = na._glo_u(glo_bits(GLO_S5), 80, 11)
+        self.a = na.glo_almanac(glo_bits(GLO_EVEN), glo_bits(GLO_ODD), n_a)
+
+    def test_fields(self):
+        sysc, slot, n_a, t_lam, eph = self.a
+        self.assertEqual((sysc, slot, n_a, eph["k"]), ("R", 16, 1059, -1))
+        self.assertAlmostEqual(43200.0 + eph["dT"], 40544, delta=5)  # 11 h 15 m 44 s
+
+    def test_node_passage(self):
+        """The ascending node at t_lambda and one draconic period later, at GLONASS's radius."""
+        eph = dict(self.a[4], toe=0.0)
+        for t in (0.0, 43200.0 + eph["dT"]):
+            x = na.sv_position_glo_alm(eph, t, wrap=False)
+            self.assertLess(abs(x[2]), 20e3)
+            self.assertAlmostEqual(math.dist(x, (0, 0, 0)), 25.51e6, delta=0.1e6)
+
+    def test_day_of_the_span(self):
+        # N^A 1059 of the span from 2024-01-01 is 2026-11-24; t_lambda is Moscow time (UTC + 3 h)
+        t = na.glo_toa_gpst(1059, self.a[3], 2446 * 604800.0 + 2 * 86400.0)
+        utc = na.ge_utc(t)
+        self.assertEqual((utc.year, utc.month, utc.day), (2026, 11, 24))
+        self.assertAlmostEqual(
+            utc.hour * 3600 + utc.minute * 60 + utc.second + utc.microsecond * 1e-6,
+            self.a[3] - 3 * 3600.0,
+            delta=1e-3,
+        )
+
+    def test_collector_pairs_strings(self):
+        f0 = 1795546800.0  # a frame start (2 s strings; frame 1 of its superframe)
+        st = types.SimpleNamespace(
+            strings={
+                f0 + 8.0: (5, glo_bits(GLO_S5), 0.0),
+                f0 + 10.0: (6, glo_bits(GLO_EVEN), 0.0),
+                f0 + 12.0: (7, glo_bits(GLO_ODD), 0.0),
+            }
+        )
+        col = na.Collector("GLO_L2OF")
+        col.scan(types.SimpleNamespace(_p={16: st}))
+        got = col.take(2446 * 604800.0 + 2 * 86400.0)
+        self.assertEqual([(e["signal"], e["prn"]) for e in got], [("GLO_ALM", 16)])
+
+
 class TestPlacement(unittest.TestCase):
     WK = 2446 * 604800.0  # GPST week 2446, BDT week 1090, GST week 1422 (2 mod 4)
 

@@ -94,9 +94,13 @@ SV_POS = {
 ALM_POS = {
     "GAL_ALM": ("nav_almanac", "sv_position_alm"),
     "BDS_ALM": ("nav_almanac", "sv_position_alm"),
+    "GLO_ALM": ("nav_almanac", "sv_position_glo_alm"),
 }
 # Decoders whose clock is not the Kepler form above, (module, function): clk(eph, t_sow) -> s.
-SV_CLK = {"GW_1202_NAV": ("gw_nav_predictor", "sv_clock_gw")}
+SV_CLK = {
+    "GW_1202_NAV": ("gw_nav_predictor", "sv_clock_gw"),
+    "GLO_ALM": ("nav_almanac", "sv_clock_glo_alm"),
+}
 # Constellations on BDT (GPST - 14 s): BeiDou, and GuoWang, whose every time field is BDT.
 BDT_SYS = ("C", "W")
 

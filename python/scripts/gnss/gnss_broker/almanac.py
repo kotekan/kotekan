@@ -28,9 +28,14 @@ from gnss_broker import prnmap
 _POST_S = 30.0
 _LEO_POST_S = 1.5
 _LEO_NEAR_DEG = 10.0
-# The PRNs a GPS, Galileo or BeiDou chain may warm-search (searchhint._warm_hints): each
+# The PRNs a GPS, Galileo, BeiDou or GLONASS chain may warm-search (searchhint._warm_hints): each
 # constellation's range, BeiDou's GEO slots (1-5, 59-63) aside.
-_PRN_RANGE = {"G": range(1, 33), "E": range(1, 37), "C": range(6, 59)}
+_PRN_RANGE = {
+    "G": range(1, 33),
+    "E": range(1, 37),
+    "C": range(6, 59),
+    "R": range(1, 25),
+}
 
 
 def _unpredicted(ctx, t_pred):

@@ -25,7 +25,13 @@ import math
 from gnss_ephemeris import BDT_GPST, MU, OMEGA_E
 from nav_fields import _read
 
-SIGNALS = ("GAL_E5AI_FNAV", "GAL_E5BI_INAV", "GAL_E1B_INAV", "BDS_B2A_BCNAV2")
+SIGNALS = (
+    "GAL_E5AI_FNAV",
+    "GAL_E5BI_INAV",
+    "GAL_E1B_INAV",
+    "BDS_B2A_BCNAV2",
+    "GLO_L2OF",
+)
 SC = math.pi * 2.0**-15  # a 16-bit angle: semicircles, 2^-15
 GAL_SQRTA0 = math.sqrt(29600e3)  # the nominal orbit's sqrt(A), m^0.5
 GAL_I0 = 56.0 / 180.0 * math.pi
@@ -160,6 +166,146 @@ def sv_position_alm(eph, t, wrap=True):
     )
 
 
+# ---- GLONASS (ICD 5.1 4.5 and A.3.1.3): strings 6-15 of frames 1-4, 6-13 of frame 5 ----------
+GLO_MU = 398600.4418e9
+GLO_AE = 6378136.0
+GLO_J2 = 1082625.75e-9
+GLO_OMEGA_E = 7.2921150e-5
+GLO_I0 = 63.0 / 180.0 * math.pi
+GLO_T_DR = 43200.0  # the nominal draconic period, s
+MSK_UTC_S = 3 * 3600.0  # GLONASS time is Moscow time, UTC + 3 h
+GLO_EPOCH_DAY = (
+    9496  # 1996-01-01 (the first 4-year span's day 1) in days from 1970-01-01
+)
+
+
+def _glo_u(b, hi, width):
+    v = 0
+    for i in range(hi, hi - width, -1):
+        v = (v << 1) | int(b[i])
+    return v
+
+
+def _glo_sm(b, hi, width):
+    m = _glo_u(b, hi - 1, width - 1)
+    return -m if b[hi] else m
+
+
+def glo_almanac(even, odd, n_a):
+    """(sys, slot, n_a, t_lambda s of the Moscow day, eph) of one satellite's almanac from its
+    string pair (bits b[i] = bit i, as glonass_nav_predictor keeps them) and N^A, the almanac's
+    day of the 4-year span (string 5)."""
+    sc = math.pi
+    eph = {
+        "sys": "R",
+        "lam": _glo_sm(even, 62, 21) * 2.0**-20 * sc,
+        "di": _glo_sm(even, 41, 18) * 2.0**-20 * sc,
+        "e": _glo_u(even, 23, 15) * 2.0**-20,
+        "tau": _glo_sm(even, 72, 10) * 2.0**-18,
+        "omega": _glo_sm(odd, 80, 16) * 2.0**-15 * sc,
+        "dT": _glo_sm(odd, 43, 22) * 2.0**-9,
+        "dTdot": _glo_sm(odd, 21, 7) * 2.0**-14,
+        "health": _glo_u(even, 80, 1),
+    }
+    h = _glo_u(odd, 14, 5)
+    eph["k"] = h - 32 if h > 24 else h
+    return "R", _glo_u(even, 77, 5), n_a, _glo_u(odd, 64, 21) * 2.0**-5, eph
+
+
+def glo_toa_gpst(n_a, t_lambda, gpst_ref):
+    """The GPST of an almanac's node passage: second t_lambda of the Moscow day N^A of the 4-year
+    span, the span taken as the one that puts it nearest gpst_ref."""
+    import datetime
+
+    ref_utc = ge_utc(gpst_ref)
+    best = None
+    for y0 in range(1996, ref_utc.year + 1, 4):
+        day = datetime.datetime(
+            y0, 1, 1, tzinfo=datetime.timezone.utc
+        ) + datetime.timedelta(days=n_a - 1, seconds=t_lambda - MSK_UTC_S)
+        t = gpst_of(day)
+        if best is None or abs(t - gpst_ref) < abs(best - gpst_ref):
+            best = t
+    return best
+
+
+def ge_utc(gpst):
+    import datetime
+
+    from gnss_ephemeris import GPS_EPOCH, GPS_UTC_LEAP
+
+    return GPS_EPOCH + datetime.timedelta(seconds=gpst - GPS_UTC_LEAP)
+
+
+def gpst_of(t_utc):
+    from gnss_ephemeris import gpst_of_utc
+
+    return gpst_of_utc(t_utc)
+
+
+def sv_position_glo_alm(eph, t, wrap=True):
+    """ECEF (PZ-90) position of a GLONASS almanac at t, GPST seconds of week (t - toe wrapped to
+    within half a week unless wrap=False), toe the node passage: the ICD's almanac algorithm
+    (A.3.1.3) with the J2 secular drifts of the node and perigee and without its periodic terms,
+    a few km off, which a Doppler hint does not see."""
+    dt = t - eph["toe"]
+    if wrap:
+        dt = (dt + 302400) % 604800 - 302400
+    t_dr0 = GLO_T_DR + eph["dT"]
+    w = math.floor(dt / t_dr0)
+    i = GLO_I0 + eph["di"]
+    t_dr = t_dr0 + (2 * w + 1) * eph["dTdot"]
+    n = 2 * math.pi / t_dr
+    e, om = eph["e"], eph["omega"]
+    # semi-major axis from the draconic period, by iteration (A.3.1.3 step 2)
+    t_osc = t_dr
+    a = 0.0
+    for _ in range(10):
+        a_new = (t_osc / (2 * math.pi)) ** (2.0 / 3.0) * GLO_MU ** (1.0 / 3.0)
+        p = a_new * (1 - e * e)
+        t_osc = t_dr / (
+            1
+            - 1.5
+            * GLO_J2
+            * (GLO_AE / p) ** 2
+            * (
+                (2 - 2.5 * math.sin(i) ** 2)
+                * (1 - e * e) ** 1.5
+                / (1 + e * math.cos(om)) ** 2
+                + (1 + e * math.cos(om)) ** 3 / (1 - e * e)
+            )
+        )
+        if abs(a_new - a) < 0.01:
+            break
+        a = a_new
+    p = a * (1 - e * e)
+    lam = (
+        eph["lam"]
+        - (GLO_OMEGA_E + 1.5 * GLO_J2 * n * (GLO_AE / p) ** 2 * math.cos(i)) * dt
+    )
+    om_k = om - 0.75 * GLO_J2 * n * (GLO_AE / p) ** 2 * (1 - 5 * math.cos(i) ** 2) * dt
+    e0 = -2 * math.atan(math.sqrt((1 - e) / (1 + e)) * math.tan(om / 2))
+    l1 = om + e0 - e * math.sin(e0)
+    l2 = l1 + n * (dt - t_dr0 * w - eph["dTdot"] * w * w)
+    m = l2 - om_k
+    ek = m
+    for _ in range(10):
+        ek = m + e * math.sin(ek)
+    nu = math.atan2(math.sqrt(1 - e * e) * math.sin(ek), math.cos(ek) - e)
+    u = nu + om_k
+    r = a * (1 - e * math.cos(ek))
+    return (
+        r * (math.cos(lam) * math.cos(u) - math.sin(lam) * math.sin(u) * math.cos(i)),
+        r * (math.sin(lam) * math.cos(u) + math.cos(lam) * math.sin(u) * math.cos(i)),
+        r * math.sin(u) * math.sin(i),
+    )
+
+
+def sv_clock_glo_alm(eph, t):
+    """A GLONASS almanac's coarse clock, s: -tau_n^A (to ~2 us; no drift term)."""
+    return -eph["tau"]
+
+
 class Collector:
     """The almanacs in one decoder's messages. scan() after every ingest: a decoder holds only
     each satellite's newest message of each type, and an almanac can span two of them. take()
@@ -189,7 +335,42 @@ class Collector:
             return None
         return prev[0] if gap[0] <= t - prev[1] <= gap[1] else None
 
+    def scan_glonass(self, dec):
+        """GLONASS: the decoder keeps every string by its UTC start, so each odd almanac string
+        (7-15) read since the last scan is joined to the even one 2 s before it, with N^A from
+        string 5 of its frame (or the newest one seen). Frame 5's strings 14 and 15 are not
+        almanac. Frames start on the 150 s superframe grid of UTC (Moscow midnight)."""
+        for prn, st in list(dec._p.items()):
+            for ts, (m, b, _t) in sorted(st.strings.items()):
+                if m == 5:
+                    self.last[(prn, "n_a")] = _glo_u(b, 80, 11)
+                if m < 7 or m % 2 == 0 or self.seen.get((prn, ts)):
+                    continue
+                f0 = ts - 2.0 * (m - 1)
+                if int(f0 % 150.0 // 30.0) + 1 == 5 and m >= 14:
+                    continue
+                even = st.strings.get(ts - 2.0)
+                if even is None or even[0] != m - 1:
+                    continue
+                s5 = st.strings.get(f0 + 8.0)
+                n_a = (
+                    _glo_u(s5[1], 80, 11)
+                    if s5 and s5[0] == 5
+                    else self.last.get((prn, "n_a"))
+                )
+                if n_a is None:
+                    continue
+                self.seen[(prn, ts)] = True
+                a = glo_almanac(even[1], b, n_a)
+                if a[1] > 0:
+                    self.got.append(a)
+            for key in [k for k in self.seen if k[0] == prn and k[1] not in st.strings]:
+                del self.seen[key]
+
     def scan(self, dec):
+        if self.signal == "GLO_L2OF":
+            self.scan_glonass(dec)
+            return
         for prn, st in list(dec._p.items()):
             new = []
             for k, bits, t in self._messages(st):
@@ -225,15 +406,24 @@ class Collector:
         their own weeks (Galileo's mod 4 within two weeks of gpst_ref)."""
         out = []
         for sysc, prn, wna, toa, eph in self.got:
-            eph = dict(eph, toe=float(toa), toc=float(toa), af2=0.0, dn=0.0)
+            if (
+                sysc == "R"
+            ):  # wna is N^A, toa the node passage's second of the Moscow day
+                t = glo_toa_gpst(wna, toa, gpst_ref)
+                eph = dict(eph, toe=t % 604800.0)
+                signal = "GLO_ALM"
+            else:
+                t = toa_gpst(sysc, wna, toa, gpst_ref)
+                eph = dict(eph, toe=float(toa), toc=float(toa), af2=0.0, dn=0.0)
+                signal = "GAL_ALM" if sysc == "E" else "BDS_ALM"
             out.append(
                 {
                     "sys": sysc,
                     "prn": prn,
-                    "signal": "GAL_ALM" if sysc == "E" else "BDS_ALM",
+                    "signal": signal,
                     "toe_field": "toe",
                     "eph": eph,
-                    "toe_gpst": toa_gpst(sysc, wna, toa, gpst_ref),
+                    "toe_gpst": t,
                     "week_from": "sky",
                 }
             )

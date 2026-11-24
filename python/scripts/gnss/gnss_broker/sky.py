@@ -158,7 +158,7 @@ def brdc_predict(
     # stale or has nothing: a box offline longer than its BRDC cache, or never online, hints
     # from what it decoded.
     readers = [state.get("decoded"), state.get("almanac")]
-    if sysc in ("G", "E", "C") and any(r is not None for r in readers):
+    if sysc in ("G", "E", "C", "R") and any(r is not None for r in readers):
         _with_decoded(readers, pa, pb, lat, lon, alt_m, t_utc, sysc, dt)
     C = C_LIGHT
     out = {}
