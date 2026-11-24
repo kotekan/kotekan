@@ -17,7 +17,7 @@ Base: `develop` at `015379c3d` (#1928).
 | #1849 | `jbm/n2-gains` | `8868a27f3` | 2026-11-05 | 2026-11-20 | bufferGains: buffer posted calibration gains; N2Accumulate records them |
 | #1851 | `jbm/async-start` | `944510918` | 2026-11-05 | 2026-11-06 | kotekan: start the pipeline on its own thread, report it in /status |
 | #1903 | `jbm/incoherent-search` | `a18c1a010` | 2026-11-17 | 2026-11-23 | Incoherent-beam pulse search: IncoherentBeamPower and IncoherentBeamSearch |
-| (to open) | `jbm/dtv-mask-test-link` | `513fd6c69` | 2026-11-24 | 2026-11-24 | tests: link test_dtv_mask_enabled with pilotproxy_decision |
+| #1932 | `jbm/dtv-mask-test-link` | `513fd6c69` | 2026-11-24 | 2026-11-24 | tests: link test_dtv_mask_enabled with pilotproxy_decision |
 
 The PR branches carry the site config they need, so config/chord in `chord` is `develop` plus these heads.
 
