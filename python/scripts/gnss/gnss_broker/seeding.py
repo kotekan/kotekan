@@ -235,13 +235,15 @@ def stage_coast_drop(ctx):
     A visible seed that was not re-detected keeps its anchor and has its Doppler forecast
     forward; it is dropped once its lock metric has stayed below the bar for the coast budget.
     Noise probes are left alone, and dead-reckoned seeds are exempt from both drops (see the
-    module docstring)."""
+    module docstring). A satellite no orbit source predicts (ctx.unpredicted, the warm search's)
+    has no elevation to set by and drops only by its lock."""
     for prn in list(ctx.seeds):
         if prn in ctx.probe_set:
             continue
         if (
             ctx.up is not None
             and prn not in ctx.up
+            and prn not in ctx.unpredicted
             and not (ctx.dr_state is not None and prn in ctx.dr_state["seeded"])
         ):
             _log("drop PRN %d (set below horizon)" % prn)
@@ -408,8 +410,13 @@ def stage_detections_to_seeds(ctx):
         v_dr = ctx.dr_pd.get((ctx.args.dr_constellation, prn)) if ctx.dr_pd else None
         if ctx.up is not None and prn not in ctx.up:
             # Accept it anyway if the dead-reckon BRDC sky has it above the mask: the almanac up-set
-            # can disagree (the TLE almanac mismaps some BeiDou PRNs).
-            if v_dr is None or v_dr["el"] < ctx.args.mask_deg:
+            # can disagree (the TLE almanac mismaps some BeiDou PRNs). A PRN no orbit source
+            # predicts (the warm search's) is taken on its detection alone, if that clears
+            # --warm-search-min-snr.
+            if prn in ctx.unpredicted:
+                if snr < ctx.args.warm_search_min_snr:
+                    continue
+            elif v_dr is None or v_dr["el"] < ctx.args.mask_deg:
                 continue
         # The search is the admission authority for the trim presence gate
         # (--dll-deep-gate-from-search). Stamped after the visibility filter, so a spurious
@@ -485,7 +492,9 @@ def stage_detections_to_seeds(ctx):
         # solve, so waiting for it would only withhold every first seed on a chain that never
         # sees bias_min_sats fresh detections. The wait there is for drp.now_w: on a chain's
         # first cycle this stage runs before the dead-reckon stage stamps it, and a first seed
-        # then would raise in _nh_joint_consensus.
+        # then would raise in _nh_joint_consensus. A PRN no orbit predicts (the warm search's)
+        # waits for neither: it takes no part in the overlay vote, its seed carries the measured
+        # Doppler, and on a chain that predicts nothing the dead-reckon stage never stamps now_w.
         if (
             _prev_sd is None
             and ctx.args.almanac
@@ -494,6 +503,7 @@ def stage_detections_to_seeds(ctx):
                 if ctx.args.seed_bias_source == "zero"
                 else not ctx.cb.available
             )
+            and prn not in ctx.unpredicted
         ):
             continue
         if _prev_sd is None:

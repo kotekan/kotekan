@@ -152,15 +152,17 @@ class TestFirstSeedGuard(unittest.TestCase):
     """stage_detections_to_seeds withholds a PRN's first seed under 'ema' until this chain's
     bias is solved (cb.available), and under 'zero' only until the dead-reckon stage has
     stamped drp.now_w (a first seed on a chain's first cycle would raise in
-    _nh_joint_consensus). Driven through the real stage: the first-seed log line is the
-    point past the guard, and the stub log stops the stage there."""
+    _nh_joint_consensus). A PRN no orbit predicts (the warm search's) waits for neither.
+    Driven through the real stage: the first-seed log line is the point past the guard, and the
+    stub log stops the stage there."""
 
-    def first_seed(self, source, available, now_w):
+    def first_seed(self, source, available, now_w, unpredicted=False):
         ctx = _NS(
             best={5: (80.0, -1200.0, 300.0, 1000, 0, -1.0, -1.0)},
             dr_pd=None,
-            up=None,
-            pred={5: (-1201.0,)},
+            up=set() if unpredicted else None,
+            unpredicted={5} if unpredicted else set(),
+            pred={} if unpredicted else {5: (-1201.0,)},
             cb=_NS(seed=0.0, available=available),
             dr_untrusted={},
             seeds={},
@@ -172,6 +174,7 @@ class TestFirstSeedGuard(unittest.TestCase):
                 almanac=True,
                 seed_doppler="pred",
                 seed_bias_source=source,
+                warm_search_min_snr=20.0,
             ),
         )
 
@@ -197,6 +200,10 @@ class TestFirstSeedGuard(unittest.TestCase):
     def test_ema_waits_for_the_solve(self):
         self.assertFalse(self.first_seed("ema", False, 100.0))
         self.assertTrue(self.first_seed("ema", True, 100.0))
+
+    def test_unpredicted_waits_for_neither(self):
+        self.assertTrue(self.first_seed("zero", False, None, unpredicted=True))
+        self.assertTrue(self.first_seed("ema", False, None, unpredicted=True))
 
 
 if __name__ == "__main__":

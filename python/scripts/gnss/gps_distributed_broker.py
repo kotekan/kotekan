@@ -607,8 +607,34 @@ def main(argv=None, rx=None, publisher=None):
                 % (len(almanac_sats), args.lat, args.lon)
             )
         except Exception as e:
-            _log("almanac unavailable (%s); falling back to search Doppler" % e)
-            args.almanac = False
+            if (
+                args.warm_search_prns
+                and args.decoded_eph_file
+                and alm_sys in ("G", "E", "C")
+            ):
+                # No orbit source at all (a box with no network and nothing cached): rather
+                # than turn the hints off for good, start from an empty store, which the cache
+                # fills and the store's refresh loads BRDC into when it comes, and warm-search
+                # the rest (searchhint).
+                import gnss_ephemeris as _alm_eph_mod
+                import decoded_eph as _dec_mod
+
+                brdc_alm = rx.brdc(
+                    ("brdc", _alm_now().strftime("%Y-%j")),
+                    lambda: {"mod": _alm_eph_mod, "eph": {}, "eph_t": _now()},
+                )
+                for _k, _alm in (("decoded", False), ("almanac", True)):
+                    brdc_alm.setdefault(
+                        _k,
+                        _dec_mod.Reader(args.decoded_eph_file.split(","), almanac=_alm),
+                    )
+                _log(
+                    "almanac unavailable (%s); no orbits for %s: hinting from the cache as "
+                    "it fills, warm-searching the rest" % (e, alm_sys)
+                )
+            else:
+                _log("almanac unavailable (%s); falling back to search Doppler" % e)
+                args.almanac = False
     # Every GuoWang satellite's passes near the boresight, for the transit sky: one store per
     # table, shared by every chain like the BRDC one.
     gw_transits = (

@@ -53,6 +53,8 @@ def make_ctx():
         ),
         pred={5: (-1200.0, 0.4, 45.0, 2.2e7, 1e-5)},
         up=None,
+        unpredicted=set(),
+        warm={"i": 0, "t": float("-inf"), "cur": []},
         capable=None,
         cb=_Obj(ema=None, stale=False, value=0.0),
         utc0_sample0=U0,
@@ -87,7 +89,69 @@ def cycle(ctx, t, healthy, det_t):
     return lines
 
 
+def test_warm_search():
+    """--warm-search-prns: the PRNs no orbit source predicts take turns, two at a time for
+    WARM_DWELL_S each, over the whole MEO Doppler range about the clock bias; a turn's end
+    clears its PRNs ahead of the new hints; a seeded one is hinted at its seed's Doppler; and
+    the turns stop once nothing is unpredicted."""
+    print("\nthe warm search for PRNs no orbit predicts")
+    ctx = make_ctx()
+    ctx.args.nh_hint = False
+    ctx.args.warm_search_prns = 2
+    ctx.args.carrier_hz = 1176.45e6
+    ctx.detectors = ["d0"]
+    ctx.seeds = {}
+    ctx.cb.value = 100.0
+    ctx.unpredicted = {3, 9, 12}
+    posts = []
+    saved = searchhint._post
+    searchhint._post = lambda url, body: posts.append(list(body))
+
+    def at(t):
+        cycle(ctx, t, True, t)
+        return {(h["prn"], h["margin_hz"] < 0): h for h in posts[-1]}, posts[-1]
+
+    wide = 500.0 + searchhint.WARM_RANGE_RATE_MPS * 1176.45e6 / 299792458.0
+    try:
+        h, _ = at(0.0)
+        check(
+            sorted(p for p, c in h if not c) == [3, 5, 9]
+            and h[(3, False)]["margin_hz"] == wide
+            and h[(3, False)]["doppler_hz"] == 100.0,
+            "first turn: PRNs 3 and 9 over +-%.0f Hz about the bias, beside PRN 5's hint"
+            % wide,
+        )
+        h, _ = at(5.0)
+        check(not any(c for _, c in h), "no clears inside a turn")
+        h, body = at(10.0)
+        first = [b["prn"] for b in body if b["margin_hz"] < 0]
+        check(
+            sorted(first) == [3, 9]
+            and sorted(p for p, c in h if not c) == [3, 5, 12]
+            and body.index(h[(3, True)]) < body.index(h[(3, False)]),
+            "next turn: 3 and 9 cleared first, then 12 and 3 hinted (%s)" % body,
+        )
+        ctx.seeds = {9: {"doppler_hz": -2000.0}}
+        h, _ = at(12.0)
+        check(
+            h.get((9, False), {}).get("doppler_hz") == -2000.0
+            and h[(9, False)]["margin_hz"] == 500.0,
+            "a seeded one is hinted at its seed's Doppler, the usual margin",
+        )
+        ctx.unpredicted = set()
+        h, _ = at(20.0)
+        check(
+            sorted(p for p, c in h if c) == [3, 12]
+            and sorted(p for p, c in h if not c) == [5]
+            and not ctx.warm["cur"],
+            "nothing unpredicted: the last turn is cleared and no turn follows",
+        )
+    finally:
+        searchhint._post = saved
+
+
 def main():
+    test_warm_search()
     print("\nthe NH hint's sample ages")
 
     # 1. A detection at t=10 s, the solve not established until t=300 s: learned at 300 s,

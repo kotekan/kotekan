@@ -1241,6 +1241,64 @@ def test_decoded_orbits_before_stale_brdc():
     )
 
 
+def test_warm_search_only_while_unlisted():
+    """almanac._unpredicted: a chain warm-searches the PRNs no source predicts only while
+    neither a BRDC record within HINT_MAX_AGE_S nor the decoders' almanacs list its
+    constellation, and never a capability-excluded, predicted or probe PRN."""
+    import decoded_eph
+    from datetime import datetime, timezone
+    from types import SimpleNamespace as NS
+    from gnss_broker import almanac, sky
+
+    print("\nwarm search: only for a constellation nothing lists")
+    now = datetime(2026, 11, 24, tzinfo=timezone.utc)
+    t = decoded_eph.gpst_of_utc(now)
+
+    class _Alm(object):
+        def __init__(self, n):
+            self.n = n
+
+        def entries(self, gpst_now, sys=None):
+            return [("E", 1, "GAL_ALM", {}, None, gpst_now)] * self.n
+
+    def store(age_days, n_alm):
+        eph = {("E", 2): [{"toe_gpst": t - age_days * 86400.0}]} if age_days else {}
+        return {"eph": eph, "almanac": _Alm(n_alm)}
+
+    check(sky.lists_constellation(store(1, 0), "E", now), "a day-old BRDC lists it")
+    check(
+        not sky.lists_constellation(store(200, 0), "E", now),
+        "a 200-day-old one does not",
+    )
+    check(sky.lists_constellation(store(0, 3), "E", now), "the almanacs list it")
+    check(
+        not sky.lists_constellation(store(1, 0), "G", now),
+        "another system's BRDC does not",
+    )
+    ctx = NS(
+        args=NS(warm_search_prns=2),
+        alm_sys="E",
+        alm_min_prn=1,
+        brdc_alm=store(0, 0),
+        almanac_sats=None,
+        capable={p for p in range(1, 64) if p != 7},
+        pred={5: ()},
+        pred_dark={},
+        probe_set={30},
+    )
+    got = almanac._unpredicted(ctx, now)
+    check(
+        got == set(range(1, 37)) - {5, 7, 30},
+        "unlisted: the range less predicted, incapable and probe PRNs (%d)" % len(got),
+    )
+    ctx.brdc_alm = store(1, 0)
+    check(not almanac._unpredicted(ctx, now), "listed: none")
+    ctx.brdc_alm, ctx.almanac_sats = None, ["tle"]
+    check(not almanac._unpredicted(ctx, now), "on the TLEs: none")
+    ctx.brdc_alm, ctx.args.warm_search_prns = store(0, 0), 0
+    check(not almanac._unpredicted(ctx, now), "off: none")
+
+
 def main():
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if here not in sys.path:
@@ -1265,6 +1323,7 @@ def main():
     test_hint_sky_outlives_the_seed_window()
     test_cache_falls_back_to_the_newest_daily()
     test_decoded_orbits_before_stale_brdc()
+    test_warm_search_only_while_unlisted()
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
     return 1 if _fails else 0
 

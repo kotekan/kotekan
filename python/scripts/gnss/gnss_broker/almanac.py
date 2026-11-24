@@ -16,7 +16,7 @@ import statistics
 
 from gnss_broker import node_api
 from gnss_broker.transport import _now, _post, _log, _log_rl, axis_now_utc, now_utc_s
-from gnss_broker.sky import brdc_predict, nearest_boresight
+from gnss_broker.sky import brdc_predict, lists_constellation, nearest_boresight
 from gnss_broker import timebase
 from gnss_broker import prnmap
 
@@ -28,6 +28,27 @@ from gnss_broker import prnmap
 _POST_S = 30.0
 _LEO_POST_S = 1.5
 _LEO_NEAR_DEG = 10.0
+# The PRNs a GPS, Galileo or BeiDou chain may warm-search (searchhint._warm_hints): each
+# constellation's range, BeiDou's GEO slots (1-5, 59-63) aside.
+_PRN_RANGE = {"G": range(1, 33), "E": range(1, 37), "C": range(6, 59)}
+
+
+def _unpredicted(ctx, t_pred):
+    """The PRNs of this chain no orbit source predicts (--warm-search-prns): none while the
+    BRDC, the decoders' almanacs or the TLEs list the constellation, since a PRN missing from
+    those is not in orbit; otherwise the range less the capability set's exclusions, the
+    predicted PRNs and the probes."""
+    if not getattr(ctx.args, "warm_search_prns", 0) or ctx.alm_sys not in _PRN_RANGE:
+        return set()
+    if ctx.brdc_alm is None:
+        if ctx.almanac_sats:
+            return set()
+    elif lists_constellation(ctx.brdc_alm, ctx.alm_sys, t_pred):
+        return set()
+    prns = {p for p in _PRN_RANGE[ctx.alm_sys] if p >= ctx.alm_min_prn}
+    if ctx.capable is not None:
+        prns &= ctx.capable
+    return prns - set(ctx.pred) - set(ctx.pred_dark or ()) - set(ctx.probe_set or ())
 
 
 def _refresh_capable(ctx):
@@ -218,6 +239,7 @@ def stage_almanac_predict(ctx):
         except Exception as e:
             _log("almanac predict failed: %s" % e)
         ctx.up = {p for p, v in ctx.pred.items() if v[2] >= ctx.args.mask_deg}
+        ctx.unpredicted = _unpredicted(ctx, axis_now_utc(ctx) or ctx.alm_now())
         # Common clock-frequency bias = median(measured - predicted) over detected
         # satellites. A tight residual spread confirms the sign convention; a spread with
         # resid ~ -2x predicted means doppler_sign (cli._FROZEN) is inverted.

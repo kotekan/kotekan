@@ -30,6 +30,20 @@ _SKY_RETRY_S = 600.0
 HINT_MAX_AGE_S = 120 * 86400.0
 
 
+def lists_constellation(state, sysc, t_utc):
+    """Whether the BRDC store `state` lists sysc's satellites, every one in orbit: a BRDC
+    record within HINT_MAX_AGE_S, or the decoders' almanacs (state["almanac"]). The decoded
+    orbits and the GuoWang relay hold only the satellites they were read from."""
+    import decoded_eph
+
+    t = decoded_eph.gpst_of_utc(t_utc)
+    for (s, _), recs in (state.get("eph") or {}).items():
+        if s == sysc and recs and abs(t - recs[-1]["toe_gpst"]) <= HINT_MAX_AGE_S:
+            return True
+    alm = state.get("almanac")
+    return alm is not None and bool(alm.entries(t, sys=sysc))
+
+
 def _with_decoded(readers, pa, pb, lat, lon, alt_m, t_utc, sysc, dt):
     """Put in predict_all's rows pa (at t_utc) and pb (dt later) the rows of the decoded_eph
     Readers given (the receiver's decoded ephemerides, then the almanacs its decoders read),

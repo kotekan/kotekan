@@ -936,6 +936,25 @@ def build_parser(description):
         "and fresh (--narrow-search)",
     )
     ap.add_argument(
+        "--warm-search-prns",
+        type=int,
+        default=0,
+        help="with --narrow-search on a GPS, Galileo or BeiDou chain, hint this many of the "
+        "PRNs no orbit source predicts at a time, over the whole MEO Doppler range about the "
+        "clock bias, rotating every few seconds (searchhint.WARM_DWELL_S), and seed what "
+        "they find. Only while neither the BRDC, the decoders' almanacs nor the TLEs list "
+        "the constellation: a receiver with no network whose cache holds a few of its "
+        "satellites. 0 (default) = off.",
+    )
+    ap.add_argument(
+        "--warm-search-min-snr",
+        type=float,
+        default=0.0,
+        help="the least search SNR at which a PRN no orbit predicts is seeded: with no "
+        "prediction to corroborate it, a detection must clear the noise of the warm search's "
+        "wide window. 0 (default): --acquire-snr alone.",
+    )
+    ap.add_argument(
         "--search-margin-wide-hz",
         type=float,
         default=3000.0,

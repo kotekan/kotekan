@@ -57,6 +57,8 @@ def make_ctx():
         ),
         pred={p: (-1000.0 + p, 0.0, 30.0, 2.2e7, 0.0) for p in (5, 7, 9, 11)},
         up=None,
+        unpredicted=set(),
+        warm={"i": 0, "t": float("-inf"), "cur": []},
         capable=None,
         cb=_Obj(ema=0.0, stale=False, value=0.0, code_ema=None),
         dr_state={"clk": 100.0, "clk_meas_t": T0 - 10.0},
