@@ -233,9 +233,9 @@ void pirateFrbSend::main_thread() {
         INFO("Got data for frame {:d}: frame counter {:d}, FPGA seq {:d}",
              frame_id, frame_counter, fpga_seq);
 
-        auto intensity_nd = intensity_buf->get_ndarray_frame_desc();
+        auto intensity_nd = intensity_buf->get_frame_desc<kotekan::GenericNDArray>();
         //intensity_nd->output_framedesc(std::cout);
-        auto offset_scale_nd = offset_scale_buf->get_ndarray_frame_desc();
+        auto offset_scale_nd = offset_scale_buf->get_frame_desc<kotekan::GenericNDArray>();
         //offset_scale_nd->output_framedesc(std::cout);
 
         assert((size_t)intensity_nd->get_extent(0) == frb_num_output_times / frb_chunk_size);
