@@ -66,6 +66,16 @@ DECLARED = [
         "gnss_n2_proj_buffer{,_1} written by gnss_n2_project",
     ),
     (
+        "n2_accumulate.accum_*.in_proj_basis_buf",
+        "+",
+        "mean projector (--proj-mean, default off): gnss_n2_project's basis record in",
+    ),
+    (
+        "n2_accumulate.accum_*.out_proj_mean_buf",
+        "+",
+        "and the projector averaged over each bin out, to a rawFileWrite",
+    ),
+    (
         "run_send_voltage.gpu_*.commands",
         "~",
         "DTV subtraction (--dtv-subtract-freq-ids, default off): after the stock "
