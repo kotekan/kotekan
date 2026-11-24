@@ -557,7 +557,7 @@ add_executable(
     test_dtv_mask_enabled test_dtv_mask_enabled.cpp ${KOTEKAN_SOURCE_DIR}/lib/stages/DtvRfiMask.cpp
                           ${KOTEKAN_SOURCE_DIR}/lib/stages/N2Accumulate.cpp)
 target_link_libraries(test_dtv_mask_enabled PRIVATE kotekan_core kotekan_metadata kotekan_utils
-                                                    libexternal)
+                                                    libexternal pilotproxy_decision)
 
 add_executable(test_IncoherentBeamPower test_IncoherentBeamPower.cpp
                                         ${KOTEKAN_SOURCE_DIR}/lib/stages/IncoherentBeamPower.cpp)
