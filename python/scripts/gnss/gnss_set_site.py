@@ -2,13 +2,14 @@
 """Move the receiver's site by an east/north/up offset in metres, such as a self-survey result.
 
     python3 gnss_set_site.py --enu dE dN dU --yaml chains_l5.yaml [--broker URL] [--restart U ...]
+    python3 gnss_set_site.py --fix-json FIX.json --yaml chains_l5.yaml [--restart U ...]
 
 Writes the broker yaml's site (its lat/lon/alt lines, at their own precision) moved by the
 offset, so a restart keeps it, and moves the running broker live through POST /set_site when the
 move is at most publish.SITE_LIVE_MAX_M. Anything that reads the site only at start (the
 observables writers, the viewers) needs a restart to follow, and so does the broker after a
-larger move: --restart names systemd user units to restart. Only offsets are printed, never a
-position.
+larger move: --restart names systemd user units to restart. --fix-json moves the site to a
+gnss_fix.py --json fix (its ECEF), however far. Only offsets are printed, never a position.
 """
 
 import argparse
@@ -57,16 +58,26 @@ def move_yaml(path, d_enu):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument(
-        "--enu", nargs=3, type=float, required=True, metavar=("E", "N", "U")
-    )
+    ap.add_argument("--enu", nargs=3, type=float, metavar=("E", "N", "U"))
+    ap.add_argument("--fix-json", help="move to this gnss_fix.py --json fix instead")
     ap.add_argument("--yaml", required=True, help="the broker yaml holding the site")
     ap.add_argument("--broker", default="http://127.0.0.1:12060", help="its publisher")
     ap.add_argument(
         "--restart", nargs="*", default=[], help="systemd user units to restart"
     )
     a = ap.parse_args(argv)
+    if (a.enu is None) == (a.fix_json is None):
+        ap.error("give one of --enu and --fix-json")
     d = a.enu
+    if a.fix_json:
+        txt = open(a.yaml).read()
+        lat, lon, alt = (
+            float(re.search(_KEY % k, txt).group(1)) for k in ("lat", "lon", "alt")
+        )
+        fix = np.array(json.load(open(a.fix_json))["ecef"])
+        d = list(
+            gnss_pvt._enu_axes(lat, lon) @ (fix - gnss_pvt._llh_to_ecef(lat, lon, alt))
+        )
     written = move_yaml(a.yaml, d)
     print("%s: site moved E %+.2f N %+.2f U %+.2f m" % (a.yaml, *written))
     restart = list(a.restart)

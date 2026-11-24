@@ -1,24 +1,38 @@
 #!/usr/bin/env python3
-"""A position fix from the receiver's measurements, with a prior or without one.
+"""A position fix from the receiver's own measurements, with no model of where it is.
 
-    python3 gnss_fix.py OBS.jsonl ... --model-yaml Y [--at UNIX] [--prior LAT,LON,ALT]
-                       [--truth-yaml Y] [--gw-table PATH] [--json OUT]
+    python3 gnss_fix.py OBS.jsonl ... [--at UNIX] [--prior LAT,LON,ALT [--prior-km K]]
+                       [--truth-yaml Y] [--json OUT]
 
-Without a prior the fix starts coarse. The trackers' Dopplers (dop_rec_hz at rec_hop) are range
-rates with no ambiguity; from the visible satellites' mean direction they give the position to
-tens or hundreds of metres, with one common range-rate bias for the reference oscillator. From
-that, or from --prior, the code ranges solve position and one clock per chain to metres. --prior-site starts from the broker's own site.
+Nothing here reads the broker's site, clock or model: the inputs are the fleet's records as the
+observables rows carry them. The record Doppler (dop_rec_hz) is not one: it is the seed's, the
+broker's model at whatever site it runs with (a site moved 99 km moved it 13-53 Hz, 11-24).
 
-The code range of a row is the broker's residual (code_resid_m: measured minus model, receiver
-clock left in) plus the broker's model at the site it ran with (--model-yaml): range plus
-Saastamoinen troposphere, the satellite clock cancelling between the two. That site may be far
-off; the residual is only known mod the tracker code's period T (20 ms on L5 and B3I, 100 ms on
-E5a, B2a and E6, 1.5 s on L2C), and each pass resolves the whole periods against the current
-position, a chain's clock first taken as the circular mean of its satellites. GuoWang stays
-out of the code solve (its table clocks are good to microseconds) and in the Doppler one.
+Without a prior the fix starts coarse. The fleet ADR's rate (fadr_dop_cycles over at least
+DOP_BASELINE_S of fadr_hop) is each satellite's Doppler, a range rate with no ambiguity; from
+the visible satellites' mean direction it gives the position, with one common range-rate bias
+for the reference oscillator. From that, or from --prior, the code ranges solve position and
+one clock per chain.
 
-Each stage drops rows over max(5 MADs, a floor) from its fit and solves again. Only offsets from
---truth-yaml's site are printed; --json gets the fix itself.
+A row's code phase is its record's replica phase (trkresid.phys_chips: the argument lifted
+through the record's own Doppler, at the record's first sample), which the closed DLL holds on
+the signal, so (t + clk_sat - phase/f_chip) mod T is the range over c up to the chain's clock,
+T the tracker code's period (20 ms on L5 and B3I, 100 ms on E5a, B2a and E6, 1.5 s on L2C).
+Each pass resolves the whole periods against the current position; a chain whose c*T/4 does
+not cover the position's uncertainty waits. The record fields are float32 over a ~1e13-sample
+lever, ~0.1-0.7 chips per record, so every row of the last CODE_SPAN_S goes in and the fit
+averages them.
+
+Each stage drops rows over max(5 MADs, a floor) and solves again. Only offsets from
+--truth-yaml's site are printed; --json gets the fix itself (gnss_set_site.py --fix-json).
+
+Accuracy (11-24): from no prior the Doppler stage lands 130-290 m from the surveyed site and the
+code stage 11-71 m. The rows' record phases sit +-1-2 chips per satellite off the broker's own
+residual (which reads the telemetry records; same offset on B2a and B3I, cause not found), so
+this is a bootstrap fix: inside the dead reckoning's 12-chip window, every chain relocks, and
+the self-survey (gnss_pvt, the viewer's Position notice) takes it to metres. With the broker's
+site moved 99 km (its model and every model-seeded chain lost, L5 tracking on its search) the
+fix landed 11 m from the surveyed site, and applied, every chain relocked in ~2 minutes.
 """
 
 import argparse
@@ -27,7 +41,9 @@ import math
 import re
 import sys
 import warnings
+from collections import defaultdict
 from datetime import datetime, timezone
+from fractions import Fraction
 
 import numpy as np
 
@@ -36,14 +52,15 @@ import gnss_brdc_supply
 import gnss_ephemeris as ge
 import gnss_pvt
 from gnss_broker import signals
+from gnss_broker.trkresid import phys_chips
 
 C = ge.C_LIGHT
 FS_HZ = 122880000
 HOP_SAMPLES = 64
 R_EARTH = 6371e3
-CODE_SPAN_S = (
-    5.0  # the code solve takes each satellite's newest row this close to the fix
-)
+HOPS_PER_S = Fraction(FS_HZ, HOP_SAMPLES)
+CODE_SPAN_S = 30.0  # the code solve takes every row this close to the fix
+DOP_BASELINE_S = 5.0  # the shortest ADR difference taken as a Doppler
 FRAME0_UTC = 1795132800.0  # config/bladerf_gnss.yaml gps_time frame0_nano
 _KEY = r"\n    %s: ([-0-9.eE+]+)"
 
@@ -221,17 +238,13 @@ def code_fix(meas, rx0, sigma0_m=1e4, mask_deg=10.0, iters=16):
                 break
             use = [geo[k][0] for k in kept]
     res = y - H @ dx
-    return rx, float(np.sqrt(np.mean(res**2))), len(geo), len(chains)
+    n_sats = len({(meas[g[0]][0], meas[g[0]][1].get("prn")) for g in geo})
+    return rx, float(np.sqrt(np.mean(res**2))), len(geo), n_sats, len(chains)
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("obs", nargs="+", help="gnss_observables.py rows (jsonl)")
-    ap.add_argument(
-        "--model-yaml",
-        required=True,
-        help="the broker yaml the residuals were taken at",
-    )
     ap.add_argument(
         "--at", type=float, help="unix time of the fix (default: newest rows)"
     )
@@ -243,13 +256,7 @@ def main(argv=None):
         default=100.0,
         help="how far the prior may be off: chains too short to cover it wait (default 100)",
     )
-    ap.add_argument(
-        "--prior-site",
-        action="store_true",
-        help="start the code solve from --model-yaml's site",
-    )
     ap.add_argument("--truth-yaml", help="print offsets from this broker yaml's site")
-    ap.add_argument("--gw-table", help="GuoWang table, for its Dopplers")
     ap.add_argument("--json", help="write the fix here")
     a = ap.parse_args(argv)
     warnings.simplefilter("ignore")
@@ -261,40 +268,59 @@ def main(argv=None):
         print("no present rows in the %.0f s before %.0f" % (a.doppler_span_s, t_at))
         return 1
     eph = ge.parse_rinex_nav(gnss_brdc_supply.cached_brdc())
-    if a.gw_table:
-        eph.update(ge.load_gw_table(a.gw_table))
-    site = np.array(gnss_pvt._llh_to_ecef(*site_of(a.model_yaml)))
-    sig, obs_d, newest = {}, [], {}
+    sig, arcs, meas = {}, defaultdict(list), []
     for r in rows:
         if r["band"] not in sig:
             sig[r["band"]] = signals.get(r["band"])
-        if r.get("rec_hop") and r.get("dop_rec_hz") is not None:
-            t = gpst(
-                FRAME0_UTC + (r["rec_hop"] * HOP_SAMPLES + HOP_SAMPLES - 1) / FS_HZ
-            )
-            e = ge.best_eph(eph.get((r["sys"], r["prn"]), []), t)
-            if e is not None:
-                obs_d.append((e, t, -r["dop_rec_hz"] * C / r["carrier_hz"]))
-        key = (r["band"], r["prn"])
-        if (
-            r.get("code_resid_m") is not None
-            and r["t"] >= t_at - CODE_SPAN_S
-            and (key not in newest or r["t"] > newest[key]["t"])
-        ):
-            newest[key] = r
-    meas = []
-    for r in newest.values():
         s = sig[r["band"]]
         if s.constellation == "W":
             continue
-        t = gpst(r["t"])
+        if r.get("fadr_hop") and r.get("fadr_dop_cycles") is not None:
+            arcs[(r["band"], r["prn"], r.get("fadr_arc"))].append(r)
+        if r["t"] < t_at - CODE_SPAN_S or not r.get("rec_hop"):
+            continue
+        if r.get("cp_rec_chips") is None or r.get("dop_rec_hz") is None:
+            continue
+        L = s.code_length * s.long_code_segments
+        ph = phys_chips(
+            r["cp_rec_chips"],
+            r["dop_rec_hz"],
+            r["rec_hop"],
+            HOPS_PER_S,
+            s.chip_rate_hz,
+            s.carrier_hz,
+            L,
+        )
+        t = gpst(FRAME0_UTC + r["rec_hop"] / float(HOPS_PER_S))
         e = ge.best_eph(eph.get((r["sys"], r["prn"]), []), t)
         if e is None:
             continue
-        rng, _, u, _ = geometry(e, site, t)
-        P = r["code_resid_m"] + rng + elev_tropo(site, u)[1]
-        T = s.code_length * s.long_code_segments / s.chip_rate_hz
-        meas.append((r["band"], e, t, (P / C) % T, T))
+        clk_sat = ge.sat_pos_clk(e, t - 0.075)[2]
+        T = L / s.chip_rate_hz
+        meas.append((r["band"], e, t, (t + clk_sat - ph / s.chip_rate_hz) % T, T))
+    # Doppler from the ADR: each row against the first of its arc at least DOP_BASELINE_S
+    # earlier, at the pair's midpoint.
+    obs_d = []
+    for (band, prn, _), rs in arcs.items():
+        rs.sort(key=lambda r: r["fadr_hop"])
+        j = 0
+        for r1 in rs:
+            while (
+                j < len(rs)
+                and (r1["fadr_hop"] - rs[j]["fadr_hop"]) / float(HOPS_PER_S)
+                > 2 * DOP_BASELINE_S
+            ):
+                j += 1
+            r0 = rs[j]
+            dt = (r1["fadr_hop"] - r0["fadr_hop"]) / float(HOPS_PER_S)
+            if dt < DOP_BASELINE_S:
+                continue
+            dop = (r1["fadr_dop_cycles"] - r0["fadr_dop_cycles"]) / dt
+            hop = 0.5 * (r0["fadr_hop"] + r1["fadr_hop"])
+            t = gpst(FRAME0_UTC + hop / float(HOPS_PER_S))
+            e = ge.best_eph(eph.get((r1["sys"], prn), []), t)
+            if e is not None:
+                obs_d.append((e, t, -dop * C / r1["carrier_hz"]))
     truth = None
     if a.truth_yaml:
         lat, lon, alt = site_of(a.truth_yaml)
@@ -314,14 +340,8 @@ def main(argv=None):
         )
 
     out = {"t": t_at}
-    if a.prior or a.prior_site:
-        rx = (
-            site.copy()
-            if a.prior_site
-            else np.array(
-                gnss_pvt._llh_to_ecef(*(float(x) for x in a.prior.split(",")))
-            )
-        )
+    if a.prior:
+        rx = np.array(gnss_pvt._llh_to_ecef(*(float(x) for x in a.prior.split(","))))
         report("prior", rx, "")
     else:
         # The satellites in view are above the horizon: their mean direction is near zenith.
@@ -336,15 +356,19 @@ def main(argv=None):
             % (rms, beta, n, drop),
         )
         out["doppler_rms_mps"] = rms
-    fix = code_fix(meas, rx, a.prior_km * 1e3 if (a.prior or a.prior_site) else 1e4)
+    fix = code_fix(meas, rx, a.prior_km * 1e3 if a.prior else 1e4)
     if fix is None:
         print(
             "code: too few satellites (%d rows); the fix stands at the stage above"
             % len(meas)
         )
     else:
-        rx, rms, n, nch = fix
-        report("code", rx, "rms %.2f m, %d sats on %d chains" % (rms, n, nch))
+        rx, rms, n, nsat, nch = fix
+        report(
+            "code",
+            rx,
+            "rms %.2f m, %d rows of %d sats on %d chains" % (rms, n, nsat, nch),
+        )
         out.update(code_rms_m=rms, n_sats=n)
     out["ecef"] = list(rx)
     if a.json:
