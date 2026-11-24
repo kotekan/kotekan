@@ -29,9 +29,10 @@
  * pilot or data record has no job, or whose PRN changes, starts a new stream.
  *
  * @par REST
- * GET `<unique_name>/get_status`: one row per slot with decisions, {prn, n_sym, n_restart,
- * snr_db, residual_deg, carrier_hz, data_pilot_db, n_records, n_boundary, nav_obs}, nav_obs in the
- * combiner's form (bit_export) holding the newest @c symbol_export decisions: {utc_ref, rec_dt,
+ * GET `<unique_name>/get_status`: one row per slot with decisions, {prn, n_sym, n_restart, t0,
+ * stream_id, snr_db, residual_deg, carrier_hz, data_pilot_db, n_records, n_boundary, nav_obs}
+ * (t0 the stream's start, host-labelled UTC, and stream_id it in ms, as out_buf's rows), nav_obs in
+ * the combiner's form (bit_export) holding the newest @c symbol_export decisions: {utc_ref, rec_dt,
  * phase: 0, br, bits: [[index, sign]]}, symbol `index` starting at utc_ref + index * br * rec_dt
  * and utc_ref the oldest one's start. The broker's --cnav-combiner reads it.
  *
@@ -42,6 +43,12 @@
  * @buffer data_buf The data component's records, as pilot_buf's.
  *     @buffer_format n_prn * record_stride(n_elements) float32
  *     @buffer_metadata GnssChanMetadata
+ * @buffer out_buf (optional) Each slot's new decisions as they are made, for the nav-symbol feed
+ *     (GnssNavSymbolSend): a frame whenever a record decides any. Never waited on: with no empty
+ *     frame the rows are dropped and counted, so a stalled feed cannot hold the records back.
+ *     @buffer_format gnss::nav_sym_frame_bytes(n_prn): an int32 row count, 4 bytes, then
+ *         gnss::NavSymRow rows (gnssNavSym.hpp)
+ *     @buffer_metadata none
  *
  * @conf n_prn           Int. PRN slots per record.
  * @conf n_elements      Int. Element blocks per record.
@@ -66,6 +73,8 @@ private:
     void get_status_callback(kotekan::connectionInstance& conn);
     /// Add one record pair, @p pilot and @p data, to every slot's track.
     void push_records(const float* pilot, const float* data, long long seq);
+    /// Write the decisions made since the last call to out_buf, if any.
+    void emit_symbols();
 
     Buffer* _pilot_buf;
     Buffer* _data_buf;
@@ -76,6 +85,12 @@ private:
     std::mutex _m; ///< guards _tracks and _prn against get_status
     std::vector<gnss::NavSymbolTrack> _tracks;
     std::vector<int> _prn; ///< the PRN each track follows; 0 = none
+
+    Buffer* _out_buf = nullptr;
+    int _out_frame = 0;
+    std::vector<long long> _sent_n; ///< per slot: n_sym when last written to out_buf
+    std::vector<double> _sent_t0;   ///< per slot: the stream (t0) _sent_n counts in
+    long long _n_dropped = 0;       ///< out_buf frames dropped for want of an empty one
 };
 
 #endif // GNSS_NAV_SYMBOLS_STAGE_HPP

@@ -69,6 +69,8 @@ add_library(
     gnss/GnssCskDespread.cpp
     gnss/GnssNavSymbols.cpp
     gnss/gnssNavSymbols.cpp
+    gnss/GnssNavSymbolSend.cpp
+    gnss/gnssNavSym.cpp
     # The tracker -> broker telemetry transport, outside the FFTW block: the gather half runs on
     # the broker host, which has no F-engine, GPU or FFTW.
     gnss/GnssTelemPack.cpp

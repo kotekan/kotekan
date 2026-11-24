@@ -83,6 +83,10 @@ add_executable(test_gnss_nav_symbols test_gnss_nav_symbols.cpp
                                      ../../lib/stages/gnss/gnssNavSymbols.cpp)
 target_include_directories(test_gnss_nav_symbols PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
+# The nav-symbol feed's NSYM records (GnssNavSymbolSend): compile the source directly.
+add_executable(test_gnss_nav_sym test_gnss_nav_sym.cpp ../../lib/stages/gnss/gnssNavSym.cpp)
+target_include_directories(test_gnss_nav_sym PRIVATE ../../lib/stages ../../lib/stages/gnss)
+
 # The shared element model's fleet-common phase pin: header-only, no Telescope/FFTW.
 add_executable(test_gnss_shared_pin test_gnss_shared_pin.cpp)
 target_include_directories(test_gnss_shared_pin PRIVATE ../../lib/stages ../../lib/stages/gnss)

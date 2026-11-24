@@ -235,7 +235,9 @@ def timemarks(srcs):
     B-CNAV2 frame's SOW count (3 s), a GuoWang subframe's BDT SOW (s). With it the week number
     where the message has one (a CNAV type 10, F/NAV pages 1-3, a B-CNAV2 type 10, GuoWang page
     1). Each message's edge is placed when it decodes:
-    edges move ~3 us/s against the slot grid, and decoders keep messages for minutes."""
+    edges move ~3 us/s against the slot grid, and decoders keep messages for minutes. A CNAV
+    mark carries the message too ("bits", hex), which nav_symbol_feed re-encodes to find the
+    symbol stream's sign."""
     marks = []
     for s in srcs:
         sig = s["signal"]
@@ -248,6 +250,7 @@ def timemarks(srcs):
                         "t_host": round(st.t_host[slot], 5),
                         "tow": nav_fields._read(bits, 20, 17, "u"),
                         "type": nav_fields._read(bits, 14, 6, "u"),
+                        "bits": "%075x" % int("".join(str(int(b)) for b in bits), 2),
                     }
                     if mark["type"] == 10:
                         mark["wn"] = nav_fields._read(bits, 38, 13, "u")

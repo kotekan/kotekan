@@ -944,6 +944,7 @@ l5i_symbols:
     n_prn: 32
     symbol_records: 10
     offset_deg: 90
+    out_buf: l5i_navsym_buf
 
 e5a_assemble:
     kotekan_stage: GnssGpuRecordAssemble
@@ -972,6 +973,7 @@ e5ai_symbols:
     n_prn: 36
     symbol_records: 20
     offset_deg: 90
+    out_buf: e5ai_navsym_buf
 
 b2a_assemble:
     kotekan_stage: GnssGpuRecordAssemble
@@ -1000,6 +1002,7 @@ b2ad_symbols:
     n_prn: 31
     symbol_records: 5
     offset_deg: 90
+    out_buf: b2ad_navsym_buf
 
 gw_assemble:
     kotekan_stage: GnssGpuRecordAssemble
@@ -1130,6 +1133,7 @@ l2cm_symbols:
     n_prn: 28
     symbol_records: 20
     offset_deg: 0
+    out_buf: l2cm_navsym_buf
 
 e5b_assemble:
     kotekan_stage: GnssGpuRecordAssemble
@@ -1266,6 +1270,27 @@ b2b_combine:
 # Every chain's records as a CHORD node ships them (GnssTelemPack), gathered in this instance
 # (GnssTelemGather) and served to the broker (telem-gather 127.0.0.1:11061): its tracker code
 # residual then averages a window's records, not one, as the tracker-fed joint state requires.
+# The nav-symbol feed to CHORD (GnssNavSymbolSend): each symbol stage's decisions as they are
+# made, to the relay on the site gnss VM through the tunnel (gnss-chord-tunnel.service) at
+# 127.0.0.1:12080. A stream goes out once nav_symbol_anchor.py has posted its anchor.
+l5i_navsym_buf: &navsym_buf
+    kotekan_buffer: standard
+    metadata_pool: gnss_pool
+    num_frames: 512
+    # gnss::nav_sym_frame_bytes(36), the widest symbol stage (E5a)
+    frame_size: 2024
+e5ai_navsym_buf: *navsym_buf
+b2ad_navsym_buf: *navsym_buf
+l2cm_navsym_buf: *navsym_buf
+navsym_send:
+    kotekan_stage: GnssNavSymbolSend
+    in_bufs: [l2cm_navsym_buf, l5i_navsym_buf, e5ai_navsym_buf, b2ad_navsym_buf]
+    sys: [G, G, E, C]
+    # NSYM signal codes: 1 L2C_CM, 3 L5_I, 4 E5A_I, 6 B2A_D
+    sig: [1, 3, 4, 6]
+    server_ip: 127.0.0.1
+    server_port: 12080
+
 telem_buf:
     kotekan_buffer: standard
     metadata_pool: gnss_pool

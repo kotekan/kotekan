@@ -2,13 +2,15 @@
 
 #include "GnssChanMetadata.hpp" // for get_gnss_chan_metadata, metadata_is_gnss_chan
 #include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "gnssNavSym.hpp"       // for NavSymRow, nav_sym_frame_bytes, NAV_SYM_MAX
 #include "gnssRecord.hpp"       // for record_stride, REC_*
-#include "kotekanLogging.hpp"   // for FATAL_ERROR, INFO
-#include "visUtil.hpp"          // for frameID
+#include "kotekanLogging.hpp"   // for FATAL_ERROR, INFO, WARN
+#include "visUtil.hpp"          // for frameID, current_time
 
-#include <cmath>      // for M_PI
+#include <algorithm>  // for min
+#include <cmath>      // for M_PI, llround
 #include <complex>    // for complex, polar
-#include <cstring>    // for memcpy
+#include <cstring>    // for memcpy, memset
 #include <functional> // for bind
 
 using kotekan::bufferContainer;
@@ -57,6 +59,16 @@ GnssNavSymbols::GnssNavSymbols(Config& config, const std::string& unique_name,
         _tracks.emplace_back(_symbol_records, periods, _rec_samples, _rec_dt, _pilot_buf != nullptr,
                              offset_deg * M_PI / 180.0, (size_t)keep);
     _prn.assign((size_t)_n_prn, 0);
+    _sent_n.assign((size_t)_n_prn, 0);
+    _sent_t0.assign((size_t)_n_prn, -1.0);
+
+    if (config.exists(unique_name, "out_buf")) {
+        _out_buf = get_buffer("out_buf");
+        _out_buf->register_producer(unique_name);
+        if ((size_t)_out_buf->frame_size < gnss::nav_sym_frame_bytes(_n_prn))
+            FATAL_ERROR("GnssNavSymbols[{:s}]: out_buf frames under {:d} B", unique_name,
+                        gnss::nav_sym_frame_bytes(_n_prn));
+    }
 }
 
 GnssNavSymbols::~GnssNavSymbols() {
@@ -117,6 +129,7 @@ void GnssNavSymbols::main_thread() {
         push_records(nullptr, (const float*)data,
                      get_gnss_chan_metadata(_data_buf, data_id)->sample_seq);
         _data_buf->mark_frame_empty(unique_name, data_id++);
+        emit_symbols();
     }
     while (!stop_thread && _pilot_buf) {
         if (!pilot && !(pilot = _pilot_buf->wait_for_full_frame(unique_name, pilot_id)))
@@ -126,8 +139,10 @@ void GnssNavSymbols::main_thread() {
         const long long sp = get_gnss_chan_metadata(_pilot_buf, pilot_id)->sample_seq;
         const long long sd = get_gnss_chan_metadata(_data_buf, data_id)->sample_seq;
         // The buffers carry the same records; release the older one until they pair up.
-        if (sp == sd)
+        if (sp == sd) {
             push_records((const float*)pilot, (const float*)data, sp);
+            emit_symbols();
+        }
         if (sp <= sd) {
             _pilot_buf->mark_frame_empty(unique_name, pilot_id++);
             pilot = nullptr;
@@ -137,6 +152,56 @@ void GnssNavSymbols::main_thread() {
             data = nullptr;
         }
     }
+}
+
+void GnssNavSymbols::emit_symbols() {
+    if (!_out_buf)
+        return;
+    std::vector<gnss::NavSymRow> rows;
+    {
+        std::lock_guard<std::mutex> lk(_m);
+        const double now = current_time();
+        for (int p = 0; p < _n_prn; ++p) {
+            const gnss::NavSymbolTrack& t = _tracks[(size_t)p];
+            if (t.t0 != _sent_t0[(size_t)p]) { // a new stream
+                _sent_t0[(size_t)p] = t.t0;
+                _sent_n[(size_t)p] = 0;
+            }
+            const long long n = std::min({t.n_sym - _sent_n[(size_t)p], (long long)t.sym.size(),
+                                          (long long)gnss::NAV_SYM_MAX});
+            _sent_n[(size_t)p] = t.n_sym;
+            if (_prn[(size_t)p] <= 0 || n <= 0)
+                continue;
+            gnss::NavSymRow r{};
+            r.prn = _prn[(size_t)p];
+            r.n = (int32_t)n;
+            r.first = t.n_sym - n;
+            r.stream_id = std::llround(t.t0 * 1000.0);
+            r.t0 = t.t0;
+            r.sym_dt = (double)_symbol_records * _rec_dt;
+            r.t_dec = now;
+            for (long long i = 0; i < n; ++i)
+                r.sign[i] = t.sym[t.sym.size() - (size_t)n + (size_t)i];
+            rows.push_back(r);
+        }
+    }
+    if (rows.empty())
+        return;
+    if (!_out_buf->is_frame_empty(_out_frame)) {
+        if (_n_dropped++ % 1000 == 0)
+            WARN("GnssNavSymbols[{:s}]: out_buf full, {:d} frame(s) of symbols dropped",
+                 unique_name, _n_dropped);
+        return;
+    }
+    uint8_t* frame = _out_buf->wait_for_empty_frame(unique_name, _out_frame);
+    if (frame == nullptr)
+        return;
+    const int32_t n_rows = (int32_t)rows.size();
+    std::memset(frame, 0, 8);
+    std::memcpy(frame, &n_rows, sizeof(n_rows));
+    std::memcpy(frame + 8, rows.data(), rows.size() * sizeof(gnss::NavSymRow));
+    _out_buf->mark_frame_full(unique_name, _out_frame);
+    _out_frame = (_out_frame + 1) % _out_buf->num_frames;
 }
 
 void GnssNavSymbols::get_status_callback(kotekan::connectionInstance& conn) {
@@ -157,6 +222,8 @@ void GnssNavSymbols::get_status_callback(kotekan::connectionInstance& conn) {
             rows.push_back({{"prn", _prn[(size_t)p]},
                             {"n_sym", t.n_sym},
                             {"n_restart", t.n_restart},
+                            {"t0", t.t0},
+                            {"stream_id", std::llround(t.t0 * 1000.0)},
                             {"snr_db", t.snr_db()},
                             {"residual_deg", t.residual_rad * 180.0 / M_PI},
                             {"carrier_hz", t.carrier_hz},
