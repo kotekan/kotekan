@@ -188,7 +188,6 @@ class CnavPredictor:
         if key == st.last_obs:
             return
         st.last_obs = key
-        st.t_seen = time.time()
         sym_s = br * rec_dt
         st.sym_s = sym_s
         # Build this emit's absolute slot -> sign map (no polarity applied: each emit is its own
@@ -215,6 +214,10 @@ class CnavPredictor:
             arr == 0
         ).any():  # a gap inside the emit breaks the convolutional stream: drop it
             return
+        # Seen only once an emit is kept: a slot whose every emit has a gap (an untracked one)
+        # would otherwise stay eligible for the decode round below without ever taking a turn,
+        # and the round, never complete, would stop every PRN decoding (11-24).
+        st.t_seen = time.time()
         # a symbol edge near half a slot can round this emit one slot off the history it
         # overlaps; line it up with that history
         d = emit_offset(slot0, arr, st.emits.items())

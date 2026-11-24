@@ -418,6 +418,7 @@ def report(srcs, store, dhw, eph_out):
 
 
 def main():
+    global EPH_FRESH_S
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument(
         "--source",
@@ -453,6 +454,18 @@ def main():
         help="poll a source again after this fraction of the span its last reply covered",
     )
     ap.add_argument("--report-every", type=float, default=60.0, help="report period, s")
+    ap.add_argument(
+        "--eph-fresh-s",
+        type=float,
+        default=EPH_FRESH_S,
+        help="export no ephemeris whose reference is further than this from the host clock; "
+        "0 exports every one (gnss_bootstrap.py's, for a host clock that is wrong)",
+    )
+    ap.add_argument(
+        "--no-brdc",
+        action="store_true",
+        help="no BRDC cross-check (and no fetch for it)",
+    )
     args = ap.parse_args()
 
     srcs = []
@@ -482,8 +495,10 @@ def main():
             chain=os.path.basename(args.decode_health_file).rsplit(".", 1)[0],
             log=log,
         )
-    store = {"mod": ge, "eph": None, "t": 0.0}
-    load_brdc(store, block=True)
+    EPH_FRESH_S = args.eph_fresh_s if args.eph_fresh_s > 0 else float("inf")
+    store = {"mod": ge, "eph": None, "t": 0.0 if not args.no_brdc else float("inf")}
+    if not args.no_brdc:
+        load_brdc(store, block=True)
     log("decoding %s" % ", ".join("%s <- %s" % (s["signal"], s["url"]) for s in srcs))
 
     t_report = time.time()

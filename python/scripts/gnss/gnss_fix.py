@@ -9,7 +9,9 @@ observables rows carry them. The record Doppler (dop_rec_hz) is not one: it is t
 broker's model at whatever site it runs with (a site moved 99 km moved it 13-53 Hz, 11-24).
 
 Without a prior the fix starts coarse. The fleet ADR's rate (fadr_dop_cycles over at least
-DOP_BASELINE_S of fadr_hop) is each satellite's Doppler, a range rate with no ambiguity; from
+DOP_BASELINE_S of fadr_hop), or a row's dop_meas_hz (gnss_bootstrap.py's: the record's Doppler
+less the combiner's carrier residual, which agree to ~0.2 Hz), is each satellite's Doppler, a
+range rate with no ambiguity; from
 the visible satellites' mean direction it gives the position, with one common range-rate bias
 for the reference oscillator. From that, or from --prior, the code ranges solve position and
 one clock per chain.
@@ -22,6 +24,9 @@ Each pass resolves the whole periods against the current position; a chain whose
 not cover the position's uncertainty waits. The record fields are float32 over a ~1e13-sample
 lever, ~0.1-0.7 chips per record, so every row of the last CODE_SPAN_S goes in and the fit
 averages them.
+
+Row times are frame0 plus the hop count, the capture's labels; --time-offset-s takes the
+anchor's error (gnss_skytime.py) off them for a host clock that was wrong.
 
 Each stage drops rows over max(5 MADs, a floor) and solves again. Only offsets from
 --truth-yaml's site are printed; --json gets the fix itself (gnss_set_site.py --fix-json).
@@ -297,6 +302,12 @@ def main(argv=None):
         "--decoded-eph",
         help="comma-separated decoded ephemeris files to take the orbits from, not the BRDC",
     )
+    ap.add_argument(
+        "--time-offset-s",
+        type=float,
+        default=0.0,
+        help="the capture anchor's error (gnss_skytime.py), taken off every row's time",
+    )
     ap.add_argument("--json", help="write the fix here")
     a = ap.parse_args(argv)
     warnings.simplefilter("ignore")
@@ -308,14 +319,20 @@ def main(argv=None):
         print("no present rows in the %.0f s before %.0f" % (a.doppler_span_s, t_at))
         return 1
     orbits = Orbits(a.decoded_eph.split(",") if a.decoded_eph else None)
-    sig, arcs, meas = {}, defaultdict(list), []
+    sig, arcs, meas, obs_d = {}, defaultdict(list), [], []
     for r in rows:
         if r["band"] not in sig:
             sig[r["band"]] = signals.get(r["band"])
         s = sig[r["band"]]
         if s.constellation == "W":
             continue
-        if r.get("fadr_hop") and r.get("fadr_dop_cycles") is not None:
+        if r.get("dop_meas_hz") is not None and r.get("rec_hop"):
+            # a measured Doppler at the record (the bootstrap tracker's rows)
+            t = gpst(FRAME0_UTC + r["rec_hop"] / float(HOPS_PER_S) - a.time_offset_s)
+            e = orbits.record(r["sys"], r["prn"], t)
+            if e is not None:
+                obs_d.append((e, t, -r["dop_meas_hz"] * C / r["carrier_hz"]))
+        elif r.get("fadr_hop") and r.get("fadr_dop_cycles") is not None:
             arcs[(r["band"], r["prn"], r.get("fadr_arc"))].append(r)
         if r["t"] < t_at - CODE_SPAN_S or not r.get("rec_hop"):
             continue
@@ -331,7 +348,7 @@ def main(argv=None):
             s.carrier_hz,
             L,
         )
-        t = gpst(FRAME0_UTC + r["rec_hop"] / float(HOPS_PER_S))
+        t = gpst(FRAME0_UTC + r["rec_hop"] / float(HOPS_PER_S) - a.time_offset_s)
         e = orbits.record(r["sys"], r["prn"], t)
         if e is None:
             continue
@@ -342,7 +359,6 @@ def main(argv=None):
         meas.append((r["band"], e, t, (t + clk_sat - ph / s.chip_rate_hz) % T, T))
     # Doppler from the ADR: each row against the first of its arc at least DOP_BASELINE_S
     # earlier, at the pair's midpoint.
-    obs_d = []
     for (band, prn, _), rs in arcs.items():
         rs.sort(key=lambda r: r["fadr_hop"])
         j = 0
@@ -359,7 +375,7 @@ def main(argv=None):
                 continue
             dop = (r1["fadr_dop_cycles"] - r0["fadr_dop_cycles"]) / dt
             hop = 0.5 * (r0["fadr_hop"] + r1["fadr_hop"])
-            t = gpst(FRAME0_UTC + hop / float(HOPS_PER_S))
+            t = gpst(FRAME0_UTC + hop / float(HOPS_PER_S) - a.time_offset_s)
             e = orbits.record(r1["sys"], prn, t)
             if e is not None:
                 obs_d.append((e, t, -dop * C / r1["carrier_hz"]))
