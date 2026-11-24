@@ -478,6 +478,11 @@ def measurements_from_obs(globs, max_age_s, t_now, smooth_s=90.0):
         r_s, n, sd, method = hs
         latest[key] = (v[0], v[1], v[2], v[3], float(r_s), v[5], v[6])
         extra[key] = {"n": n, "sd_m": sd, "method": method}
+        # The code discriminator over the window: a replica not yet on its signal (minutes
+        # after a broker start) reads its range short.
+        discs = [abs(r["dll_disc"]) for r in hist[key] if r.get("dll_disc") is not None]
+        if discs:
+            extra[key]["disc_chips"] = statistics.median(discs)
 
     # de-wrap each group's residuals to the group median (handles the clock straddling a
     # code-period boundary; L is the code period in metres).

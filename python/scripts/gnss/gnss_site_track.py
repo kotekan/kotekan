@@ -17,7 +17,9 @@ refine (default every 15 s): a solve over the last 90 s of carrier-smoothed rows
 site moves when the last --confirm solves agree, their median offset over --move-m and over
 five times their own scatter (the solves wander by metres within minutes, more than their
 formal sigma says). After a move nothing is judged until a whole smoothing window has passed,
-so no solve mixes rows from both sites. With --until-settled it stops once N judgments in a
+so no solve mixes rows from both sites; nor at the start, since the site may have just been
+moved. Nor while any chain's trackers are not on their signals (DISC_MAX_CHIPS). With
+--until-settled it stops once N judgments in a
 row (each over the last --confirm solves) have needed no move, or after --max-s, so a site
 found from the sky is then fixed and measurements stay comparable.
 
@@ -43,6 +45,10 @@ from gnss_fix import site_of
 from gnss_set_site import move_yaml
 
 SMOOTH_S = 90.0
+# A chain whose satellites' median code discriminator is over this is not on its signals yet:
+# for minutes after a broker start (its trims and joint clock settling) L5, E5a and B2a sat at
+# 0.11-0.20 chips and the solve read a 20 m height offset as 3 m (11-24); settled, 0.02-0.05.
+DISC_MAX_CHIPS = 0.08
 
 
 def log(msg):
@@ -53,6 +59,18 @@ def solve(obs_glob, yaml, smooth_s):
     """(d_enu, sigma_enu, n_sats) of the combined fix against the yaml's site, or None."""
     meas = gnss_pvt.measurements_from_obs([obs_glob], 30.0, time.time(), smooth_s)
     if not meas:
+        return None
+    discs = {}
+    for m in meas:
+        if "disc_chips" in m and m["sys"] != "W":  # GuoWang's TLE model leaves no fix
+            discs.setdefault(m["group"], []).append(m["disc_chips"])
+    off = {g: np.median(d) for g, d in discs.items() if len(d) >= 3}
+    off = {g: v for g, v in off.items() if v > DISC_MAX_CHIPS}
+    if off:
+        log(
+            "not judged: trackers not on their signals yet (median |dll_disc| %s chips)"
+            % ", ".join("%s %.2f" % (g, v) for g, v in sorted(off.items()))
+        )
         return None
     sol = gnss_pvt.solve(meas, *site_of(yaml), min_el_deg=15.0).get("combined")
     if not sol or sol.get("n_sats", 0) < 6:
@@ -117,7 +135,8 @@ def main(argv=None):
     )
     a = ap.parse_args(argv)
     every = a.every_s or (15.0 if a.mode == "refine" else 5.0)
-    hist, hold_until, quiet, t_start = [], 0.0, 0, time.time()
+    t_start = time.time()
+    hist, hold_until, quiet = [], t_start + SMOOTH_S + 30.0, 0
     log("%s mode, every %.0f s" % (a.mode, every))
     while True:
         if a.until_settled and quiet >= a.until_settled:

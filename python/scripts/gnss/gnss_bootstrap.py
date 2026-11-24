@@ -140,14 +140,23 @@ class Tracker:
         self.lock = lock
         self.st = {}
         self.rows = rows
-        prns = get("/config")[self.search]["prns"]
-        post(
-            "/%s/set_doppler_hints" % self.search,
-            [{"prn": p, "doppler_hz": 0.0, "margin_hz": 5000.0} for p in prns],
-        )
+        self.prns = get("/config")[self.search]["prns"]
+        self.t_hint = 0.0
 
     def step(self, frame0):
         """One pass: seed new detections, nudge and log the tracked, drop the lost."""
+        # Blind hints for every untracked slot, renewed inside the search's hint TTL (30 s): a
+        # blind L5 pass takes ~60 s, and hints posted once lapsed after the first (11-24).
+        if time.time() - self.t_hint > 10.0:
+            self.t_hint = time.time()
+            post(
+                "/%s/set_doppler_hints" % self.search,
+                [
+                    {"prn": p, "doppler_hz": 0.0, "margin_hz": 5000.0}
+                    for p in self.prns
+                    if p not in self.st
+                ],
+            )
         for d in get("/%s/get_detections" % self.search):
             if d["snr"] < self.snr or d["prn"] in self.st:
                 continue
@@ -414,7 +423,8 @@ def main(argv=None):
         log("refining in %.0f s from the broker's own rows" % a.refine_after_s)
         time.sleep(a.refine_after_s)
         argv_ref = ["--mode", "refine", "--yaml", a.yaml]
-        argv_ref += ["--until-settled", "4", "--max-s", "900"]
+        # 3 m, not the 10 m a standing refine waits for: this is the one refine the site gets
+        argv_ref += ["--move-m", "3", "--until-settled", "4", "--max-s", "1200"]
         gnss_site_track.main(argv_ref)
         if a.truth_yaml:
             truth = np.array(gnss_pvt._llh_to_ecef(*gnss_fix.site_of(a.truth_yaml)))
