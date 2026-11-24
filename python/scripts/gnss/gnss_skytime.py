@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The capture's time anchor measured from the sky: how far the host-labelled time of the samples
-is from GPS time, from the GPS CNAV, Galileo F/NAV and BeiDou B-CNAV2 messages the nav decoders
-read.
+is from GPS time, from the GPS CNAV, Galileo F/NAV, BeiDou B-CNAV2 and GuoWang low-rate messages
+the nav decoders read.
 
     python3 gnss_skytime.py MARKS.json ... [--yaml chains_l5.yaml | --site-json FIX.json]
                             [--decoded-eph FILE,...] [--json OUT]
@@ -43,6 +43,7 @@ SIGNALS = {
     "GPS_L2C_CNAV": ("G", 0),
     "GAL_E5AI_FNAV": ("E", 1024),
     "BDS_B2A_BCNAV2": ("C", 1356),
+    "GW_1202_NAV": ("W", 1356),
 }
 R_EARTH = 6371e3
 _KEY = r"\n    %s: ([-0-9.eE+]+)"
@@ -60,7 +61,8 @@ def tx_sow(mark):
     satellite's clock. A CNAV TOW counts 6 s to the start of the next message, so the marked one
     started a message (6 s on L5, 12 s on L2C) earlier. An F/NAV TOW is the GST second at the
     start of its page, and GST is GPS time to tens of ns. A B-CNAV2 SOW counts 3 s to the start
-    of its frame, in BDT (GPST - 14 s)."""
+    of its frame, in BDT (GPST - 14 s); a GuoWang subframe's SOW is the BDT second of its start.
+    """
     sig, n = mark["signal"], mark["tow"]
     if sig == "GPS_L5_CNAV":
         return n * 6.0 - 6.0
@@ -68,6 +70,8 @@ def tx_sow(mark):
         return n * 6.0 - 12.0
     if sig == "GAL_E5AI_FNAV":
         return float(n)
+    if sig == "GW_1202_NAV":
+        return n - ge.BDT_GPST
     return n * 3.0 - ge.BDT_GPST
 
 

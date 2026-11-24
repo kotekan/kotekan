@@ -185,7 +185,9 @@ def elev_tropo(rx, u):
     """(elevation deg, Saastamoinen slant delay m) of line of sight u from ECEF rx; no delay
     off the ground (a first step from a far prior can land anywhere)."""
     lat, lon, alt = gnss_pvt._ecef_to_llh(rx)
-    el = math.degrees(math.asin(float(u @ gnss_pvt._enu_axes(lat, lon)[2])))
+    el = math.degrees(
+        math.asin(min(1.0, max(-1.0, float(u @ gnss_pvt._enu_axes(lat, lon)[2]))))
+    )
     on_ground = -500.0 < alt < 9000.0 and el > 1.0
     return el, (gnss_atmos.tropo_delay_m(el, lat, alt) if on_ground else 0.0)
 
@@ -197,12 +199,75 @@ def keep_fit(res, floor):
     return [i for i, r in enumerate(res) if abs(r - med) <= lim]
 
 
+def grid_start(obs, centre, radius_m=4.0e6, step_m=1.0e5):
+    """The point on the ground near `centre` whose model range rates fit `obs` best, a common
+    bias taken out: a grid radius_m wide at step_m, then twice more, each ten times finer about
+    the best. The start for doppler_fix: a LEO satellite's range rate swings by km/s within a
+    pass, and a solve from the satellites' mean direction, ~800 km off, diverged (11-24). The
+    fit is each satellite's median misfit, averaged over the satellites, so one with most of
+    the rows does not choose alone (one pass fits a whole curve of points). Each row's satellite
+    is placed once, from `centre`; the grid points differ only in the line of sight."""
+    sub = obs[:: max(1, len(obs) // 300)]
+    sat_p, sat_v, rr, sat_id = [], [], [], []
+    for e, t, r in sub:
+        rng, _, u, v = geometry(e, centre, t)
+        sat_p.append(centre + rng * u)
+        sat_v.append(v)
+        rr.append(r)
+        sat_id.append((e["sys"], e["prn"]))
+    sat_p, sat_v, rr = np.array(sat_p), np.array(sat_v), np.array(rr)
+    groups = [np.array([i == k for i in sat_id]) for k in set(sat_id)]
+    best = centre
+    for _ in range(3):
+        lat, lon, _ = gnss_pvt._ecef_to_llh(best)
+        enu = gnss_pvt._enu_axes(lat, lon)
+        g = np.arange(-int(radius_m // step_m), int(radius_m // step_m) + 1) * step_m
+        ge_, gn_ = np.meshgrid(g, g)
+        pts = best + ge_.reshape(-1, 1) * enu[0] + gn_.reshape(-1, 1) * enu[1]
+        pts = R_EARTH * pts / np.linalg.norm(pts, axis=1, keepdims=True)
+        d = sat_p[None, :, :] - pts[:, None, :]
+        u = d / np.linalg.norm(d, axis=2, keepdims=True)
+        res = rr[None, :] - np.einsum("grk,rk->gr", u, sat_v)
+        res -= np.median(res, axis=1, keepdims=True)
+        cost = np.mean([np.median(np.abs(res[:, m]), axis=1) for m in groups], axis=0)
+        best = pts[int(np.argmin(cost))]
+        radius_m, step_m = 1.5 * step_m, step_m / 10.0
+    return best
+
+
+def sat_scatter(obs, half_s=5.0, floor=0.05):
+    """{(sys, prn): robust scatter (m/s) of each satellite's range rates about a line through
+    its neighbours within half_s}: each satellite's own measurement noise, with no position. The
+    bootstrap's GuoWang rows scatter ~0.25 m/s against MEO's ~0.02, and a LEO row moves the
+    position tens of times further per m/s, so they are weighted by it (11-24)."""
+    by = defaultdict(list)
+    for e, t, rr in obs:
+        by[(e.get("sys"), e.get("prn", id(e)))].append((t, rr))
+    out = {}
+    for k, v in by.items():
+        v.sort()
+        tt = np.array([x[0] for x in v])
+        rr = np.array([x[1] for x in v])
+        res = []
+        for i in range(len(v)):
+            m = np.abs(tt - tt[i]) <= half_s
+            if m.sum() >= 5:
+                res.append(rr[i] - np.polyfit(tt[m] - tt[i], rr[m], 1)[1])
+        out[k] = max(floor, 1.4826 * float(np.median(np.abs(res)))) if res else 1.0
+    return out
+
+
 def doppler_fix(obs, rx0, iters=30):
-    """Position and common range-rate bias from range rates. obs: [(e, t, rr_meas)]. Two
-    rounds: fit, drop outliers, fit again."""
+    """Position and common range-rate bias from range rates. obs: [(e, t, rr_meas)]. Each row
+    is weighted by its satellite's own scatter (sat_scatter). Two rounds: fit, drop outliers
+    (in those units), fit again."""
+    sig = sat_scatter(obs)
     rx = rx0.copy()
     n_all = len(obs)
     for _ in range(2):
+        w = np.array(
+            [1.0 / sig[(e.get("sys"), e.get("prn", id(e)))] for e, _, _ in obs]
+        )
         beta = 0.0
         for _ in range(iters):
             H, y = [], []
@@ -212,12 +277,12 @@ def doppler_fix(obs, rx0, iters=30):
                 H.append(list(-(v - rr_m * u) / rng) + [1.0])
                 y.append(rr - (rr_m + beta))
             H, y = np.array(H), np.array(y)
-            dx, *_ = np.linalg.lstsq(H, y, rcond=None)
+            dx, *_ = np.linalg.lstsq(H * w[:, None], y * w, rcond=None)
             rx, beta = rx + dx[:3], beta + dx[3]
             if np.linalg.norm(dx[:3]) < 0.1:
                 break
         res = y - H @ dx
-        kept = keep_fit(res, 0.5)
+        kept = keep_fit(res * w, 3.0)
         obs = [obs[i] for i in kept]
     rms = float(np.sqrt(np.mean(res[kept] ** 2)))
     return rx, beta, rms, len(obs), n_all - len(obs)
@@ -230,7 +295,8 @@ def code_fix(meas, rx0, sigma0_m=1e4, mask_deg=10.0, iters=16):
     uncertainty (sigma0_m, then three times the last step) waits until it does, unless too
     few would be left without it: a 20 ms chain resolves wrong whole periods from 1500 km.
     Once the position is within 10 km, satellites below mask_deg leave, and a final round
-    drops outliers. None with fewer measurements than unknowns plus one."""
+    drops outliers. None with fewer measurements than unknowns plus one, or fewer satellites
+    than unknowns."""
     rx = rx0.copy()
     use = list(range(len(meas)))
     sigma = sigma0_m
@@ -266,7 +332,10 @@ def code_fix(meas, rx0, sigma0_m=1e4, mask_deg=10.0, iters=16):
             n = round((rng / C - ms - clk[ch]) / T)
             H.append(list(-u) + [1.0 if c == ch else 0.0 for c in chains])
             y.append(C * (ms + n * T + clk[ch]) - rng)
-        if len(geo) < 3 + len(chains) + 1:
+        # each satellite gives one range however many rows it has: count satellites
+        recs = [meas[g[0]][1] for g in geo]
+        n_sat = len({(e.get("sys"), e.get("prn", id(e))) for e in recs})
+        if len(geo) < 3 + len(chains) + 1 or n_sat < 3 + len(chains):
             return None
         H, y = np.array(H), np.array(y)
         dx, *_ = np.linalg.lstsq(H, y, rcond=None)
@@ -324,8 +393,7 @@ def main(argv=None):
         if r["band"] not in sig:
             sig[r["band"]] = signals.get(r["band"])
         s = sig[r["band"]]
-        if s.constellation == "W":
-            continue
+        # GuoWang's rows count only with its own decoded orbits: Orbits has no TLE records
         if r.get("dop_meas_hz") is not None and r.get("rec_hop"):
             # a measured Doppler at the record (the bootstrap tracker's rows)
             t = gpst(FRAME0_UTC + r["rec_hop"] / float(HOPS_PER_S) - a.time_offset_s)
@@ -402,10 +470,13 @@ def main(argv=None):
         rx = np.array(gnss_pvt._llh_to_ecef(*(float(x) for x in a.prior.split(","))))
         report("prior", rx, "")
     else:
-        # The satellites in view are above the horizon: their mean direction is near zenith.
+        # The satellites in view are above the horizon: their mean direction is near zenith,
+        # and the range rates' best fit on a grid about it starts the solve.
         u = np.mean([sat_state(e, t)[0] for e, t, _ in obs_d], axis=0)
         rx = R_EARTH * u / np.linalg.norm(u)
         report("start (mean direction)", rx, "")
+        rx = grid_start(obs_d, rx)
+        report("start (grid)", rx, "")
         rx, beta, rms, n, drop = doppler_fix(obs_d, rx)
         report(
             "doppler",

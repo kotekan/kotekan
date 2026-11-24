@@ -9,12 +9,13 @@ import gnss_ephemeris as ge
 import gnss_skytime as st
 
 ROW = {"range_m": 2.25e7, "sat_clk_s": 1.2e-4}
-# a time count per signal: a CNAV TOW count, an F/NAV TOW, a B-CNAV2 SOW count
+# a time count per signal: a CNAV TOW count, an F/NAV TOW, a B-CNAV2 SOW count, a GuoWang SOW
 COUNT = {
     "GPS_L5_CNAV": 50000,
     "GPS_L2C_CNAV": 50000,
     "GAL_E5AI_FNAV": 300000,
     "BDS_B2A_BCNAV2": 100000,
+    "GW_1202_NAV": 300003,
 }
 
 
@@ -38,7 +39,11 @@ class TestSkyTime(unittest.TestCase):
     def test_week_rollover(self):
         # a message sent at the end of a week, labelled in the next; a B-CNAV2 frame at the end
         # of a BDT week starts 14 s into the next GPS week
-        for sig, count in (("GPS_L5_CNAV", 604800 // 6), ("BDS_B2A_BCNAV2", 201599)):
+        for sig, count in (
+            ("GPS_L5_CNAV", 604800 // 6),
+            ("BDS_B2A_BCNAV2", 201599),
+            ("GW_1202_NAV", 604797),
+        ):
             got = st.anchor_error_s(mark(sig, 7.0, count), ROW)
             self.assertAlmostEqual(got, 7.0, delta=1e-6, msg=sig)
 
@@ -50,6 +55,7 @@ class TestSkyTime(unittest.TestCase):
             ("GPS_L5_CNAV", 2400),
             ("GAL_E5AI_FNAV", 2400 - 1024),
             ("BDS_B2A_BCNAV2", 2400 - 1356),
+            ("GW_1202_NAV", 2400 - 1356),
         ):
             m = mark(sig, err)
             w = dict(mark(sig, err, COUNT[sig] + 2), wn=wn)

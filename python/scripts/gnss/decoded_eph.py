@@ -82,7 +82,12 @@ SV_POS = {
     "BDS_B1C_BCNAV1": ("beidou_bcnav1", "sv_position_bcnav1"),
     "BDS_B2A_BCNAV2": ("beidou_bcnav2", "sv_position_bcnav2"),
     "GW_CSK_RELAY": ("guowang_csk", "sv_position_relay"),
+    "GW_1202_NAV": ("gw_nav_predictor", "sv_position_gw"),
 }
+# Decoders whose clock is not the Kepler form above, (module, function): clk(eph, t_sow) -> s.
+SV_CLK = {"GW_1202_NAV": ("gw_nav_predictor", "sv_clock_gw")}
+# Constellations on BDT (GPST - 14 s): BeiDou, and GuoWang, whose every time field is BDT.
+BDT_SYS = ("C", "W")
 
 
 def _week_wrap(dt):
@@ -97,7 +102,7 @@ def toe_gpst_near(sys, toe_sow, gpst_now):
     """A decoded ephemeris's reference time (seconds of week) as continuous GPST, in the week
     that puts it within half a week of gpst_now: the `toe_gpst` of an entry. BeiDou's t_oe is
     BDT seconds of week (BDT = GPST - 14 s); GPS and Galileo count from the GPST week."""
-    toe = toe_sow - BDT_GPST if sys == "C" else toe_sow
+    toe = toe_sow - BDT_GPST if sys in BDT_SYS else toe_sow
     toe_gpst = int(gpst_now // 604800) * 604800 + toe
     if toe_gpst - gpst_now > 302400:
         toe_gpst -= 604800
@@ -110,6 +115,9 @@ def _sat_clock(eph, sys, signal, t_sow):
     """Broadcast SV clock bias (s): af0 + af1*dt + af2*dt^2 about t0c plus the relativistic
     term F*e*sqrtA*sin(E), as sat_pos_clk computes them; dt and tk are week-wrapped. None when
     the decoder does not carry clock terms for this signal."""
+    if signal in SV_CLK:
+        mod, fn = SV_CLK[signal]
+        return getattr(importlib.import_module(mod), fn)(eph, t_sow)
     fields = CLOCK_FIELDS.get(signal)
     if not fields or not all(k in eph for k in fields + KEPLER_FIELDS):
         return None
@@ -197,7 +205,7 @@ def state(sys, signal, eph, t_gpst, dt=0.5):
     mod, fn = SV_POS[signal]
     sv_pos = getattr(importlib.import_module(mod), fn)
     ts = t_gpst % 604800.0
-    if sys == "C":
+    if sys in BDT_SYS:
         ts = (ts + BDT_GPST) % 604800.0
     a, b = sv_pos(eph, ts - dt), sv_pos(eph, ts + dt)
     vel = [(q - p) / (2.0 * dt) for p, q in zip(a, b)]
@@ -226,7 +234,7 @@ def predict_from_decoders(entries, lat, lon, alt, t_utc, mask_deg=0.0, max_age=1
             continue
         # BeiDou runs on BDT (= GPST - 14 s) and its decoded t_oe is BDT-sow, so the propagator
         # must be fed BDT seconds-of-week. Galileo GST and GPS GPST share the sow origin here.
-        ts = (t_sow + BDT_GPST) % 604800 if sys == "C" else t_sow
+        ts = (t_sow + BDT_GPST) % 604800 if sys in BDT_SYS else t_sow
         if signal in LAST_RESORT and (sys, prn) in out:
             continue
         v = predict_one(sv_pos, eph, sys, signal, rx, lat, lon, ts, toe_age)

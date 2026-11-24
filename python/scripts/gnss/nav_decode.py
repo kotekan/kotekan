@@ -58,6 +58,8 @@ from gnss_broker import sky  # noqa: E402
 # The toe field travels with each exported ephemeris: the broker places it in GPS time with
 # decoded_eph.toe_gpst_near.
 DECODERS = {
+    # GuoWang's low-rate message: the sender's own orbit and clock; no BRDC to check it against.
+    "GW_1202_NAV": ("W", "gw_nav_predictor", "GwNavPredictor", None, "toe"),
     "GPS_L5_CNAV": (
         "G",
         "cnav_predictor",
@@ -227,8 +229,9 @@ def write_timemarks(srcs, path, now):
     """Each CRC-checked message as a time mark, to measure the capture's time anchor against
     (gnss_skytime.py): the host-labelled UTC of its first symbol's edge, to a record (1 ms), and
     the time count it carries, as broadcast: a CNAV TOW count (6 s), an F/NAV page's TOW (s), a
-    B-CNAV2 frame's SOW count (3 s). With it the week number where the message has one (a CNAV
-    type 10, F/NAV pages 1-3, a B-CNAV2 type 10). Each message's edge is placed when it decodes:
+    B-CNAV2 frame's SOW count (3 s), a GuoWang subframe's BDT SOW (s). With it the week number
+    where the message has one (a CNAV type 10, F/NAV pages 1-3, a B-CNAV2 type 10, GuoWang page
+    1). Each message's edge is placed when it decodes:
     edges move ~3 us/s against the slot grid, and decoders keep messages for minutes."""
     marks = []
     for s in srcs:
@@ -272,6 +275,18 @@ def write_timemarks(srcs, path, now):
                     }
                     if mt == 10:
                         mark["wn"] = nav_fields._read(bits, *beidou_bcnav2.WN_10, "u")
+                    marks.append(mark)
+            elif sig == "GW_1202_NAV":
+                for sow, (page, t_host, wn) in sorted(st.marks.items()):
+                    mark = {
+                        "signal": sig,
+                        "prn": prn,
+                        "t_host": round(t_host, 5),
+                        "tow": sow,
+                        "type": page,
+                    }
+                    if wn is not None:
+                        mark["wn"] = wn
                     marks.append(mark)
     write_atomic({"schema": 1, "t": round(now, 2), "marks": marks}, path)
 
@@ -398,7 +413,7 @@ def report(srcs, store, dhw, eph_out):
                     eph = None
                 xc = (
                     xcheck(brdc, sysc, prn, eph, log)
-                    if (eph is not None and brdc)
+                    if (eph is not None and brdc and xcheck)
                     else ""
                 )
                 log(
