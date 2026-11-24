@@ -83,9 +83,16 @@ public:
         // Telescope
         const auto& chord_telescope = Telescope::instance().cast<CHORDTelescope>();
 
+	// HACK ugh
+	const std::vector<Buffer*> metadata_sources;
+	//metadata_sources.push_back(
+        const auto local_coarse_freq = wait_for_coarse_freq(metadata_sources, unique_name);
+
         // Upchannelization schedule
         const auto& upchan_schedule =
-            UpchannelizationSchedule::instance(config, upchannelization_schedule_name);
+	  //UpchannelizationSchedule::instance(config, upchannelization_schedule_name);
+	  UpchannelizationSchedule(config, upchannelization_schedule_name, *local_coarse_freq,
+				   unique_name);
 
         // Calculate dish positions
         //const float dish_separation_x = chord_telescope.get_feed_separation_x_m();
@@ -179,25 +186,26 @@ public:
         assert(std::ptrdiff_t(W2_buffer->frame_size) == W2_frame_size);
 
         // Set metadata
-        frb2_beam_positions_buffer->allocate_ndarray_frame_desc<float, 2>(
-            "frb2_beam_positions", {frb2_num_beams, 2}, {"R", "X/Y"});
-        frb2_beam_positions_buffer->allocate_new_metadata_object(frame_id);
+	// dim_scalings ??
+	frb2_beam_positions_buffer->ensure_frame_desc(kotekan::GenericNDArray::describe(kotekan::float32, "frb2_beam_positions", {frb2_num_beams, 2}, {"R", "X/Y"}, {1, 1}));
+	frb2_beam_positions_buffer->allocate_new_metadata_object(frame_id);
         const auto& frb2_beam_positions_meta =
             get_chord_metadata(frb2_beam_positions_buffer->get_metadata(frame_id));
-        frb2_beam_positions_meta->set_from_frame_desc(
-            frb2_beam_positions_buffer->get_ndarray_frame_desc());
+        //frb2_beam_positions_meta->set_from_frame_desc(
+	//    frb2_beam_positions_buffer->get_ndarray_frame_desc());
         frb2_beam_positions_meta->set_fpga_seq_num(0);           // ???
         frb2_beam_positions_meta->set_time_downsampling_fpga(1); // ???
 
-        W2_buffer->allocate_ndarray_frame_desc<float16_t, 4>("W2",
+        W2_buffer->ensure_frame_desc(kotekan::GenericNDArray::describe(kotekan::float16, "W2",
                                                              {frb2_num_frequencies,
                                                               frb2_num_beams,
                                                               frb1_num_beams_y,
                                                               frb1_num_beams_x},
-                                                             {"Fbar", "R", "beamQ", "beamP"});
+								       {"Fbar", "R", "beamQ", "beamP"},
+								       {1, 1, 1, 1}));
         W2_buffer->allocate_new_metadata_object(frame_id);
         const auto& W2_meta = get_chord_metadata(W2_buffer->get_metadata(frame_id));
-        W2_meta->set_from_frame_desc(W2_buffer->get_ndarray_frame_desc());
+        //W2_meta->set_from_frame_desc(W2_buffer->get_ndarray_frame_desc());
         W2_meta->set_fpga_seq_num(0);           // ???
         W2_meta->set_time_downsampling_fpga(1); // ???
         W2_meta->set_coarse_freq(coarse_freq);
