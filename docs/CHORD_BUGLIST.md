@@ -1187,6 +1187,17 @@ rho² exceeds 0.99 is dropped, so a very bright satellite's own cal can end with
 
 ## Open — bench or offline, no deployment at all
 
+### #243 — the node's lane projection leaves ~8x the imprint of an ideal MEO projector in the fully laned stretch (2026-11-24, KV: "I would like to dig into the 8x expectations, but let's file that a buglist item and we'll come back to it")
+**What [archive, 11-20 N2]:** in 1212.3-1218 MHz the beam statistic's negative eigen-part (the unrecorded projector's
+hole) reads 617 on the node against 98 for 24 ideal moving MEO lanes; per bin the node has 11-15 modes below 0.1 and
+another 14 between 0.1 and 0.5, against 18 and 6 ideal. Same on all 14 comb phases. Write-up:
+`~/gnss/fixtures/deproj_1124/README.md`, "Fourth pass".
+**Open:** why the nulls are part-deep. Candidates: lanes entering and leaving inside a 21 s bin (coherence gate,
+k_lanes_max budget order, fleet-lane age), direction jitter frame to frame. A recorded mean projector removes the
+imprint either way, so this sets how much sky the lanes cost, not the floor.
+**Next:** with the mean projector recorded, read P̄'s spectrum per bin against the ideal; a lane dump over one bin
+gives the per-frame lane set.
+
 ### #237 — the array-mean beam's own phase and amplitude from fast GuoWang crossings: think it through once the GW birds track well (2026-11-22, KV: "we should keep this option in mind, maybe add a todo to think it through carefully once the GW birds track well")
 **What:** the complex beam maps (`~/gnss/fixtures/beamjones_1121/`, 11-21) give every feed over the coherent array
 mean, g_e(u)/Ḡ(u), per channel, X and Y. Ḡ(u) itself (pieces 2 and 3: magnitude and the phase every feed shares) cancels in
