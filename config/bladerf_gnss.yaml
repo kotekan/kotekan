@@ -1305,6 +1305,9 @@ navsym_send:
     # cap, rather than close and lose what is in flight.
     send_timeout_s: 10
     queue_max: 200000
+    # Up to 20 ms of a stream's symbols per record: one symbol at 50 sps, 20 at B2b's 1000 sps.
+    # One record per symbol (~8000/s with B2b) backed the path up to seconds (11-24).
+    batch_s: 0.02
 
 telem_buf:
     kotekan_buffer: standard

@@ -37,8 +37,10 @@
  * messages and posts here. Symbol i then goes out as index sv + (i - k) with sign x sign, and
  * the records are flagged resolved. A row of an unanchored stream is dropped.
  *
- * One reader thread per input takes its frames as they fill; the stage's thread writes the
- * records, one per row, numbered per connection, and a heartbeat after @c heartbeat_s with
+ * One reader thread per input takes its frames as they fill and gathers each stream's symbols
+ * into a record, which it hands on once the record spans @c batch_s of symbols or its first
+ * symbol was decided @c batch_s ago, or the next symbol does not follow on. The stage's thread
+ * writes the records, numbered per connection, and a heartbeat after @c heartbeat_s with
  * nothing to send. A send that fails or takes over @c send_timeout_s closes the connection,
  * which is retried every @c reconnect_time; meanwhile the records are dropped and counted, and
  * the inputs are never held back.
@@ -61,6 +63,8 @@
  * @conf heartbeat_s    Double (default 1). Idle time before a heartbeat.
  * @conf queue_max      Int (default 4096). Records held for the writer; the oldest beyond are
  *                      dropped.
+ * @conf batch_s        Double (default 0.02). The most symbol time, and the longest wait, a
+ *                      record gathers: one record per symbol at 50 sps, 20 at B2b's 1000.
  * @conf anchor_ttl_s   Double (default 600). An anchor whose stream has sent nothing this long
  *                      is forgotten.
  */
@@ -87,9 +91,12 @@ private:
         int64_t stream_id;
         int64_t sym0;
         std::vector<int8_t> signs;
-        double t_dec;
-        double rx_utc;
+        double t_dec;  ///< when its first symbol was decided
+        double rx_utc; ///< its first symbol's start, host-labelled
+        double sym_dt; ///< the symbol period on the receive-time grid, s
     };
+    /// Queue one record, dropping the oldest past queue_max; called with _m held.
+    void enqueue(Pending&& p);
     using Key = std::tuple<size_t, int, int64_t>; ///< (input, prn, stream_id)
 
     std::vector<Buffer*> _in_bufs;
@@ -97,7 +104,7 @@ private:
     std::vector<int> _sig;
     std::string _server_ip;
     int _server_port;
-    double _reconnect_s, _send_timeout_s, _heartbeat_s, _anchor_ttl_s;
+    double _reconnect_s, _send_timeout_s, _heartbeat_s, _anchor_ttl_s, _batch_s;
     size_t _queue_max;
 
     std::mutex _m; ///< guards everything below

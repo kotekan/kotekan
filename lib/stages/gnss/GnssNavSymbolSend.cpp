@@ -49,6 +49,7 @@ GnssNavSymbolSend::GnssNavSymbolSend(Config& config, const std::string& unique_n
     _heartbeat_s = config.get_default<double>(unique_name, "heartbeat_s", 1.0);
     _anchor_ttl_s = config.get_default<double>(unique_name, "anchor_ttl_s", 600.0);
     _queue_max = (size_t)config.get_default<int>(unique_name, "queue_max", 4096);
+    _batch_s = config.get_default<double>(unique_name, "batch_s", 0.02);
 
     kotekan::restServer::instance().register_post_callback(
         unique_name + "/set_anchors", std::bind(&GnssNavSymbolSend::set_anchors_callback, this,
@@ -64,9 +65,19 @@ GnssNavSymbolSend::~GnssNavSymbolSend() {
     close_connection();
 }
 
+void GnssNavSymbolSend::enqueue(Pending&& p) {
+    if (_queue.size() >= _queue_max) {
+        _queue.pop_front();
+        ++_n_dropped_queue;
+    }
+    _queue.push_back(std::move(p));
+}
+
 void GnssNavSymbolSend::read_input(size_t idx) {
     Buffer* buf = _in_bufs[idx];
     int id = 0;
+    // Each stream's batch being filled: (prn, stream_id) -> its record.
+    std::map<std::pair<int, int64_t>, Pending> open;
     while (!stop_thread) {
         const uint8_t* frame = buf->wait_for_full_frame(unique_name, id);
         if (frame == nullptr)
@@ -87,20 +98,39 @@ void GnssNavSymbolSend::read_input(size_t idx) {
                 _unanchored.erase({idx, row.prn});
                 const gnss::NavSymAnchor& a = it->second.first;
                 it->second.second = now;
-                Pending p{idx,
-                          row.prn,
-                          row.stream_id,
-                          a.sv + (row.first - a.k),
-                          {},
-                          row.t_dec,
-                          row.t0 + (double)row.first * row.sym_dt};
-                for (int i = 0; i < row.n && i < gnss::NAV_SYM_MAX; ++i)
-                    p.signs.push_back((int8_t)(row.sign[i] * a.sign));
-                if (_queue.size() >= _queue_max) {
-                    _queue.pop_front();
-                    ++_n_dropped_queue;
+                const int64_t sym0 = a.sv + (row.first - a.k);
+                auto o = open.find({row.prn, row.stream_id});
+                // A batch holds contiguous symbols only.
+                if (o != open.end() && o->second.sym0 + (int64_t)o->second.signs.size() != sym0) {
+                    enqueue(std::move(o->second));
+                    open.erase(o);
+                    o = open.end();
                 }
-                _queue.push_back(std::move(p));
+                if (o == open.end())
+                    o = open.emplace(std::make_pair(row.prn, row.stream_id),
+                                     Pending{idx,
+                                             row.prn,
+                                             row.stream_id,
+                                             sym0,
+                                             {},
+                                             row.t_dec,
+                                             row.t0 + (double)row.first * row.sym_dt,
+                                             row.sym_dt})
+                            .first;
+                for (int i = 0; i < row.n && i < gnss::NAV_SYM_MAX; ++i)
+                    o->second.signs.push_back((int8_t)(row.sign[i] * a.sign));
+            }
+            // A batch goes out once it spans batch_s of symbols or its first symbol was decided
+            // batch_s ago.
+            for (auto o = open.begin(); o != open.end();) {
+                const Pending& p = o->second;
+                if ((double)p.signs.size() * p.sym_dt >= _batch_s - 1e-9
+                    || now - p.t_dec >= _batch_s) {
+                    enqueue(std::move(o->second));
+                    o = open.erase(o);
+                } else {
+                    ++o;
+                }
             }
         }
         _cv.notify_one();
