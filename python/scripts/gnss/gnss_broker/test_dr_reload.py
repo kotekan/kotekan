@@ -203,6 +203,20 @@ class TestT0mExact(unittest.TestCase):
             1e-12,
         )
 
+    def test_a_failed_first_reload_still_sets_t0m(self):
+        # no BRDC at start: the decoded-orbit fallback predicts from t0m all the same
+        c = _ctx()
+        c.lc_seg, c.code_len = 100, 10230
+        c.utc0_sample0 = self.GPST0
+        dr._dr_apply_reload(
+            c, {"eph": None, "dcb": None, "has_dcb": False, "error": "no BRDC"}
+        )
+        self.assertIsNone(c.dr_state["eph"])
+        self.assertLess(
+            abs(c.dr_state["t0m"] - dr.t_mod_code(self.GPST0, 100, 10230, 10.23e6)),
+            1e-12,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -21,12 +21,42 @@ _SKY_BRIDGE_REFRESH_S = 60.0
 _SKY_RETRY_S = 600.0
 
 # How far from its toe a GPS, Galileo or BeiDou record may predict the sky brdc_predict serves
-# (hints, visibility, the bias solve), so a receiver offline or powered off for days still hints
-# its search from the cache. Against fresh records at L5 (11-23): 1-15 days old, the Doppler is
-# off by 0.1-2 Hz median and 76 Hz at most, the elevation by 0.4 deg at most; 4 months old, by
-# 8-57 Hz median and 270 Hz at most. The dead-reckoned code model keeps best_eph's 4 h window:
-# the range is already ~100 m off at a day. GLONASS and SBAS records keep theirs too.
-HINT_MAX_AGE_S = 30 * 86400.0
+# (hints, visibility, the bias solve), so a receiver offline or powered off for months still
+# hints its search from the cache, as long as it has not moved: against fresh records at L5
+# (11-23), 1-15 days old the Doppler is off by 0.1-2 Hz median and 76 Hz at most, the elevation
+# by 0.4 deg at most; 4 months old, by 8-57 Hz median and 270 Hz at most, inside the narrowed
+# search's 500 Hz. The dead-reckoned code model keeps best_eph's 4 h window: the range is
+# already ~100 m off at a day. GLONASS and SBAS records keep theirs too.
+HINT_MAX_AGE_S = 120 * 86400.0
+
+
+def _with_decoded(reader, pa, pb, lat, lon, alt_m, t_utc, sysc, dt):
+    """Put in predict_all's rows pa (at t_utc) and pb (dt later) the decoded ephemerides' rows,
+    those with a clock (the hint's sat_clk_s), for the satellites whose BRDC record is missing,
+    or past best_eph's 4 h and further from its toe than the decoded issue: fresh BRDC first,
+    then the receiver's own decoded orbits, then stale BRDC. Nothing is evaluated while the BRDC
+    is fresh for every satellite the reader holds, the usual case."""
+    import decoded_eph
+
+    t = decoded_eph.gpst_of_utc(t_utc)
+    near = {}
+    for e in reader.entries(t, sys=sysc):
+        near[(e[0], e[1])] = min(near.get((e[0], e[1]), float("inf")), abs(t - e[5]))
+    want = set()
+    for k, age in near.items():
+        brdc_age = abs(pa[k]["toe_age_s"]) if k in pa else float("inf")
+        if brdc_age > 14400.0 and age < brdc_age:
+            want.add(k)
+    if not want:
+        return
+    ents = [e for e in reader.entries(t, sys=sysc) if (e[0], e[1]) in want]
+    for rows, t_at in ((pa, t_utc), (pb, t_utc + timedelta(seconds=dt))):
+        got = decoded_eph.predict_from_decoders(
+            ents, lat, lon, alt_m, t_at, mask_deg=-90.0, max_age=HINT_MAX_AGE_S
+        )
+        for k, v in got.items():
+            if v["sat_clk_s"] is not None:
+                rows[k] = v
 
 
 def brdc_predict(
@@ -102,6 +132,11 @@ def brdc_predict(
         max_age=age,
         sysc=sysc,
     )
+    # The receiver's own decoded orbits (state["decoded"], a decoded_eph.Reader over the
+    # ephemeris cache) where the BRDC is stale or has nothing: a box offline longer than its BRDC
+    # cache, or never online, hints from what it decoded.
+    if sysc in ("G", "E", "C") and state.get("decoded") is not None:
+        _with_decoded(state["decoded"], pa, pb, lat, lon, alt_m, t_utc, sysc, dt)
     C = C_LIGHT
     out = {}
     for (s, prn), v in pa.items():

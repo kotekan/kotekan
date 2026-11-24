@@ -1165,6 +1165,68 @@ def test_cache_falls_back_to_the_newest_daily():
     check(sup._cached_sources(when, "/nonexistent/cache") == [], "no cache directory")
 
 
+def test_decoded_orbits_before_stale_brdc():
+    """The hint sky takes, per satellite, a fresh BRDC record (within 4 h), else the receiver's
+    own decoded issue if it is nearer its toe than the BRDC's, else the stale BRDC; a decoded
+    issue with no clock is never used."""
+    import decoded_eph
+    from gnss_broker import sky
+
+    print("\nbrdc_predict: fresh BRDC, then decoded orbits, then stale BRDC")
+    day = 86400.0
+    ge = _FakeEphMod()
+    ge.visible = {
+        ("G", p): dict(
+            az=0.0,
+            el=10.0,
+            range_m=2.0e7,
+            range_rate_mps=0.0,
+            sat_clk_s=0.0,
+            toe_age_s=age,
+        )
+        for p, age in ((1, 0.0), (2, 30 * day), (3, 30 * day))
+    }
+    # PRN -> the decoded issue's age; PRN 5's has no clock
+    dec = {1: 3600.0, 2: day, 3: 60 * day, 4: 10 * day, 5: day}
+
+    class _Reader(object):
+        def entries(self, gpst_now, sys=None):
+            return [
+                ("G", p, "GPS_L5_CNAV", {}, None, gpst_now - a) for p, a in dec.items()
+            ]
+
+    def _stub(ents, lat, lon, alt, t, **kw):
+        return {
+            (e[0], e[1]): dict(
+                az=0.0,
+                el=10.0,
+                range_m=2.0e7,
+                range_rate_mps=-1000.0,
+                sat_clk_s=None if e[1] == 5 else 0.0,
+                toe_age_s=0.0,
+            )
+            for e in ents
+        }
+
+    real = decoded_eph.predict_from_decoders
+    decoded_eph.predict_from_decoders = _stub
+    try:
+        from datetime import datetime, timezone
+
+        state = {"mod": ge, "eph": {"x": 1}, "eph_t": time.time(), "decoded": _Reader()}
+        out = sky.brdc_predict(
+            state, 49.32, -119.62, 545.0, "G", 1, datetime.now(timezone.utc), 1176.45e6
+        )
+    finally:
+        decoded_eph.predict_from_decoders = real
+    src = {p: "decoded" if v[0] > 0.0 else "brdc" for p, v in out.items()}
+    check(
+        src == {1: "brdc", 2: "decoded", 3: "brdc", 4: "decoded"},
+        "fresh BRDC kept, stale BRDC beaten by a nearer decoded issue, a missing satellite "
+        "filled, no clock no row (%s)" % src,
+    )
+
+
 def main():
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if here not in sys.path:
@@ -1188,6 +1250,7 @@ def main():
     test_fetch_brdc_off_the_loop()
     test_hint_sky_outlives_the_seed_window()
     test_cache_falls_back_to_the_newest_daily()
+    test_decoded_orbits_before_stale_brdc()
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
     return 1 if _fails else 0
 

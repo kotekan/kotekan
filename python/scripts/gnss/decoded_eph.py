@@ -195,6 +195,46 @@ def expand(paths):
     return out
 
 
+class Reader:
+    """Decoded ephemerides from files and cache directories (expand), each file re-read when it
+    changes: predict_from_decoders' entries for every satellite they hold. A file that cannot be
+    read keeps what it last gave."""
+
+    def __init__(self, paths):
+        self.paths = list(paths)
+        self.files = {}  # path -> (mtime_ns, its rows)
+
+    def entries(self, gpst_now, sys=None):
+        out = []
+        for path in expand(self.paths):
+            try:
+                mt = os.stat(path).st_mtime_ns
+                if self.files.get(path, (None,))[0] != mt:
+                    with open(path) as fh:
+                        doc = json.load(fh)
+                    rows = [
+                        r
+                        for r in doc.get("eph", [])
+                        if r.get("signal") in SV_POS
+                        and r.get("toe_field") in r.get("eph", {})
+                    ]
+                    self.files[path] = (mt, rows)
+            except (OSError, ValueError):
+                pass
+            for r in self.files.get(path, (None, []))[1]:
+                if sys is not None and r["sys"] != sys:
+                    continue
+                mod, fn = SV_POS[r["signal"]]
+                toe = r.get("toe_gpst")
+                if toe is None:
+                    toe = toe_gpst_near(r["sys"], r["eph"][r["toe_field"]], gpst_now)
+                sv_pos = getattr(importlib.import_module(mod), fn)
+                out.append(
+                    (r["sys"], int(r["prn"]), r["signal"], r["eph"], sv_pos, toe)
+                )
+        return out
+
+
 def load_files(paths):
     """{(sys, prn): [(signal, eph, toe_field)]} from nav_decode.py and guowang_csk.py --eph-out
     files and ephemeris cache directories: the satellites' own ephemerides, for a receiver with

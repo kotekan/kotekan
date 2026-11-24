@@ -2653,6 +2653,15 @@ def _dr_apply_reload(ctx, res):
     stalled that long holds up the telemetry fold: windows older than the telemetry ring's depth are
     evicted unfolded, which breaks the fleet-ADR arcs. Nothing here re-seeds: dr_seed reads the new
     model the same way it read the old one."""
+    # Exact, never `% ctx.drp.t_code`: the double period's error times 1.5e10 periods is tens of
+    # nanoseconds, and differs between code periods (t_mod_code). Set whether or not the reload
+    # succeeded: the decoded-orbit fallback models from it too.
+    ctx.dr_state["t0m"] = t_mod_code(
+        ctx.dr_eph_mod.gpst_of_utc(ctx.utc0_sample0),
+        ctx.lc_seg,
+        ctx.code_len,
+        ctx.args.chip_rate_hz,
+    )
     if res["error"]:
         _log(
             "dead-reckon: BRDC unavailable (%s); %s"
@@ -2667,14 +2676,6 @@ def _dr_apply_reload(ctx, res):
         return
     ctx.dr_state["eph"] = res["eph"]
     ctx.dr_state["eph_t"] = ctx.drp.now_w
-    # Exact, never `% ctx.drp.t_code`: the double period's error times 1.5e10 periods is tens of
-    # nanoseconds, and differs between code periods (t_mod_code).
-    ctx.dr_state["t0m"] = t_mod_code(
-        ctx.dr_eph_mod.gpst_of_utc(ctx.utc0_sample0),
-        ctx.lc_seg,
-        ctx.code_len,
-        ctx.args.chip_rate_hz,
-    )
     if res["has_dcb"]:
         ctx.dr_state["dcb"] = res["dcb"]
         ctx.dr_state["dcb_t"] = ctx.drp.now_w
@@ -3296,6 +3297,11 @@ def stage_dead_reckon(ctx):
                                     _v["sat_clk_s"] = _clk[_k]["sat_clk_s"]
                                     if _rows is ctx.drp.pd:
                                         _n_clk += 1
+                    # A row with no clock has no code phase to model.
+                    for _rows in (ctx.drp.pd, ctx.drp.pd2, pd0):
+                        _none = [k for k, v in _rows.items() if v["sat_clk_s"] is None]
+                        for _k in _none:
+                            del _rows[_k]
                     if _now() - ctx.decfb_log_t[0] > 60.0:
                         ctx.decfb_log_t[0] = _now()
                         _log(
