@@ -160,6 +160,23 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  *         @buffer_format   NDArray float32 [num_freq_per_n2k_frame, num_polarizations,
  *                          num_dishes, 2]
  *         @buffer_metadata chordMetadata, with the correlation frames' coarse_freq
+ * @buffer  in_proj_basis_buf  Optional, with out_proj_mean_buf: the directions GnssN2Project
+ * projected each frame's live channels with (its basis_buf). Consumed 1:1 with the correlation
+ * frames and checked against them by FPGA sequence number.
+ *         @buffer_format   GnssN2Project's basis record (GnssN2Project.hpp), no metadata
+ * @buffer  out_proj_mean_buf  Optional: per bin, the projected-out part averaged over the
+ * frames accumulated into it, weighted as the visibilities are (by each frame's valid samples
+ * n_s): C = sum_s n_s Q_s Q_s^H / sum_s n_s. The bin's visibilities are then those of
+ * sum_s n_s P_s V_s P_s / sum_s n_s, with mean projector I - C, and C is fringestopped with
+ * them. One frame per bin, without waiting: a bin with no empty frame is dropped and counted
+ * (kotekan_N2accumulate_proj_mean_dropped_total). Layout, little-endian, version 1:
+ *  - header, 64 bytes: int64 fpga_start_tick, ticks (the bin's span); double t_start (unix
+ *    s); int32 version, n (stations), n_slots, fringestop, magic 0x4e41454d ("MEAN");
+ *  - int32 stations[n]: the stations' indices in the output order, ascending;
+ *  - n_slots slots of 16 + 4 n (n + 1) bytes: int32 freq_id, n_frames (frames accumulated);
+ *    int64 n_valid (their valid samples, the visibilities' normalisation); complex<float> C's
+ *    upper triangle over the stations (i <= j, row-major).
+ *         @buffer_format   Raw bytes, no metadata
  * @buffer  out_buf         The accumulated and tagged data.
  *      @buffer_format N2Buffer. layout=FullUpperTri, num_ev=0
  *      @buffer_metadata N2Metadata
@@ -295,7 +312,34 @@ private:
     Buffer* in_rfiframemask_buf;  /// Buffer containing input rfiframemask
     Buffer* in_bad_feed_mask_buf; /// Optional buffer containing the bad feed mask; may be null
     Buffer* in_gains_buf;         /// Optional buffer containing the gains to record; may be null
+    Buffer* in_proj_basis_buf;    /// Optional GnssN2Project basis record; may be null
+    Buffer* out_proj_mean_buf;    /// The mean projector per bin, with in_proj_basis_buf
     Buffer* out_buf;              /// Output for the main vis dataset only
+
+    // The mean projector (in_proj_basis_buf), its geometry taken from the first basis frame
+    int _proj_n = 0;
+    int _proj_slots = 0;
+    size_t _proj_head_bytes = 0;
+    size_t _proj_slot_bytes = 0;
+    std::vector<int> _proj_stations;    ///< input order
+    std::vector<int> _proj_out;         ///< station positions in ascending output index
+    std::vector<int> _proj_slot;        ///< per frequency: its basis slot, -1 if none
+    std::vector<int32_t> _proj_freq_id; ///< per slot
+    /// per slot: sum_s n_s Q_s Q_s^H, real then imaginary [n][n] planes, upper triangle used
+    std::vector<double> _proj_acc;
+    std::vector<double> _proj_tmp; ///< per slot: one direction, real then imaginary [n]
+    std::vector<int64_t> _proj_n_valid;
+    std::vector<int32_t> _proj_frames;
+    int _proj_mean_frame_id = 0;
+    /// Take the basis record's geometry from its first frame and map its slots onto the
+    /// frequencies of @p coarse_freq
+    void init_proj(const uint8_t* basis, const std::vector<int>& coarse_freq);
+    /// Add @p count Q Q^H of the slot in @p basis_t (one sub-integration's slots), with the
+    /// fringestop @p phase when on
+    void accum_proj(int slot, const uint8_t* basis_t, int32_t count,
+                    const std::vector<std::complex<float>>& phase);
+    /// Write the bin's mean projector (or count a drop) and reset the sums
+    void output_proj_mean(kotekan::prometheus::Counter& dropped);
 
     // Parameters saved from the config files
     const int64_t _num_freq_per_n2k_frame;

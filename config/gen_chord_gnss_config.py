@@ -4234,6 +4234,21 @@ def main():
         help="frames of slack between the lane-dump gate and its writer (default %(default)s)",
     )
     ap.add_argument(
+        "--proj-mean",
+        action="store_true",
+        help="record the mean projector: GnssN2Project's basis record into N2Accumulate, which "
+        "writes per bin the projected-out part averaged as the visibilities are, under "
+        "<record_dir>/projmean (N2Accumulate.hpp). Needs --n2-project-source eigen or lanes",
+    )
+    ap.add_argument(
+        "--proj-mean-frames-per-file",
+        type=int,
+        default=171,
+        metavar="N",
+        dest="proj_mean_frames_per_file",
+        help="mean-projector bins per file (default %(default)s, ~1 h of 21 s bins)",
+    )
+    ap.add_argument(
         "--elem-dir-publish",
         choices=["off", "all"],
         default="off",
@@ -5098,6 +5113,58 @@ def main():
                 sys.stderr.write(
                     "  gpu%d: lane dump over %d channels, %.1f MB/frame every %.1f s\n"
                     % (_gpu, _nch, (64 + _nch * _slot) / 1e6, args.lane_dump_period_s)
+                )
+            if args.proj_mean and _nch:
+                # The basis record (GnssN2Project.hpp) 1:1 with the correlation frames, and
+                # N2Accumulate's mean projector per bin (N2Accumulate.hpp), to the sink core.
+                if args.n2_project_source == "lanes+residual":
+                    raise SystemExit(
+                        "--proj-mean needs --n2-project-source eigen or lanes"
+                    )
+                _k = (
+                    _stage["k_lanes_max"]
+                    if args.n2_project_source == "lanes"
+                    else _stage["k_max"]
+                )
+                _n = len(_st)
+                _nint = int(out.get("samples_per_data_set", 8192)) // int(
+                    out.get("sub_integration_ntime", 8192)
+                )
+                _pb, _pm = "gnss%d_proj_basis" % _gpu, "gnss%d_proj_mean" % _gpu
+                out[_pb] = {
+                    "kotekan_buffer": "standard",
+                    "num_frames": out[_corr]["num_frames"],
+                    "frame_size": 64 + 4 * _n + _nint * _nch * (16 + 8 * _k * _n),
+                }
+                out[_pm] = {
+                    "kotekan_buffer": "standard",
+                    "num_frames": 4,
+                    "frame_size": 64 + 4 * _n + _nch * (16 + 4 * _n * (_n + 1)),
+                }
+                _stage["basis_buf"] = _pb
+                out["n2_accumulate"]["accum_%d" % _gpu]["in_proj_basis_buf"] = _pb
+                out["n2_accumulate"]["accum_%d" % _gpu]["out_proj_mean_buf"] = _pm
+                out["gnss%d_proj_mean_sink" % _gpu] = {
+                    "kotekan_stage": "rawFileWrite",
+                    "in_buf": _pm,
+                    "base_dir": (args.record_dir or cfg["runtime"]["record_dir"])
+                    + "/projmean",
+                    "file_name": "%s_gnss%d_projmean" % (args.node, _gpu),
+                    "file_ext": "raw",
+                    "prefix_hostname": False,
+                    "num_frames_per_file": args.proj_mean_frames_per_file,
+                    "continue_numbering": True,
+                    "create_base_dir": True,
+                    "cpu_affinity": [_pool[(_gpu + 7) % len(_pool)]],
+                }
+                sys.stderr.write(
+                    "  gpu%d: mean projector over %d channels, basis %.2f MB/frame, %.2f MB/bin\n"
+                    % (
+                        _gpu,
+                        _nch,
+                        out[_pb]["frame_size"] / 1e6,
+                        out[_pm]["frame_size"] / 1e6,
+                    )
                 )
             _buf = copy.deepcopy(out[_corr])  # no YAML aliases
             out["gnss_n2_proj_buffer" + _suf] = _buf

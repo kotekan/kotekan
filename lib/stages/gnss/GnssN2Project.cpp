@@ -225,6 +225,15 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
              "candidates",
              lane_dump_period_s, dump_buf->buffer_name, dump_slots, lane_dump_max_cand);
     }
+    if (config.exists(unique_name, "basis_buf")) {
+        if (use_lanes && use_residual)
+            FATAL_ERROR("GnssN2Project: basis_buf needs source eigen or lanes, not {:s}", source);
+        basis_buf = get_buffer("basis_buf");
+        basis_buf->register_producer(unique_name);
+        basis_k = use_lanes ? k_lanes_max : k_max;
+        basis_head_bytes = 64 + 4 * (size_t)n;
+        basis_slot_bytes = 16 + 8 * (size_t)basis_k * n;
+    }
     INFO("GnssN2Project {:s}: {:d} live stations of {:d}, k_max {:d}, tau {:.2f} s, trigger "
          "frac0 >= {:.2f}, lambda0 >= {:.1f} x mean auto, spread >= {:.1f} inputs, solve every "
          "{:d} frames -> {:s}",
@@ -412,6 +421,15 @@ void GnssN2Project::dump_channel(uint8_t* slot, int f, const cd* V) const {
         for (int i = 0; i < n; ++i)
             v[i] = std::complex<float>(c.v[(size_t)i]);
     }
+}
+
+void GnssN2Project::write_basis_slot(uint8_t* slot, int freq_id, int k, const cd* q) const {
+    const size_t n = stations.size();
+    const int32_t head[4] = {freq_id, k, 0, 0};
+    std::memcpy(slot, head, sizeof(head));
+    std::complex<float>* v = (std::complex<float>*)(slot + sizeof(head));
+    for (size_t i = 0; i < (size_t)k * n; ++i)
+        v[i] = std::complex<float>(q[i]);
 }
 
 void GnssN2Project::take_fleet(double now_s) {
@@ -654,6 +672,7 @@ void GnssN2Project::main_thread() {
         * samples_per_data_set;
     int64_t dump_block = -1;
     int dump_id = 0;
+    int basis_id = 0;
 
     while (!stop_thread) {
         const int32_t* in = (const int32_t*)in_buf->wait_for_full_frame(unique_name, in_id);
@@ -714,6 +733,19 @@ void GnssN2Project::main_thread() {
                 FATAL_ERROR("GnssN2Project: {:s} holds {:d} channel slots of {:d} bytes, fewer "
                             "than the {:d} live channels",
                             dump_buf->buffer_name, dump_slots, (int)dump_slot_bytes, n_live_ch);
+            if (basis_buf) {
+                basis_slot.assign(num_local_freq, -1);
+                for (int f = 0; f < num_local_freq; ++f)
+                    if (live_ch[f])
+                        basis_slot[f] = basis_slots++;
+                const size_t need =
+                    basis_head_bytes + (size_t)n_integrations * basis_slots * basis_slot_bytes;
+                if ((size_t)basis_buf->frame_size < need)
+                    FATAL_ERROR("GnssN2Project: {:s} frames hold {:d} bytes; the basis of {:d} "
+                                "live channels needs {:d}",
+                                basis_buf->buffer_name, (int)basis_buf->frame_size, basis_slots,
+                                (int)need);
+            }
         }
         const double dt_int = dt / n_integrations;
         const bool solve_now = (frame_count % (uint64_t)solve_every) == 0;
@@ -761,6 +793,19 @@ void GnssN2Project::main_thread() {
                 std::memcpy(dump + 48, &magic, sizeof(magic));
             } else
                 c_dump_drop.inc();
+        }
+        uint8_t* basis = nullptr;
+        if (basis_buf) {
+            basis = basis_buf->wait_for_empty_frame(unique_name, basis_id);
+            if (basis == nullptr)
+                break;
+            const int64_t seq = meta ? meta->get_fpga_seq_num() : -1;
+            const int32_t head[7] = {
+                1, n, n_integrations, basis_slots, basis_k, (int32_t)basis_slot_bytes, 0x53414250};
+            std::memset(basis, 0, 64);
+            std::memcpy(basis, &seq, sizeof(seq));
+            std::memcpy(basis + 8, head, sizeof(head));
+            std::memcpy(basis + 64, stations.data(), 4 * (size_t)n);
         }
 
         for (int t = 0; t < n_integrations; ++t) {
@@ -844,6 +889,12 @@ void GnssN2Project::main_thread() {
                                   q.begin() + (size_t)j * n);
                     gnss_n2proj::project(n, k, q.data(), V.data(), W, M);
                 }
+                // At most one of kl and k is nonzero: lanes+residual has no basis record.
+                if (basis && live_ch[f])
+                    write_basis_slot(
+                        basis + basis_head_bytes
+                            + ((size_t)t * basis_slots + basis_slot[f]) * basis_slot_bytes,
+                        freq_ids[f], kl > 0 ? kl : k, kl > 0 ? lanes.q.data() : q.data());
                 auto_proj[f] =
                     (k > 0 || kl > 0) ? gnss_n2proj::mean_auto(n, V.data()) : auto_raw[f];
                 if (k > 0 || kl > 0) {
@@ -893,6 +944,10 @@ void GnssN2Project::main_thread() {
             std::memcpy(dump + 24, &dump_ch, sizeof(dump_ch));
             dump_buf->mark_frame_full(unique_name, dump_id);
             dump_id = (dump_id + 1) % dump_buf->num_frames;
+        }
+        if (basis) {
+            basis_buf->mark_frame_full(unique_name, basis_id);
+            basis_id = (basis_id + 1) % basis_buf->num_frames;
         }
         ++frame_count;
         c_frames.inc();
