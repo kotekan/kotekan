@@ -1481,6 +1481,13 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                     # shares one REST server, so a shared path would apply one chain's trims to
                     # another chain's PRNs.
                     "set_trim_endpoint": f"/{pre}inject/set_trim",
+                    # Streamed data symbols (gnssTrackChain.hpp), for the chains named.
+                    **(
+                        {"set_nav_symbols_endpoint": f"/{pre}inject/set_nav_symbols"}
+                        if chain
+                        and chain["signal"] in (args.nav_symbols or "").split(",")
+                        else {}
+                    ),
                     "trim_ttl_s": TRIM_TTL_S,
                     # A pinned F-engine epoch (the node file's frame0_utc, or --frame0-nano)
                     # overrides the telescope's GPS time0 as the record epoch. Records are
@@ -1932,7 +1939,11 @@ INJECT_ROW_KEYS = (
     "get_prns_endpoint",
     "set_prns_endpoint",
 )
-INJECT_ROW_OPTIONAL_KEYS = ("prn_freq_offset_hz", "trim_endpoint")
+INJECT_ROW_OPTIONAL_KEYS = (
+    "prn_freq_offset_hz",
+    "trim_endpoint",
+    "set_nav_symbols_endpoint",
+)
 
 
 def inject_host_form(injects, gpu):
@@ -4232,6 +4243,14 @@ def main():
         metavar="N",
         dest="lane_dump_depth",
         help="frames of slack between the lane-dump gate and its writer (default %(default)s)",
+    )
+    ap.add_argument(
+        "--nav-symbols",
+        default="",
+        metavar="DESC[,DESC]",
+        help="the extra-signal chains (descriptor names, e.g. GPS_L2C_CM,BDS_B2B_I) that "
+        "take data symbols streamed from another receiver on <chain>inject/set_nav_symbols "
+        "(gnssTrackChain.hpp). Their brokers need --dr-nav-symbols. Default none",
     )
     ap.add_argument(
         "--proj-mean",
