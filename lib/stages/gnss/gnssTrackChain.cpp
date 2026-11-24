@@ -304,12 +304,12 @@ TrackChain::record_specs(long long hop0, const std::vector<Seed>& seeds,
                 sd.nav_frame_at_ref
                 + (long long)std::floor(pr.phase_now / (double)replica->eff_code_length());
         } else if (sd.nav_frame_at_ref >= 0 && psi_synth && !_set_nav_ep.empty()) {
-            // Streamed data symbols: the periods from this record's first sample to the next
-            // record's, all held, or no wipe. The table repeats its last entry, so a period
-            // the count misses by a fraction of a chip at the end takes the last sign.
+            // Streamed data symbols: the periods of this record's first and last hops (the
+            // kernel's wrap count, at each hop's newest sample) and those between, all held, or
+            // no wipe. The table repeats its last entry.
             const double L = (double)replica->eff_code_length();
             const gnss::SeedPropagation pe =
-                gnss::propagate_seed(*replica, ss, hop0 + hops_per_record, sample_rate,
+                gnss::propagate_seed(*replica, ss, hop0 + hops_per_record - 1, sample_rate,
                                      sig->carrier_hz, trim_now[(size_t)p]);
             const long long q0 = (long long)std::floor(pr.phase_now / L);
             const long long n_span = (long long)std::floor(pe.phase_now / L) - q0 + 1;
