@@ -124,6 +124,16 @@ def _g2(x, on):
     return y
 
 
+def _due(st):
+    """A decode attempt is due: never tried, or TRY_EVERY_SYMS new symbols since the last."""
+    if st.try_slot is None:
+        return True
+    if not st.emits:
+        return False
+    newest = max(s + len(a) - 1 for s, a in st.emits.items())
+    return newest - st.try_slot >= TRY_EVERY_SYMS
+
+
 class _PrnState:
     def __init__(self):
         self.emits = {}  # slot0 -> np.array(+-1 signs), one sign island per stored emit
@@ -268,13 +278,15 @@ class CnavPredictor:
             st.try_slot = newest
             self._round.add(prn)
             # a round is complete once every currently-eligible PRN has had a turn. Backed-off
-            # cold PRNs are not eligible, nor PRNs whose emits stopped (a satellite that set):
-            # counting those, the round never completed and every PRN stopped decoding.
+            # cold PRNs are not eligible, nor PRNs whose emits stopped (a satellite that set),
+            # nor PRNs with nothing new to decode: counting those, the round never completed
+            # and every PRN stopped decoding (11-24, a bootstrap's decoder for 4 min).
             eligible = [
                 p2
                 for p2, s2 in self._p.items()
                 if now - s2.t_seen < ROUND_LIVE_S
                 and (s2.phase is not None or now >= s2.cold_next_t)
+                and _due(s2)
             ]
             if all(p2 in self._round for p2 in eligible):
                 self._round.clear()
@@ -592,6 +604,26 @@ def _selftest():
     )
     for k in ("e", "M0", "toe", "OMEGA0"):
         assert abs(eph[k] - truth[k]) < 1e-9, "ephemeris field %s mismatch" % k
+
+    # A live, locked satellite with nothing new to decode (its newest symbol behind its last
+    # try) must not hold the round: the other satellites keep decoding.
+    pred = CnavPredictor()
+    pred._min_gap = 0.0
+    tries = []
+
+    def count_try(p, st):
+        tries.append(p)
+
+    pred._try_decode = count_try
+    held = pred._p.setdefault(9, _PrnState())
+    held.phase, held.t_seen, held.try_slot = 0, time.time(), 10**9
+    held.emits = {0: np.ones(10, dtype=np.int8)}
+    for k in range(5):
+        obs = {"utc_ref": k * 400 * SYM_S, "rec_dt": SYM_S, "phase": 0, "br": 1}
+        obs["bits"] = [[i, 1] for i in range(300)]
+        pred.ingest(prn, obs)
+    msg = "a satellite with nothing to decode held the round: %d of 5" % len(tries)
+    assert len(tries) == 5, msg
     print("PASS")
 
 
