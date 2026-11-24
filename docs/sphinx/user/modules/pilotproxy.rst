@@ -110,8 +110,8 @@ which are not part of Kotekan. Each profile gives the ATSC channel, the
 receiver ``coarse_freq`` ID that it binds to (``chord_channel_id``), its
 weights, and its fine calibration. The status of the fine calibration is
 ``pending_campaign`` (exported, no values), ``calibrated`` (values filled in) or
-``control``. Only physical channel 37, the control, has status ``control``, and
-it must have it. ``calibrated`` does not mean the channel is qualified for
+``control``. Only physical channel 37, the control, can have status ``control``,
+and it must have it unless it is ``pending_campaign``. ``calibrated`` does not mean the channel is qualified for
 masking. Each bundle file and its fields are described in Section 5 of the
 `PilotProxy user guide
 <https://github.com/WVURAIL/pilotproxy/blob/main/docs/pdf/PilotProxy_UG001_User_Guide.pdf>`_.
@@ -207,6 +207,10 @@ powers for calibration and debugging. ``config/chord/telescope.j2`` holds the
 products' shapes and ports for both configs, so render ``config/chord/recv.j2``
 with the same ``dtv_enabled`` and ``dtv_calibration_mode``.
 
+``config/chord/dtv.j2`` passes neither ``dtv_permanent_mask_freq_ids`` nor
+``dtv_require_fine_freq_ids``, so they have no effect on the Pathfinder. An
+uncalibrated channel must be removed from the bundle.
+
 The detector reads the bad feed mask ring of ``bufferBadInputs``, and a flagged
 input is packed as zero. ``bufferBadInputs`` also flags every element outside
 the main array, which on CHORD are the Missing dishes and the 16 RFI antennas,
@@ -232,10 +236,15 @@ support, and the largest ``uint64`` for the powers, fine powers and both values
 of ``dtv_stat``. A reader treats such a ``dtv_stat`` row as missing; it is not a
 statistic to pass to ``pilotproxy_v3_keep``.
 
-POST ``{"enabled": true, "valid_at_time_ns": 0}`` to ``/dtv_mask_enabled`` to
-apply the mask from the next frame, and ``false`` to stop. A nonzero
-``valid_at_time_ns`` applies the change at the first frame starting at or after
-that instrument time, in ``DtvRfiMask`` and in the recorded fraction. POST
+POST ``{"enabled": true, "valid_at_time_ns": t}`` to ``/dtv_mask_enabled`` to
+apply the mask from the first frame starting at or after ``t`` (ns since the
+UNIX epoch), in ``DtvRfiMask`` and in the recorded fraction, and ``false`` to
+stop. ``0``, or a time the node's system clock has passed, applies from the
+next whole 5 s at least 1 s ahead on that clock. The first stage to get the
+POST resolves the time and the other keeps it, so ``N2Accumulate``, downstream
+of ``DtvRfiMask``, records the switch at the frame where the data change. Both
+log the resolved time, and ``GET /config`` shows it. The configured value
+applies from startup, whatever its ``valid_at_time_ns``. POST
 ``{"enabled": true}`` or ``{"enabled": false}`` to ``/dtv_write_enabled`` to
 start or stop sending; the change applies to whole frames. A restart returns
 both to off. The ``DtvRfiMask`` log line ``DTV mask on``
@@ -269,9 +278,10 @@ Pilot frequency only
 
 The stage masks only the coarse frequency that holds each pilot. A DTV channel
 spans about 30 CHORD coarse frequencies on several GPU nodes, and the pilot
-decision is not passed to the other coarse frequencies. A whole DTV channel is
-removed by setting ``dtv_apply_mask`` and listing its receiver IDs in each
-node's ``dtv_permanent_mask_freq_ids``.
+decision is not passed to the other coarse frequencies. With
+``config/fengine/chord.j2``, a whole DTV channel is removed by setting
+``dtv_apply_mask`` and listing its receiver IDs in each node's
+``dtv_permanent_mask_freq_ids``. The Pathfinder template has no such list.
 
 
 Fatal errors
@@ -284,16 +294,18 @@ it:
   ``fine_decision_v3`` bundle without ``receiver_channel_id_namespace`` or, in
   ``DtvRfiMask``, without ``stat_buf``, or a malformed configuration
 * at the first frame, missing or miscounted ``coarse_freq`` metadata, a listed
-  receiver ID that is not on the node, or a bound channel that is not
-  calibrated
+  receiver ID that is not on the node, a bound channel that is not
+  calibrated, or a bound channel whose thresholds are qualified for archive
+  review only
 * during the run, a ``coarse_freq`` change after binding, or a CUDA or
   detector error
 * in ``DtvRfiMask``, mismatched timestamps, frequencies, or layouts, a malformed
   support row, or an unevaluated row for a required frequency or, while the
   mask is on, for a calibrated channel
 
-An uncalibrated channel must therefore be removed from the bundle or listed in
-``dtv_permanent_mask_freq_ids`` before the run starts. A node with no bundle
+An uncalibrated channel must therefore be removed from the bundle before the
+run starts, or, with ``config/fengine/chord.j2``, listed in
+``dtv_permanent_mask_freq_ids``. A node with no bundle
 pilot runs with the detector disabled and writes all-zero masks. These zero
 masks mean that the blocks were not tested.
 

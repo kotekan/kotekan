@@ -12,6 +12,7 @@
 #include <highfive/H5File.hpp>           // for File
 #include <highfive/bits/h5t_wrapper.hpp> // for h5t_copy, h5t_set_ebias, h5t_set_fields, h5t_se...
 #include <map>                           // for map
+#include <memory>                        // for shared_ptr
 #include <string>                        // for string
 #include <vector>                        // for vector
 
@@ -58,6 +59,14 @@ std::string file_path_prefix(const std::string& dir, const std::string& file_nam
  * @brief An acquisition directory: "<base_dir>/acq_YYYYMMDD_HHMMSS_NNNNNNNNN" for time @p t (UTC)
  */
 std::string acq_dir_path(const std::string& base_dir, std::chrono::system_clock::time_point t);
+
+/**
+ * @brief The start time of this run, which names its acquisition directories
+ *
+ * Holders share one time. After the last holder is released the next call takes a new one,
+ * so the stages of one pipeline share it and a pipeline started after /stop gets its own.
+ */
+std::shared_ptr<const std::chrono::system_clock::time_point> acq_run_time();
 
 /**
  * @brief Whether a dimension is a time axis

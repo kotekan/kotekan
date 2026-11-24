@@ -492,6 +492,12 @@ add_executable(test_DtvRfiMask test_DtvRfiMask.cpp ${KOTEKAN_SOURCE_DIR}/lib/sta
 target_link_libraries(test_DtvRfiMask PRIVATE kotekan_core kotekan_metadata kotekan_utils
                                               libexternal pilotproxy_decision)
 
+add_executable(
+    test_dtv_mask_enabled test_dtv_mask_enabled.cpp ${KOTEKAN_SOURCE_DIR}/lib/stages/DtvRfiMask.cpp
+                          ${KOTEKAN_SOURCE_DIR}/lib/stages/N2Accumulate.cpp)
+target_link_libraries(test_dtv_mask_enabled PRIVATE kotekan_core kotekan_metadata kotekan_utils
+                                                    libexternal)
+
 add_executable(test_ProcessPacketMask test_ProcessPacketMask.cpp
                                       ${KOTEKAN_SOURCE_DIR}/lib/stages/ProcessPacketMask.cpp)
 target_link_libraries(test_ProcessPacketMask PRIVATE kotekan_core kotekan_metadata kotekan_utils

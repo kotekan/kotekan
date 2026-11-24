@@ -38,9 +38,10 @@ Files are written to ``base_dir`` (created if missing) as::
 
 The counter starts at 0 in each run, so a restart overwrites the previous
 files. With ``acq_dir: true`` the files go to
-``<base_dir>/acq_YYYYMMDD_HHMMSS_NNNNNNNNN`` instead, named for the time Kotekan
-started (UTC), as ``hdf5N2Write`` does. Writers with the same ``base_dir`` in one
-instance share the directory.
+``<base_dir>/acq_YYYYMMDD_HHMMSS_NNNNNNNNN`` instead, named for the time the
+pipeline started (UTC), so a restart or a REST ``/stop`` and ``/start`` writes a
+new directory. Writers with the same ``base_dir`` in one pipeline share the
+directory.
 
 Files are created in HDF5 v1.10 format with **SWMR** (single-writer
 multiple-reader) write mode: they remain readable while being written, and

@@ -54,9 +54,6 @@
 using namespace hdf5;
 using namespace HighFive;
 
-// Names the acq_dir directory, once per Kotekan instance.
-const auto kotekan_start_time = std::chrono::system_clock::now();
-
 /**
  * @class hdf5FileWrite
  * @brief Stream a buffer to disk.
@@ -68,8 +65,8 @@ const auto kotekan_start_time = std::chrono::system_clock::now();
  *
  * @conf base_dir  String. Directory to write into.
  * @conf acq_dir   Bool. Default: false. Write into "<base_dir>/acq_YYYYMMDD_HHMMSS_NNNNNNNNN",
- *       named for the time Kotekan started, so a restart does not overwrite the previous run.
- *       Every hdf5FileWrite with the same base_dir in one instance shares the directory.
+ *       named for the time the pipeline started, so a restart does not overwrite the previous
+ *       run. Every hdf5FileWrite with the same base_dir in one pipeline shares the directory.
  * @conf file_name String. Base filename to write.
  * @conf prefix_hostname  Bool. Prepend hostname to output file names. Default:
  *       true.
@@ -121,8 +118,11 @@ const auto kotekan_start_time = std::chrono::system_clock::now();
 class hdf5FileWrite : public kotekan::Stage {
 
     const bool acq_dir = config.get_default<bool>(unique_name, "acq_dir", false);
+    // held for the life of the stage, so the pipeline's writers share one time
+    const std::shared_ptr<const std::chrono::system_clock::time_point> run_time =
+        acq_dir ? acq_run_time() : nullptr;
     const std::string base_dir =
-        acq_dir ? acq_dir_path(config.get<std::string>(unique_name, "base_dir"), kotekan_start_time)
+        acq_dir ? acq_dir_path(config.get<std::string>(unique_name, "base_dir"), *run_time)
                 : config.get<std::string>(unique_name, "base_dir");
     const std::string file_name = config.get<std::string>(unique_name, "file_name");
     const bool prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);

@@ -873,6 +873,9 @@ bool N2Accumulate::receive_rfi_first_stage_enabled(nlohmann::json& update) {
 }
 
 bool N2Accumulate::receive_dtv_mask_enabled(nlohmann::json& update) {
+    // configUpdater passes the config value first, then each POST
+    const bool posted = _dtv_mask_config_read;
+    _dtv_mask_config_read = true;
     bool enabled;
     int64_t time_ns;
     try {
@@ -882,17 +885,18 @@ bool N2Accumulate::receive_dtv_mask_enabled(nlohmann::json& update) {
         WARN("Failed to read update to {:s}: {:s}", _dtv_mask_config_path, e.what());
         return false;
     }
-    // Same rule as DtvRfiMask
-    int64_t seq = 0;
-    if (time_ns != 0) {
-        if (time_ns < _tel.to_time_ns(0)) {
-            WARN("Got invalid start time: {:d} - keeping the current DTV mask state", time_ns);
-            return true;
-        }
-        seq = _tel.to_seq(time_ns);
-    }
-    INFO("Recording the DTV mask {:s} from seq {:d}", enabled ? "on" : "off", seq);
     std::lock_guard<std::mutex> lock(_dtv_mask_mutex);
+    if (!posted) {
+        _dtv_mask_enabled = _next_dtv_mask_enabled = enabled;
+        return true;
+    }
+    // Same rule as DtvRfiMask, so both switch at the same frame
+    time_ns = N2::switch_time_ns(time_ns, N2::current_system_time_ns());
+    update["valid_at_time_ns"] = time_ns;
+    // to_seq underflows before the stream start
+    const int64_t seq = time_ns < _tel.to_time_ns(0) ? 0 : _tel.to_seq(time_ns);
+    INFO("Recording the DTV mask {:s} from time {:d} ns, seq {:d}", enabled ? "on" : "off", time_ns,
+         seq);
     _next_dtv_mask_enabled = enabled;
     _next_dtv_mask_valid_at_seq = seq;
     return true;

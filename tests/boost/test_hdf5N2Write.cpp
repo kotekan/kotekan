@@ -16,6 +16,7 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
 #include "configUpdater.hpp"
+#include "hdf5Files.hpp"             // for acq_run_time
 #include "hdf5N2Write.hpp"           // for hdf5N2Write
 #include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 #include "restServer.hpp"
@@ -1375,4 +1376,17 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_basic) {
     }
     rm_tree_if_exists(ds_path);
     rm_tree_if_exists(base_dir);
+}
+
+// The writers of one pipeline share the acq_dir time, and a pipeline started after the
+// last one is gone gets a new time.
+BOOST_AUTO_TEST_CASE(acq_run_time_is_per_pipeline) {
+    auto first = hdf5::acq_run_time();
+    auto second = hdf5::acq_run_time();
+    BOOST_CHECK(first == second);
+    const auto run_time = *first;
+    first.reset();
+    second.reset();
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    BOOST_CHECK(*hdf5::acq_run_time() > run_time);
 }

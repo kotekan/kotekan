@@ -446,9 +446,11 @@ private:
                             "calibration status {:s} for physical "
                             "channel {:d}",
                             calibration_status, profile.physical_channel);
-            if ((profile.physical_channel == 37) != (calibration_status == "control"))
-                FATAL_ERROR("cudaPilotProxyDetector: only physical channel 37 can have status "
-                            "control");
+            // 37 may be pending, like any channel; bound pending channels are refused below
+            if (calibration_status != "pending_campaign"
+                && (profile.physical_channel == 37) != (calibration_status == "control"))
+                FATAL_ERROR("cudaPilotProxyDetector: physical channel 37 must have status "
+                            "control or pending_campaign, and no other channel can be control");
             if (calibration_status == "calibrated" || calibration_status == "control") {
                 profile.fine_calibrated = true;
                 profile.control = calibration_status == "control";
