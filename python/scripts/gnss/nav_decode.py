@@ -52,6 +52,7 @@ import galileo_fnav  # noqa: E402
 import gnss_ephemeris as ge  # noqa: E402
 import glonass_nav_predictor  # noqa: E402
 import gnss_skytime  # noqa: E402
+import nav_almanac  # noqa: E402
 import nav_fields  # noqa: E402
 import sbas_l5_predictor  # noqa: E402
 from gnss_broker import sky  # noqa: E402
@@ -399,11 +400,12 @@ def load_brdc(store, block):
         log("BRDC unavailable for the cross-check (%s)" % e)
 
 
-def report(srcs, store, dhw, eph_out, cache=None):
+def report(srcs, store, dhw, eph_out, cache=None, alm_cache=None):
     """Log each satellite's decode state and BRDC cross-check, feed the decode-health export, and
     write the decoded ephemerides: those within EPH_FRESH_S of the host clock to eph_out, and
     every one to the cache (eph_cache.Writer), placed in the week the sky's own time marks give
-    (gnss_skytime.week_ref) where they give one, else the host clock's."""
+    (gnss_skytime.week_ref) where they give one, else the host clock's. The almanacs read since
+    the last report go to alm_cache (nav_almanac.py)."""
     out, cached = [], []
     now = time.time()
     brdc = store if store.get("eph") else None
@@ -490,6 +492,17 @@ def report(srcs, store, dhw, eph_out, cache=None):
             cache.put(cached, now)
         except (OSError, ValueError) as e:
             log("ephemeris cache %s not written (%s)" % (cache.path, e))
+    if alm_cache is not None:
+        alm = [e for s in srcs if s["alm"] is not None for e in s["alm"].take(g_ref)]
+        try:
+            new = alm_cache.put(alm, now) if alm else 0
+            if new:
+                log(
+                    "almanacs: %d satellites read, %d new issues cached"
+                    % (len({(e["sys"], e["prn"]) for e in alm}), new)
+                )
+        except (OSError, ValueError) as e:
+            log("almanac cache %s not written (%s)" % (alm_cache.path, e))
 
 
 def main():
@@ -510,7 +523,8 @@ def main():
         nargs="?",
         const=eph_cache.DEFAULT_DIR,
         help="also keep every decoded issue in this ephemeris cache directory (eph_cache.py; "
-        "alone, %s), the broker's decoded orbit feed" % eph_cache.DEFAULT_DIR,
+        "alone, %s), the broker's decoded orbit feed, and the almanacs read (nav_almanac.py) "
+        "in a file of their own there" % eph_cache.DEFAULT_DIR,
     )
     ap.add_argument(
         "--eph-cache-name",
@@ -568,6 +582,11 @@ def main():
                 "signal": signal,
                 "url": url.rstrip("/") + "/get_status",
                 "dec": make_decoder(signal),
+                "alm": (
+                    nav_almanac.Collector(signal)
+                    if signal in nav_almanac.SIGNALS
+                    else None
+                ),
                 "cpu": 0.0,
                 "io": 0.0,
                 "fail": 0,
@@ -582,11 +601,13 @@ def main():
             chain=os.path.basename(args.decode_health_file).rsplit(".", 1)[0],
             log=log,
         )
-    cache = None
+    cache = alm_cache = None
     if args.eph_cache:
         name = args.eph_cache_name or "+".join(sorted({s["signal"] for s in srcs}))
         cache = eph_cache.Writer(name, args.eph_cache)
         log("ephemeris cache %s (%d issues held)" % (cache.path, len(cache.entries)))
+        if any(s["alm"] is not None for s in srcs):
+            alm_cache = eph_cache.Writer(name + ".alm", args.eph_cache)
     EPH_FRESH_S = args.eph_fresh_s if args.eph_fresh_s > 0 else float("inf")
     store = {"mod": ge, "eph": None, "t": 0.0 if not args.no_brdc else float("inf")}
     if not args.no_brdc:
@@ -618,6 +639,11 @@ def main():
                     span = max(span, window_s(obs))
                     if args.progress_file:
                         note_progress(s, prn, time.time())
+            if s["alm"] is not None:
+                try:
+                    s["alm"].scan(s["dec"])
+                except Exception as e:
+                    log("%s: almanac read failed (%s)" % (s["signal"], e))
             s["next_t"] = max(s["next_t"], time.time() + args.window_frac * span)
             s["io"] += t1 - t0
             s["cpu"] += time.process_time() - t1
@@ -636,7 +662,7 @@ def main():
             load_brdc(store, block=False)
         if time.time() - t_report >= args.report_every:
             t_report = time.time()
-            report(srcs, store, dhw, args.eph_out, cache)
+            report(srcs, store, dhw, args.eph_out, cache, alm_cache)
             span = time.time() - t_cpu
             log(
                 "cpu over %.0f s: %s"

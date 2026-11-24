@@ -12,7 +12,9 @@ at start, and replaces it atomically, so writers never contend and a restart kee
 Readers merge every *.json in the directory. Each entry is {sys, prn, signal, toe_field, eph,
 toe_gpst, week_from, t_decoded}: toe_gpst is the issue's reference time as continuous GPST, placed
 from the sky's own week (week_from "sky") or else the host clock's ("host"), and an issue is
-kept once per (sys, prn, signal, toe_gpst), its newest decode.
+kept once per (sys, prn, signal, toe_gpst), its newest decode. The almanacs a decoder reads
+(nav_almanac.py) are kept the same way in a writer of their own, <writer>.alm, with t_oa as
+toe_gpst; only decoded_eph.Reader(almanac=True) reads them.
 
 Retention, against the writer's newest toe_gpst rather than any clock: every issue within
 RECENT_S, one an hour per satellite and signal within HOURLY_S, one a day within KEEP_S.

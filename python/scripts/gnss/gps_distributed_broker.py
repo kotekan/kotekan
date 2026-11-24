@@ -568,27 +568,34 @@ def main(argv=None, rx=None, publisher=None):
                 )
         except Exception as e:
             _log("BRDC almanac unavailable (%s); falling back to TLE" % e)
-        # The receiver's own decoded orbits (--decoded-eph-file, the ephemeris cache) fill the
-        # sky where the BRDC has nothing (sky.brdc_predict). With no BRDC at all but this
-        # constellation in the cache, hint from the cache, not the TLEs (which need the network
-        # too); the store's refresh still loads BRDC when it comes.
+        # The receiver's own decoded orbits (--decoded-eph-file, the ephemeris cache), and the
+        # almanacs its decoders read there, fill the sky where the BRDC has nothing
+        # (sky.brdc_predict). With no BRDC at all but this constellation in the cache, hint from
+        # the cache, not the TLEs (which need the network too); the store's refresh still loads
+        # BRDC when it comes.
         if args.decoded_eph_file:
             import decoded_eph as _dec_mod
 
             _reader = _dec_mod.Reader(args.decoded_eph_file.split(","))
-            if brdc_alm is None and _reader.entries(
-                _dec_mod.gpst_of_utc(_alm_now()), sys=alm_sys
+            _alm_reader = _dec_mod.Reader(
+                args.decoded_eph_file.split(","), almanac=True
+            )
+            _g_now = _dec_mod.gpst_of_utc(_alm_now())
+            if brdc_alm is None and (
+                _reader.entries(_g_now, sys=alm_sys)
+                or _alm_reader.entries(_g_now, sys=alm_sys)
             ):
                 brdc_alm = rx.brdc(
                     ("brdc", _alm_now().strftime("%Y-%j")),
                     lambda: {"mod": _alm_eph_mod, "eph": {}, "eph_t": _now()},
                 )
                 _log(
-                    "almanac: no BRDC for %s; hinting from the decoded ephemeris cache"
+                    "almanac: no BRDC for %s; hinting from the cache (decoded orbits, almanacs)"
                     % alm_sys
                 )
             if brdc_alm is not None:
                 brdc_alm.setdefault("decoded", _reader)
+                brdc_alm.setdefault("almanac", _alm_reader)
     if args.almanac and brdc_alm is None:
         try:
             from gps_beamtrack import load_gps_satellites

@@ -64,6 +64,9 @@ CLOCK_FIELDS = {
     "BDS_B2A_BCNAV2": ("a0", "a1", "a2", "t_oc", "t_oe"),
     # GuoWang's relay (guowang_csk.py): its clocks with the relay's time-scale offset added back
     "GW_CSK_RELAY": ("af0", "af1", "af2", "toc", "toe"),
+    # The almanacs' clocks (nav_almanac.py), about t_oa
+    "GAL_ALM": ("af0", "af1", "af2", "toc", "toe"),
+    "BDS_ALM": ("af0", "af1", "af2", "toc", "toe"),
 }
 # Sources for a satellite no other entry covers: an entry from another source replaces theirs,
 # and theirs never replaces another's. GuoWang's relay refits its orbits every minute, but as a
@@ -85,6 +88,12 @@ SV_POS = {
     "BDS_B2A_BCNAV2": ("beidou_bcnav2", "sv_position_bcnav2"),
     "GW_CSK_RELAY": ("guowang_csk", "sv_position_relay"),
     "GW_1202_NAV": ("gw_nav_predictor", "sv_position_gw"),
+}
+# The almanacs the decoders read (nav_almanac.py), by the same propagator interface. Only a Reader
+# made with almanac=True reads them, so nothing that wants an ephemeris predicts from one.
+ALM_POS = {
+    "GAL_ALM": ("nav_almanac", "sv_position_alm"),
+    "BDS_ALM": ("nav_almanac", "sv_position_alm"),
 }
 # Decoders whose clock is not the Kepler form above, (module, function): clk(eph, t_sow) -> s.
 SV_CLK = {"GW_1202_NAV": ("gw_nav_predictor", "sv_clock_gw")}
@@ -204,10 +213,11 @@ def expand(paths):
 class Reader:
     """Decoded ephemerides from files and cache directories (expand), each file re-read when it
     changes: predict_from_decoders' entries for every satellite they hold. A file that cannot be
-    read keeps what it last gave."""
+    read keeps what it last gave. With almanac=True, the almanacs (ALM_POS) instead."""
 
-    def __init__(self, paths):
+    def __init__(self, paths, almanac=False):
         self.paths = list(paths)
+        self.table = ALM_POS if almanac else SV_POS
         self.files = {}  # path -> (mtime_ns, its rows)
 
     def entries(self, gpst_now, sys=None):
@@ -221,7 +231,7 @@ class Reader:
                     rows = [
                         r
                         for r in doc.get("eph", [])
-                        if r.get("signal") in SV_POS
+                        if r.get("signal") in self.table
                         and r.get("toe_field") in r.get("eph", {})
                     ]
                     self.files[path] = (mt, rows)
@@ -230,7 +240,7 @@ class Reader:
             for r in self.files.get(path, (None, []))[1]:
                 if sys is not None and r["sys"] != sys:
                     continue
-                mod, fn = SV_POS[r["signal"]]
+                mod, fn = self.table[r["signal"]]
                 toe = r.get("toe_gpst")
                 if toe is None:
                     toe = toe_gpst_near(r["sys"], r["eph"][r["toe_field"]], gpst_now)

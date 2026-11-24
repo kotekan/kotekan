@@ -30,33 +30,40 @@ _SKY_RETRY_S = 600.0
 HINT_MAX_AGE_S = 120 * 86400.0
 
 
-def _with_decoded(reader, pa, pb, lat, lon, alt_m, t_utc, sysc, dt):
-    """Put in predict_all's rows pa (at t_utc) and pb (dt later) the decoded ephemerides' rows,
-    those with a clock (the hint's sat_clk_s), for the satellites whose BRDC record is missing,
-    or past best_eph's 4 h and further from its toe than the decoded issue: fresh BRDC first,
-    then the receiver's own decoded orbits, then stale BRDC. Nothing is evaluated while the BRDC
-    is fresh for every satellite the reader holds, the usual case."""
+def _with_decoded(readers, pa, pb, lat, lon, alt_m, t_utc, sysc, dt):
+    """Put in predict_all's rows pa (at t_utc) and pb (dt later) the rows of the decoded_eph
+    Readers given (the receiver's decoded ephemerides, then the almanacs its decoders read),
+    those with a clock (the hint's sat_clk_s), for the satellites whose BRDC record is missing
+    or past best_eph's 4 h. Each such satellite takes the source whose reference time is
+    nearest, the BRDC's or a reader's, the earlier reader on a tie: fresh BRDC first, then
+    whichever of the decoded orbits, the almanacs and stale BRDC is the least old. A reader's
+    issue weeks old predicts as well as a BRDC record as old; an almanac at its t_oa, to a few
+    Hz and km. Nothing is evaluated while the BRDC is fresh for every satellite the readers
+    hold, the usual case."""
     import decoded_eph
 
     t = decoded_eph.gpst_of_utc(t_utc)
-    near = {}
-    for e in reader.entries(t, sys=sysc):
-        near[(e[0], e[1])] = min(near.get((e[0], e[1]), float("inf")), abs(t - e[5]))
-    want = set()
-    for k, age in near.items():
-        brdc_age = abs(pa[k]["toe_age_s"]) if k in pa else float("inf")
-        if brdc_age > 14400.0 and age < brdc_age:
-            want.add(k)
-    if not want:
-        return
-    ents = [e for e in reader.entries(t, sys=sysc) if (e[0], e[1]) in want]
-    for rows, t_at in ((pa, t_utc), (pb, t_utc + timedelta(seconds=dt))):
-        got = decoded_eph.predict_from_decoders(
-            ents, lat, lon, alt_m, t_at, mask_deg=-90.0, max_age=HINT_MAX_AGE_S
-        )
-        for k, v in got.items():
-            if v["sat_clk_s"] is not None:
-                rows[k] = v
+    ents = [r.entries(t, sys=sysc) if r is not None else [] for r in readers]
+    best = {}  # (sys, prn) -> (age of the nearest reference time, reader index)
+    for i, es in enumerate(ents):
+        for e in es:
+            k = (e[0], e[1])
+            if k not in best:
+                brdc_age = abs(pa[k]["toe_age_s"]) if k in pa else float("inf")
+                best[k] = (brdc_age, None) if brdc_age > 14400.0 else (0.0, None)
+            if abs(t - e[5]) < best[k][0]:
+                best[k] = (abs(t - e[5]), i)
+    for i, es in enumerate(ents):
+        sel = [e for e in es if best[(e[0], e[1])][1] == i]
+        if not sel:
+            continue
+        for rows, t_at in ((pa, t_utc), (pb, t_utc + timedelta(seconds=dt))):
+            got = decoded_eph.predict_from_decoders(
+                sel, lat, lon, alt_m, t_at, mask_deg=-90.0, max_age=HINT_MAX_AGE_S
+            )
+            for k, v in got.items():
+                if v["sat_clk_s"] is not None:
+                    rows[k] = v
 
 
 def brdc_predict(
@@ -132,11 +139,13 @@ def brdc_predict(
         max_age=age,
         sysc=sysc,
     )
-    # The receiver's own decoded orbits (state["decoded"], a decoded_eph.Reader over the
-    # ephemeris cache) where the BRDC is stale or has nothing: a box offline longer than its BRDC
-    # cache, or never online, hints from what it decoded.
-    if sysc in ("G", "E", "C") and state.get("decoded") is not None:
-        _with_decoded(state["decoded"], pa, pb, lat, lon, alt_m, t_utc, sysc, dt)
+    # The receiver's own decoded orbits and the almanacs its decoders read (state["decoded"]
+    # and state["almanac"], decoded_eph.Readers over the ephemeris cache) where the BRDC is
+    # stale or has nothing: a box offline longer than its BRDC cache, or never online, hints
+    # from what it decoded.
+    readers = [state.get("decoded"), state.get("almanac")]
+    if sysc in ("G", "E", "C") and any(r is not None for r in readers):
+        _with_decoded(readers, pa, pb, lat, lon, alt_m, t_utc, sysc, dt)
     C = C_LIGHT
     out = {}
     for (s, prn), v in pa.items():
