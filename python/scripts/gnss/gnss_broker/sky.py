@@ -20,6 +20,14 @@ _SKY_REFRESH_S = 900.0
 _SKY_BRIDGE_REFRESH_S = 60.0
 _SKY_RETRY_S = 600.0
 
+# How far from its toe a GPS, Galileo or BeiDou record may predict the sky brdc_predict serves
+# (hints, visibility, the bias solve), so a receiver offline or powered off for days still hints
+# its search from the cache. Against fresh records at L5 (11-23): 1-15 days old, the Doppler is
+# off by 0.1-2 Hz median and 76 Hz at most, the elevation by 0.4 deg at most; 4 months old, by
+# 8-57 Hz median and 270 Hz at most. The dead-reckoned code model keeps best_eph's 4 h window:
+# the range is already ~100 m off at a day. GLONASS and SBAS records keep theirs too.
+HINT_MAX_AGE_S = 30 * 86400.0
+
 
 def brdc_predict(
     state, lat, lon, alt_m, sysc, min_prn, t_utc, f_carrier_hz, fdma_df=None
@@ -79,10 +87,20 @@ def brdc_predict(
             lock.release()
     eph = state["eph"]
     dt = 4.0
+    age = HINT_MAX_AGE_S if sysc in ("G", "E", "C") else 14400.0
     # Only sysc's rows are read below, so only sysc is predicted.
-    pa = ge.predict_all(eph, lat, lon, alt_m, t_utc, mask_deg=-90.0, sysc=sysc)
+    pa = ge.predict_all(
+        eph, lat, lon, alt_m, t_utc, mask_deg=-90.0, max_age=age, sysc=sysc
+    )
     pb = ge.predict_all(
-        eph, lat, lon, alt_m, t_utc + timedelta(seconds=dt), mask_deg=-90.0, sysc=sysc,
+        eph,
+        lat,
+        lon,
+        alt_m,
+        t_utc + timedelta(seconds=dt),
+        mask_deg=-90.0,
+        max_age=age,
+        sysc=sysc,
     )
     C = C_LIGHT
     out = {}

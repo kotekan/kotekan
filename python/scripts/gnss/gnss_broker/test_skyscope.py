@@ -1113,6 +1113,58 @@ def test_fetch_brdc_off_the_loop():
             os.environ["GNSS_BRDC_DIR"] = pin
 
 
+def test_hint_sky_outlives_the_seed_window():
+    """The hint sky takes GPS, Galileo and BeiDou records up to HINT_MAX_AGE_S from their toe,
+    so a receiver offline for days still hints its search from the cache; GLONASS and SBAS keep
+    the 4 h window that cuts them to their own (predict_all)."""
+    from gnss_broker import sky
+
+    print("\nbrdc_predict: the hint sky reads stale G/E/C records, not R or S")
+    ages = {}
+
+    class _AgeMod(_FakeEphMod):
+        def predict_all(self, eph, lat, lon, alt, t, mask_deg=0.0, **kw):
+            ages[kw.get("sysc")] = kw.get("max_age")
+            return dict(self.visible)
+
+    ge = _AgeMod()
+    state = {"mod": ge, "eph": {"x": 1}, "eph_t": time.time()}
+    for sysc in "GECRS":
+        _predict(state, ge, sysc, 1, [1, 2, 3])
+    check(
+        all(ages[c] == sky.HINT_MAX_AGE_S for c in "GEC"),
+        "G, E and C predict within %.0f days" % (sky.HINT_MAX_AGE_S / 86400.0),
+    )
+    check(ages["R"] == 14400.0 and ages["S"] == 14400.0, "R and S keep 4 h")
+
+
+def test_cache_falls_back_to_the_newest_daily():
+    """With neither this day's nor yesterday's daily nor the hourly merge on disk (days
+    offline), fetch_brdc hands out the newest cached daily, S before R, without a fetch."""
+    import gnss_brdc_supply as sup
+    from datetime import datetime, timezone
+
+    print("\n_cached_sources: days offline, the newest daily on disk")
+    when = datetime(2026, 11, 24, tzinfo=timezone.utc)
+    with tempfile.TemporaryDirectory() as d:
+        check(sup._cached_sources(when, d) == [], "an empty cache hands out nothing")
+        for n in (
+            "BRDC00WRD_S_20262220000_01D_MN.rnx.gz",
+            "BRDC00WRD_R_20263200000_01D_MN.rnx.gz",
+            "BRDC00WRD_S_20263200000_01D_MN.rnx.gz",
+        ):
+            open(os.path.join(d, n), "wb").close()
+        got = [os.path.basename(x) for x in sup._cached_sources(when, d)]
+        check(
+            got == ["BRDC00WRD_S_20263200000_01D_MN.rnx.gz"],
+            "the newest day's S variant (%s)" % got,
+        )
+        open(os.path.join(d, "hourly_MN.rnx.gz"), "wb").close()
+        got = [os.path.basename(x) for x in sup._cached_sources(when, d)]
+        check(got == ["hourly_MN.rnx.gz"], "the hourly merge, when there, as before")
+    check(sup._cached_sources(when, "/nonexistent/cache") == [], "no cache directory")
+
+
 def main():
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if here not in sys.path:
@@ -1134,6 +1186,8 @@ def main():
     test_refresh_cadence_matches_the_product()
     test_current_day_daily_ttl()
     test_fetch_brdc_off_the_loop()
+    test_hint_sky_outlives_the_seed_window()
+    test_cache_falls_back_to_the_newest_daily()
     print("\n%s (%d check(s) failed)" % ("FAIL" if _fails else "PASS", len(_fails)))
     return 1 if _fails else 0
 

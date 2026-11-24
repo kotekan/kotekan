@@ -2997,8 +2997,8 @@ def stage_dead_reckon(ctx):
         if _rl["done"] is not None:
             _res, _rl["done"], _rl["thread"] = _rl["done"], None, None
             _dr_apply_reload(ctx, _res)
-        # Decoded-ephemeris fallback: predict from this broker's own decoded ephemeris while no BRDC
-        # ephemeris is loaded.
+        # Decoded-ephemeris fallback: predict from the decoded ephemerides while no BRDC ephemeris
+        # is loaded, or (below) while the loaded one predicts none of this constellation.
         _use_decoded = (
             ctx.decfb is not None
             and ctx.args.decoded_eph_fallback
@@ -3159,6 +3159,64 @@ def stage_dead_reckon(ctx):
             try:
                 # Three epochs, _ep_w and _ep_w +- 2 s: the centred range-rate difference is the
                 # Doppler rate dr_seed ships (the TLE almanac's rate is not used here).
+                if not _use_decoded:
+                    # signal= refers sat_clk_s to this chain's code instead of the constellation's
+                    # broadcast clock reference (GPS L1/L2, Galileo E1/E5a or E1/E5b, BeiDou B3I),
+                    # using the DCB table's biases when loaded (gnss_ephemeris.group_delay_s).
+                    # cp_predicted consumes that clock, so it moves the seed directly.
+                    ctx.drp.pd = ctx.dr_eph_mod.predict_all(
+                        ctx.dr_state["eph"],
+                        ctx.args.lat,
+                        ctx.args.lon,
+                        ctx.args.alt,
+                        datetime.fromtimestamp(_ep_w, tz=timezone.utc),
+                        mask_deg=-90.0,
+                        signal=ctx.args.signal,
+                        dcb=ctx.dr_state.get("dcb"),
+                        tropo=_tropo,
+                        iono=_iono,
+                        memo=_memo,
+                    )
+                    # Centred pair, +-2 s about the epoch: a forward difference over [t, t+4] would
+                    # estimate the rate at now+2 and hand it to the seed as the rate at now, and the
+                    # centred form has the smaller truncation error. The pair is read for this
+                    # chain's constellation only (dr_seed, dr_gdv, seeding), so only that is
+                    # predicted.
+                    ctx.drp.pd2 = ctx.dr_eph_mod.predict_all(
+                        ctx.dr_state["eph"],
+                        ctx.args.lat,
+                        ctx.args.lon,
+                        ctx.args.alt,
+                        datetime.fromtimestamp(_ep_w + 2.0, tz=timezone.utc),
+                        mask_deg=-90.0,
+                        signal=ctx.args.signal,
+                        dcb=ctx.dr_state.get("dcb"),
+                        tropo=_tropo,
+                        iono=_iono,
+                        sysc=ctx.drp.tag,
+                    )
+                    pd0 = ctx.dr_eph_mod.predict_all(
+                        ctx.dr_state["eph"],
+                        ctx.args.lat,
+                        ctx.args.lon,
+                        ctx.args.alt,
+                        datetime.fromtimestamp(_ep_w - 2.0, tz=timezone.utc),
+                        mask_deg=-90.0,
+                        signal=ctx.args.signal,
+                        dcb=ctx.dr_state.get("dcb"),
+                        tropo=_tropo,
+                        iono=_iono,
+                        sysc=ctx.drp.tag,
+                    )
+                    # Every record of this constellation is past best_eph's window (BRDC offline
+                    # for hours): predict from the decoded ephemerides instead, which the nav
+                    # decoders keep fresh while the satellites are tracked.
+                    _use_decoded = (
+                        ctx.decfb is not None
+                        and ctx.args.decoded_eph_fallback
+                        and ctx.drp.tag in ("G", "E", "C")
+                        and not any(k[0] == ctx.drp.tag for k in ctx.drp.pd)
+                    )
                 if _use_decoded:
                     _ents = ctx.decoded_entries(_ep_w)
                     ctx.drp.pd = ctx.decfb.predict_from_decoders(
@@ -3215,62 +3273,41 @@ def stage_dead_reckon(ctx):
                                         (_tow + _dt) % 604800.0,
                                         _iono[2],
                                     )
+                    # GPS CNAV and BeiDou B-CNAV2 decode no clock. The broadcast clock
+                    # polynomial extrapolates far better than the orbit (11-23: ~2 m at 3 days,
+                    # ~20 m at 10), so a stale BRDC record supplies it.
+                    _n_clk = 0
+                    if ctx.dr_state["eph"]:
+                        _clk = ctx.dr_eph_mod.predict_all(
+                            ctx.dr_state["eph"],
+                            ctx.args.lat,
+                            ctx.args.lon,
+                            ctx.args.alt,
+                            datetime.fromtimestamp(_ep_w, tz=timezone.utc),
+                            mask_deg=-90.0,
+                            max_age=_sky.HINT_MAX_AGE_S,
+                            signal=ctx.args.signal,
+                            dcb=ctx.dr_state.get("dcb"),
+                            sysc=ctx.drp.tag,
+                        )
+                        for _rows in (ctx.drp.pd, ctx.drp.pd2, pd0):
+                            for _k, _v in _rows.items():
+                                if _v["sat_clk_s"] is None and _k in _clk:
+                                    _v["sat_clk_s"] = _clk[_k]["sat_clk_s"]
+                                    if _rows is ctx.drp.pd:
+                                        _n_clk += 1
                     if _now() - ctx.decfb_log_t[0] > 60.0:
                         ctx.decfb_log_t[0] = _now()
                         _log(
-                            "dead-reckon: predicting from DECODED eph (BRDC network "
-                            "DOWN -> fallback; %d entries -> %d sats)"
-                            % (len(_ents), len(ctx.drp.pd))
+                            "dead-reckon: predicting from DECODED eph (BRDC %s -> fallback; "
+                            "%d entries -> %d sats, %d clocks from BRDC)"
+                            % (
+                                "stale" if ctx.dr_state["eph"] else "down",
+                                len(_ents),
+                                len(ctx.drp.pd),
+                                _n_clk,
+                            )
                         )
-                else:
-                    # signal= refers sat_clk_s to this chain's code instead of the constellation's
-                    # broadcast clock reference (GPS L1/L2, Galileo E1/E5a or E1/E5b, BeiDou B3I),
-                    # using the DCB table's biases when loaded (gnss_ephemeris.group_delay_s).
-                    # cp_predicted consumes that clock, so it moves the seed directly.
-                    ctx.drp.pd = ctx.dr_eph_mod.predict_all(
-                        ctx.dr_state["eph"],
-                        ctx.args.lat,
-                        ctx.args.lon,
-                        ctx.args.alt,
-                        datetime.fromtimestamp(_ep_w, tz=timezone.utc),
-                        mask_deg=-90.0,
-                        signal=ctx.args.signal,
-                        dcb=ctx.dr_state.get("dcb"),
-                        tropo=_tropo,
-                        iono=_iono,
-                        memo=_memo,
-                    )
-                    # Centred pair, +-2 s about the epoch: a forward difference over [t, t+4] would
-                    # estimate the rate at now+2 and hand it to the seed as the rate at now, and the
-                    # centred form has the smaller truncation error. The pair is read for this
-                    # chain's constellation only (dr_seed, dr_gdv, seeding), so only that is
-                    # predicted.
-                    ctx.drp.pd2 = ctx.dr_eph_mod.predict_all(
-                        ctx.dr_state["eph"],
-                        ctx.args.lat,
-                        ctx.args.lon,
-                        ctx.args.alt,
-                        datetime.fromtimestamp(_ep_w + 2.0, tz=timezone.utc),
-                        mask_deg=-90.0,
-                        signal=ctx.args.signal,
-                        dcb=ctx.dr_state.get("dcb"),
-                        tropo=_tropo,
-                        iono=_iono,
-                        sysc=ctx.drp.tag,
-                    )
-                    pd0 = ctx.dr_eph_mod.predict_all(
-                        ctx.dr_state["eph"],
-                        ctx.args.lat,
-                        ctx.args.lon,
-                        ctx.args.alt,
-                        datetime.fromtimestamp(_ep_w - 2.0, tz=timezone.utc),
-                        mask_deg=-90.0,
-                        signal=ctx.args.signal,
-                        dcb=ctx.dr_state.get("dcb"),
-                        tropo=_tropo,
-                        iono=_iono,
-                        sysc=ctx.drp.tag,
-                    )
             except Exception as e:
                 ctx.drp.pd, ctx.drp.pd2, pd0 = {}, {}, {}
                 _log("dead-reckon: predict failed: %s" % e)

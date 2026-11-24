@@ -710,7 +710,9 @@ _REFRESH = {"thread": None, "lock": threading.Lock()}
 def _cached_sources(when, cache_dir):
     """The cached files fetch_brdc hands out without touching the network: the daily variants
     on disk for `when`'s day (the previous day's only when this day has none, as in
-    _fetch_brdc_merged), then the station-hourly merge. [] when nothing is cached.
+    _fetch_brdc_merged), then the station-hourly merge. With neither, the newest daily of any
+    day: after days offline it still predicts the sky the search hints from
+    (sky.HINT_MAX_AGE_S). [] when nothing is cached.
     parse_rinex_nav merges per PRN by toe, so the order only breaks identical-toe ties."""
     out = []
     for back in (0, 1):
@@ -728,6 +730,16 @@ def _cached_sources(when, cache_dir):
     hourly = os.path.join(cache_dir, "hourly_MN.rnx.gz")
     if os.path.exists(hourly):
         out.append(hourly)
+    if not out and os.path.isdir(cache_dir):
+        days = [
+            f
+            for f in os.listdir(cache_dir)
+            if f.startswith("BRDC00WRD_") and f.endswith("_01D_MN.rnx.gz")
+        ]
+        if days:
+            # The newest day (YYYYDOY at [12:19]), its S variant before its R.
+            newest = max(days, key=lambda f: (f[12:19], f[10] == "S"))
+            out.append(os.path.join(cache_dir, newest))
     return out
 
 
