@@ -38,6 +38,13 @@
  *
  * Each frame's write offset in the ring (bytes since the start of the stream) is set in the
  * pipeline state under the ring's name, for later commands that work on the frame in place.
+ *
+ * @conf data_lag_s - Double, default 0. With in_buf, hold each frame until the wall clock is
+ *       this many seconds past its last sample's time (its metadata's FPGA sequence number plus
+ *       samples_per_data_set), so everything downstream sees data at least that old. A
+ *       consumer that needs information from elsewhere about the signal it processes (another
+ *       receiver's data symbols) then has that long to receive it. in_buf must hold the
+ *       frames this adds.
  */
 class cudaCopyToRingbuffer : public cudaCommand {
 public:
@@ -69,6 +76,12 @@ private:
     std::string _gpu_mem_input;
     /// Host side buffer for the frame-based input
     Buffer* in_buffer;
+
+    /// data_lag_s, and the frame length it is timed from
+    double _data_lag_s;
+    int64_t _samples_per_data_set;
+    /// Wait until in_buf's frame @p buf_index is _data_lag_s old.
+    void wait_for_lag(int buf_index);
 
     /// GPU side memory name for the ring-buffer output
     std::string _gpu_mem_output;

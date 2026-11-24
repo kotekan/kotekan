@@ -1,6 +1,7 @@
 #include "cudaCopyToRingbuffer.hpp"
 
 #include "NDArray.hpp"        // for GenericNDArray
+#include "Telescope.hpp"      // for Telescope
 #include "chordMetadata.hpp"  // for chordMetadata
 #include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
 #include "cuda_runtime_api.h" // for cudaMemcpyAsync, cudaHostGetFlags, cudaHostUnregister
@@ -10,12 +11,14 @@
 #include "fmt.hpp" // for compile_string_to_view
 
 #include <assert.h>    // for assert
+#include <chrono>      // for system_clock, duration
 #include <cstddef>     // for ptrdiff_t
 #include <memory>      // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast, mak...
 #include <optional>    // for optional
 #include <stdexcept>   // for runtime_error
 #include <stdint.h>    // for uint8_t
 #include <sys/types.h> // for uint
+#include <thread>      // for sleep_until
 #include <tuple>       // for tuple, make_tuple
 #include <vector>      // for vector
 
@@ -34,6 +37,13 @@ cudaCopyToRingbuffer::cudaCopyToRingbuffer(Config& config, const std::string& un
     _ring_buffer_size = config.get<size_t>(unique_name, "ring_buffer_size");
     _gpu_mem_output = config.get<std::string>(unique_name, "gpu_mem_output");
     _gpu_mem_input = config.get_default<std::string>(unique_name, "gpu_mem_input", "");
+    _data_lag_s = config.get_default<double>(unique_name, "data_lag_s", 0.0);
+    _samples_per_data_set =
+        _data_lag_s > 0.0 ? config.get<int64_t>(unique_name, "samples_per_data_set") : 0;
+    if (_data_lag_s > 0.0 && _gpu_mem_input.size() > 0)
+        FATAL_ERROR("cudaCopyToRingbuffer {:s}: data_lag_s needs in_buf, whose frames' "
+                    "metadata time the lag",
+                    unique_name);
     if (_gpu_mem_input.size() == 0) {
         // We're reading from host memory into GPU ringbuffer
         std::string bufname = config.get<std::string>(unique_name, "in_buf");
@@ -90,6 +100,22 @@ cudaCopyToRingbuffer::~cudaCopyToRingbuffer() {
         unregister_host_buffer(in_buffer);
 }
 
+void cudaCopyToRingbuffer::wait_for_lag(int buf_index) {
+    const auto meta = std::dynamic_pointer_cast<chordMetadata>(in_buffer->metadata[buf_index]);
+    if (!meta)
+        FATAL_ERROR("cudaCopyToRingbuffer {:s}: data_lag_s needs chordMetadata on {:s}",
+                    unique_name, in_buffer->buffer_name);
+    const timespec t =
+        Telescope::instance().to_time((uint64_t)(meta->get_fpga_seq_num() + _samples_per_data_set));
+    const auto release =
+        std::chrono::system_clock::time_point(
+            std::chrono::duration_cast<std::chrono::system_clock::duration>(
+                std::chrono::seconds(t.tv_sec) + std::chrono::nanoseconds(t.tv_nsec)))
+        + std::chrono::duration_cast<std::chrono::system_clock::duration>(
+            std::chrono::duration<double>(_data_lag_s));
+    std::this_thread::sleep_until(release);
+}
+
 int cudaCopyToRingbuffer::wait_on_precondition() {
     if (in_buffer) {
         // Wait for there to be data in the input (host-side) buffer.
@@ -100,6 +126,8 @@ int cudaCopyToRingbuffer::wait_on_precondition() {
         if (frame == nullptr)
             return -1;
         DEBUG("Input data frame {:d} is now available", gpu_frame_id);
+        if (_data_lag_s > 0.0)
+            wait_for_lag(gpu_frame_id % in_buffer->num_frames);
     }
 
     DEBUG("Waiting for ringbuffer space for writing to become available ({:d} bytes)", _input_size);
