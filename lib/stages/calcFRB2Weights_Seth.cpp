@@ -52,14 +52,13 @@ class calcFRB2Weights_Seth : public kotekan::Stage {
 
 public:
     calcFRB2Weights_Seth(kotekan::Config& config, const std::string& unique_name,
-                    kotekan::bufferContainer& buffer_container) :
+                         kotekan::bufferContainer& buffer_container) :
         Stage(config, unique_name, buffer_container,
               [](const kotekan::Stage& stage) {
                   return const_cast<kotekan::Stage&>(stage).main_thread();
               }),
         frb2_beam_positions_buffer(get_buffer("frb2_beam_positions")),
-        frb2_beam_ids_buffer(get_buffer("frb2_beam_ids")),
-        W2_buffer(get_buffer("frb2_weights"))
+        frb2_beam_ids_buffer(get_buffer("frb2_beam_ids")), W2_buffer(get_buffer("frb2_weights"))
     //
     {
         assert(frb2_beam_positions_buffer);
@@ -95,27 +94,27 @@ public:
 				   unique_name);
 
         // Calculate dish positions
-        //const float dish_separation_x = chord_telescope.get_feed_separation_x_m();
-        //const float dish_separation_y = chord_telescope.get_feed_separation_y_m();
+        // const float dish_separation_x = chord_telescope.get_feed_separation_x_m();
+        // const float dish_separation_y = chord_telescope.get_feed_separation_y_m();
 
-        //const auto& dish_grid = chord_telescope.get_dish_grid();
+        // const auto& dish_grid = chord_telescope.get_dish_grid();
         assert(std::ptrdiff_t(chord_telescope.get_num_dishes()) == num_dishes);
         std::vector<float> dish_loc_x(num_dishes, -1), dish_loc_y(num_dishes, -1),
             dish_loc_z(num_dishes, -1);
-        //assert(std::ptrdiff_t(dish_grid.get_dish_indices().size()) >= num_dishes);
-        //for (const auto dish_index : dish_grid.get_dish_indices()) {
-        //    if (dish_index >= 0) {
-        //        const dishInfo& dish_info = chord_telescope.get_dish_at_idx(dish_index);
-        //        assert(dish_loc_x.at(dish_info.idx) == -1);
-        //        dish_loc_x.at(dish_info.idx) =
-        //            dish_info.grid_x_idx * dish_separation_x + dish_info.feed_pos_disp_m.at(0);
-        //        dish_loc_y.at(dish_info.idx) =
-        //            dish_info.grid_y_idx * dish_separation_y + dish_info.feed_pos_disp_m.at(1);
-        //        dish_loc_z.at(dish_info.idx) = dish_info.feed_pos_disp_m.at(2);
-        //    }
-        //}
-        for (uint64_t i=0; i<chord_telescope.get_num_dishes(); i++) {
-            //const dishInfo& dish_info = chord_telescope.get_dish_at_idx(i);
+        // assert(std::ptrdiff_t(dish_grid.get_dish_indices().size()) >= num_dishes);
+        // for (const auto dish_index : dish_grid.get_dish_indices()) {
+        //     if (dish_index >= 0) {
+        //         const dishInfo& dish_info = chord_telescope.get_dish_at_idx(dish_index);
+        //         assert(dish_loc_x.at(dish_info.idx) == -1);
+        //         dish_loc_x.at(dish_info.idx) =
+        //             dish_info.grid_x_idx * dish_separation_x + dish_info.feed_pos_disp_m.at(0);
+        //         dish_loc_y.at(dish_info.idx) =
+        //             dish_info.grid_y_idx * dish_separation_y + dish_info.feed_pos_disp_m.at(1);
+        //         dish_loc_z.at(dish_info.idx) = dish_info.feed_pos_disp_m.at(2);
+        //     }
+        // }
+        for (uint64_t i = 0; i < chord_telescope.get_num_dishes(); i++) {
+            // const dishInfo& dish_info = chord_telescope.get_dish_at_idx(i);
             vec3d_t vec = chord_telescope.get_dish_position_in_grid_coords(i);
             dish_loc_x[i] = vec[0];
             dish_loc_y[i] = vec[1];
@@ -165,10 +164,9 @@ public:
         if (!frb2_beam_positions_frame)
             return;
 
-        DEBUG("[{:s}/{:d}] Waiting for buffer...", frb2_beam_ids_buffer->buffer_name,
-              frame_index);
-        int16_t* const frb2_beam_ids_frame = static_cast<int16_t*>(static_cast<void*>(
-            frb2_beam_ids_buffer->wait_for_empty_frame(unique_name, frame_id)));
+        DEBUG("[{:s}/{:d}] Waiting for buffer...", frb2_beam_ids_buffer->buffer_name, frame_index);
+        int16_t* const frb2_beam_ids_frame = static_cast<int16_t*>(
+            static_cast<void*>(frb2_beam_ids_buffer->wait_for_empty_frame(unique_name, frame_id)));
         if (!frb2_beam_ids_frame)
             return;
 
@@ -181,8 +179,7 @@ public:
         // Check buffer sizes
         assert(std::ptrdiff_t(frb2_beam_positions_buffer->frame_size)
                == frb2_beam_positions_frame_size);
-        assert(std::ptrdiff_t(frb2_beam_ids_buffer->frame_size)
-               == frb2_beam_ids_frame_size);
+        assert(std::ptrdiff_t(frb2_beam_ids_buffer->frame_size) == frb2_beam_ids_frame_size);
         assert(std::ptrdiff_t(W2_buffer->frame_size) == W2_frame_size);
 
         // Set metadata
@@ -203,7 +200,7 @@ public:
                                                               frb1_num_beams_x},
 								       {"Fbar", "R", "beamQ", "beamP"},
 								       {1, 1, 1, 1}));
-        W2_buffer->allocate_new_metadata_object(frame_id);
+	W2_buffer->allocate_new_metadata_object(frame_id);
         const auto& W2_meta = get_chord_metadata(W2_buffer->get_metadata(frame_id));
         //W2_meta->set_from_frame_desc(W2_buffer->get_ndarray_frame_desc());
         W2_meta->set_fpga_seq_num(0);           // ???
@@ -214,7 +211,7 @@ public:
 
         // Set frb2_beam_positions
         {
-            for (int i=0; i<2*frb2_num_beams; i++)
+            for (int i = 0; i < 2 * frb2_num_beams; i++)
                 frb2_beam_positions_frame[i] = -100.0;
 
             // Dustin hack beam positions -- just a placeholder for Seth's algorithm
@@ -222,10 +219,10 @@ public:
             // index within each node's beams
             int node_i = 0;
             int node_num = 0;
-            //frb2_beam_n_per_node
-            for (int i=0; i<frb2_num_beams; i++, node_num++) {
+            // frb2_beam_n_per_node
+            for (int i = 0; i < frb2_num_beams; i++, node_num++) {
                 float angle = frb2_beam_angle_step * i;
-                float radius = sqrt((float)i / (float)(frb2_num_beams-1)) * frb2_beam_max_radius;
+                float radius = sqrt((float)i / (float)(frb2_num_beams - 1)) * frb2_beam_max_radius;
                 float theta_x = radius * cos(angle);
                 float theta_y = radius * sin(angle);
                 // Where to place this beam...
@@ -239,11 +236,11 @@ public:
                 assert(idx >= 0);
                 assert(idx < frb2_num_beams);
                 assert(node_i < frb2_beam_n_per_node);
-                INFO("Beam {:d}: radius {:f}, angle {:f}, theta {:f}, {:f} -> index {:d}",
-                     i, radius, angle, theta_x, theta_y, idx);
+                INFO("Beam {:d}: radius {:f}, angle {:f}, theta {:f}, {:f} -> index {:d}", i,
+                     radius, angle, theta_x, theta_y, idx);
 
-                frb2_beam_positions_frame[2*idx + 0] = theta_x;
-                frb2_beam_positions_frame[2*idx + 1] = theta_y;
+                frb2_beam_positions_frame[2 * idx + 0] = theta_x;
+                frb2_beam_positions_frame[2 * idx + 1] = theta_y;
                 frb2_beam_ids_frame[idx] = i;
             }
         }

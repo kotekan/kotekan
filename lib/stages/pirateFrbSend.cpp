@@ -1,21 +1,21 @@
 #include "pirateFrbSend.hpp"
 
-#include "Config.hpp"            // for Config
-#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"            // for Buffer
-#include "bufferContainer.hpp"   // for bufferContainer
-#include "kotekanLogging.hpp"    // for DEBUG2, ERROR, INFO, DEBUG, WARN
-#include "metadata.hpp"          // for metadataObject
+#include "Config.hpp"          // for Config
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"
+#include "kotekanLogging.hpp" // for DEBUG2, ERROR, INFO, DEBUG, WARN
+#include "metadata.hpp"       // for metadataObject
 #include "pirate/XEngineMetadata.hpp"
 
-#include "fmt.hpp" // for compile_string_to_view, format, format_string, fmt
+#include "fmt.hpp"  // for compile_string_to_view, format, format_string, fmt
 #include "json.hpp" // for json, basic_json, iter_impl
 
-#include <memory>        // for __shared_ptr_access, shared_ptr
-#include <arpa/inet.h>   // for htons, inet_addr
-#include <thread>
+#include <arpa/inet.h> // for htons, inet_addr
 #include <chrono>
+#include <memory> // for __shared_ptr_access, shared_ptr
+#include <thread>
 
 using namespace std::chrono_literals;
 
@@ -30,8 +30,7 @@ REGISTER_KOTEKAN_STAGE(pirateFrbSend);
 
 pirateFrbSend::pirateFrbSend(Config& config, const std::string& unique_name,
                              bufferContainer& buffer_container) :
-    Stage(config, unique_name, buffer_container, std::bind(&pirateFrbSend::main_thread, this))
-{
+    Stage(config, unique_name, buffer_container, std::bind(&pirateFrbSend::main_thread, this)) {
     drop_threshold = config.get_default<float>(unique_name, "drop_threshold", 0.6);
 
     intensity_buf = get_buffer("intensity");
@@ -51,16 +50,16 @@ pirateFrbSend::pirateFrbSend(Config& config, const std::string& unique_name,
 
     n_beams = config.get<int>(unique_name, "frb2_num_beams");
 
-    upchan_total_channels = (config.get<int>(unique_name, "upchan_all_max_output_channel") -
-                             config.get<int>(unique_name, "upchan_all_min_output_channel"));
+    upchan_total_channels = (config.get<int>(unique_name, "upchan_all_max_output_channel")
+                             - config.get<int>(unique_name, "upchan_all_min_output_channel"));
 
-    size_t expect_size = sizeof(float16_t) * 2 * upchan_total_channels * n_beams *
-        (frb_num_output_times / frb_chunk_size);
+    size_t expect_size = sizeof(float16_t) * 2 * upchan_total_channels * n_beams
+                         * (frb_num_output_times / frb_chunk_size);
     if (offset_scale_buf->frame_size != expect_size)
         FATAL_ERROR("offset_scale_buf must have size {:d}x{:d}x{:d}x{:d}x{:d} = {:d}; got {:d}",
                     sizeof(float16_t), 2, upchan_total_channels, n_beams,
-                    frb_num_output_times / frb_chunk_size,
-                    expect_size, offset_scale_buf->frame_size);
+                    frb_num_output_times / frb_chunk_size, expect_size,
+                    offset_scale_buf->frame_size);
     assert(offset_scale_buf->frame_size == expect_size);
 
     // int4
@@ -68,8 +67,7 @@ pirateFrbSend::pirateFrbSend(Config& config, const std::string& unique_name,
     if (intensity_buf->frame_size != expect_size)
         FATAL_ERROR("intensity_buf must have size {:d}x{:d}x{:d}x{:d}/2 = {:d}; got {:d}",
                     frb_chunk_size, upchan_total_channels, n_beams,
-                    frb_num_output_times / frb_chunk_size,
-                    expect_size, intensity_buf->frame_size);
+                    frb_num_output_times / frb_chunk_size, expect_size, intensity_buf->frame_size);
     assert(intensity_buf->frame_size == expect_size);
 
 
@@ -101,23 +99,23 @@ frb_search_nodes: [
     uint32_t send_timeout = config.get_default<uint32_t>(unique_name, "send_timeout", 20);
     uint32_t reconnect_time = config.get_default<uint32_t>(unique_name, "reconnect_time", 5);
 
-    json frb_targets = config.get<std::vector<json> >(unique_name, "frb_search_nodes");
+    json frb_targets = config.get<std::vector<json>>(unique_name, "frb_search_nodes");
     for (json target : frb_targets) {
         if (!target.is_object()) {
-            throw std::invalid_argument(fmt::format(fmt("Expect 'frb_targets' to contain a list of dicts")));
+            throw std::invalid_argument(
+                fmt::format(fmt("Expect 'frb_targets' to contain a list of dicts")));
         }
         std::string ip = target["ip"].get<std::string>();
         int port = target["port"].get<int>();
         int beamset = target["beamset"].get<int>();
-        //std::vector<int> beam_ids = target["beams"].get<std::vector<int> >();
+        // std::vector<int> beam_ids = target["beams"].get<std::vector<int> >();
         int beam_index_min = target["beam_index_min"].get<int>();
         int beam_index_max = target["beam_index_max"].get<int>();
         if (beam_index_max > (int)n_beams)
-            FATAL_ERROR("beam_index_max ({:d}) must be <= n_beams ({:d})",
-                        beam_index_max, n_beams);
+            FATAL_ERROR("beam_index_max ({:d}) must be <= n_beams ({:d})", beam_index_max, n_beams);
         if (beam_index_min >= beam_index_max)
-            FATAL_ERROR("beam_index_min ({:d}) must be < beam_index_max ({:d})",
-                        beam_index_min, beam_index_max);
+            FATAL_ERROR("beam_index_min ({:d}) must be < beam_index_max ({:d})", beam_index_min,
+                        beam_index_max);
         if ((beam_index_min < 0) || (beam_index_max < 0))
             FATAL_ERROR("beam_index_min ({:d}) and beam_index_max ({:d}) must be non-negative",
                         beam_index_min, beam_index_max);
@@ -140,7 +138,7 @@ frb_search_nodes: [
         dest->beam_index_min = beam_index_min;
         dest->beam_index_max = beam_index_max;
         dest->beamset = beamset;
-        
+
         dests.push_back(dest);
     }
 }
@@ -173,7 +171,7 @@ void pirateFrbSend::main_thread() {
     INFO("Waiting for data in beam_positions buffer...");
     uint8_t* beam_ids_ptr = nullptr;
     uint8_t* beam_pos_ptr = nullptr;
-    float*   beam_pos = nullptr;
+    float* beam_pos = nullptr;
     int16_t* beam_ids = nullptr;
     size_t expect_size;
 
@@ -205,8 +203,7 @@ void pirateFrbSend::main_thread() {
                                     beam_pos + 2 * dest->beam_index_min,
                                     beam_pos + 2 * dest->beam_index_max);
         dest->beam_ids.reserve(n_dest);
-        dest->beam_ids.insert(dest->beam_ids.begin(),
-                              beam_ids + dest->beam_index_min,
+        dest->beam_ids.insert(dest->beam_ids.begin(), beam_ids + dest->beam_index_min,
                               beam_ids + dest->beam_index_max);
     }
 
@@ -227,21 +224,19 @@ void pirateFrbSend::main_thread() {
         int64_t fpga_seq = chordmeta->get_fpga_seq_num();
         int time_downsampling_fpga = chordmeta->get_time_downsampling_fpga();
         // NOT FOUND
-        //int frame_counter = chordmeta->get_frame_counter();
+        // int frame_counter = chordmeta->get_frame_counter();
         int frame_counter = -1;
 
-        INFO("Got data for frame {:d}: frame counter {:d}, FPGA seq {:d}",
-             frame_id, frame_counter, fpga_seq);
+        INFO("Got data for frame {:d}: frame counter {:d}, FPGA seq {:d}", frame_id, frame_counter,
+             fpga_seq);
 
         auto intensity_nd = intensity_buf->get_frame_desc<kotekan::GenericNDArray>();
-        //intensity_nd->output_framedesc(std::cout);
         auto offset_scale_nd = offset_scale_buf->get_frame_desc<kotekan::GenericNDArray>();
-        //offset_scale_nd->output_framedesc(std::cout);
 
         assert((size_t)intensity_nd->get_extent(0) == frb_num_output_times / frb_chunk_size);
         assert((size_t)intensity_nd->get_extent(1) == n_beams);
         assert((size_t)intensity_nd->get_extent(2) == upchan_total_channels);
-        assert((size_t)intensity_nd->get_extent(3) == frb_chunk_size/2);
+        assert((size_t)intensity_nd->get_extent(3) == frb_chunk_size / 2);
         assert(intensity_nd->get_value_datatype() == kotekan::int4x2);
 
         assert((size_t)offset_scale_nd->get_extent(0) == frb_num_output_times / frb_chunk_size);
@@ -258,29 +253,29 @@ void pirateFrbSend::main_thread() {
             // frames, because we likely aren't sending fast enough to
             // keep up with the data rate.
             INFO("Number of full frames in intensity buffer is {:d} (total frames: {:d}), dropping "
-                 "frame_id {:d}", num_full_frames, intensity_buf->num_frames, frame_id);
-            //dropped_frame_counter.inc();
+                 "frame_id {:d}",
+                 num_full_frames, intensity_buf->num_frames, frame_id);
+            // dropped_frame_counter.inc();
         } else {
             bool any_connected = false;
             for (auto dest : dests)
                 if (dest->connected) {
                     any_connected = true;
-                    INFO("Sending frame {:d} to dest {:s}:{:d}",
-                         frame_id, dest->server_ip, dest->server_port);
-                    if (!send_frame(frame_id, fpga_seq, time_downsampling_fpga,
-                                    intensity_frame, offset_scale_frame, dest)) {
+                    INFO("Sending frame {:d} to dest {:s}:{:d}", frame_id, dest->server_ip,
+                         dest->server_port);
+                    if (!send_frame(frame_id, fpga_seq, time_downsampling_fpga, intensity_frame,
+                                    offset_scale_frame, dest)) {
                         INFO("Failed to send frame {:d} to dest {:s}:{:d}; closing connection",
                              frame_id, dest->server_ip, dest->server_port);
                         dest->close_connection();
                     } else
-                        DEBUG("Sent frame {:d} to {:s}:{:d}", frame_id,
-                              dest->server_ip, dest->server_port);
+                        DEBUG("Sent frame {:d} to {:s}:{:d}", frame_id, dest->server_ip,
+                              dest->server_port);
                 }
             if (!any_connected) {
                 // Mark this frame as dropped
-                INFO("Dropping intensity frame {:d}, because all connections are down.",
-                     frame_id);
-                //dropped_frame_counter.inc();
+                INFO("Dropping intensity frame {:d}, because all connections are down.", frame_id);
+                // dropped_frame_counter.inc();
             }
         }
 
@@ -290,7 +285,7 @@ void pirateFrbSend::main_thread() {
         frame_id = (frame_id + 1) % intensity_buf->num_frames;
     }
 
- cleanup:
+cleanup:
     INFO("Cleaning up: closing connections...");
     for (auto dest : dests)
         dest->close_connection();
@@ -300,15 +295,13 @@ void pirateFrbSend::main_thread() {
     INFO("Exiting");
 }
 
-bool pirateFrbSend::send_frame(int frame_id,
-                               int64_t fpga_seq,
-                               int time_downsampling_fpga,
+bool pirateFrbSend::send_frame(int frame_id, int64_t fpga_seq, int time_downsampling_fpga,
                                uint8_t* intensity_frame, uint8_t* offset_scale_frame,
                                std::shared_ptr<pirateDestination> dest) {
     int32_t n = 0;
     int32_t n_sent = 0;
 
-    //pirateDestination* dest = reinterpret_cast<pirateDestination*>(&_dest);
+    // pirateDestination* dest = reinterpret_cast<pirateDestination*>(&_dest);
 
     if (!dest->sent_header) {
         INFO("Sending header");
@@ -336,7 +329,7 @@ bool pirateFrbSend::send_frame(int frame_id,
 
           adc_frequency: 3.2e+9           # [Hz]
           num_samples_per_frame: 16384
-          
+
         */
 
         double adc_freq = config.get<double>(unique_name, "adc_frequency");
@@ -348,28 +341,32 @@ bool pirateFrbSend::send_frame(int frame_id,
         double freq_low = channel_low * adc_freq / samples_per_frame / MHz;
         meta.zone_freq_edges.push_back(freq_low);
 
-        //json upchan_ranges = config.get<std::vector<json> >(unique_name, "upchan_channel_ranges");
- 
-        //if (!upchan_ranges.is_object()) {
-        //throw std::invalid_argument(fmt::format(fmt("Expect 'upchan_channel_ranges' to contain a dict")));
-        //}
-        //std::map<std::string, std::vector<int> >
-        auto upchan_factors = config.get<std::vector<int> >(unique_name, "upchan_factors");
+        // json upchan_ranges = config.get<std::vector<json> >(unique_name,
+        // "upchan_channel_ranges");
+
+        // if (!upchan_ranges.is_object()) {
+        // throw std::invalid_argument(fmt::format(fmt("Expect 'upchan_channel_ranges' to contain a
+        // dict")));
+        // }
+        // std::map<std::string, std::vector<int> >
+        auto upchan_factors = config.get<std::vector<int>>(unique_name, "upchan_factors");
         upchan_factors.insert(upchan_factors.begin(), 1);
 
         // somehow it can't parse the map with int keys, they have to be strings.
-        //auto upchan_ranges = config.get<std::map<int, std::vector<int> > >(unique_name, "upchan_channel_ranges");
-        auto upchan_ranges = config.get<std::map<std::string, std::vector<int> > >(unique_name, "upchan_channel_ranges");
-        //for (auto& it : upchan_ranges.items()) {
-        //for (auto& it : upchan_ranges) {
-            //int upchan_factor = it.key().get<int>();
-        //int upchan_factor = std::stoi(it.key());
-            //std::vector<int> channel_range = it.value().get<std::vector<int> >();
+        // auto upchan_ranges = config.get<std::map<int, std::vector<int> > >(unique_name,
+        // "upchan_channel_ranges");
+        auto upchan_ranges = config.get<std::map<std::string, std::vector<int>>>(
+            unique_name, "upchan_channel_ranges");
+        // for (auto& it : upchan_ranges.items()) {
+        // for (auto& it : upchan_ranges) {
+        // int upchan_factor = it.key().get<int>();
+        // int upchan_factor = std::stoi(it.key());
+        // std::vector<int> channel_range = it.value().get<std::vector<int> >();
 
         // argh, keys not generated in yaml order
-        //for (const auto& [key, value] : upchan_ranges) {
-        //int upchan_factor = std::stoi(key);
-        //std::vector<int> channel_range = value;
+        // for (const auto& [key, value] : upchan_ranges) {
+        // int upchan_factor = std::stoi(key);
+        // std::vector<int> channel_range = value;
         while (upchan_factors.size()) {
             int key = upchan_factors.back();
             upchan_factors.pop_back();
@@ -377,13 +374,16 @@ bool pirateFrbSend::send_frame(int frame_id,
             int upchan_factor = key;
 
             if (channel_range.size() != 2) {
-                throw std::invalid_argument(fmt::format(fmt("Expect 'upchan_channel_ranges' values to be a pair of integers")));
+                throw std::invalid_argument(fmt::format(
+                    fmt("Expect 'upchan_channel_ranges' values to be a pair of integers")));
             }
             int lo = channel_range[0];
             int channel_high = channel_range[1];
             if (lo != channel_low) {
-                throw std::invalid_argument(fmt::format(fmt("Expect 'upchan_channel_ranges' values to be contiguous: upchan {:d}, lo,hi [{:d}, {:d}], expected lo = {:d}"),
-                                                            upchan_factor, lo, channel_high, channel_low));
+                throw std::invalid_argument(
+                    fmt::format(fmt("Expect 'upchan_channel_ranges' values to be contiguous: "
+                                    "upchan {:d}, lo,hi [{:d}, {:d}], expected lo = {:d}"),
+                                upchan_factor, lo, channel_high, channel_low));
             }
             double freq_high = channel_high * adc_freq / samples_per_frame / MHz;
             meta.zone_freq_edges.push_back(freq_high);
@@ -394,28 +394,28 @@ bool pirateFrbSend::send_frame(int frame_id,
             channel_low = channel_high;
         }
 
-        meta.freq_channels = config.get<std::vector<long> >(unique_name, "frequency_channels");
+        meta.freq_channels = config.get<std::vector<long>>(unique_name, "frequency_channels");
 
         for (int16_t b : dest->beam_ids) {
             INFO("Dest {:s}:{:d} gets beam id {:d}", dest->server_ip, dest->server_port, b);
             meta.beam_ids.push_back(b);
         }
-        for (size_t i=0; i<dest->beam_positions.size()/2; i++) {
-            meta.beam_positions_x.push_back(dest->beam_positions[i*2+0]);
-            meta.beam_positions_y.push_back(dest->beam_positions[i*2+1]);
+        for (size_t i = 0; i < dest->beam_positions.size() / 2; i++) {
+            meta.beam_positions_x.push_back(dest->beam_positions[i * 2 + 0]);
+            meta.beam_positions_y.push_back(dest->beam_positions[i * 2 + 1]);
         }
 
-        //meta.nbeams = dest->beam_ids.size();
+        // meta.nbeams = dest->beam_ids.size();
         meta.beamset = dest->beamset;
 
         INFO("XEngineMetadata validate:");
         meta.validate();
-        
-        //std::string config = "yaml";
+
+        // std::string config = "yaml";
         std::string config = meta.to_yaml_string(true);
 
         INFO("Formatted X-engine metadata for Pirate: {:s}", config);
-        
+
         struct pirateNetworkHeader header;
         header.magic_number = 0xf4bf4b02;
         header.flags = 0;
@@ -438,7 +438,8 @@ bool pirateFrbSend::send_frame(int frame_id,
             n_sent += n;
         }
         dest->sent_header = true;
-        INFO("Sent header + yaml (size {:d}) to dest {:s}:{:d}", config.size(), dest->server_ip, dest->server_port);
+        INFO("Sent header + yaml (size {:d}) to dest {:s}:{:d}", config.size(), dest->server_ip,
+             dest->server_port);
     }
 
     // Send 256-time-sample mini-chunks.
@@ -467,21 +468,18 @@ bool pirateFrbSend::send_frame(int frame_id,
     */
     //}
 
-    for (int chunk=0; chunk<(int)(frb_num_output_times / frb_chunk_size); chunk++) {
+    for (int chunk = 0; chunk < (int)(frb_num_output_times / frb_chunk_size); chunk++) {
         struct pirateMinichunkHeader chunk_header;
 
         // Send mini-chunk header
         size_t header_size = sizeof(chunk_header);
         chunk_header.magic_number = 0xf4bf4b02;
-        chunk_header.fpga_seq = (uint64_t)(fpga_seq +
-                                           time_downsampling_fpga * chunk * frb_chunk_size);
+        chunk_header.fpga_seq =
+            (uint64_t)(fpga_seq + time_downsampling_fpga * chunk * frb_chunk_size);
         uint8_t* header_ptr = (uint8_t*)(&chunk_header);
 
         n_sent = 0;
-        while ((n = send(dest->socket_fd,
-                         header_ptr + n_sent,
-                         header_size - n_sent,
-                         MSG_NOSIGNAL))
+        while ((n = send(dest->socket_fd, header_ptr + n_sent, header_size - n_sent, MSG_NOSIGNAL))
                > 0) {
             n_sent += n;
         }
@@ -498,10 +496,8 @@ bool pirateFrbSend::send_frame(int frame_id,
         size_t offset = total_chunk_size * chunk + dest->beam_index_min * size_per_beam;
 
         n_sent = 0;
-        while ((n = send(dest->socket_fd,
-                         offset_scale_frame + offset + n_sent,
-                         total_chunk_size - n_sent,
-                         MSG_NOSIGNAL))
+        while ((n = send(dest->socket_fd, offset_scale_frame + offset + n_sent,
+                         total_chunk_size - n_sent, MSG_NOSIGNAL))
                > 0) {
             n_sent += n;
         }
@@ -512,19 +508,17 @@ bool pirateFrbSend::send_frame(int frame_id,
         offset = total_chunk_size * chunk + dest->beam_index_min * size_per_beam;
 
         n_sent = 0;
-        while ((n = send(dest->socket_fd,
-                         intensity_frame + offset + n_sent,
-                         total_chunk_size - n_sent,
-                         MSG_NOSIGNAL))
+        while ((n = send(dest->socket_fd, intensity_frame + offset + n_sent,
+                         total_chunk_size - n_sent, MSG_NOSIGNAL))
                > 0) {
             n_sent += n;
         }
-        INFO("Sent frame {:d} chunk {:d}: {:d} beams to {:s}:{:d}", frame_id, chunk, dest_nbeams, dest->server_ip, dest->server_port);
+        INFO("Sent frame {:d} chunk {:d}: {:d} beams to {:s}:{:d}", frame_id, chunk, dest_nbeams,
+             dest->server_ip, dest->server_port);
     }
 
     INFO("Sleeping");
     std::this_thread::sleep_for(10000ms);
-    
+
     return true;
 }
-
