@@ -60,6 +60,10 @@ aggregator:
             - "GPS_L5_Q:131,133,135"
 
 common:
+    # The mean projector record (N2Accumulate out_proj_mean_buf, /tmp/gnss/projmean, ~18 GB/node/day): per 21 s bin and
+    # projected channel, the lane projector averaged over the frames the accumulator took. Nodes with n2-project only.
+    # Needs a binary with 93bc715f1 (builds/fleet-745aebb92-cu135); install at a node_up cycle only.
+    proj-mean: true
     # Signal as index (F1-F7): each GPU half runs its chains as rows of one tiles and control
     # array, with one inject, record, combine and telemetry host and one record buffer.
     fold-epl: true
