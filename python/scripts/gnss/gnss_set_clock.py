@@ -17,10 +17,7 @@ import json
 import os
 import subprocess
 import sys
-import warnings
 
-import gnss_brdc_supply
-import gnss_ephemeris as ge
 import gnss_skytime
 
 FILE = "/home/lwlab/gnss/bladerf/clock_offset.json"
@@ -51,6 +48,13 @@ def main(argv=None):
     )
     ap.add_argument("--set", type=float, metavar="SECONDS", help="write this offset")
     ap.add_argument("--yaml", help="the broker yaml holding the site (--sky)")
+    ap.add_argument(
+        "--site-json", help="or a gnss_fix.py --json fix as the site (--sky)"
+    )
+    ap.add_argument(
+        "--decoded-eph",
+        help="comma-separated decoded ephemeris files, not the BRDC (--sky)",
+    )
     ap.add_argument("--target-ms", type=float, default=0.9)
     ap.add_argument("--file", default=FILE, help="bladeRFInput's clock_offset_file")
     ap.add_argument("--restart", action="store_true", help="restart gnss-kotekan")
@@ -59,14 +63,14 @@ def main(argv=None):
     if a.set is not None:
         new = a.set
     elif a.sky:
-        if not a.yaml or not a.marks:
-            ap.error("--sky needs --yaml and the marks files")
-        marks = []
-        for p in a.marks:
-            marks += json.load(open(p)).get("marks", [])
-        warnings.simplefilter("ignore")
-        eph = ge.parse_rinex_nav(gnss_brdc_supply.cached_brdc())
-        res = gnss_skytime.measure(marks, eph, gnss_skytime.site_of(a.yaml))
+        if not a.marks:
+            ap.error("--sky needs the marks files")
+        res, _ = gnss_skytime.run(
+            a.marks,
+            a.yaml,
+            a.site_json,
+            a.decoded_eph.split(",") if a.decoded_eph else None,
+        )
         if len({r[1] for r in res}) < 2:
             print("fewer than two satellites' marks; nothing changed")
             return 1

@@ -2,7 +2,8 @@
 """The capture's time anchor measured from the sky: how far the host-labelled time of the samples
 is from GPS time, from the CNAV messages the nav decoders read.
 
-    python3 gnss_skytime.py --yaml chains_l5.yaml MARKS.json [MARKS.json ...] [--json OUT]
+    python3 gnss_skytime.py MARKS.json ... [--yaml chains_l5.yaml | --site-json FIX.json]
+                            [--decoded-eph FILE,...] [--json OUT]
 
 Each mark (nav_decode.py --timemarks-file) is a CRC-checked message: the host-labelled UTC of its
 first symbol's edge, and the TOW count it carries, which is the satellite time at which the next
@@ -14,7 +15,8 @@ type 10 yet, the host's own week, to half a week.
 
 Positive means the labels are late. bladeRFInput fixes the anchor once, from the system clock at
 the first sample, so a host clock that was wrong when kotekan started shows here for the whole
-run. The site comes from the broker yaml; only offsets are printed.
+run. The site comes from the broker yaml or a gnss_fix.py fix, or there is none (nominal light
+time); the orbits from the BRDC cache or the decoded ephemerides. Only offsets are printed.
 """
 
 import argparse
@@ -26,8 +28,9 @@ from datetime import datetime, timezone
 
 import numpy as np
 
-import gnss_brdc_supply
 import gnss_ephemeris as ge
+import gnss_fix
+import gnss_pvt
 from gnss_broker.sky import HINT_MAX_AGE_S
 
 GPS0_UNIX = 315964800.0
@@ -65,42 +68,65 @@ def week_ref(marks):
     return m["wn"] * 604800.0 + m["tow"] * 6.0 - MSG_S[m["signal"]]
 
 
-def measure(marks, eph, site):
-    """[(signal, prn, error s)] for the marks whose satellite the ephemeris predicts. A first
-    pass on a nominal range (good to ~10 ms) finds the time the satellite is predicted at, so a
-    host clock hours off still finds its satellites; records up to sky.HINT_MAX_AGE_S old do,
-    since 1 ms is 300 km of range."""
+def measure(marks, orbits, site=None):
+    """[(signal, prn, error s)] for the marks whose satellite the orbits know. A first pass on
+    a nominal range (good to ~10 ms) finds the time to evaluate the satellite at, so a host clock
+    hours off still finds it. With the site (ECEF) the light time is the range, to 1 ms;
+    without one it stays nominal, ~10 ms, still enough for the date and the 20 ms epoch. An
+    orbit with no clock (BeiDou's) leaves af0 out, under 1 ms."""
     out = []
     g_ref = week_ref(marks)
     for m in marks:
         if m.get("signal") not in MSG_S:
             continue
         t0 = m["t_host"] - anchor_error_s(m, NOMINAL_ROW, g_ref)
-        row = ge.predict_all(
-            eph,
-            *site,
-            datetime.fromtimestamp(t0, tz=timezone.utc),
-            mask_deg=-90.0,
-            max_age=HINT_MAX_AGE_S,
-            sysc="G",
-        ).get(("G", m["prn"]))
-        if row is not None:
-            out.append((m["signal"], m["prn"], anchor_error_s(m, row, g_ref)))
+        t = ge.gpst_of_utc(datetime.fromtimestamp(t0, tz=timezone.utc))
+        e = orbits.record("G", m["prn"], t)
+        if e is None:
+            continue
+        rng = gnss_fix.geometry(e, site, t)[0] if site is not None else None
+        clk = gnss_fix.sat_state(e, t - (rng or NOMINAL_ROW["range_m"]) / ge.C_LIGHT)[2]
+        row = {
+            "range_m": rng if rng is not None else NOMINAL_ROW["range_m"],
+            "sat_clk_s": clk or 0.0,
+        }
+        out.append((m["signal"], m["prn"], anchor_error_s(m, row, g_ref)))
     return out
+
+
+def run(marks_paths, yaml=None, site_json=None, decoded=None):
+    """measure() on marks files, the site from a broker yaml or a gnss_fix.py --json fix (or
+    none), the orbits from decoded ephemeris files or the BRDC cache (records up to
+    sky.HINT_MAX_AGE_S old: 1 ms is 300 km of range)."""
+    marks = []
+    for p in marks_paths:
+        marks += json.load(open(p)).get("marks", [])
+    warnings.simplefilter("ignore")
+    site = None
+    if yaml:
+        site = np.array(gnss_pvt._llh_to_ecef(*site_of(yaml)))
+    elif site_json:
+        site = np.array(json.load(open(site_json))["ecef"])
+    orbits = gnss_fix.Orbits(decoded, max_age_s=HINT_MAX_AGE_S)
+    return measure(marks, orbits, site), site is not None
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("marks", nargs="+", help="nav_decode.py --timemarks-file outputs")
-    ap.add_argument("--yaml", required=True, help="the broker yaml holding the site")
+    ap.add_argument("--yaml", help="the broker yaml holding the site")
+    ap.add_argument("--site-json", help="or a gnss_fix.py --json fix as the site")
+    ap.add_argument(
+        "--decoded-eph", help="comma-separated decoded ephemeris files, not the BRDC"
+    )
     ap.add_argument("--json", help="write the result here")
     a = ap.parse_args(argv)
-    marks = []
-    for p in a.marks:
-        marks += json.load(open(p)).get("marks", [])
-    warnings.simplefilter("ignore")
-    eph = ge.parse_rinex_nav(gnss_brdc_supply.cached_brdc())
-    res = measure(marks, eph, site_of(a.yaml))
+    res, sited = run(
+        a.marks,
+        a.yaml,
+        a.site_json,
+        a.decoded_eph.split(",") if a.decoded_eph else None,
+    )
     if not res:
         print("no usable marks")
         return 1
@@ -111,10 +137,18 @@ def main(argv=None):
         "n_sats": len({r[1] for r in res}),
         "anchor_error_ms": round(float(np.median(err)), 3),
         "spread_ms": [round(float(err.min()), 3), round(float(err.max()), 3)],
+        "light_time": "range" if sited else "nominal",
     }
     print(
-        "capture anchor %+.3f ms from the sky (%d marks, %d satellites, %+.3f..%+.3f ms)"
-        % (doc["anchor_error_ms"], doc["n_marks"], doc["n_sats"], *doc["spread_ms"])
+        "capture anchor %+.3f ms from the sky (%d marks, %d satellites, %+.3f..%+.3f ms, %s "
+        "light time)"
+        % (
+            doc["anchor_error_ms"],
+            doc["n_marks"],
+            doc["n_sats"],
+            *doc["spread_ms"],
+            doc["light_time"],
+        )
     )
     if a.json:
         with open(a.json, "w") as f:

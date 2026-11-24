@@ -47,6 +47,7 @@ from fractions import Fraction
 
 import numpy as np
 
+import decoded_eph
 import gnss_atmos
 import gnss_brdc_supply
 import gnss_ephemeris as ge
@@ -123,12 +124,47 @@ def load(paths, t_at, span_s):
     return rows
 
 
+class Orbits:
+    """Satellite records from the BRDC cache, or with decoded_paths from the decoded ephemeris
+    files (nav_decode.py and guowang_csk.py --eph-out): the satellites' own messages, which is
+    all a receiver with no cache has. A record is the nearest-toe one within max_age_s, a
+    decoded one the relay's only where no other source has the satellite."""
+
+    def __init__(self, decoded_paths=None, max_age_s=14400.0):
+        self.max_age_s = max_age_s
+        self.dec = decoded_eph.load_files(decoded_paths) if decoded_paths else None
+        self.brdc = (
+            None
+            if decoded_paths
+            else ge.parse_rinex_nav(gnss_brdc_supply.cached_brdc())
+        )
+
+    def record(self, sys, prn, t):
+        if self.brdc is not None:
+            return ge.best_eph(self.brdc.get((sys, prn), []), t, self.max_age_s)
+        best = None
+        for signal, eph, toef in self.dec.get((sys, prn), []):
+            age = abs(t - decoded_eph.toe_gpst_near(sys, eph[toef], t))
+            key = (signal in decoded_eph.LAST_RESORT, age)
+            if age <= self.max_age_s and (best is None or key < best[0]):
+                best = (key, {"sys": sys, "prn": prn, "signal": signal, "eph": eph})
+        return best[1] if best else None
+
+
+def sat_state(e, t):
+    """(ECEF position, velocity, clock s or None) of an Orbits record at GPS time t."""
+    if "signal" in e:
+        p, v, clk = decoded_eph.state(e["sys"], e["signal"], e["eph"], t)
+        return np.array(p), np.array(v), clk
+    return ge.sat_pos_clk(e, t)
+
+
 def geometry(e, rx, t):
     """(range m, range rate m/s, unit line of sight, satellite velocity) of record e seen from
     ECEF rx at GPS time t, with light time and the Earth's rotation over it."""
     tau = 0.075
     for _ in range(3):
-        pos, vel, _ = ge.sat_pos_clk(e, t - tau)
+        pos, vel, _ = sat_state(e, t - tau)
         th = ge.OMEGA_E[e["sys"]] * tau
         c, s = math.cos(th), math.sin(th)
         p = np.array([pos[0] * c + pos[1] * s, -pos[0] * s + pos[1] * c, pos[2]])
@@ -257,6 +293,10 @@ def main(argv=None):
         help="how far the prior may be off: chains too short to cover it wait (default 100)",
     )
     ap.add_argument("--truth-yaml", help="print offsets from this broker yaml's site")
+    ap.add_argument(
+        "--decoded-eph",
+        help="comma-separated decoded ephemeris files to take the orbits from, not the BRDC",
+    )
     ap.add_argument("--json", help="write the fix here")
     a = ap.parse_args(argv)
     warnings.simplefilter("ignore")
@@ -267,7 +307,7 @@ def main(argv=None):
     if not rows:
         print("no present rows in the %.0f s before %.0f" % (a.doppler_span_s, t_at))
         return 1
-    eph = ge.parse_rinex_nav(gnss_brdc_supply.cached_brdc())
+    orbits = Orbits(a.decoded_eph.split(",") if a.decoded_eph else None)
     sig, arcs, meas = {}, defaultdict(list), []
     for r in rows:
         if r["band"] not in sig:
@@ -292,10 +332,12 @@ def main(argv=None):
             L,
         )
         t = gpst(FRAME0_UTC + r["rec_hop"] / float(HOPS_PER_S))
-        e = ge.best_eph(eph.get((r["sys"], r["prn"]), []), t)
+        e = orbits.record(r["sys"], r["prn"], t)
         if e is None:
             continue
-        clk_sat = ge.sat_pos_clk(e, t - 0.075)[2]
+        clk_sat = sat_state(e, t - 0.075)[2]
+        if clk_sat is None:
+            continue
         T = L / s.chip_rate_hz
         meas.append((r["band"], e, t, (t + clk_sat - ph / s.chip_rate_hz) % T, T))
     # Doppler from the ADR: each row against the first of its arc at least DOP_BASELINE_S
@@ -318,7 +360,7 @@ def main(argv=None):
             dop = (r1["fadr_dop_cycles"] - r0["fadr_dop_cycles"]) / dt
             hop = 0.5 * (r0["fadr_hop"] + r1["fadr_hop"])
             t = gpst(FRAME0_UTC + hop / float(HOPS_PER_S))
-            e = ge.best_eph(eph.get((r1["sys"], prn), []), t)
+            e = orbits.record(r1["sys"], prn, t)
             if e is not None:
                 obs_d.append((e, t, -dop * C / r1["carrier_hz"]))
     truth = None
@@ -345,7 +387,7 @@ def main(argv=None):
         report("prior", rx, "")
     else:
         # The satellites in view are above the horizon: their mean direction is near zenith.
-        u = np.mean([ge.sat_pos_clk(e, t)[0] for e, t, _ in obs_d], axis=0)
+        u = np.mean([sat_state(e, t)[0] for e, t, _ in obs_d], axis=0)
         rx = R_EARTH * u / np.linalg.norm(u)
         report("start (mean direction)", rx, "")
         rx, beta, rms, n, drop = doppler_fix(obs_d, rx)

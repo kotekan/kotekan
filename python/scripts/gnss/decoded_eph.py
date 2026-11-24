@@ -29,6 +29,8 @@ Every entry is guarded separately so one bad ephemeris cannot take out the rest,
 wraps the whole call so the fallback cannot worsen an outage.
 """
 
+import importlib
+import json
 import math
 
 from gnss_ephemeris import (
@@ -48,10 +50,14 @@ from gnss_ephemeris import (
 # sat_clk_s = None.
 CLOCK_FIELDS = {
     "GAL_E1B_INAV": ("af0", "af1", "af2", "t0c", "t0e"),
+    "GAL_E5BI_INAV": ("af0", "af1", "af2", "t0c", "t0e"),
     "GAL_E5AI_FNAV": ("af0", "af1", "af2", "t0c", "t0e"),
     # GPS LNAV carries its clock in subframe 1 (af0/af1/af2 about toc), so unlike CNAV the L1
     # fallback can seed absolute code phase, not just geometry and Doppler.
     "GPS_L1_LNAV": ("af0", "af1", "af2", "toc", "toe"),
+    # CNAV's clock is its type 30-37 block, merged by cnav_predictor when it is the same upload.
+    "GPS_L5_CNAV": ("af0", "af1", "af2", "toc", "toe"),
+    "GPS_L2C_CNAV": ("af0", "af1", "af2", "toc", "toe"),
     # GuoWang's relay (guowang_csk.py): its clocks with the relay's time-scale offset added back
     "GW_CSK_RELAY": ("af0", "af1", "af2", "toc", "toe"),
 }
@@ -62,6 +68,19 @@ CLOCK_FIELDS = {
 LAST_RESORT = {"GW_CSK_RELAY"}
 # Kepler fields the relativistic term reads; every decoder in CLOCK_FIELDS names them alike.
 KEPLER_FIELDS = ("M0", "dn", "sqrtA", "e")
+# Each decoded signal's propagator, (module, function): sv_pos(eph, t_sow) -> ECEF at transmit
+# time, t_sow in the constellation's seconds of week. The broker's own table names the same.
+SV_POS = {
+    "GPS_L1_LNAV": ("gps_nav_decode", "sv_position_lnav"),
+    "GPS_L2C_CNAV": ("gps_cnav", "sv_position_cnav"),
+    "GPS_L5_CNAV": ("gps_cnav", "sv_position_cnav"),
+    "GAL_E1B_INAV": ("galileo_inav", "sv_position_inav"),
+    "GAL_E5BI_INAV": ("galileo_inav", "sv_position_inav"),
+    "GAL_E5AI_FNAV": ("galileo_fnav", "sv_position_fnav"),
+    "BDS_B1C_BCNAV1": ("beidou_bcnav1", "sv_position_bcnav1"),
+    "BDS_B2A_BCNAV2": ("beidou_bcnav2", "sv_position_bcnav2"),
+    "GW_CSK_RELAY": ("guowang_csk", "sv_position_relay"),
+}
 
 
 def _week_wrap(dt):
@@ -150,6 +169,37 @@ def predict_one(sv_pos, eph, sys, signal, rx, lat, lon, t_sow, toe_age_s, dt=0.5
         )
     except Exception:
         return None
+
+
+def load_files(paths):
+    """{(sys, prn): [(signal, eph, toe_field)]} from nav_decode.py and guowang_csk.py --eph-out
+    files: the satellites' own ephemerides, for a receiver with no BRDC. A file that cannot be
+    read is skipped."""
+    out = {}
+    for path in paths:
+        try:
+            with open(path) as fh:
+                doc = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        for r in doc.get("eph", []):
+            if r.get("signal") in SV_POS and r.get("toe_field") in r.get("eph", {}):
+                key = (r["sys"], int(r["prn"]))
+                out.setdefault(key, []).append((r["signal"], r["eph"], r["toe_field"]))
+    return out
+
+
+def state(sys, signal, eph, t_gpst, dt=0.5):
+    """(ECEF position, velocity, clock s or None) of a decoded ephemeris at continuous GPST
+    t_gpst (transmit time), the velocity by central difference."""
+    mod, fn = SV_POS[signal]
+    sv_pos = getattr(importlib.import_module(mod), fn)
+    ts = t_gpst % 604800.0
+    if sys == "C":
+        ts = (ts + BDT_GPST) % 604800.0
+    a, b = sv_pos(eph, ts - dt), sv_pos(eph, ts + dt)
+    vel = [(q - p) / (2.0 * dt) for p, q in zip(a, b)]
+    return list(sv_pos(eph, ts)), vel, _sat_clock(eph, sys, signal, ts)
 
 
 def predict_from_decoders(entries, lat, lon, alt, t_utc, mask_deg=0.0, max_age=14400.0):

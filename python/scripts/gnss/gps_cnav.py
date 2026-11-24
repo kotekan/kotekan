@@ -102,6 +102,28 @@ CNAV_EPH_FIELDS = {
 }
 
 
+# The clock block every message type 30-37 opens with (IS-GPS-200 Figure 30-4 ff.): name ->
+# (1-indexed start bit, length, signed, scale).
+CNAV_CLOCK_FIELDS = {
+    "toc": (61, 11, False, 300.0),
+    "af0": (72, 26, True, _P(35)),
+    "af1": (98, 20, True, _P(48)),
+    "af2": (118, 10, True, _P(60)),
+}
+
+
+def parse_cnav_clock(bits):
+    """The satellite clock (SI) of a type 30-37 message."""
+    out = {}
+    for name, (start, length, signed, scale) in CNAV_CLOCK_FIELDS.items():
+        b = bits[start - 1 : start - 1 + length]
+        v = _uint(b)
+        if signed and b[0] == 1:
+            v -= 1 << length
+        out[name] = v * scale
+    return out
+
+
 def parse_cnav_ephemeris(msg10_bits, msg11_bits):
     """Decode the CNAV ephemeris from a type-10 + type-11 message pair (SI)."""
     src = {10: msg10_bits, 11: msg11_bits}

@@ -41,6 +41,7 @@ polarity-scrambled emits -> the CRC-guided decoder must recover the messages and
 ephemeris; g2=False wins there because the synthetic symbols use the module convention).
 """
 import itertools
+import math
 import os
 import sys
 import time
@@ -138,6 +139,7 @@ class _PrnState:
         self.edge_s = 0.0  # slot * sym_s + edge_s is a symbol edge's host-labelled UTC
         self.eph10 = None
         self.eph11 = None
+        self.clk = None  # the newest type 30-37 (its clock block)
         self.n_decoded = 0
         self.boot = 0  # cold-bootstrap (phase, g2) rotation counter
         self.cold_fail = (
@@ -463,6 +465,8 @@ class CnavPredictor:
                             st.eph10 = st.decoded[ss]
                         elif m["type"] == 11:
                             st.eph11 = st.decoded[ss]
+                        elif 30 <= m["type"] <= 37:
+                            st.clk = st.decoded[ss]
                         st.n_decoded += 1
                         for c in chain:
                             if (
@@ -483,13 +487,22 @@ class CnavPredictor:
 
     # ---------------- serve ----------------
     def ephemeris(self, prn):
-        """CNAV ephemeris (SI) from the latest type-10 + type-11, consistency-gated toe==toe2."""
+        """CNAV ephemeris (SI) from the latest type-10 + type-11, consistency-gated toe==toe2,
+        with the clock of the latest type 30-37 when its toc is the toe (one upload). The clock
+        rides with sqrtA and dn, the Kepler terms decoded_eph's relativistic term reads, which
+        CNAV carries as dA and dn0."""
         st = self._p.get(prn)
         if st is None or st.eph10 is None or st.eph11 is None:
             return None
         eph = C.parse_cnav_ephemeris(list(st.eph10), list(st.eph11))
         if abs(eph["toe"] - eph["toe2"]) > 1e-6:
             return None
+        if st.clk is not None:
+            clk = C.parse_cnav_clock(list(st.clk))
+            if clk["toc"] == eph["toe"]:
+                eph.update(clk)
+                eph["sqrtA"] = math.sqrt(C.AREF + eph["dA"])
+                eph["dn"] = eph["dn0"]
         return eph
 
     def health(self, prn):
