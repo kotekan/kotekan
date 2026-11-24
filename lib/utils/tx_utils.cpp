@@ -60,6 +60,17 @@ struct sockaddr_in get_my_addr(const in_addr_t netaddr, const in_addr_t netmask)
     return retval;
 }
 
+void get_chime_rack_location(const in_addr_t my_addr, int& my_rack, int& my_node, int& my_node_id) {
+    uint8_t my_addr_octets[sizeof(my_addr)];
+    // octets of IP address in network orrder
+    memcpy(my_addr_octets, &my_addr, sizeof(my_addr_octets));
+    // CHIME GPU nodes are 10.1.{rack}.(10 + {slot}), 8 nodes per rack
+    // See roles/internal/network_data/vars/main.yaml in ch_ansible
+    my_rack = my_addr_octets[2];
+    my_node = my_addr_octets[3] - 10;
+    my_node_id = my_rack * 8 + my_node;
+}
+
 void add_nsec(struct timespec& temp, long nsec) {
     temp.tv_nsec += nsec;
     if (temp.tv_nsec >= 1000000000) {

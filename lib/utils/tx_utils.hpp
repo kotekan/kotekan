@@ -20,6 +20,16 @@
 
 struct sockaddr_in get_my_addr(const in_addr_t netaddr, const in_addr_t netmask);
 
+/** @brief compute the location of this node in the racks
+ *
+ *  @param my_addr IPv4 address of node
+ *  @param my_rack rack number of the node
+ *  @param my_node node number on the rack
+ *  @param my_node_id ID of the node
+ **/
+
+void get_chime_rack_location(const in_addr_t my_addr, int& my_rack, int& my_node, int& my_node_id);
+
 
 /** @brief adds nsec to a give timespec structure.
  *
