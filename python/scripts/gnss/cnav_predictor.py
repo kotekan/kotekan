@@ -134,6 +134,8 @@ class _PrnState:
         )
         self.pol = {}  # slot0 -> resolved island sign (+-1) in one consistent frame
         self.decoded = {}  # start_slot -> data bits[300] (0/1), CRC-verified
+        self.sym_s = None  # slot period, s
+        self.edge_s = 0.0  # slot * sym_s + edge_s is a symbol edge's host-labelled UTC
         self.eph10 = None
         self.eph11 = None
         self.n_decoded = 0
@@ -186,14 +188,19 @@ class CnavPredictor:
         st.last_obs = key
         st.t_seen = time.time()
         sym_s = br * rec_dt
+        st.sym_s = sym_s
         # Build this emit's absolute slot -> sign map (no polarity applied: each emit is its own
         # sign island; the decoder resolves inter-emit polarity by CRC).
         m = {}
+        frac = None
         for bi, sg in pairs:
             bi, sg = int(bi), int(sg)
             if sg not in (1, -1):
                 continue
-            slot = int(round((utc_ref + (bi * br - phase) * rec_dt) / sym_s))
+            t_edge = utc_ref + (bi * br - phase) * rec_dt
+            slot = int(round(t_edge / sym_s))
+            if frac is None:
+                frac = t_edge - slot * sym_s
             m[slot] = sg
         if len(m) < 2:
             return
@@ -210,6 +217,7 @@ class CnavPredictor:
         # overlaps; line it up with that history
         d = emit_offset(slot0, arr, st.emits.items())
         slot0, hi = slot0 + d, hi + d
+        st.edge_s = frac - d * sym_s
         if not self._merge(st, slot0, arr):
             st.emits[slot0] = arr
         # Bound the cache to the newest SYM_MAX symbols: drop the oldest islands, and trim the

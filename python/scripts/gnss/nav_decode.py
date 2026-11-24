@@ -221,6 +221,30 @@ def message_types(signal, st):
     return out
 
 
+def write_timemarks(srcs, path, now):
+    """Each CRC-checked CNAV message as a time mark: the host-labelled UTC of its first
+    symbol's edge and the TOW count it carries, to measure the capture's time anchor against.
+    The edge is the satellite's newest, to a record (1 ms), and moves ~3 us/s."""
+    marks = []
+    for s in srcs:
+        if s["signal"] not in ("GPS_L5_CNAV", "GPS_L2C_CNAV"):
+            continue
+        for prn, st in sorted(s["dec"]._p.items()):
+            if not st.sym_s:
+                continue
+            for slot, bits in sorted(st.decoded.items()):
+                marks.append(
+                    {
+                        "signal": s["signal"],
+                        "prn": prn,
+                        "t_host": round(slot * st.sym_s + st.edge_s, 5),
+                        "tow": nav_fields._read(bits, 20, 17, "u"),
+                        "type": nav_fields._read(bits, 14, 6, "u"),
+                    }
+                )
+    write_atomic({"schema": 1, "t": round(now, 2), "marks": marks}, path)
+
+
 def write_payload(srcs, path, now):
     doc = {"schema": 1, "t": round(now, 2), "signals": {}}
     for s in srcs:
@@ -415,6 +439,10 @@ def main():
         help="per satellite, the current ephemeris, decode state and newest message types "
         "(rewritten every 2 s)",
     )
+    ap.add_argument(
+        "--timemarks-file",
+        help="each decoded CNAV message's host-labelled start and TOW (rewritten every 2 s)",
+    )
     ap.add_argument("--every", type=float, default=1.0, help="shortest poll period, s")
     ap.add_argument(
         "--window-frac",
@@ -484,9 +512,14 @@ def main():
             s["next_t"] = max(s["next_t"], time.time() + args.window_frac * span)
             s["io"] += t1 - t0
             s["cpu"] += time.process_time() - t1
-        if args.payload_file and time.time() - t_pay >= PAYLOAD_EVERY_S:
+        if (args.payload_file or args.timemarks_file) and (
+            time.time() - t_pay >= PAYLOAD_EVERY_S
+        ):
             t_pay = time.time()
-            write_payload(srcs, args.payload_file, t_pay)
+            if args.payload_file:
+                write_payload(srcs, args.payload_file, t_pay)
+            if args.timemarks_file:
+                write_timemarks(srcs, args.timemarks_file, t_pay)
         if args.progress_file and time.time() - t_prog >= PROGRESS_EVERY_S:
             t_prog = time.time()
             write_progress(srcs, args.progress_file, t_prog)
