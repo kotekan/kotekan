@@ -184,6 +184,21 @@
  * @conf lane_dump_period_s Double. Seconds between dump frames (2.0), in whole frames.
  * @conf lane_dump_max_cand Int. Candidates recorded per channel (96); lane_dump_buf's frame must
  *                          hold a slot per live channel.
+ *
+ * Basis record. With basis_buf, every frame also carries the directions each live channel was
+ * projected with, so N2Accumulate can average the projector over its bins (in_proj_basis_buf).
+ * The output's live block is (I - Q Q^H) V (I - Q Q^H), Q the slot's k orthonormal columns
+ * given row-wise (gnss_n2proj::project's layout).
+ * Source lanes+residual is refused: it projects twice in turn, which one basis cannot describe.
+ * Layout, little-endian, version 1:
+ *  - header, 64 bytes: int64 seq; int32 version, n (stations), n_integrations, n_slots (the
+ *    live channels, in local channel order), k_slot (k_lanes_max with lanes, else k_max),
+ *    slot_bytes, magic 0x53414250 ("PBAS");
+ *  - int32 stations[n];
+ *  - n_integrations x n_slots slots of slot_bytes = 16 + 8 k_slot n: int32 freq_id, k, two
+ *    int32 unused; complex<float> q[k_slot][n] on the stations axis, the first k rows set.
+ *
+ * @buffer basis_buf  Optional. The basis record, one frame per input frame, no metadata.
  */
 class GnssN2Project : public kotekan::Stage {
 public:
@@ -275,6 +290,15 @@ private:
     size_t cand_n_local = 0; ///< build_lanes: the board's candidates (the fleet's follow)
     /// Write channel f's slot: the raw block V and build_lanes' candidates.
     void dump_channel(uint8_t* slot, int f, const cd* V) const;
+
+    // Basis record
+    Buffer* basis_buf = nullptr;
+    int basis_k = 0;
+    size_t basis_head_bytes = 0, basis_slot_bytes = 0;
+    int basis_slots = 0;
+    std::vector<int> basis_slot; ///< per local channel: its slot, -1 if not live
+    /// Write a slot: @p freq_id and the first @p k rows of @p q ([k][n]).
+    void write_basis_slot(uint8_t* slot, int freq_id, int k, const cd* q) const;
 
     // Fleet lanes (docs/CHORD_FLEET_LANES.md)
     const bool fleet_lanes;
