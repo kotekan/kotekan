@@ -21,7 +21,7 @@ if(CUDAToolkit_FOUND)
     add_subdirectory(pilotproxy)
     target_link_libraries(libexternal INTERFACE pilotproxy)
 
-    #target_include_directories(libexternal INTERFACE pirate)
+    # target_include_directories(libexternal INTERFACE pirate)
     add_subdirectory(pirate)
     target_link_libraries(libexternal INTERFACE pirate)
 
