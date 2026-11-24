@@ -17,7 +17,6 @@
 num_dishes_x: 24
 num_dishes_y: 24
 num_dishes: 512
-input_order: CHORDBeamformer
 
 # Telescope
 
@@ -54,6 +53,11 @@ telescope:
 {%   endfor %}
 {% endfor %}
 
+    sampling_rate_MHz: adc_frequency / 1.0e+6
+    fft_length: num_samples_per_frame
+    min_science_freq_MHz: 1536 * adc_frequency / num_samples_per_frame / 1.0e+6
+    max_science_freq_MHz: 7679 * adc_frequency / num_samples_per_frame / 1.0e+6
+
 ################################################################################
 
 # ADC
@@ -89,40 +93,53 @@ frequency_channels: [
 
 num_times: 8192                 # frame length is 8192 * 5.12 us = 41.94304 ms
 
+bf_mask_lifetime_in_samples: 24 * num_times # about 1 second
+
 ################################################################################
 
 # Buffers
 
 host_bf_mask_buffer:
-    kotekan_buffer: standard
-    num_frames: 1
-    frame_size: sizeof_int8 * num_dishes * num_polarizations
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: int8
+    extents: [1, num_polarizations, num_dishes]
+    quantity_name: "bf_mask"
+    dimnames: ["Tbf", "P", "D"]
+    dimscalings: [bf_mask_lifetime_in_samples, 1, 1]
+    metadata_pool: main_pool
+host_bf_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * num_dishes * num_polarizations * 1
     metadata_pool: main_pool
 
 host_pl_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (64 / 8) * (num_dishes / 8) * num_polarizations * (num_frequencies / 4) * (num_times / 2 / 64)
+    value_type: uint1x8
+    extents: [num_times / 2 / 64, num_frequencies / 4, num_polarizations, num_dishes / 8, 64 / 8]
+    quantity_name: "pl_mask"
+    dimnames: ["T2hi64", "F4", "P", "D8", "T2lo64"]
+    dimscalings: [128, 4, 1, 8, 16]
     metadata_pool: main_pool
 host_pl_mask_ringbuffer:
     kotekan_buffer: ring
     ring_buffer_size: buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * (num_frequencies / 4) * (num_times / 2 / 64)
     metadata_pool: main_pool
 
-host_pl_expanded_mask_buffer:
-    kotekan_buffer: standard
-    num_frames: buffer_depth
-    frame_size: (64 / 8) * (num_dishes / 8) * num_polarizations * num_frequencies * (num_times / 64)
-    metadata_pool: main_pool
 host_pl_expanded_mask_ringbuffer:
     kotekan_buffer: ring
     ring_buffer_size: buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * num_frequencies * (num_times / 64)
     metadata_pool: main_pool
 
 host_voltage_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: num_dishes * num_polarizations * num_frequencies * num_times
+    value_type: int4x2_swapped_withoffset
+    extents: [num_times, num_frequencies, num_polarizations, num_dishes]
+    quantity_name: "E"
+    dimnames: ["T", "F", "P", "D"]
+    dimscalings: [1, 1, 1, 1]
     metadata_pool: main_pool
 host_voltage_ringbuffer:
     kotekan_buffer: ring
@@ -141,19 +158,21 @@ run_invent_pl_mask:
     kotekan_stage: inventPLMask
     pl_mask: host_pl_mask_buffer
 
-# run_send_bf_mask:
-#     gpu_0:
-#         kotekan_stage: cudaProcess
-#         gpu_id: 0
-#         in_buffers:
-#             host_bf_mask_buffer: host_bf_mask_buffer
-#         out_buffers:
-#         commands:
-#         - name: cudaInputData
-#           do_once: true
-#           in_buf: host_bf_mask_buffer
-#           gpu_mem: bf_mask_buffer
-#         - name: cudaSyncInput
+run_send_bf_mask:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_bf_mask_buffer: host_bf_mask_buffer
+        out_buffers:
+            host_bf_mask_ringbuffer: host_bf_mask_ringbuffer
+        commands:
+        - name: cudaCopyToRingbuffer
+          input_size: num_dishes * num_polarizations
+          ring_buffer_size: buffer_depth * input_size
+          in_buf: host_bf_mask_buffer
+          signal_buf: host_bf_mask_ringbuffer
+          gpu_mem_output: bf_mask_buffer
 
 run_send_pl_mask:
     gpu_0:

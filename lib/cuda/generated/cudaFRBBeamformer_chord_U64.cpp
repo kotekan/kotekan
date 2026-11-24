@@ -6,16 +6,21 @@
  * Do not modify this C++ file, your changes will be lost.
  */
 
+#include "CHORDTelescope.hpp"
 #include "DataType.hpp"
 #include "NDArrayBuffer.hpp"
 #include "NDArrayRingBuffer.hpp"
 #include "Telescope.hpp"
+#include "UpchannelizationSchedule.hpp"
 #include "bufferContainer.hpp"
 #include "chordMetadata.hpp"
 #include "cudaCommand.hpp"
 #include "cudaDeviceInterface.hpp"
+#include "cudaUtils.hpp"
 #include "div.hpp"
+#include "frbDishLayout.hpp"
 #include "ringbuffer.hpp"
+#include "upchannelizeReference.hpp"
 
 #include <algorithm>
 #include <array>
@@ -25,13 +30,14 @@
 #include <limits>
 #include <memory>
 #include <mutex>
+#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 using kotekan::bufferContainer;
 using kotekan::Config;
-using kotekan::round_down, kotekan::div_noremainder, kotekan::div, kotekan::mod;
+using kotekan::round_down, kotekan::round_up, kotekan::div_noremainder, kotekan::div, kotekan::mod;
 
 namespace {
 template<typename T, std::size_t D>
@@ -40,6 +46,16 @@ std::array<T, D> reverse(const std::array<T, D>& values) {
     for (std::size_t d = 0; d < D; ++d)
         result[d] = values[D - 1 - d];
     return result;
+}
+
+// Override the leading (slowest) dimension's scaling with a run-time value. Used for inputs
+// that are valid for a configurable number of FPGA samples, such as the beamforming weights.
+template<std::size_t D>
+std::array<std::ptrdiff_t, D> with_leading_dimscaling(std::array<std::ptrdiff_t, D> dimscalings,
+                                                      const std::ptrdiff_t dimscaling) {
+    static_assert(D > 0);
+    dimscalings[0] = dimscaling;
+    return dimscalings;
 }
 }
 
@@ -86,6 +102,15 @@ private:
     static constexpr int cuda_number_of_polarizations = 2;
     static constexpr int cuda_number_of_timesamples = 512;
     static constexpr int cuda_granularity_number_of_timesamples = 48;
+    static constexpr int cuda_upchan_number_of_taps = 4;
+
+    // Each kernel invocation processes a multiple of this many `Tbar` samples: a multiple of the
+    // kernel's granularity, and of the downsampling factor so that every sample read is also
+    // consumed. The read head thus always stays on a multiple of `Tbar_quantum`, which is what
+    // lets a read stop exactly at the end of a slowly varying input's lifetime.
+    static constexpr std::ptrdiff_t Tbar_quantum =
+        std::lcm(std::ptrdiff_t(cuda_granularity_number_of_timesamples),
+                 std::ptrdiff_t(cuda_downsampling_factor));
 
     // Kernel input and output sizes
     std::int64_t num_consumed_elements(std::int64_t num_available_elements) const;
@@ -111,7 +136,12 @@ private:
     // How many frequencies we will process
     const int Fbar_in_min, Fbar_in_max;
     const int Fbar_out_min, Fbar_out_max;
-    const ElementOrder input_order;
+
+    // The upchannelizers skip input samples at startup so that all their outputs begin at input
+    // sample `upchan_output_offset` (see `upchan_template.cxx`). Without upchannelization (U=1)
+    // we read the input voltages directly and skip the same number of samples ourselves, so that
+    // all producers of the shared output buffer `I` are aligned. Only needed for U=1.
+    const std::ptrdiff_t Tbar_skip;
 
     // Kernel arguments:
     enum class args {
@@ -179,6 +209,10 @@ private:
         2,
         576,
     };
+    static constexpr std::array<std::ptrdiff_t, S_rank> S_dimscalings = {
+        1,
+        1,
+    };
     static constexpr auto S_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -201,14 +235,18 @@ private:
         W_index_dishM,
         W_index_dishN,
         W_index_P,
-        W_index_F,
+        W_index_Fbar,
+        W_index_TW,
         W_rank,
     };
     static constexpr std::array<const char*, W_rank> W_labels = {
-        "C", "dishM", "dishN", "P", "F",
+        "C", "dishM", "dishN", "P", "Fbar", "TW",
     };
     static constexpr std::array<std::ptrdiff_t, W_rank> W_lengths = {
-        2, 24, 24, 2, 256,
+        2, 24, 24, 2, 256, 4,
+    };
+    static constexpr std::array<std::ptrdiff_t, W_rank> W_dimscalings = {
+        1, 1, 1, 1, 1, 1,
     };
     static constexpr auto W_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -218,7 +256,8 @@ private:
     };
     static constexpr std::array<std::ptrdiff_t, W_rank + 1> W_strides = {
         W_calc_stride(W_index_C), W_calc_stride(W_index_dishM), W_calc_stride(W_index_dishN),
-        W_calc_stride(W_index_P), W_calc_stride(W_index_F),     W_calc_stride(W_rank),
+        W_calc_stride(W_index_P), W_calc_stride(W_index_Fbar),  W_calc_stride(W_index_TW),
+        W_calc_stride(W_rank),
     };
     static constexpr std::ptrdiff_t W_length = W_strides[W_rank];
     static constexpr std::ptrdiff_t W_length_in_bytes = type_total_bytes(W_type) * W_length;
@@ -244,6 +283,12 @@ private:
         2,
         256,
         512,
+    };
+    static constexpr std::array<std::ptrdiff_t, Ebar_rank> Ebar_dimscalings = {
+        1,
+        1,
+        1,
+        64,
     };
     static constexpr auto Ebar_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
@@ -282,6 +327,12 @@ private:
         512,
         1024,
     };
+    static constexpr std::array<std::ptrdiff_t, I_rank> I_dimscalings = {
+        1,
+        1,
+        1,
+        192,
+    };
     static constexpr auto I_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -314,6 +365,11 @@ private:
         24,
         256,
     };
+    static constexpr std::array<std::ptrdiff_t, info_rank> info_dimscalings = {
+        1,
+        1,
+        1,
+    };
     static constexpr auto info_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
@@ -340,6 +396,9 @@ private:
     const std::string I_name;
     const std::string info_name;
 
+    // Lifetimes of slowly varying inputs, in FPGA samples
+    const std::ptrdiff_t W_lifetime_in_samples;
+
     // Host-side buffer arrays
     std::vector<std::uint8_t> S_host;
     std::vector<std::uint8_t> info_host;
@@ -347,7 +406,7 @@ private:
     // Buffers
     NDArrayBuffer<kotekan::GetType_t<S_type>, S_rank> S_buffer;
     std::vector<kotekan::GetType_t<S_type>> host_S_buffer;
-    NDArrayBuffer<kotekan::GetType_t<W_type>, W_rank> W_buffer;
+    NDArrayRingBuffer<kotekan::GetType_t<W_type>, W_rank> W_buffer;
     NDArrayRingBuffer<kotekan::GetType_t<Ebar_type>, Ebar_rank> Ebar_buffer;
     NDArrayRingBuffer<kotekan::GetType_t<I_type>, I_rank> I_buffer;
     NDArrayBuffer<kotekan::GetType_t<info_type>, info_rank> info_buffer;
@@ -376,7 +435,7 @@ cudaFRBBeamformer_chord_U64::cudaFRBBeamformer_chord_U64(Config& config,
     Fbar_in_max(config.get<int>(unique_name, "Fbar_in_max")),
     Fbar_out_min(config.get<int>(unique_name, "Fbar_out_min")),
     Fbar_out_max(config.get<int>(unique_name, "Fbar_out_max")),
-    input_order(config.get<ElementOrder>(unique_name, "input_order")),
+    Tbar_skip(cuda_upchannelization_factor == 1 ? upchan_output_offset(config, unique_name) : 0),
 
     poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
 
@@ -386,26 +445,30 @@ cudaFRBBeamformer_chord_U64::cudaFRBBeamformer_chord_U64(Config& config,
     I_name(config.get<std::string>(unique_name, "frb_beamgrid_name")),
     info_name(unique_name + "/gpu_mem_info"),
 
-    S_buffer(S_name, S_quantity, reverse(S_lengths), reverse(S_labels), *this),
-    host_S_buffer(S_length), W_buffer(W_name, W_quantity, reverse(W_lengths), reverse(W_labels),
-                                      *this, buffer_type_t::do_once),
-    Ebar_buffer(Ebar_name, Ebar_quantity, reverse(Ebar_lengths), reverse(Ebar_labels), *this),
-    I_buffer(I_name, I_quantity, reverse(I_lengths), reverse(I_labels), *this),
-    info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels), *this),
+    W_lifetime_in_samples(config.get<std::int64_t>(unique_name, "frb1_phase_lifetime_in_samples")),
+
+    S_buffer(S_name, S_quantity, reverse(S_lengths), reverse(S_labels), reverse(S_dimscalings),
+             *this),
+    host_S_buffer(S_length),
+    W_buffer(W_name, W_quantity, reverse(W_lengths), reverse(W_labels),
+             with_leading_dimscaling(reverse(W_dimscalings), W_lifetime_in_samples), *this),
+    Ebar_buffer(Ebar_name, Ebar_quantity, reverse(Ebar_lengths), reverse(Ebar_labels),
+                reverse(Ebar_dimscalings), *this),
+    I_buffer(I_name, I_quantity, reverse(I_lengths), reverse(I_labels), reverse(I_dimscalings),
+             *this),
+    info_buffer(info_name, info_quantity, reverse(info_lengths), reverse(info_labels),
+                reverse(info_dimscalings), *this),
     host_info_buffer(info_length),
 
     did_init_host_S_buffer(false), did_set_metadata(false) {
+    // `upchan_output_offset` is calculated with the default number of taps
+    static_assert(cuda_upchan_number_of_taps == kotekan::upchan_default_num_taps);
+
     // Register host memory
-    {
-        const cudaError_t ierr = cudaHostRegister(
-            host_S_buffer.data(), host_S_buffer.size() * sizeof *host_S_buffer.data(), 0);
-        assert(ierr == cudaSuccess);
-    }
-    {
-        const cudaError_t ierr = cudaHostRegister(
-            host_info_buffer.data(), host_info_buffer.size() * sizeof *host_info_buffer.data(), 0);
-        assert(ierr == cudaSuccess);
-    }
+    CHECK_CUDA_ERROR(cudaHostRegister(host_S_buffer.data(),
+                                      host_S_buffer.size() * sizeof *host_S_buffer.data(), 0));
+    CHECK_CUDA_ERROR(cudaHostRegister(
+        host_info_buffer.data(), host_info_buffer.size() * sizeof *host_info_buffer.data(), 0));
 
     register_gpu_buffer_user(
         {.name = S_name, .is_array = true, .does_read = true, .does_write = true});
@@ -415,23 +478,48 @@ cudaFRBBeamformer_chord_U64::cudaFRBBeamformer_chord_U64(Config& config,
     register_gpu_buffer_user(
         {.name = info_name, .is_array = true, .does_read = true, .does_write = true});
 
-    if (input_order != ElementOrder::CHIMEBeamformer
-        && input_order != ElementOrder::CHORDBeamformer) {
-        FATAL_ERROR("FRBBeamformer cannot run with input_order: {}. Must be CHIMEBeamformer or "
-                    "CHORDBeamformer",
-                    input_order);
+    // Every invocation processes a multiple of `Tbar_quantum` samples, so at least that many
+    // have to fit into one read, or the kernel would never make progress.
+    {
+        const std::ptrdiff_t Tbar_read_max = Ebar_buffer.get_ndarray().extent(0) / 4;
+        if (Tbar_quantum > Tbar_read_max)
+            FATAL_ERROR("Kernel FRBBeamformer_chord_U64 processes multiples of {:d} time samples "
+                        "(the least common multiple of its granularity {:d} and its downsampling "
+                        "factor {:d}), but reads at most {:d} time samples at a time",
+                        Tbar_quantum, int(cuda_granularity_number_of_timesamples),
+                        int(cuda_downsampling_factor), Tbar_read_max);
+    }
+
+    // Slowly varying inputs are held in a ring buffer and read without claiming, one element
+    // per lifetime. A kernel invocation must not straddle the end of a lifetime, so a lifetime
+    // has to be a whole number of processing quanta. (Unlike the baseband beamformer, the
+    // output here is a ring buffer, so the reads can be shortened to stop at a lifetime's end.)
+    {
+        const std::ptrdiff_t quantum = cuda_upchannelization_factor * Tbar_quantum;
+        if (W_lifetime_in_samples <= 0 || W_lifetime_in_samples % quantum != 0)
+            FATAL_ERROR("frb1_phase_lifetime_in_samples {:d} must be a positive multiple of {:d} "
+                        "FPGA samples, the processing quantum of kernel FRBBeamformer_chord_U64 "
+                        "(upchannelization factor {:d} times the least common multiple of "
+                        "the granularity {:d} and the downsampling factor {:d})",
+                        W_lifetime_in_samples, quantum, int(cuda_upchannelization_factor),
+                        int(cuda_granularity_number_of_timesamples), int(cuda_downsampling_factor));
     }
 
     set_command_type(gpuCommandType::KERNEL);
 
-    // Only one of the instances of this pipeline stage need to build the kernel
-    if (instance_num == 0) {
+    // Build the PTX once per device: the kernels live in this device's `runtime_kernels`, shared
+    // by the `buffer_depth` instances of this command (building twice is fatal), while a stage on
+    // another GPU has its own device. (A static flag would be shared by the stages of all GPUs.)
+    if (!device.runtime_kernels.count("FRBBeamformer_chord_U64_" + std::string(kernel_symbol))) {
         const std::vector<std::string> opts = {
             "--gpu-name=sm_86",
             "--verbose",
         };
-        device.build_ptx("lib/cuda/generated/FRBBeamformer_chord_U64.ptx", {kernel_symbol}, opts,
-                         "FRBBeamformer_chord_U64_");
+        const char* const kernel_code =
+#include "FRBBeamformer_chord_U64.ptx"
+            ;
+        device.build_ptx(kernel_code, "lib/cuda/generated/FRBBeamformer_chord_U64.ptx",
+                         {kernel_symbol}, opts, "FRBBeamformer_chord_U64_");
     }
 }
 
@@ -439,16 +527,17 @@ cudaFRBBeamformer_chord_U64::~cudaFRBBeamformer_chord_U64() {}
 
 std::int64_t
 cudaFRBBeamformer_chord_U64::num_consumed_elements(std::int64_t num_available_elements) const {
-    return num_produced_elements(num_available_elements) * cuda_downsampling_factor;
+    return num_processed_elements(num_available_elements);
 }
 std::int64_t
 cudaFRBBeamformer_chord_U64::num_produced_elements(std::int64_t num_available_elements) const {
-    return num_processed_elements(num_available_elements) / cuda_downsampling_factor;
+    return div_noremainder(num_processed_elements(num_available_elements),
+                           cuda_downsampling_factor);
 }
 
 std::int64_t
 cudaFRBBeamformer_chord_U64::num_processed_elements(std::int64_t num_available_elements) const {
-    return round_down(num_available_elements, cuda_granularity_number_of_timesamples);
+    return round_down(num_available_elements, Tbar_quantum);
 }
 
 int cudaFRBBeamformer_chord_U64::wait_on_precondition() {
@@ -458,21 +547,90 @@ int cudaFRBBeamformer_chord_U64::wait_on_precondition() {
             return errcode;
     }
 
-    // Wait for data to be available in input ringbuffer
     const std::ptrdiff_t Tbar_ringbuf = Ebar_buffer.get_ndarray().extent(0);
     const std::ptrdiff_t Tbar_read_max = Tbar_ringbuf / 4;
+
+    // Skip `Tbar_skip` input samples once, at startup (see `Tbar_skip`)
+    {
+        const int errcode = Ebar_buffer.skip_at_start(Tbar_skip);
+        if (errcode < 0)
+            return errcode;
+    }
+
+    // Where will our read begin? Ask the ringbuffer. We must not use our own `read_valid` for
+    // this: every instance of this command shares one ringbuffer read head, so our own position
+    // lags it by whatever the other instances have claimed since our previous frame. Peeking
+    // and then claiming is safe because gpuProcess runs `wait_on_precondition` for all its
+    // instances on its one main thread, so no other instance claims in between.
+    const std::ptrdiff_t Tbar_begin = Ebar_buffer.peek_read_head();
+    if (Tbar_begin < 0)
+        return -1; // shutting down
+    // After the skip we only ever claim multiples of `Tbar_quantum`
+    assert(Tbar_begin >= Tbar_skip && (Tbar_begin - Tbar_skip) % Tbar_quantum == 0);
+
+    // Slowly varying inputs: find the element covering the samples we are about to read, and do
+    // not read past the end of its lifetime. (The constructor checked that lifetimes are
+    // multiples of `Tbar_quantum`, so we can stop exactly there.) Element `k` covers the output
+    // samples `k * lifetime` onwards, i.e. the input samples from `Tbar_skip + k * lifetime`.
+    std::ptrdiff_t Tbar_read_limit = Tbar_read_max;
+    // `Tbar` samples are `cuda_upchannelization_factor` FPGA samples apart
+    const std::ptrdiff_t W_lifetime_in_Tbar =
+        div_noremainder(W_lifetime_in_samples, std::ptrdiff_t(cuda_upchannelization_factor));
+    // (`kotekan::div` must be qualified; an unqualified `div` finds C's `::div`)
+    const std::ptrdiff_t W_element = kotekan::div(Tbar_begin - Tbar_skip, W_lifetime_in_Tbar);
+    const std::ptrdiff_t W_lifetime_end = Tbar_skip + (W_element + 1) * W_lifetime_in_Tbar;
+    Tbar_read_limit = std::min(Tbar_read_limit, W_lifetime_end - Tbar_begin);
+    assert(Tbar_read_limit >= Tbar_quantum);
+
+    // Wait for data to be available in input ringbuffer
     std::ptrdiff_t Tbar_read = -1;
     {
         const int errcode =
             Ebar_buffer.wait_and_claim_readable([&](const std::ptrdiff_t Tbar_available) {
                 using std::min;
-                Tbar_read = min(Tbar_available, Tbar_read_max);
+                // `*_written` below is derived from this value, so it must include the clamp
+                Tbar_read = num_processed_elements(min(Tbar_available, Tbar_read_limit));
+                // If we cannot process a whole quantum then we read nothing, and wait for more data
                 return read_descriptor_t{.claimed = num_consumed_elements(Tbar_read),
-                                         .read = num_processed_elements(Tbar_read)};
+                                         .read = Tbar_read};
             });
         if (errcode < 0)
             return errcode;
     }
+    const std::ptrdiff_t Tbar_end = Ebar_buffer.get_read_claimed().end();
+    assert(Ebar_buffer.get_read_valid().begin() == Tbar_begin);
+    assert(Ebar_buffer.get_read_valid().end() == Tbar_end);
+    assert(Tbar_end <= Tbar_begin + Tbar_read_limit);
+
+    // Slowly varying inputs: read the element covering these samples. We read the same element
+    // on every invocation within its lifetime, and claim it only on the last one, so that the
+    // producer can recycle it afterwards. That invocation is by construction the last one to use
+    // the element, and `finalize_frame` runs in frame order, so releasing it there is safe.
+    //
+    // We are holding a claim on `Ebar` while we wait here. That is safe because the producer of
+    // these inputs does not depend on `Ebar` being drained.
+    {
+        const bool last_use = Tbar_end == W_lifetime_end;
+        DEBUG("Waiting for W input ringbuffer data for frame {:d}...", gpu_frame_id);
+        const int errcode =
+            W_buffer.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
+                if (available_elements < 1)
+                    return read_descriptor_t{.claimed = 0, .read = 0};
+                return read_descriptor_t{.claimed = last_use ? 1 : 0, .read = 1};
+            });
+        if (errcode < 0)
+            return errcode;
+        DEBUG("Done waiting for W input ringbuffer data for frame {:d}; "
+              "using element {:d}{:s}",
+              gpu_frame_id, W_element, last_use ? " (last use)" : "");
+        // The two ringbuffers must agree on which element covers these samples
+        if (W_buffer.get_read_valid().begin() != W_element)
+            FATAL_ERROR("Kernel FRBBeamformer_chord_U64: samples [{:d},{:d}) of buffer Ebar are "
+                        "covered by element {:d} of buffer W, but the W "
+                        "ringbuffer is at element {:d}",
+                        Tbar_begin, Tbar_end, W_element, W_buffer.get_read_valid().begin());
+    }
+
     const std::ptrdiff_t Ttilde_written = num_produced_elements(Tbar_read);
 
     // Wait for space to be available in output ringbuffer
@@ -504,58 +662,21 @@ cudaEvent_t cudaFRBBeamformer_chord_U64::execute(cudaPipelineState& /*pipestate*
         // They must serialize setting their part of the metadata.
         std::lock_guard<std::mutex> lock(frb_I_lock);
 
-        if (args::W == args::Ebar && cuda_upchannelization_factor == 1) {
-            // Replace "Ebar" with "E" etc. because we don't run the upchannelizer for U=1
-            // W_buffer.check_metadata();
-            const std::string quantity = "E";
-            const std::array<std::string, 4> dimname = {"T", "F", "P", "D"};
-            const std::shared_ptr<const chordMetadata> metadata = Ebar_buffer.get_metadata();
-            if (!(metadata->get_name() == quantity))
-                ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
-                      Ebar_buffer.get_buffer_name(), quantity, metadata->get_name());
-            assert(metadata->get_name() == quantity);
-            const auto& ndarray = Ebar_buffer.get_ndarray();
-            assert(metadata->type == ndarray.value_datatype);
-            assert(metadata->dims == ndarray.rank);
-            for (std::size_t d = 0; d < ndarray.rank; ++d) {
-                assert(metadata->get_dimension_name(d) == dimname[d]);
-                // The ring buffer direction is special
-                if (d > 0)
-                    assert(metadata->dim[d] == int(ndarray.extent(d)));
-                assert(metadata->stride[d] == ndarray.stride(d));
-            }
-        } else {
-            W_buffer.check_metadata();
-        }
-        if (args::Ebar == args::Ebar && cuda_upchannelization_factor == 1) {
-            // Replace "Ebar" with "E" etc. because we don't run the upchannelizer for U=1
-            // Ebar_buffer.check_metadata();
-            const std::string quantity = "E";
-            const std::array<std::string, 4> dimname = {"T", "F", "P", "D"};
-            const std::shared_ptr<const chordMetadata> metadata = Ebar_buffer.get_metadata();
-            if (!(metadata->get_name() == quantity))
-                ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
-                      Ebar_buffer.get_buffer_name(), quantity, metadata->get_name());
-            assert(metadata->get_name() == quantity);
-            const auto& ndarray = Ebar_buffer.get_ndarray();
-            assert(metadata->type == ndarray.value_datatype);
-            assert(metadata->dims == ndarray.rank);
-            for (std::size_t d = 0; d < ndarray.rank; ++d) {
-                assert(metadata->get_dimension_name(d) == dimname[d]);
-                // The ring buffer direction is special
-                if (d > 0)
-                    assert(metadata->dim[d] == int(ndarray.extent(d)));
-                assert(metadata->stride[d] == ndarray.stride(d));
-            }
-        } else {
-            Ebar_buffer.check_metadata();
-        }
+        W_buffer.check_metadata();
+        Ebar_buffer.check_metadata();
         if (args::I != args::I)
             I_buffer.set_metadata(Ebar_buffer.get_metadata());
 
         const auto Ebar_meta = Ebar_buffer.get_metadata();
-        assert(Telescope::instance().get_grid_size_x() <= cuda_dish_layout_M);
-        assert(Telescope::instance().get_grid_size_y() <= cuda_dish_layout_N);
+        // The kernel is compiled for a fixed dish grid. A larger telescope would place dishes
+        // outside that grid and silently beamform the wrong sky.
+        if (!(Telescope::instance().get_grid_size_x() <= std::uint64_t(cuda_dish_layout_M)
+              && Telescope::instance().get_grid_size_y() <= std::uint64_t(cuda_dish_layout_N)))
+            FATAL_ERROR("Telescope dish grid {:d}x{:d} does not fit the dish layout {:d}x{:d} "
+                        "for which kernel FRBBeamformer_chord_U64 was compiled",
+                        Telescope::instance().get_grid_size_x(),
+                        Telescope::instance().get_grid_size_y(), int(cuda_dish_layout_M),
+                        int(cuda_dish_layout_N));
 
         // Allocate metadata of I buffer only once
         const bool I_has_metadata = I_buffer.has_metadata();
@@ -563,19 +684,33 @@ cudaEvent_t cudaFRBBeamformer_chord_U64::execute(cudaPipelineState& /*pipestate*
             I_buffer.set_metadata(Ebar_meta);
         auto I_meta = I_buffer.get_metadata();
 
-        assert(Fbar_out_max - Fbar_out_min == Fbar_in_max - Fbar_in_min);
+        // The span checks below are repeated before each launch; here they guard the metadata
+        // we are about to publish for all downstream consumers.
+        if (Fbar_out_max - Fbar_out_min != Fbar_in_max - Fbar_in_min)
+            FATAL_ERROR("Input and output frequency spans have different lengths for kernel "
+                        "FRBBeamformer_chord_U64: input [{:d},{:d}), output [{:d},{:d})",
+                        Fbar_in_min, Fbar_in_max, Fbar_out_min, Fbar_out_max);
         const auto Ebar_nfreq = Ebar_meta->get_nfreq();
-        assert(Fbar_out_max - Fbar_out_min == Fbar_in_max - Fbar_in_min);
         const auto I_all_nfreq = I_meta->dim[I_rank - 1 - I_index_Fbar];
         const auto I_nfreq = Fbar_out_max - Fbar_out_min;
-        assert(I_nfreq >= 0 && I_nfreq <= I_all_nfreq);
+        if (!(I_nfreq >= 0 && I_nfreq <= I_all_nfreq))
+            FATAL_ERROR(
+                "Kernel FRBBeamformer_chord_U64 would write {:d} frequencies, but its output "
+                "buffer I holds {:d}",
+                I_nfreq, I_all_nfreq);
         // We are not using all the non-upchannelized frequencies.
         // But we are (should be!) using all the upchannelized ones.
-        if (cuda_upchannelization_factor > 1)
-            assert(I_nfreq == Ebar_nfreq);
+        if (cuda_upchannelization_factor > 1 && I_nfreq != Ebar_nfreq)
+            FATAL_ERROR(
+                "Kernel FRBBeamformer_chord_U64 writes {:d} of the {:d} upchannelized input "
+                "frequencies; it must consume all of them",
+                I_nfreq, Ebar_nfreq);
 
         const auto Ebar_freq_upchan_factor = Ebar_meta->get_freq_upchan_factor();
-        assert(Ebar_freq_upchan_factor.size() == static_cast<std::size_t>(Ebar_nfreq));
+        if (Ebar_freq_upchan_factor.size() != static_cast<std::size_t>(Ebar_nfreq))
+            FATAL_ERROR("Input buffer Ebar reports {:d} frequencies but its `freq_upchan_factor` "
+                        "has {:d} entries",
+                        Ebar_nfreq, Ebar_freq_upchan_factor.size());
         std::vector<int> I_freq_upchan_factor;
         if (I_has_metadata)
             I_freq_upchan_factor = I_meta->get_freq_upchan_factor();
@@ -587,7 +722,10 @@ cudaEvent_t cudaFRBBeamformer_chord_U64::execute(cudaPipelineState& /*pipestate*
         I_meta->set_freq_upchan_factor(I_freq_upchan_factor);
 
         const auto Ebar_freq_upchan_index = Ebar_meta->get_freq_upchan_index();
-        assert(Ebar_freq_upchan_index.size() == static_cast<std::size_t>(Ebar_nfreq));
+        if (Ebar_freq_upchan_index.size() != static_cast<std::size_t>(Ebar_nfreq))
+            FATAL_ERROR("Input buffer Ebar reports {:d} frequencies but its `freq_upchan_index` "
+                        "has {:d} entries",
+                        Ebar_nfreq, Ebar_freq_upchan_index.size());
         std::vector<int> I_freq_upchan_index;
         if (I_has_metadata)
             I_freq_upchan_index = I_meta->get_freq_upchan_index();
@@ -599,7 +737,10 @@ cudaEvent_t cudaFRBBeamformer_chord_U64::execute(cudaPipelineState& /*pipestate*
         I_meta->set_freq_upchan_index(I_freq_upchan_index);
 
         const auto Ebar_coarse_freq = Ebar_meta->get_coarse_freq();
-        assert(Ebar_coarse_freq.size() == static_cast<std::size_t>(Ebar_nfreq));
+        if (Ebar_coarse_freq.size() != static_cast<std::size_t>(Ebar_nfreq))
+            FATAL_ERROR("Input buffer Ebar reports {:d} frequencies but its `coarse_freq` "
+                        "has {:d} entries",
+                        Ebar_nfreq, Ebar_coarse_freq.size());
         std::vector<int> I_coarse_freq;
         if (I_has_metadata)
             I_coarse_freq = I_meta->get_coarse_freq();
@@ -614,21 +755,64 @@ cudaEvent_t cudaFRBBeamformer_chord_U64::execute(cudaPipelineState& /*pipestate*
             Ebar_time_downsampling_fpga * cuda_downsampling_factor;
         if (!I_has_metadata)
             I_meta->set_time_downsampling_fpga(I_time_downsampling_fpga);
-        else
-            assert(I_meta->get_time_downsampling_fpga() == I_time_downsampling_fpga);
+        else if (I_meta->get_time_downsampling_fpga() != I_time_downsampling_fpga)
+            FATAL_ERROR("Another producer of buffer I set time_downsampling_fpga={:d}, but kernel "
+                        "FRBBeamformer_chord_U64 produces {:d}",
+                        I_meta->get_time_downsampling_fpga(), I_time_downsampling_fpga);
 
         const auto W_meta = W_buffer.get_metadata();
         const auto W_nfreq = W_meta->get_nfreq();
-        assert(W_nfreq == I_nfreq);
+        // Mismatched weights would beamform each frequency with another frequency's gains.
+        if (W_nfreq != I_nfreq)
+            FATAL_ERROR(
+                "Weight buffer W holds {:d} frequencies, but kernel FRBBeamformer_chord_U64 "
+                "processes {:d}",
+                W_nfreq, I_nfreq);
         const auto W_coarse_freq = W_meta->get_coarse_freq();
         for (int freq = 0; freq < W_nfreq; ++freq)
-            assert(I_coarse_freq.at(Fbar_out_min + freq) == W_coarse_freq.at(freq));
+            if (I_coarse_freq.at(Fbar_out_min + freq) != W_coarse_freq.at(freq))
+                FATAL_ERROR("Weight buffer W is for coarse frequency {:d} at index {:d}, but "
+                            "kernel FRBBeamformer_chord_U64 processes coarse frequency {:d} there",
+                            W_coarse_freq.at(freq), freq, I_coarse_freq.at(Fbar_out_min + freq));
 
-        // Since we use a ring buffer we do not need to update `meta->fpga_seq_num`
+        // All producers of `I` must agree on its start time. (The upchannelizers align their
+        // outputs via `max_upchannelization_factor`; for U=1 we skip input samples ourselves.)
+        // We set the metadata only once since we use a ring buffer.
+        if (Ebar_meta->has_fpga_seq_num()) {
+            const std::int64_t I_fpga_seq_num =
+                Ebar_meta->get_fpga_seq_num() + Tbar_skip * Ebar_meta->get_time_downsampling_fpga();
+            if (!I_has_metadata)
+                I_meta->set_fpga_seq_num(I_fpga_seq_num);
+            else if (!I_meta->has_fpga_seq_num() || I_meta->get_fpga_seq_num() != I_fpga_seq_num)
+                FATAL_ERROR(
+                    "Another producer of buffer I starts at fpga_seq_num={:d}, but kernel "
+                    "FRBBeamformer_chord_U64 starts at {:d}. (Are all upchannelizers and the U=1 "
+                    "FRB beamformer using the same max_upchannelization_factor and "
+                    "upchan_output_alignment?)",
+                    I_meta->has_fpga_seq_num() ? I_meta->get_fpga_seq_num() : -1, I_fpga_seq_num);
+        } else if (I_has_metadata && I_meta->has_fpga_seq_num()) {
+            FATAL_ERROR("Another producer of buffer I starts at fpga_seq_num={:d}, but the input "
+                        "of kernel FRBBeamformer_chord_U64 has no fpga_seq_num",
+                        I_meta->get_fpga_seq_num());
+        }
+
+        // Element `k` of a slowly varying input covers the samples `k * lifetime` onwards, counted
+        // from the beginning of the output I -- so the two streams have to start at the same
+        // sequence number. A misaligned input would be applied to the wrong samples, silently
+        // corrupting the output. Ring buffer metadata are written once, so checking once suffices.
+        if (W_buffer.get_metadata()->get_fpga_seq_num()
+            != Ebar_meta->get_fpga_seq_num() + Tbar_skip * Ebar_meta->get_time_downsampling_fpga())
+            FATAL_ERROR("Buffer W begins at FPGA sequence number {:d}, but the "
+                        "output I of kernel FRBBeamformer_chord_U64 begins at {:d}; they must be "
+                        "aligned",
+                        W_buffer.get_metadata()->get_fpga_seq_num(),
+                        Ebar_meta->get_fpga_seq_num()
+                            + Tbar_skip * Ebar_meta->get_time_downsampling_fpga());
     } // if !did_set_metadata
 
     const auto Ebar_meta = Ebar_buffer.get_metadata();
-    assert(I_buffer.has_metadata());
+    if (!I_buffer.has_metadata())
+        FATAL_ERROR("Output buffer I has no metadata; kernel FRBBeamformer_chord_U64 cannot run");
 
     const char* exc_arg = "exception";
     std::int32_t Tbar_min_arg;
@@ -667,6 +851,15 @@ cudaEvent_t cudaFRBBeamformer_chord_U64::execute(cudaPipelineState& /*pipestate*
     // Set I_memory to beginning of output ring buffer
     I_arg = array_desc(I_memory, I_length_in_bytes);
 
+    // Slowly varying inputs: the kernel wants a single element, not the whole ring buffer.
+    {
+        const std::ptrdiff_t ring_length = W_buffer.get_ndarray().extent(0);
+        const std::ptrdiff_t element = W_buffer.get_read_valid().begin();
+        W_arg = array_desc(W_buffer.get_ndarray().data()
+                               + W_buffer.get_ndarray().stride(0) * (element % ring_length),
+                           W_length_in_bytes / ring_length);
+    }
+
     // Ringbuffer size
     const std::ptrdiff_t Tbar_ringbuf = Ebar_buffer.get_ndarray().extent(0);
     const std::ptrdiff_t Ttilde_ringbuf = I_buffer.get_ndarray().extent(0);
@@ -686,17 +879,37 @@ cudaEvent_t cudaFRBBeamformer_chord_U64::execute(cudaPipelineState& /*pipestate*
     Ttilde_min_arg = mod(Ttilde_min, Ttilde_ringbuf);
     Ttilde_max_arg = mod(Ttilde_min, Ttilde_ringbuf) + Ttilde_length;
 
-    // Pass frequency spans to kernel
-    assert(0 <= Fbar_in_min && Fbar_in_min <= Fbar_in_max);
-    assert(0 <= Fbar_out_min && Fbar_out_min <= Fbar_out_max);
-    assert(Fbar_out_max - Fbar_out_min == Fbar_in_max - Fbar_in_min);
+    // Pass frequency spans to kernel.
+    // These spans become kernel arguments; out-of-range values would make the kernel
+    // read and write outside the frequency extent of its buffers.
+    if (!(0 <= Fbar_in_min && Fbar_in_min <= Fbar_in_max))
+        FATAL_ERROR("Invalid input frequency span for kernel FRBBeamformer_chord_U64: "
+                    "Fbar_in_min={:d}, Fbar_in_max={:d} (require 0 <= Fbar_in_min <= Fbar_in_max)",
+                    Fbar_in_min, Fbar_in_max);
+    if (!(0 <= Fbar_out_min && Fbar_out_min <= Fbar_out_max))
+        FATAL_ERROR("Invalid output frequency span for kernel FRBBeamformer_chord_U64: "
+                    "Fbar_out_min={:d}, Fbar_out_max={:d} "
+                    "(require 0 <= Fbar_out_min <= Fbar_out_max)",
+                    Fbar_out_min, Fbar_out_max);
+    if (Fbar_out_max - Fbar_out_min != Fbar_in_max - Fbar_in_min)
+        FATAL_ERROR("Input and output frequency spans have different lengths for kernel "
+                    "FRBBeamformer_chord_U64: input [{:d},{:d}) holds {:d} frequencies, "
+                    "output [{:d},{:d}) holds {:d}",
+                    Fbar_in_min, Fbar_in_max, Fbar_in_max - Fbar_in_min, Fbar_out_min, Fbar_out_max,
+                    Fbar_out_max - Fbar_out_min);
     Fbar_in_min_arg = Fbar_in_min;
     Fbar_in_max_arg = Fbar_in_max;
     Fbar_out_min_arg = Fbar_out_min;
     Fbar_out_max_arg = Fbar_out_max;
     const int blocks = Fbar_out_max - Fbar_out_min;
-    assert(0 <= blocks);
-    assert(blocks <= max_blocks);
+    // `blocks` is both the CUDA grid size and the extent of the block dimension of the `info`
+    // buffer. Launching more than `max_blocks` blocks would make the kernel write its status
+    // words past the end of that device allocation.
+    if (!(0 <= blocks && blocks <= max_blocks))
+        FATAL_ERROR(
+            "Kernel FRBBeamformer_chord_U64 would launch {:d} blocks, but the `info` buffer "
+            "holds only {:d} (Fbar_out_min={:d}, Fbar_out_max={:d})",
+            blocks, int(max_blocks), Fbar_out_min, Fbar_out_max);
 
     // Initialize `S` and copy it to the GPU
     if (!did_init_host_S_buffer) {
@@ -704,71 +917,28 @@ cudaEvent_t cudaFRBBeamformer_chord_U64::execute(cudaPipelineState& /*pipestate*
         // The first `ndishes` dishes are real dishes,
         // the remaining dishes are not real and exist only to label the unoccupied dish locations.
 
-        const Telescope& tel = Telescope::instance();
+        const CHORDTelescope* const tel =
+            dynamic_cast<const CHORDTelescope*>(&Telescope::instance());
+        if (!tel)
+            FATAL_ERROR("Kernel FRBBeamformer_chord_U64 needs a CHORDTelescope for its dish "
+                        "layout, not {:s}",
+                        Telescope::instance().get_name());
 
-        // First obtain from the Telescope the grid indices of every dish in the input data.
-        // The input order is a Beamformer type (P slow, D fast), so the first num_dishes
-        // entries will contain the grid indices for all connected dishes.
-        std::vector<grid_idx_2d_t> grid_indices =
-            tel.get_main_array_grid_indices(cuda_number_of_dishes, input_order);
-
-        // Now build:
-        // 1) a table of grid locations populated with the index of the dish at that location,
-        //      or -1 if it is unfilled.
-        // 2) a list of dish indices which do *not* correspond to dishes on the grid. This includes
-        //      dishes in the input array (with d < cuda_num_dishes) and "surplus" dishes used to
-        //      fill out the array (since dish_layout_M * dish_layout_N may be > num_dishes)
-        int array_dish_count = 0;
-        std::vector<int> dish_index_at_loc(cuda_dish_layout_M * cuda_dish_layout_N, -1);
-        std::vector<int> surplus_dishes{};
-        for (int d = 0; d < cuda_number_of_dishes; ++d) {
-            const grid_idx_2d_t grid_idx = grid_indices.at(d);
-            // Non-array dishes (e.g. RFI antennae) have grid indices -1.  Skip them.
-            if (grid_idx.at(0) < 0 || grid_idx.at(1) < 0) {
-                surplus_dishes.push_back(d);
-                continue;
-            }
-            // Assign a 1D address for this dish location. M/X fast, N/Y slow.
-            const int loc_idx = grid_idx.at(0) + cuda_dish_layout_M * grid_idx.at(1);
-            // Fill it with this dish index.
-            dish_index_at_loc.at(loc_idx) = d;
-            ++array_dish_count;
-        }
-        for (int d = cuda_number_of_dishes; d < cuda_dish_layout_M * cuda_dish_layout_N; ++d) {
-            surplus_dishes.push_back(d);
-        }
-        assert(array_dish_count + surplus_dishes.size() == cuda_dish_layout_M * cuda_dish_layout_N);
-
-        // Finally we can build the host_S_buffer.  First initialize with -1 as a sentinel.
-        for (std::size_t s = 0; s < host_S_buffer.size(); ++s)
-            host_S_buffer.at(s) = -1;
-        // Loop through grid locations and assign dish indices.
-        size_t surplus_idx = 0;
+        // The input order is a Beamformer type (P slow, D fast), so dish indices are input indices.
+        std::vector<int> array_dish_at_loc(cuda_dish_layout_M * cuda_dish_layout_N);
+        for (int locM = 0; locM < cuda_dish_layout_M; ++locM)
+            for (int locN = 0; locN < cuda_dish_layout_N; ++locN)
+                array_dish_at_loc.at(locM + cuda_dish_layout_M * locN) =
+                    tel->get_dish_idx_at_grid_indices({locM, locN});
+        const std::vector<int> dish_index_at_loc = kotekan::frb_dish_index_at_location(
+            array_dish_at_loc, cuda_number_of_dishes, cuda_dish_layout_M, cuda_dish_layout_N);
         for (int locM = 0; locM < cuda_dish_layout_M; ++locM) {
             for (int locN = 0; locN < cuda_dish_layout_N; ++locN) {
-                // Calculate location idx as above, M fast, N slow
-                const int loc_idx = locM + cuda_dish_layout_M * locN;
-                // The dish at this position, or -1 if unoccupied
-                const int dish_index = dish_index_at_loc.at(loc_idx);
-
-                if (dish_index >= 0) {
-                    // This location holds a real dish, record its location
-                    host_S_buffer.at(2 * dish_index + 0) = locM;
-                    host_S_buffer.at(2 * dish_index + 1) = locN;
-                } else {
-                    // This location is empty, assign it a surplus dish index
-                    const int surplus_dish_index = surplus_dishes.at(surplus_idx);
-                    host_S_buffer.at(2 * surplus_dish_index + 0) = locM;
-                    host_S_buffer.at(2 * surplus_dish_index + 1) = locN;
-                    ++surplus_idx;
-                }
+                const int dish_index = dish_index_at_loc.at(locM + cuda_dish_layout_M * locN);
+                host_S_buffer.at(2 * dish_index + 0) = locM;
+                host_S_buffer.at(2 * dish_index + 1) = locN;
             }
         }
-        // Confirm we used all surplus dishes.
-        assert(surplus_idx == surplus_dishes.size());
-        // Confirm the grid is filled.
-        for (std::size_t s = 0; s < host_S_buffer.size(); ++s)
-            assert(host_S_buffer.at(s) >= 0);
 
         // Done! Copy to the GPU.
         CHECK_CUDA_ERROR(cudaMemcpyAsync(S_memory, host_S_buffer.data(), S_length_in_bytes,
@@ -851,8 +1021,9 @@ cudaEvent_t cudaFRBBeamformer_chord_U64::execute(cudaPipelineState& /*pipestate*
 }
 
 void cudaFRBBeamformer_chord_U64::finalize_frame() {
-    // Advance the input ring buffer
+    // Advance the input ring buffers
     Ebar_buffer.finish_read();
+    W_buffer.finish_read();
 
     // Advance the output ring buffer
     I_buffer.finish_write();

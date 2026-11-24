@@ -13,6 +13,7 @@
 #include "chordMetadata.hpp"
 #include "cudaCommand.hpp"
 #include "cudaDeviceInterface.hpp"
+#include "cudaUtils.hpp"
 #include "div.hpp"
 
 #include <algorithm>
@@ -22,6 +23,7 @@
 #include <fmt.hpp>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -99,7 +101,7 @@ private:
 
     {{#kernel_arguments}}
         // {{{name}}}: {{{kotekan_name}}}
-        static constexpr const char *{{{name}}}_quantity = "{{{name}}}";
+        static constexpr const char *{{{name}}}_quantity = "{{{quantity_name}}}";
         static constexpr kotekan::DataType {{{name}}}_type = kotekan::{{{type}}};
         {{^isscalar}}
             enum {{{name}}}_indices {
@@ -116,6 +118,11 @@ private:
             static constexpr std::array<std::ptrdiff_t, {{{name}}}_rank> {{{name}}}_lengths = {
                 {{#axes}}
                     {{{length}}},
+                {{/axes}}
+            };
+            static constexpr std::array<std::ptrdiff_t, {{{name}}}_rank> {{{name}}}_dimscalings = {
+                {{#axes}}
+                    {{{dimscalings}}},
                 {{/axes}}
             };
             static constexpr auto {{{name}}}_calc_stride = [](int dim) {
@@ -163,6 +170,9 @@ private:
         {{/isscalar}}
     {{/kernel_arguments}}
 
+    // Set once, on the first frame; see `NDArrayRingBuffer::set_metadata`
+    bool did_set_metadata;
+
     // To avoid trailing comma below
     int dummy;
 };
@@ -195,11 +205,22 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
             {{#hasbuffer}}
                 {{#hasringbuffer}}
                     {{{name}}}_buffer(
-                        {{{name}}}_name, {{{name}}}_quantity, reverse({{{name}}}_lengths), reverse({{{name}}}_labels), *this),
+                        {{{name}}}_name,
+                        {{{name}}}_quantity,
+                        reverse({{{name}}}_lengths),
+                        reverse({{{name}}}_labels),
+                        reverse({{{name}}}_dimscalings),
+                        *this
+                     ),
                 {{/hasringbuffer}}
                 {{^hasringbuffer}}
                     {{{name}}}_buffer(
-                        {{{name}}}_name, {{{name}}}_quantity, reverse({{{name}}}_lengths), reverse({{{name}}}_labels), *this
+                        {{{name}}}_name,
+                        {{{name}}}_quantity,
+                        reverse({{{name}}}_lengths),
+                        reverse({{{name}}}_labels),
+                        reverse({{{name}}}_dimscalings),
+                        *this
                         {{#do_once}}
                             , buffer_type_t::do_once
                         {{/do_once}}
@@ -208,24 +229,28 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
             {{/hasbuffer}}
             {{^hasbuffer}}
                 {{{name}}}_buffer(
-                    {{{name}}}_name, {{{name}}}_quantity, reverse({{{name}}}_lengths), reverse({{{name}}}_labels), *this),
+                    {{{name}}}_name,
+                    {{{name}}}_quantity,
+                    reverse({{{name}}}_lengths),
+                    reverse({{{name}}}_labels),
+                    reverse({{{name}}}_dimscalings),
+                    *this
+                ),
                 host_{{{name}}}_buffer({{{name}}}_length),
             {{/hasbuffer}}
         {{/isscalar}}
     {{/kernel_arguments}}
 
+    did_set_metadata(false),
     dummy()                      // avoid trailing comma
 {
     // Register host memory
     {{#kernel_arguments}}
         {{^isscalar}}
             {{^hasbuffer}}
-                {
-                    const cudaError_t ierr = cudaHostRegister(host_{{{name}}}_buffer.data(),
-                                                              host_{{{name}}}_buffer.size() * sizeof *host_{{{name}}}_buffer.data(),
-                                                              0);
-                    assert(ierr == cudaSuccess);
-                }
+                CHECK_CUDA_ERROR(cudaHostRegister(host_{{{name}}}_buffer.data(),
+                                                  host_{{{name}}}_buffer.size() * sizeof *host_{{{name}}}_buffer.data(),
+                                                  0));
             {{/hasbuffer}}
         {{/isscalar}}
     {{/kernel_arguments}}
@@ -248,13 +273,18 @@ cuda{{{kernel_name}}}::cuda{{{kernel_name}}}(Config& config,
 
     set_command_type(gpuCommandType::KERNEL);
 
-    // Only one of the instances of this pipeline stage needs to build the kernel
-    if (instance_num == 0) {
+    // Build the PTX once per device: the kernels live in this device's `runtime_kernels`, shared
+    // by the `buffer_depth` instances of this command (building twice is fatal), while a stage on
+    // another GPU has its own device. (A static flag would be shared by the stages of all GPUs.)
+    if (!device.runtime_kernels.count("{{{kernel_name}}}_" + std::string(kernel_symbol))) {
         const std::vector<std::string> opts = {
-            "--gpu-name=sm_86",
+            "--gpu-name={{{cuda_arch}}}",
             "--verbose",
         };
-        device.build_ptx("lib/cuda/generated/{{{kernel_name}}}.ptx", {kernel_symbol}, opts, "{{{kernel_name}}}_");
+        const char * const kernel_code =
+        #include "{{{kernel_name}}}.ptx"
+        ;
+        device.build_ptx(kernel_code, "lib/cuda/generated/{{{kernel_name}}}.ptx", {kernel_symbol}, opts, "{{{kernel_name}}}_");
     }
 }
 
@@ -302,44 +332,52 @@ cudaEvent_t cuda{{{kernel_name}}}::execute(cudaPipelineState& /*pipestate*/, con
         {{/isscalar}}
     {{/kernel_arguments}}
 
-    {{#kernel_arguments}}
-        {{#hasbuffer}}
-            {{^isoutput}}
-                if (args::{{{name}}} == args::Ein) {
-                    // Replace "Ein" with "E" etc.
-                    // {{{name}}}_buffer.check_metadata();
-                    const std::string quantity = "E";
-                    const std::array<std::string, 4> dimname = {"Thi16384", "F", "Tlo16384", "E"};
-                    const std::shared_ptr<const chordMetadata> metadata = Ein_buffer.get_metadata();
-                    if (!(metadata->get_name() == quantity))
-                        ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}", Ein_buffer.get_buffer_name(), quantity,
-                              metadata->get_name());
-                    assert(metadata->get_name() == quantity);
-                    const auto& ndarray = Ein_buffer.get_ndarray();
-                    assert(metadata->type == ndarray.value_datatype);
-                    assert(metadata->dims == ndarray.rank);
-                    for (std::size_t d = 0; d < ndarray.rank; ++d) {
-                        if (!(metadata->get_dimension_name(d) == dimname.at(d)))
-                            ERROR("buffer name: {:s}, dimension: {:d}: dimension name: {:s}, metadata name: {:s}",
-                                  Ein_buffer.get_buffer_name(), d, dimname.at(d), metadata->get_dimension_name(d));
-                        assert(metadata->get_dimension_name(d) == dimname.at(d));
-                        // The ring buffer direction is special
-                        if (d > 0)
-                            assert(metadata->dim[d] == int(ndarray.extent(d)));
-                        if (!(metadata->stride[d] == ndarray.stride(d)))
-                            ERROR("buffer name: {:s}, dimension: {:d}: metadata stride: {:d}, ndarray stride: {:d}",
-                                  Ein_buffer.get_buffer_name(), d, metadata->stride[d], ndarray.stride(d));
-                        assert(metadata->stride[d] == ndarray.stride(d));
+    // Since we use a ring buffer we need to set the metadata only once
+    if (instance_num == 0 && !did_set_metadata) {
+        did_set_metadata = true;
+
+        {{#kernel_arguments}}
+            {{#hasbuffer}}
+                {{^isoutput}}
+                    if (args::{{{name}}} == args::Ein) {
+                        // Replace "Ein" with "E" etc.
+                        // {{{name}}}_buffer.check_metadata();
+                        const std::shared_ptr<const chordMetadata>& metadata = Ein_buffer.get_metadata();
+                        const auto& ndarray = Ein_buffer.get_ndarray();
+                        if (!(metadata->get_name() == ndarray.quantity_name()))
+                            FATAL_ERROR("buffer name: {:s}, quantity: {:s}, metadata name: {:s}",
+                                        Ein_buffer.get_buffer_name(), ndarray.quantity_name(), metadata->get_name());
+                        if (!(metadata->type == ndarray.value_datatype))
+                            FATAL_ERROR("buffer name: {:s}, metadata type: {:s}, ndarray type: {:s}", Ein_buffer.get_buffer_name(),
+                                        kotekan::type_to_string(metadata->type), kotekan::type_to_string(ndarray.value_datatype));
+                        if (!(metadata->dims == int(ndarray.rank)))
+                            FATAL_ERROR("buffer name: {:s}, metadata rank: {:d}, ndarray rank: {:d}", Ein_buffer.get_buffer_name(),
+                                        metadata->dims, int(ndarray.rank));
+                        for (std::size_t d = 0; d < ndarray.rank; ++d) {
+                            if (!(metadata->get_dimension_name(d) == ndarray.dimname(d)))
+                                FATAL_ERROR("buffer name: {:s}, dimension: {:d}: dimension name: {:s}, metadata name: {:s}",
+                                            Ein_buffer.get_buffer_name(), d, ndarray.dimname(d), metadata->get_dimension_name(d));
+                            // The ring buffer direction is special
+                            if (d > 0 && !(metadata->dim[d] == int(ndarray.extent(d))))
+                                FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata extent: {:d}, ndarray extent: {:d}",
+                                            Ein_buffer.get_buffer_name(), d, metadata->dim[d], int(ndarray.extent(d)));
+                            if (!(metadata->dim_scaling[d] == ndarray.dimscaling(d)))
+                                FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata dim_scaling: {:d}, ndarray dimscaling: {:d}",
+                                            Ein_buffer.get_buffer_name(), d, metadata->dim_scaling[d], ndarray.dimscaling(d));
+                            if (!(metadata->stride[d] == ndarray.stride(d)))
+                                FATAL_ERROR("buffer name: {:s}, dimension: {:d}: metadata stride: {:d}, ndarray stride: {:d}",
+                                            Ein_buffer.get_buffer_name(), d, metadata->stride[d], ndarray.stride(d));
+                        }
+                    } else {
+                        {{{name}}}_buffer.check_metadata();
                     }
-                } else {
-                    {{{name}}}_buffer.check_metadata();
-                }
-            {{/isoutput}}
-            {{#isoutput}}
-                {{{name}}}_buffer.set_metadata(Ein_buffer.get_metadata());
-            {{/isoutput}}
-        {{/hasbuffer}}
-    {{/kernel_arguments}}
+                {{/isoutput}}
+                {{#isoutput}}
+                    {{{name}}}_buffer.set_metadata(Ein_buffer.get_metadata());
+                {{/isoutput}}
+            {{/hasbuffer}}
+        {{/kernel_arguments}}
+    } // if !did_set_metadata
 
     const char* exc_arg = "exception";
     {{#kernel_arguments}}

@@ -127,7 +127,7 @@ public:
             return beams.at(
                 time_chunk
                 + out_ntimes_chunk
-                      * (freq_chunk
+                      * ((out_nfreqs_chunk - 1 - freq_chunk)
                          + out_nfreqs_chunk
                                * (freq_packet
                                   + out_nfreqs_packet
@@ -228,7 +228,7 @@ public:
                                     for (int time_chunk = 0; time_chunk < out_ntimes_chunk;
                                          ++time_chunk) {
                                         const int freq =
-                                            freq_chunk
+                                            (out_nfreqs_chunk - 1 - freq_chunk)
                                             + out_nfreqs_chunk
                                                   * (freq_packet + out_nfreqs_packet * freq_outer);
                                         const int time = time_chunk + out_ntimes_chunk * time_outer;
@@ -265,10 +265,8 @@ public:
                                     FATAL_ERROR("Found non-finite offset {}", offset);
 
                                 // Check relative error of offset
-                                bool offset_is_good =
-                                    fabs(offset - expected_offset)
-                                    <= epsilon
-                                           * fmax(1.0f, fmax(fabs(offset), fabs(expected_offset)));
+                                bool offset_is_good = fabs(offset - expected_offset)
+                                                      <= epsilon * fabs(expected_offset);
                                 // If we think an overflow is allowed, and if the other
                                 // implementation might have detected one (offset=0), then
                                 // all is fine as well
@@ -286,8 +284,9 @@ public:
                                         scale_may_collapse);
                                 }
 
-                                // Check absolute error of scale
-                                bool scale_is_good = fabs(scale - expected_scale) <= epsilon;
+                                // Check relative error of scale
+                                bool scale_is_good =
+                                    fabs(scale - expected_scale) <= epsilon * fabs(expected_scale);
                                 // If the scale is close to zero then don't worry about the
                                 // scale at all
                                 if (scale_may_collapse)

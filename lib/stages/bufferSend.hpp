@@ -92,7 +92,9 @@ public:
  * @par buffers
  * @buffer buf The buffer to send to the remote server.
  *        @buffer_format any
- *        @buffer_metadata any
+ *        @buffer_metadata any. Every frame must carry a metadata object (a frame
+ *                         without one is a FATAL_ERROR), and a buffer without a
+ *                         metadata_pool is refused at start.
  *
  * @conf server_ip       String, the IP address of the server to send data too.
  * @conf server_port     Int, default 11024. The port number on the remote server.
@@ -129,8 +131,8 @@ public:
     /// Main loop for sending data
     void main_thread() override;
 
-    /// Adds the target server to the pipeline dot graph
-    virtual std::string dot_string(const std::string& prefix) const override;
+    /// Adds the target server to the pipeline graph
+    void add_graph_details(kotekan::PipelineGraph& graph) const override;
 
 protected:
     /// The input buffer to send frames from.
@@ -141,6 +143,17 @@ protected:
 
     /// Threshold to drop frames
     float drop_threshold;
+
+    /// Flag to indicate if config tracker header data should be sent
+    bool use_config_tracker;
+
+    /// Flag to indicate the buffer's frame descriptor should be transmitted
+    /// (once per connection). Must match use_frame_desc on the receiver.
+    bool use_frame_desc;
+
+    /// Tracker hash as last signalled to the receiver. A differing current
+    /// hash, or the first frame of a connection, sets config_tracker_update.
+    std::string config_tracker_combined_hash;
 
     /**
      * @brief Number of frame dropped because the send is too slow.
@@ -157,9 +170,16 @@ protected:
     /// back to kotekan.
     virtual void done_with_frame(int frame_id);
 
-private:
     /// The input buffer name to grab.
     std::string buffer_name;
+
+    /// Set once the frame descriptor has been sent on the current connection.
+    /// Read and set by the send thread, and reset by the connect thread when a
+    /// new connection is established, so it is atomic (like first_transmission_sent).
+    std::atomic<bool> desc_sent;
+
+    /// Internal server address struct
+    struct sockaddr_in server_addr;
 
     /// Whether to drop frames or block if buffer is full
     bool drop_frames;

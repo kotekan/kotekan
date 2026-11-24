@@ -214,6 +214,9 @@ private:
     class basebandReadoutRegistry {
     public:
         using iterator = std::map<uint32_t, basebandReadoutManager>::iterator;
+        /// Hold the returned lock while iterating with `begin`/`end`, so that
+        /// stages registering concurrently cannot modify the map mid-traversal.
+        std::unique_lock<std::mutex> lock();
         iterator begin() noexcept;
         iterator end() noexcept;
         basebandReadoutManager& operator[](const uint32_t& key);

@@ -1,9 +1,9 @@
 #include "N2Layout.hpp"
 
-#include <json.hpp>   // for operator==, basic_json, json
-#include <stdexcept>  // for runtime_error
+#include "fmt.hpp" // for format, format_string
 
-#include "fmt.hpp"    // for format, format_string
+#include <json.hpp>  // for operator==, basic_json, json
+#include <stdexcept> // for runtime_error
 
 void to_json(nlohmann::json& j, const N2Layout& l) {
     switch (l) {
@@ -25,6 +25,9 @@ void to_json(nlohmann::json& j, const N2Layout& l) {
         case N2Layout::GeneralSubset:
             j = "GeneralSubset";
             break;
+        case N2Layout::DishInputs:
+            j = "DishInputs";
+            break;
         default:
             throw std::runtime_error(
                 fmt::format("to_json - unknown N2Layout value: {:d}", static_cast<int32_t>(l)));
@@ -45,6 +48,8 @@ void from_json(const nlohmann::json& j, N2Layout& l) {
         l = N2Layout::InputORMasked;
     else if (j == "GeneralSubset")
         l = N2Layout::GeneralSubset;
+    else if (j == "DishInputs")
+        l = N2Layout::DishInputs;
     else
         throw std::runtime_error(fmt::format("from_json - unknown N2Layout: {}", j.dump()));
 }

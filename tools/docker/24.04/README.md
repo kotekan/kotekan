@@ -6,3 +6,5 @@ be used in production runs.
 
 The file can be build with a cpu-only target (i.e. no NVIDIA drivers or CUDA toolkit),
 `docker build --target cpu`, or will otherwise build the gpu target by default.
+An additional `intel` target extends the cpu target with the Intel oneAPI C/C++
+compilers (icx/icpx), `docker build --target intel`.

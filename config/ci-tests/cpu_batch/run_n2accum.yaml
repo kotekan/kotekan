@@ -7,9 +7,6 @@ log_level: INFO
 
 buffer_depth: 4
 cpu_affinity: [2]  # [2,3,4,5,8,9,10,11]
-sizeof_float: 4
-frame_arrival_period: 5.12e-6 * samples_per_data_set
-sizeof_int: 4
 
 # For faster CHORD testing, we're using...
 sub_integration_ntime: 2048
@@ -17,11 +14,13 @@ samples_per_data_set: 4096
 rfi_downsampling_factor: 256
 # sub_integration_ntime: 8192  # ~40 ms for chord
 # samples_per_data_set: 8192   # 
-num_times: samples_per_data_set
 num_polarizations: 2
 num_dishes: 64
 num_elements: num_polarizations * num_dishes
 num_local_freq: 16
+# All generated streams must label the same frequencies.
+freq_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+manual_freq_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 num_ev: 0
 
 num_subintegrations_per_bin: 4
@@ -38,6 +37,10 @@ vis_num_blocks: vis_num_blocks_lin * (vis_num_blocks_lin + 1) / 2
 
 frames_to_generate: 8 * buffer_depth  # must be at least n2_frames_to_write * num_subintegrations_per_bin
 n2_frames_to_write: 2 * buffer_depth
+
+# N2Accumulate consumes one bad feed mask per correlation frame, checked against it by
+# FPGA sequence number, so each mask frame must cover exactly one correlation frame.
+bf_mask_lifetime_in_samples: samples_per_data_set
 
 GIGA: 1000000000
 start_time_s: 1760000000
@@ -56,8 +59,6 @@ telescope:
     dish_grid_size_x: 22
     dish_grid_size_y: 24
     dish_inputs: []
-
-input_order: CHORDBeamformer
 
 gps_time:
     frame0_nano: start_time_s * GIGA
@@ -80,6 +81,21 @@ earth_rotation_data:
     # yamlfix:on
 
 
+bad_inputs:
+    kotekan_update_endpoint: json
+    # yamlfix:off
+    bad_inputs: [3, 17, 40]
+    # yamlfix:on
+    # In the past, so the mask is in force for every frame N2Accumulate sees.
+    # Updates are posted as-is, so no config expressions here.
+    start_time: 1760000000.
+    update_id: "initial_flags"
+
+fringestop_enabled:
+    kotekan_update_endpoint: json
+    enabled: false
+    valid_at_time_ns: 0
+
 # Pool
 main_pool:
     kotekan_metadata_pool: chordMetadata
@@ -90,39 +106,55 @@ n2_pool:
     num_metadata_objects: 16 * buffer_depth
 
 fake_correlation_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * vis_num_blocks * vis_blocksize * vis_blocksize * 2 * sizeof_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, vis_num_blocks, vis_blocksize, vis_blocksize, 2]
     metadata_pool: main_pool
 
 fake_counts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * counts_num_blocks * counts_blocksize * counts_blocksize * sizeof_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, counts_num_blocks, counts_blocksize, counts_blocksize]
     metadata_pool: main_pool
 
 fake_rfimask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set * num_local_freq) / 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 1024, num_local_freq, 128]
     metadata_pool: main_pool
 
 fake_rficounts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     metadata_pool: main_pool
 
 fake_plcounts_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq * sizeof_int
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
     metadata_pool: main_pool
 
 fake_rfi_frame_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: buffer_depth
-    frame_size: (samples_per_data_set / sub_integration_ntime) * num_local_freq
+    value_type: uint8
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq]
+    metadata_pool: main_pool
+
+host_bf_mask_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: int8
+    extents: [1, num_polarizations, num_dishes]
+    quantity_name: "bf_mask"
+    dimnames: ["Tbf", "P", "D"]
+    dimscalings: [bf_mask_lifetime_in_samples, 1, 1]
     metadata_pool: main_pool
 
 n2_buffer:
@@ -139,6 +171,7 @@ gen_fake_rfi_RFImask:
     name: "RFImask"
     array_shape: [4, 16, 128]    # [samples_per_data_set / 1024, num_local_freq, 128]
     dim_name: ["T8hi128", "F", "T8lo128"]
+    dim_scaling: [1024, 1, 8]
     num_frames: frames_to_generate
     meta_time_downsample_factor: 1024  # The number of time samples represented by each coarse time index.
 
@@ -161,21 +194,30 @@ gen_fake_corr_counts:
     kotekan_stage: testN2kGen
     out_buf: fake_correlation_buffer
     out_counts_buf: fake_counts_buffer
-    in_rfimask_buf: fake_rfimask_buffer
     correlation_type: "f_times_ee"
     counts_type: "random_scalar"
     correlation_value: [1, -1]
     counts_value: sub_integration_ntime
-    counts_min: 0
-    counts_max: sub_integration_ntime
+    count_max: sub_integration_ntime
     mul_correlation_by_counts: true
     num_frames: frames_to_generate
-    freq_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 
 RFImask_sum:
     kotekan_stage: RfiMaskSum
     in_buf: fake_rfimask_buffer
     out_buf: fake_rficounts_buffer
+
+buffer_bad_inputs:
+    kotekan_stage: bufferBadInputs
+    # CHORD flags and masks in the same [P, D] order, so no reordering is needed
+    input_order: CHORDBeamformer
+    output_order: CHORDBeamformer
+    updatable_config:
+        bad_inputs: /bad_inputs
+    # Start the mask stream at the correlation stream's first sequence number, as the
+    # X-engine configs clock it off the voltage stream.
+    metadata_source: fake_correlation_buffer
+    out_buf: host_bf_mask_buffer
 
 N2_accumulate:
     kotekan_stage: N2Accumulate
@@ -184,10 +226,12 @@ N2_accumulate:
     in_rficounts_buf: fake_rficounts_buffer
     in_plcounts_buf: fake_plcounts_buffer
     in_rfiframemask_buf: fake_rfi_frame_mask_buffer
+    in_bad_feed_mask_buf: host_bf_mask_buffer
     out_buf: n2_buffer
     num_freq_per_n2k_frame: num_local_freq
     packet_loss_is_scalar: true
     variance_mode: EvenOddPosDef
+    fringestop_updatable_config: /fringestop_enabled
 
 writers:
     base_dir: fake_data
@@ -225,8 +269,14 @@ writers:
         file_name: n2k_rfiframemask
         in_buf: fake_rfi_frame_mask_buffer
 
+    write_bad_feed_mask:
+        kotekan_stage: hdf5FileWrite
+        file_name: bad_feed_mask
+        in_buf: host_bf_mask_buffer
+
     write_N2:
         kotekan_stage: hdf5FileWrite
         file_name: n2_vis_posdef
         in_buf: n2_buffer
         max_frames: num_local_freq * n2_frames_to_write # Will trigger exit after writing this many frames
+log_config_usage: fatal_error

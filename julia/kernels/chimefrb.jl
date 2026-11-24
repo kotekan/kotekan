@@ -5,11 +5,11 @@ using CUDA
 using CUDASIMDTypes
 using IndexSpaces
 using Mustache
+using Random
+using StaticArrays
 
 const Memory = IndexSpaces.Memory
 
-chimify(x::Int4x8) = Int4x8(x.val ⊻ 0x88888888)
-unchimify(x) = chimify(x)
 idiv(i::Integer, j::Integer) = (@assert iszero(i % j); i ÷ j)
 
 function shrink(value::Integer)
@@ -38,12 +38,31 @@ setup::Symbol
 F::Integer
 T::Integer
 U::Integer
+K::Integer                      # input bit depth; see `upchan.jl` sect. 5.1
 
 const F̄ = F_per_U[U] * U
 
+# We consume whatever the upchannelizer produced. 4-bit input is offset-encoded
+# (see `swap_offset`) with the two nibbles of each byte swapped; 8-bit input is plain
+# two's complement. Both pack one complex sample into 2K bits.
+@assert K == 4 || K == 8
+
+# Largest magnitude a single component can take: 7 for K=4, 127 for K=8
+const Emax = (1 << (K - 1)) - 1
+
+# How many Ē values (i.e. complex dish samples) are packed into one 32-bit word,
+# and the resulting number of words per (polr, freq, tbar) dish row
+const Ēdishes_per_word = idiv(32, 2 * K) # 32 bits per word, 2K bits per sample; K=4 => 4, K=8 => 2
+const Ēwords_per_row = idiv(D, Ēdishes_per_word)
+
+# Julia type of one 32-bit word of the Ē input array
+const Ētype = K == 4 ? Int4x8 : Int8x4
+
+# We use U = 128 for HFB beams: downsample to the max, and have a larger output buffer to allow for more downsampling
+const is_hfb = U == 128
+const Tds_hfb = idiv(T ÷ 4, U)
 const Tbar = T ÷ U
-# We use U = 128 for HFB beams; downsample to the max
-const Tds = U < 128 ? idiv(Tds_U1, U) : Tbar ÷ 4
+const Tds = is_hfb ? Tds_hfb : idiv(Tds_U1, U)
 
 const Fbar_W = F̄
 const Fbar = U == 1 ? F : F̄
@@ -67,12 +86,29 @@ else
     @assert false
 end
 
-# # U = 128 requires a lot of much memory; reduce Ttilde
-# const Ttilde = U < 128 ? 4 * 256 : 4 * 64
 # We use U = 128 for HFB beams; downsample to the max
-const Ttilde = U < 128 ? 4 * 256 : 4 * 1
+const output_size_scale = is_hfb ? 20 : 1
+const Ttilde = (is_hfb ? 4 * 1 : 4 * 256) * output_size_scale
 
-const output_gain = 1 / (8 * Tds)
+# The beamforming weights are recalculated periodically, and handed to the GPU through a ring
+# buffer holding this many of them (the Kotekan buffer depth). How many FPGA samples one set of
+# weights covers is a run-time setting, `frb1_phase_lifetime_in_samples`.
+const TW = 4
+
+# I = 1/(2 · P · M·N · Tds) · Σ_t Σ_pol |Ẽ|²
+# I is the mean beam power per polarisation per real component, in units of the
+# input LSB², i.e. ⟨I⟩ = σ² for noise-dominated input. Splitting the scale as
+# `input_gain` (applied to `W`, before the squaring) and `output_gain` (applied
+# after) bounds both the intermediate |Ẽ|² and the accumulated I by 49·M·N,
+# which is below the Float16 maximum of 65504 for any representable input.
+#
+# That 49 is the K=4 full scale 7². A K=8 input reaches ±127, which would raise
+# the bound to 127·127·M·N, far above the Float16 maximum, so `input_gain`
+# shrinks in proportion to the input full scale. The bound, and the units of I,
+# are then the same for every K: inputs of equal physical amplitude give equal
+# intensities. For K=4 the factor is exactly 1, so the gain is unchanged.
+const input_gain = 7 / (2 * Emax * sqrt(M * N))
+const output_gain = 2 / (P * Tds)
 
 # Machine setup
 
@@ -107,15 +143,35 @@ const Time = Index{Physics,TimeTag}
 
 # Layouts
 
-const layout_E_memory = Layout([
-    IntValue(:intvalue, 1, 4) => SIMD(:simd, 1, 4),
-    Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
-    Dish(:dish, 1, 4) => SIMD(:simd, 8, 4),
-    Dish(:dish, 4, idiv(D, 4)) => Memory(:memory, 1, idiv(D, 4)),
-    Polr(:polr, 1, P) => Memory(:memory, idiv(D, 4), P),
-    Freq(:freq, 1, Fbar) => Memory(:memory, idiv(D, 4) * P, Fbar),
-    Time(:time, 1, Tbar) => Memory(:memory, idiv(D, 4) * Fbar * P, Tbar),
-])
+# This must mirror the upchannelizer's Ē output layout exactly: `upchan.jl`
+# eqn. (145) for K=4 and eqn. (149) for K=8. A 32-bit word holds
+# `Ēdishes_per_word` complex samples either way, so only the intra-word index
+# assignment and the word stride per dish row differ.
+const layout_E_memory = if K == 4
+    Layout([
+        # eqn. (145): b0 b1 b2 <-> ReIm, d0, d1
+        IntValue(:intvalue, 1, 4) => SIMD(:simd, 1, 4),
+        Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
+        Dish(:dish, 1, 4) => SIMD(:simd, 8, 4),
+        Dish(:dish, 4, Ēwords_per_row) => Memory(:memory, 1, Ēwords_per_row),
+        Polr(:polr, 1, P) => Memory(:memory, Ēwords_per_row, P),
+        Freq(:freq, 1, Fbar) => Memory(:memory, Ēwords_per_row * P, Fbar),
+        Time(:time, 1, Tbar) => Memory(:memory, Ēwords_per_row * Fbar * P, Tbar),
+    ])
+elseif K == 8
+    Layout([
+        # eqn. (149): b0 b1 <-> ReIm, d0
+        IntValue(:intvalue, 1, 8) => SIMD(:simd, 1, 8),
+        Cplx(:cplx, 1, C) => SIMD(:simd, 8, 2),
+        Dish(:dish, 1, 2) => SIMD(:simd, 16, 2),
+        Dish(:dish, 2, Ēwords_per_row) => Memory(:memory, 1, Ēwords_per_row),
+        Polr(:polr, 1, P) => Memory(:memory, Ēwords_per_row, P),
+        Freq(:freq, 1, Fbar) => Memory(:memory, Ēwords_per_row * P, Fbar),
+        Time(:time, 1, Tbar) => Memory(:memory, Ēwords_per_row * Fbar * P, Tbar),
+    ])
+else
+    @assert false
+end
 
 const layout_W_memory = Layout([
     FloatValue(:floatvalue, 1, 16) => SIMD(:simd, 1, 16),
@@ -433,14 +489,6 @@ function make_chimefrb_kernel()
                     Γ2_dish2_0_dish5_0.im,
                     Γ2_dish2_1_dish5_0.re,
                     Γ2_dish2_1_dish5_0.im,
-                    Γ2_dish2_1_dish5_0.re,
-                    Γ2_dish2_0_dish5_0.im,
-                    Γ2_dish2_0_dish5_0.re,
-                    Γ2_dish2_1_dish5_0.im,
-                    Γ2_dish2_1_dish5_0.re,
-                    Γ2_dish2_0_dish5_1.im,
-                    Γ2_dish2_0_dish5_1.re,
-                    Γ2_dish2_1_dish5_1.im,
                     Γ2_dish2_0_dish5_1.re,
                     Γ2_dish2_0_dish5_1.im,
                     Γ2_dish2_1_dish5_1.re,
@@ -514,12 +562,12 @@ function make_chimefrb_kernel()
                 Γ3_dish5_1 = cispi(q * n_dish5_1 % 512i32 * Float32(2 / 512))
                 (
                     +Γ3_dish5_0.re,
-                    +Γ3_dish5_0.im,
                     -Γ3_dish5_0.im,
+                    +Γ3_dish5_0.im,
                     +Γ3_dish5_0.re,
                     +Γ3_dish5_1.re,
-                    +Γ3_dish5_1.im,
                     -Γ3_dish5_1.im,
+                    +Γ3_dish5_1.im,
                     +Γ3_dish5_1.re,
                 )
             end
@@ -591,11 +639,6 @@ function make_chimefrb_kernel()
                     Γ4_dish2_0.im,
                     Γ4_dish2_1.re,
                     Γ4_dish2_1.im,
-                    Γ4_dish2_1.re,
-                    Γ4_dish2_0.im,
-                    Γ4_dish2_0.re,
-                    Γ4_dish2_1.im,
-                    Γ4_dish2_1.re,
                 )
             end
         end,
@@ -660,12 +703,12 @@ function make_chimefrb_kernel()
                 Γ5_dish2_1 = cispi(q * n_dish2_1 % 512i32 * Float32(2 / 512))
                 (
                     +Γ5_dish2_0.re,
-                    +Γ5_dish2_0.im,
                     -Γ5_dish2_0.im,
+                    +Γ5_dish2_0.im,
                     +Γ5_dish2_0.re,
                     +Γ5_dish2_1.re,
-                    +Γ5_dish2_1.im,
                     -Γ5_dish2_1.im,
+                    +Γ5_dish2_1.im,
                     +Γ5_dish2_1.re,
                 )
             end
@@ -708,6 +751,7 @@ function make_chimefrb_kernel()
         Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
     ])
     load!(emitter, :W => layout_W_registers, :W_memory => layout_W_memory)
+    apply!(emitter, :W, [:W], (W,) -> :($(Float16x2(input_gain, input_gain)) * $W))
 
     # Main loop
 
@@ -747,7 +791,19 @@ function make_chimefrb_kernel()
             @assert P == 2
             @assert W == 8
 
-            if Treg == 1
+            # `Tbarmin` selects the starting point in the input ring buffer
+            wrap_address = addr -> :(
+                let
+                    offset = $(shrinkmul(Ēwords_per_row * P * Fbar, :Tbarmin, Tbar))
+                    length = $(shrink(Ēwords_per_row * P * Fbar * Tbar))
+                    mod($addr + offset, length)
+                end
+            )
+
+            if Treg == 1 && K == 4
+                # Dish bits d0 d1 sit inside the 32-bit word, d2 is a register, so
+                # each thread loads 2 consecutive words and the warp covers 64
+                # consecutive words.
                 layout_E_registers = Layout([
                     IntValue(:intvalue, 1, 4) => SIMD(:simd, 1, 4),
                     Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
@@ -764,21 +820,39 @@ function make_chimefrb_kernel()
                     Time(:time, 1, Tds) => Loop(:time_inner, 1, Tds),
                     Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
                 ])
-                load!(
-                    emitter,
-                    :E => layout_E_registers,
-                    :E_memory => layout_E_memory;
-                    align=8,
-                    postprocess=addr -> :(
-                        let
-                            offset = $(shrinkmul(idiv(D, 4) * P * Fbar, :Tbarmin, Tbar))
-                            length = $(shrink(idiv(D, 4) * P * Fbar * Tbar))
-                            mod($addr + offset, length)
-                        end
-                    ),
-                )
+                load!(emitter, :E => layout_E_registers, :E_memory => layout_E_memory; align=8, postprocess=wrap_address)
+
+            elseif Treg == 1 && K == 8
+                # Only d0 fits inside the 32-bit word, so d1 becomes a second
+                # register and each thread loads 4 consecutive words (16 bytes, the
+                # widest vectorized load). The warp still covers a contiguous range,
+                # now of 128 words.
+                layout_E_registers = Layout([
+                    IntValue(:intvalue, 1, 8) => SIMD(:simd, 1, 8),
+                    Cplx(:cplx, 1, C) => SIMD(:simd, 8, 2),
+                    Dish(:dish, 1, 2) => SIMD(:simd, 16, 2),
+                    Dish(:dish, 2, 2) => Register(:dish, 2, 2),
+                    Dish(:dish, 4, 2) => Register(:dish, 4, 2),
+                    Dish(:dish, 8, 2) => Thread(:thread, 16, 2),
+                    Dish(:dish, 16, 2) => Thread(:thread, 8, 2),
+                    Dish(:dish, 32, 2) => Thread(:thread, 4, 2),
+                    Dish(:dish, 64, 2) => Thread(:thread, 2, 2),
+                    Dish(:dish, 128, 2) => Thread(:thread, 1, 2),
+                    Dish(:dish, 256, 4) => Warp(:warp, 1, 4),
+                    Polr(:polr, 1, P) => Warp(:warp, 4, 2),
+                    Freq(:freq, 1, Fbar) => Block(:block, 1, Fbar),
+                    Time(:time, 1, Tds) => Loop(:time_inner, 1, Tds),
+                    Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
+                ])
+                load!(emitter, :E => layout_E_registers, :E_memory => layout_E_memory; align=16, postprocess=wrap_address)
 
             elseif Treg == 2
+                # K=8 is not supported here: this layout already loads 16 bytes per
+                # thread with K=4, and halving the number of dishes per word would
+                # require a 32-byte load. Supporting it would mean moving a dish bit
+                # back from a register to a thread index, which changes the warp
+                # transpose downstream. `Treg == 1` for every current setup.
+                @assert K == 4
                 layout_E_registers = Layout([
                     IntValue(:intvalue, 1, 4) => SIMD(:simd, 1, 4),
                     Cplx(:cplx, 1, C) => SIMD(:simd, 4, 2),
@@ -796,37 +870,40 @@ function make_chimefrb_kernel()
                     Time(:time, Treg, idiv(Tds, Treg)) => Loop(:time_inner, 1, idiv(Tds, Treg)),
                     Time(:time, Tds, Ttilde) => Loop(:time_outer, Tds, Ttilde),
                 ])
-                load!(
-                    emitter,
-                    :E0 => layout_E_registers,
-                    :E_memory => layout_E_memory;
-                    align=16,
-                    postprocess=addr -> :(
-                        let
-                            offset = $(shrinkmul(idiv(D, 4) * P * Fbar, :Tbarmin, Tbar))
-                            length = $(shrink(idiv(D, 4) * P * Fbar * Tbar))
-                            mod($addr + offset, length)
-                        end
-                    ),
-                )
+                load!(emitter, :E0 => layout_E_registers, :E_memory => layout_E_memory; align=16, postprocess=wrap_address)
                 permute!(emitter, :E, :E0, Dish(:dish, 8, 2), Time(:time, 1, 2))
 
             else
                 @assert false
             end
 
-            # Convert to float16
-
-            widen2!(
-                emitter,
-                :X0,
-                :E,
-                SIMD(:simd, 4, 2) => Register(:dish, 2, 2),
-                SIMD(:simd, 8, 2) => Register(:dish, 1, 2);
-                newtype=FloatValue,
-                swapped_withoffset=true,
-            )
-            permute!(emitter, :X1, :X0, Cplx(:cplx, 1, 2), Dish(:dish, 2, 2))
+            # Convert to float16.
+            #
+            # `widen!`/`widen2!` move the lowest intra-word index bits out into
+            # registers and leave the highest one as the half-index of the resulting
+            # `Float16x2`. That puts a dish index where `layout_X_registers` wants
+            # ReIm, so a (thread-local, shuffle-free) `permute!` swaps them back.
+            if K == 4
+                # ReIm and d0 move out, d1 stays: Int4x8 -> 4 x Float16x2.
+                # `swapped_withoffset` undoes the `swap_offset` encoding for free.
+                widen2!(
+                    emitter,
+                    :X0,
+                    :E,
+                    SIMD(:simd, 4, 2) => Register(:dish, 2, 2),
+                    SIMD(:simd, 8, 2) => Register(:dish, 1, 2);
+                    newtype=FloatValue,
+                    swapped_withoffset=true,
+                )
+                permute!(emitter, :X1, :X0, Cplx(:cplx, 1, 2), Dish(:dish, 2, 2))
+            elseif K == 8
+                # Only ReIm moves out, d0 stays: Int8x4 -> 2 x Float16x2.
+                # Plain two's complement, i.e. no offset encoding to undo.
+                widen!(emitter, :X0, :E, SIMD(:simd, 8, 2) => Register(:dish, 1, 2); newtype=FloatValue)
+                permute!(emitter, :X1, :X0, Cplx(:cplx, 1, 2), Dish(:dish, 1, 2))
+            else
+                @assert false
+            end
 
             # Scale by input gain
 
@@ -1132,13 +1209,13 @@ function make_chimefrb_kernel()
                 sqrt_half = Float16x2(sqrt(0.5f0), sqrt(0.5f0))
                 Xre, Xim = X
                 n % 8 == 0 && return :(+$Xre), :(+$Xim)
-                n % 8 == 1 && return :(+$sqrt_half * $Xre), :(+$sqrt_half * $Xim)
+                n % 8 == 1 && return :(+$sqrt_half * ($Xre - $Xim)), :(+$sqrt_half * ($Xre + $Xim))
                 n % 8 == 2 && return :(-$Xim), :(+$Xre)
-                n % 8 == 3 && return :(-$sqrt_half * $Xim), :(+$sqrt_half * $Xre)
+                n % 8 == 3 && return :(-$sqrt_half * ($Xre + $Xim)), :(+$sqrt_half * ($Xre - $Xim))
                 n % 8 == 4 && return :(-$Xre), :(-$Xim)
-                n % 8 == 5 && return :(-$sqrt_half * $Xre), :(-$sqrt_half * $Xim)
+                n % 8 == 5 && return :(-$sqrt_half * ($Xre - $Xim)), :(-$sqrt_half * ($Xre + $Xim))
                 n % 8 == 6 && return :(+$Xim), :(-$Xre)
-                n % 8 == 7 && return :(+$sqrt_half * $Xim), :(-$sqrt_half * $Xre)
+                n % 8 == 7 && return :(+$sqrt_half * ($Xre + $Xim)), :(-$sqrt_half * ($Xre - $Xim))
                 @assert false
             end
 
@@ -1356,11 +1433,11 @@ println("[Done creating chimefrb kernel]")
     return nothing
 end
 
-function main(; compile_only::Bool=false, output_kernel::Bool=false, nruns::Int=0, silent::Bool=false)
+function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftest::Bool=false, nruns::Int=0, silent::Bool=false)
     !silent && println("CHIME FRB beamformer")
 
     if output_kernel
-        open("output/chimefrb_$(setup)_U$(U).jl", "w") do fh
+        open("output/chimefrb_$(setup)_U$(U)_K$(K).jl", "w") do fh
             println(fh, "# Julia source code for CUDA chimefrb beamformer")
             println(fh, "# This file has been generated automatically by `chimefrb.jl`.")
             println(fh, "# Do not modify this file, your changes will be lost.")
@@ -1385,7 +1462,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, nruns::Int=
         Int32(0),
         Int32(0),
         CUDA.zeros(Float16x2, 0),
-        CUDA.zeros(Int4x8, 0),
+        CUDA.zeros(Ētype, 0),
         CUDA.zeros(Float16x2, 0),
         CUDA.zeros(Int32, 0),
     )
@@ -1397,13 +1474,10 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, nruns::Int=
 
     println("Allocating input data...")
     W_memory = Array{Float16x2}(undef, M * N * Fbar * P)
-    E_memory = Array{Int4x8}(undef, idiv(D, 4) * P * Fbar * Tbar)
+    E_memory = Array{Ētype}(undef, Ēwords_per_row * P * Fbar * Tbar)
     I_memory = Array{Float16x2}(undef, M * 2 * N * Fbar * Ttilde)
+    I_wanted = Array{Float16x2}(undef, M * 2 * N * Fbar * Ttilde)
     info_memory = Array{Int32}(undef, num_threads * num_warps * num_blocks)
-
-    println("Setting up input data...")
-    map!(f -> Float16x2(1, 1), W_memory, W_memory)
-    map!(i -> Int4x8(-4, -3, -2, -1, 0, 1, 2, 3), E_memory, E_memory)
 
     Ttildemin = Int32(0)
     Ttildemax = Int32(fld(fld(Tbar, 4), Tds))
@@ -1429,9 +1503,99 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, nruns::Int=
     @assert Ttildemin ≤ Ttildemax < Int32(2 * Ttilde)
     @assert Ttildemax - Ttildemin == (Tbarmax - Tbarmin) ÷ Int32(Tds)
 
+    println("Setting up input data...")
+    # Largest expected intensity, used to scale the self-test tolerance
+    I_max = 0.0f0
+    if run_selftest
+        # Plane-wave self-test with a CPU reference beamformer (ported from `frb.jl`).
+        c2t(c::Complex) = (real(c), imag(c))
+
+        Random.seed!(0)
+
+        fill!(E_memory, K == 4 ? swap_offset(zero(Int4x8)) : zero(Int8x4))
+        map!(i -> zero(Float16x2), I_wanted, I_wanted)
+
+        # In each polarization, a plane wave from a random direction, and weights with a random
+        # complex gain that steer by a random offset. This input is not symmetric under
+        # p → -p or q → -q, nor under exchanging the polarizations, so it detects an FFT with
+        # the wrong sign, a conjugated `W`, and `W` applied to the other polarization.
+        # chimefrb's implicit dish layout is dishm = dish % M (N-S), dishn = dish ÷ M (E-W).
+        freq = rand(0:(Fbar - 1))
+        time = rand(0:(Int(Tbarmax) - 1))
+        @show freq time
+
+        # Eqn. (4): the phase of dish (m, n) in beam (p, q)
+        beam_phase = (m, n, p, q) -> cispi((2 * m * p / Float32(2 * M) + 2 * n * q / Float32(2 * N)) % 2.0f0)
+
+        fill!(W_memory, zero(Float16x2))
+        Wvalues = zeros(ComplexF32, D, P)
+        Evalues = zeros(Complex{Int}, D, P)
+        for polr in 0:(P - 1)
+            p0, q0 = rand(0:(2 * M - 1)), rand(0:(2 * N - 1))
+            Δp, Δq = rand(0:(2 * M - 1)), rand(0:(2 * N - 1))
+            # The kernel's `input_gain` keeps intensities in range for |W| ≤ 1 at both bit depths
+            Wgain = (0.5f0 + 0.5f0 * rand(Float32)) * cispi(2 * rand(Float32))
+            @show polr p0 q0 Δp Δq Wgain
+
+            for dish in 0:(D - 1)
+                dishm, dishn = dish % M, dish ÷ M
+                Wvalue = Wgain * beam_phase(dishm, dishn, Δp, Δq)
+                Wvalue = Complex{Float32}(Float16(real(Wvalue)), Float16(imag(Wvalue)))
+                Wvalues[dish + 1, polr + 1] = Wvalue
+                for f in 0:(Fbar_W - 1)
+                    W_memory[dish + D * polr + D * P * f + 1] = Float16x2(c2t(Wvalue)...)
+                end
+
+                Fvalue = Emax * conj(beam_phase(dishm, dishn, p0, q0))
+                Evalue = round(Int, real(Fvalue)) + im * round(Int, imag(Fvalue))
+                Evalues[dish + 1, polr + 1] = Evalue
+
+                # One 32-bit word holds `Ēdishes_per_word` complex samples, ReIm fastest
+                Eidx =
+                    dish ÷ Ēdishes_per_word + Ēwords_per_row * polr + Ēwords_per_row * P * freq + Ēwords_per_row * P * Fbar * time
+                dishlo = dish % Ēdishes_per_word
+                if K == 4
+                    E8 = convert(NTuple{8,Int8}, swap_offset(E_memory[Eidx + 1]))
+                    E8 = setindex(E8, real(Evalue), 2 * dishlo + 0 + 1)
+                    E8 = setindex(E8, imag(Evalue), 2 * dishlo + 1 + 1)
+                    E_memory[Eidx + 1] = swap_offset(Int4x8(E8...))
+                else
+                    E4 = convert(NTuple{4,Int8}, E_memory[Eidx + 1])
+                    E4 = setindex(E4, real(Evalue), 2 * dishlo + 0 + 1)
+                    E4 = setindex(E4, imag(Evalue), 2 * dishlo + 1 + 1)
+                    E_memory[Eidx + 1] = Int8x4(E4...)
+                end
+            end
+        end
+
+        # Reference intensities (Eqn. 4)
+        dstime = time ÷ Tds
+        for beamq in 0:(2 * N - 1), beamp in 0:(2 * M - 1)
+            Iidx = beamp ÷ 2 + M * beamq + M * 2 * N * freq + M * 2 * N * Fbar * dstime
+            Ivalue = 0.0f0
+            for polr in 0:(P - 1)
+                Ẽvalue = zero(ComplexF32)
+                for dish in 0:(D - 1)
+                    dishm, dishn = dish % M, dish ÷ M
+                    Ẽvalue += beam_phase(dishm, dishn, beamp, beamq) * Wvalues[dish + 1, polr + 1] * Evalues[dish + 1, polr + 1]
+                end
+                Ivalue += output_gain * abs2(input_gain * Ẽvalue)
+            end
+            I_max = max(I_max, Ivalue)
+            Ivalue2 = convert(NTuple{2,Float32}, I_wanted[Iidx + 1])
+            Ivalue2 = setindex(Ivalue2, Ivalue, beamp % 2 + 1)
+            I_wanted[Iidx + 1] = Float16x2(Ivalue2...)
+        end
+    else
+        map!(f -> Float16x2(1, 1), W_memory, W_memory)
+        fill!(E_memory, K == 4 ? Int4x8(-4, -3, -2, -1, 0, 1, 2, 3) : Int8x4(-4, -3, -2, -1))
+    end
+
     println("Copying data from CPU to GPU...")
     W_cuda = CuArray(W_memory)
-    E_cuda = CuArray(chimify.(E_memory))
+    # The self-test already fills `E_memory` in its encoded form; the benchmark data
+    # is plain values and still needs the K=4 nibble-swap + offset encoding applied.
+    E_cuda = (run_selftest || K == 8) ? CuArray(E_memory) : CuArray(swap_offset.(E_memory))
     I_cuda = CUDA.fill(Float16x2(NaN, NaN), length(I_memory))
     info_cuda = CUDA.fill(-1i32, length(info_memory))
 
@@ -1484,14 +1648,40 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, nruns::Int=
     info_memory = Array(info_cuda)
     @assert all(==(0), info_memory)
 
+    if run_selftest
+        println("Checking results...")
+        error_count = 0
+        for freq in 0:(Fbar - 1), dstime in Int(Ttildemin):(Int(Ttildemax) - 1), beamq in 0:(2 * N - 1), beamp in 0:(2 * M - 1)
+            Iidx = beamp ÷ 2 + M * beamq + M * 2 * N * freq + M * 2 * N * Fbar * dstime
+            have_value = convert(NTuple{2,Float32}, I_memory[Iidx + 1])[beamp % 2 + 1]
+            want_value = convert(NTuple{2,Float32}, I_wanted[Iidx + 1])[beamp % 2 + 1]
+            # The kernel's rounding error at any beam is set by the largest
+            # intermediate value of the FFT, which is common to all beams,
+            # so the absolute tolerance must scale with the peak intensity
+            if !isapprox(have_value, want_value; atol=eps(Float16) * I_max, rtol=10 * eps(Float16))
+                error_count += 1
+                if error_count ≤ 20
+                    println("    beamp=$beamp beamq=$beamq freq=$freq dstime=$dstime I=$have_value I₀=$want_value")
+                elseif error_count == 21
+                    println("    [additional error messages suppressed]")
+                end
+            end
+        end
+        if error_count > 0
+            error("*** SELF-TEST FAILED: $(error_count) mismatches ***")
+        else
+            println("Self-test passed.")
+        end
+    end
+
     println("Done.")
     return nothing
 end
 
 function fix_ptx_kernel()
-    ptx = read("output/chimefrb_$(setup)_U$(U).ptx", String)
+    ptx = read("output/chimefrb_$(setup)_U$(U)_K$(K).ptx", String)
     ptx = replace(ptx, r".extern .func gpu_([^;]*);"s => s".func gpu_\1.noreturn\n{\n\ttrap;\n}")
-    open("output/chimefrb_$(setup)_U$(U).ptx", "w") do fh
+    open("output/chimefrb_$(setup)_U$(U)_K$(K).ptx", "w") do fh
         println(fh, "// PTX kernel code for CUDA chimefrb beamformer")
         println(fh, "// This file has been generated automatically by `chimefrb.jl`.")
         println(fh, "// Do not modify this file, your changes will be lost.")
@@ -1499,14 +1689,14 @@ function fix_ptx_kernel()
         write(fh, ptx)
         return nothing
     end
-    open("output/chimefrb_$(setup)_U$(U).sass", "w") do fh
+    open("output/chimefrb_$(setup)_U$(U)_K$(K).sass", "w") do fh
         println(fh, "// SASS kernel code for CUDA chimefrb beamformer")
         println(fh, "// This file has been generated automatically by `chimefrb.jl`.")
         println(fh, "// Do not modify this file, your changes will be lost.")
         println(fh)
         CUDA.code_sass(fh, chimefrb, Tuple{Int32, Int32, Int32, Int32,
                                            CuDeviceVector{Float16x2,1},
-                                           CuDeviceVector{Int4x8,1},
+                                           CuDeviceVector{Ētype,1},
                                            CuDeviceVector{Float16x2,1},
                                            CuDeviceVector{Int32,1}};
                        cap=compute_capability, ptx=ptx_compat,
@@ -1515,7 +1705,7 @@ function fix_ptx_kernel()
         return nothing
     end
     kernel_symbol = match(r"\s\.globl\s+(\S+)"m, ptx).captures[1]
-    open("output/chimefrb_$(setup)_U$(U).yaml", "w") do fh
+    open("output/chimefrb_$(setup)_U$(U)_K$(K).yaml", "w") do fh
         println(fh, "# Metadata code for CUDA chimefrb beamformer")
         println(fh, "# This file has been generated automatically by `chimefrb.jl`.")
         println(fh, "# Do not modify this file, your changes will be lost.")
@@ -1536,9 +1726,11 @@ function fix_ptx_kernel()
         number-of-frequencies: $Fbar
         number-of-polarizations: $P
         number-of-timesamples: $Tbar
+        input-gain: $input_gain
         output-gain: $output_gain
         sampling-time-μsec: $sampling_time_μsec
         upchannelization-factor: $U
+        input-bits: $K
       compile-parameters:
         minthreads: [$num_threads, $num_warps]
         blocks_per_sm: $num_blocks_per_sm
@@ -1568,7 +1760,7 @@ function fix_ptx_kernel()
           strides: [1, $C, $(C*M), $(C*M*N), $(C*M*N*P), $(C*M*N*P*Fbar_W)]
         - name: "Ē"
           intent: in
-          type: Int4
+          type: Int$K
           indices: [C, D, P, Fbar, Tbar]
           shape: [$C, $D, $P, $Fbar, $Tbar]
           strides: [1, $C, $(C*D), $(C*D*P), $(C*D*P*Fbar)]
@@ -1593,7 +1785,8 @@ function fix_ptx_kernel()
     cxx = Mustache.render(
         cxx,
         Dict(
-            "kernel_name" => "CHIMEFRBBeamformer_$(setup)_U$(U)",
+            "kernel_name" => "CHIMEFRBBeamformer_$(setup)_U$(U)_K$(K)",
+            "cuda_arch" => cuda_arch,
             "upchannelization_factor" => "$U",
             "downsampling_factor" => "$Tds",
             "kernel_design_parameters" => [
@@ -1602,6 +1795,7 @@ function fix_ptx_kernel()
                 Dict("type" => "int", "name" => "cuda_dish_layout_M", "value" => "$M"),
                 Dict("type" => "int", "name" => "cuda_dish_layout_N", "value" => "$N"),
                 Dict("type" => "int", "name" => "cuda_upchannelization_factor", "value" => "$U"),
+                Dict("type" => "int", "name" => "cuda_input_bits", "value" => "$K"),
                 Dict("type" => "int", "name" => "cuda_downsampling_factor", "value" => "$Tds"),
                 Dict("type" => "int", "name" => "cuda_number_of_complex_components", "value" => "$C"),
                 Dict("type" => "int", "name" => "cuda_number_of_dishes", "value" => "$D"),
@@ -1658,28 +1852,38 @@ function fix_ptx_kernel()
                     "name" => "W",
                     "kotekan_name" => "frb_phase_name",
                     "type" => "float16",
+                    # The slowest axis is the ring buffer direction. Its `dimscaling` is a
+                    # placeholder; it is overwritten at run time with the configured
+                    # `frb1_phase_lifetime_in_samples`. The kernel itself still sees a single set
+                    # of weights: the wrapper passes it the element covering the voltage samples
+                    # being processed.
                     "axes" => [
-                        Dict("label" => "C", "length" => C),
-                        Dict("label" => "dishM", "length" => M),
-                        Dict("label" => "dishN", "length" => N),
-                        Dict("label" => "P", "length" => P),
-                        Dict("label" => "F", "length" => Fbar_W),
+                        Dict("label" => "C", "length" => C, "dimscaling" => 1),
+                        Dict("label" => "dishM", "length" => M, "dimscaling" => 1),
+                        Dict("label" => "dishN", "length" => N, "dimscaling" => 1),
+                        Dict("label" => "P", "length" => P, "dimscaling" => 1),
+                        Dict("label" => "Fbar", "length" => Fbar_W, "dimscaling" => 1),
+                        Dict("label" => "TW", "length" => TW, "dimscaling" => 1),
                     ],
                     "isoutput" => false,
                     "hasbuffer" => true,
-                    "hasringbuffer" => false,
+                    "hasringbuffer" => true,
                     "isscalar" => false,
-                    "do_once" => true,
+                    "do_once" => false,
+                    "haslifetime" => true,
+                    "lifetime_config" => "frb1_phase_lifetime_in_samples",
                 ),
                 Dict(
                     "name" => "Ebar",
                     "kotekan_name" => "voltage_name",
-                    "type" => "int4x2_swapped_withoffset",
+                    # K=4: offset-encoded, nibble-swapped, 1 byte per complex sample.
+                    # K=8: plain two's complement, 2 bytes per complex sample.
+                    "type" => K == 4 ? "int4x2_swapped_withoffset" : "cint8",
                     "axes" => [
-                        Dict("label" => "D", "length" => D),
-                        Dict("label" => "P", "length" => P),
-                        Dict("label" => "Fbar", "length" => Fbar),
-                        Dict("label" => "Tbar", "length" => Tbar),
+                        Dict("label" => "D", "length" => D, "dimscaling" => 1),
+                        Dict("label" => "P", "length" => P, "dimscaling" => 1),
+                        Dict("label" => "Fbar", "length" => Fbar, "dimscaling" => 1),
+                        Dict("label" => "Tbar", "length" => Tbar, "dimscaling" => U),
                     ],
                     "isoutput" => false,
                     "hasbuffer" => true,
@@ -1691,10 +1895,10 @@ function fix_ptx_kernel()
                     "kotekan_name" => "frb_beamgrid_name",
                     "type" => "float16",
                     "axes" => [
-                        Dict("label" => "beamP", "length" => 2 * M),
-                        Dict("label" => "beamQ", "length" => 2 * N),
-                        Dict("label" => "Fbar", "length" => Fbar),
-                        Dict("label" => "Ttilde", "length" => Ttilde),
+                        Dict("label" => "beamP", "length" => 2 * M, "dimscaling" => 1),
+                        Dict("label" => "beamQ", "length" => 2 * N, "dimscaling" => 1),
+                        Dict("label" => "Fbar", "length" => Fbar, "dimscaling" => 1),
+                        Dict("label" => "Ttilde", "length" => Ttilde, "dimscaling" => Tds * U),
                     ],
                     "isoutput" => true,
                     "hasbuffer" => true,
@@ -1706,9 +1910,9 @@ function fix_ptx_kernel()
                     "kotekan_name" => "gpu_mem_info",
                     "type" => "int32",
                     "axes" => [
-                        Dict("label" => "thread", "length" => num_threads),
-                        Dict("label" => "warp", "length" => num_warps),
-                        Dict("label" => "block", "length" => num_blocks),
+                        Dict("label" => "thread", "length" => num_threads, "dimscaling" => 1),
+                        Dict("label" => "warp", "length" => num_warps, "dimscaling" => 1),
+                        Dict("label" => "block", "length" => num_blocks, "dimscaling" => 1),
                     ],
                     "isoutput" => true,
                     "hasbuffer" => false,
@@ -1718,19 +1922,24 @@ function fix_ptx_kernel()
             ],
         ),
     )
-    write("output/chimefrb_$(setup)_U$(U).cxx", cxx)
+    write("output/chimefrb_$(setup)_U$(U)_K$(K).cxx", cxx)
     return nothing
 end
 
 if CUDA.functional()
     # Output kernel
     main(; output_kernel=true)
-    open("output/chimefrb_$(setup)_U$(U).ptx", "w") do fh
+    open("output/chimefrb_$(setup)_U$(U)_K$(K).ptx", "w") do fh
         redirect_stdout(fh) do
+            println("R\"===(")
             @device_code_ptx main(; compile_only=true, silent=true)
+            println(")===\"")
         end
     end
     fix_ptx_kernel()
+
+    # Self-test (compares the kernel against a CPU reference beamformer)
+    main(; run_selftest=true)
 
     # # Run benchmark
     # main(; nruns=100)

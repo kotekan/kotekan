@@ -8,14 +8,14 @@
 #ifndef MONITOR_BUFFER_H
 #define MONITOR_BUFFER_H
 
-#include <stdint.h>             // for uint32_t, uint64_t
-#include <string>               // for string
-#include <vector>               // for vector
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
+#include <stdint.h> // for uint32_t, uint64_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 
 /**
@@ -23,8 +23,8 @@
  * @brief Watches a set of buffers to make sure they are getting data
  *        within a given timeout, otherwise exits.
  *
- * @note This will not detect buffers which never get data, the buffer
- *       must get at least one frame before this system will start checking.
+ * @note By default a buffer is checked only after its first frame; set
+ *       @c wait_for_first_frame to false to also catch a buffer that never gets data.
  *
  * @par Buffers
  * @buffer bufs An array of kotekan buffers
@@ -35,6 +35,8 @@
  *                          before exiting.   Must be > 1
  * @conf fill_threshold     Float, default 2.0 (disabled)  The ratio of full to total frames,
  *                          which if exceeded with trigger an exit.
+ * @conf wait_for_first_frame Bool, default true. If false, the timeout also runs from startup,
+ *                          so a buffer that never gets a frame triggers it.
  * @conf graceful_shutdown  Bool, default false. If true, instead of fatal error on timeout,
  *                          send shutdown signals to all stages and wait for them to exit.
  * @conf clean_exit_after_frames Int, default -1. If > 0 the stage registers as a lightweight

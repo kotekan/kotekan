@@ -1,8 +1,9 @@
 #include "rfiBroadcast.hpp"
 
-#include "Config.hpp"          // for Config
-#include "N2Util.hpp"          // for frameID, modulo
-#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Config.hpp"       // for Config
+#include "N2Util.hpp"       // for frameID, modulo
+#include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
@@ -50,8 +51,6 @@ rfiBroadcast::rfiBroadcast(Config& config, const std::string& unique_name,
     rfi_downsampling_factor = config.get<size_t>(unique_name, "rfi_downsampling_factor");
     rfi_second_downsampling_factor =
         config.get<size_t>(unique_name, "rfi_second_downsampling_factor");
-    // Stage-specific params
-    num_sigma_deviations = config.get<uint16_t>(unique_name, "num_sigma_deviations");
     // Packet/network config params
     frames_per_packet = config.get_default<size_t>(unique_name, "frames_per_packet", 1);
     dest_port = config.get<size_t>(unique_name, "destination_port");
@@ -102,6 +101,20 @@ rfiBroadcast::rfiBroadcast(Config& config, const std::string& unique_name,
             "`rfi_skbar_buf` does not have the expected frame size. Expected {:d}, got {:d}",
             _skbar_expected_frame_size, sk_bar_buf->frame_size);
 
+    // Construct the beamformer -> cylinder reorder table
+    // NB: the CHIME receiver system _always_ expects inputs to be in cylinder order
+    // reorder[beamformer_idx] = cylinder_idx
+    reorder.resize(num_elements);
+
+    const Telescope& tel = Telescope::instance();
+
+    for (size_t beamformer_idx = 0; beamformer_idx < num_elements; ++beamformer_idx) {
+        station_id_t st_id =
+            tel.element_index_to_station_id(beamformer_idx, ElementOrder::CHIMEBeamformer);
+        reorder.at(beamformer_idx) =
+            tel.station_id_to_element_index(st_id, ElementOrder::CHIMECylinder);
+    }
+
     // Set up the UDP socket params and validate the the provided ID is valid
     dest_addr.sin_family = AF_INET;
     dest_addr.sin_port = htons(dest_port);
@@ -126,7 +139,12 @@ void rfiBroadcast::main_thread() {
     const size_t FSE = FS * num_elements;
 
     // Sort out the rfi mask buffer time stride
-    auto rfi_frame_desc = rfi_mask_buf->get_ndarray_frame_desc();
+    auto rfi_frame_desc = rfi_mask_buf->get_frame_desc<kotekan::GenericNDArray>();
+    if (!rfi_frame_desc)
+        FATAL_ERROR("rfi_mask_buf ({:s}) has no NDArray frame descriptor; rfiBroadcast needs the "
+                    "mask shape, so declare the buffer with `kotekan_buffer: ndarray` in the "
+                    "config",
+                    rfi_mask_buf->buffer_name);
     auto _rfi_frame_rank = rfi_frame_desc->get_rank();
     auto _rfi_frame_dims = rfi_frame_desc->get_extents();
     size_t _rfi_t_hi = _rfi_frame_dims[_rfi_frame_rank - 1];
@@ -239,7 +257,7 @@ void rfiBroadcast::main_thread() {
                 float* dst_bar_t = dst_bar + f * num_elements;
 
                 for (size_t e = 0; e < num_elements; ++e) {
-                    dst_bar_t[e] += src[e];
+                    dst_bar_t[reorder[e]] += src[e];
                 }
             }
         }

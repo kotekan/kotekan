@@ -1,29 +1,30 @@
-#include <driver_types.h>           // for cudaEvent_t, CUevent_st, CUstream_st
-#include <sys/types.h>              // for uint, ulong
-#include <array>                    // for array
-#include <cassert>                  // for assert
-#include <cstddef>                  // for ptrdiff_t
-#include <cstdint>                  // for int32_t
-#include <functional>               // for function
-#include <memory>                   // for allocator, shared_ptr, __shared_ptr_access
-#include <string>                   // for basic_string, string
-#include <vector>                   // for vector
+#include "Config.hpp"              // for Config
+#include "DataType.hpp"            // for uint1x8_t
+#include "NDArray.hpp"             // for NDArray
+#include "NDArrayBuffer.hpp"       // for NDArrayBuffer
+#include "NDArrayRingBuffer.hpp"   // for NDArrayRingBuffer, extent_t, read_descriptor_t
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "chordMetadata.hpp"       // for chordMetadata
+#include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "cudaMemsetInt.hpp"       // for cudaMemsetInt
+#include "div.hpp"                 // for div_noremainder, num_triangle_blocks, round_down
+#include "gpuCommand.hpp"          // for gpuCommandType
+#include "kotekanLogging.hpp"      // for DEBUG, ERROR, FATAL_ERROR
+#include "n2k/pl_kernels.hpp"      // for launch_pl_1bit_correlator
 
-#include "Config.hpp"               // for Config
-#include "DataType.hpp"             // for uint1x8_t
-#include "NDArray.hpp"              // for NDArray
-#include "NDArrayBuffer.hpp"        // for NDArrayBuffer
-#include "NDArrayRingBuffer.hpp"    // for NDArrayRingBuffer, extent_t, read_descriptor_t
-#include "bufferContainer.hpp"      // for bufferContainer
-#include "chordMetadata.hpp"        // for chordMetadata
-#include "cudaCommand.hpp"          // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
-#include "cudaDeviceInterface.hpp"  // for cudaDeviceInterface
-#include "cudaMemsetInt.hpp"        // for cudaMemsetInt
-#include "div.hpp"                  // for div_noremainder, num_triangle_blocks, round_down
-#include "gpuCommand.hpp"           // for gpuCommandType
-#include "kotekanLogging.hpp"       // for DEBUG, ERROR
-#include "n2k/pl_kernels.hpp"       // for launch_pl_1bit_correlator
-#include "fmt.hpp"                  // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <array>          // for array
+#include <cassert>        // for assert
+#include <cstddef>        // for ptrdiff_t
+#include <cstdint>        // for int32_t
+#include <driver_types.h> // for cudaEvent_t, CUevent_st, CUstream_st
+#include <functional>     // for function
+#include <memory>         // for allocator, shared_ptr, __shared_ptr_access
+#include <string>         // for basic_string, string
+#include <sys/types.h>    // for uint, ulong
+#include <vector>         // for vector
 
 using kotekan::div_noremainder;
 using kotekan::num_triangle_blocks;
@@ -102,9 +103,6 @@ private:
     NDArrayRingBuffer<kotekan::uint1x8_t, 5> pl_expanded_mask;
     NDArrayRingBuffer<kotekan::uint1x8_t, 3> rfi_RFImask;
     NDArrayBuffer<std::int32_t, 5> n2k_counts;
-
-    // internals
-    bool warned_about_unsupported_Sds;
 };
 
 REGISTER_CUDA_COMMAND(cudaPL1bitCorrelator);
@@ -131,12 +129,17 @@ cudaPL1bitCorrelator::cudaPL1bitCorrelator(kotekan::Config& config, const std::s
                      std::array<std::ptrdiff_t, 5>{buffer_depth * div_noremainder(num_times, 64),
                                                    num_frequencies, num_polarizations,
                                                    div_noremainder(num_dishes, 8), 64 / 8},
-                     std::array<std::string, 5>{"Thi64", "F", "P", "D8", "Tlo64"}, *this),
+                     std::array<std::string, 5>{"Thi64", "F", "P", "D8", "Tlo64"}, {64, 1, 1, 8, 8},
+                     *this),
     rfi_RFImask(rfi_RFImask_name, "RFImask",
                 std::array<std::ptrdiff_t, 3>{buffer_depth * div_noremainder(num_times, 8 * 128),
                                               num_frequencies, 128},
-                std::array<std::string, 3>{"T8hi128", "F", "T8lo128"}, *this),
+                std::array<std::string, 3>{"T8hi128", "F", "T8lo128"}, {8 * 128, 1, 8}, *this),
     n2k_counts([&]() {
+        const auto pl_mask_dimscaling_time = pl_expanded_mask.get_ndarray().dimscaling(0);
+        const auto n2k_dimscaling_time =
+            n2k_sub_integration_ntime * div_noremainder(pl_mask_dimscaling_time, 64);
+
         // aka "nt_outer" in n2k.hpp
         const int num_subintegrations = div_noremainder(num_times, n2k_sub_integration_ntime);
         const int blocksize = 8;
@@ -145,13 +148,29 @@ cudaPL1bitCorrelator::cudaPL1bitCorrelator(kotekan::Config& config, const std::s
         const std::array<std::ptrdiff_t, 5> n2k_lengths{num_subintegrations, num_frequencies,
                                                         triangle_num_blocks, blocksize, blocksize};
         const std::array<std::string, 5> n2k_dimnames{"Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"};
+        const std::array<std::ptrdiff_t, 5> n2k_dimscalings{n2k_dimscaling_time, 1, 64, 8, 8};
         return NDArrayBuffer<std::int32_t, 5>(n2k_counts_name, "n2k_counts", n2k_lengths,
-                                              n2k_dimnames, *this);
-    }()),
-    // internals
-    warned_about_unsupported_Sds(false)
+                                              n2k_dimnames, n2k_dimscalings, *this);
+    }())
 //
 {
+    if (num_polarizations <= 0 || num_dishes <= 0)
+        FATAL_ERROR("num_polarizations ({:d}) and num_dishes ({:d}) must be positive",
+                    num_polarizations, num_dishes);
+
+    if (num_dishes % 8 != 0)
+        FATAL_ERROR("num_dishes ({:d}) must be divisible by eight", num_dishes);
+    // The n2k count kernel currently implements 16 and 128 stations (after downsampling by 8);
+    // every other geometry takes the fallback in execute(), which pretends there is no packet loss.
+    {
+        const int Sds = num_dishes / 8 * num_polarizations;
+        if (Sds != 16 && Sds != 128)
+            ERROR("The 1-bit correlator calculating the n2k counts is not yet implemented for {:d} "
+                  "dishes. Pretending there is no packet loss; the n2k counts will be wrong if "
+                  "there is.",
+                  num_dishes);
+    }
+
     pl_expanded_mask.register_consumer();
     rfi_RFImask.register_consumer();
     n2k_counts.register_producer();
@@ -269,15 +288,8 @@ cudaEvent_t cudaPL1bitCorrelator::execute(cudaPipelineState& /*pipestate*/,
             Nds, // downsampling factor of counts array, relative to baseband
             device.getStream(cuda_stream_id));
     } else {
-        if (!warned_about_unsupported_Sds) {
-            // These cases are not yet implemented in n2k. Pretend that there is no packet loss.
-            ERROR("The 1-bit correlator calculating the n2k counts is not yet implemented for {:d} "
-                  "dishes. Pretending there was no packet loss. The n2k counts will be wrong if "
-                  "there "
-                  "was packet loss.",
-                  num_dishes);
-            warned_about_unsupported_Sds = true;
-        }
+        // Not implemented in n2k for this geometry (reported once in the constructor): pretend
+        // that there is no packet loss.
         cudaMemsetInt(n2k_counts_memory, Nds, n2k_counts.get_ndarray().size());
     }
 

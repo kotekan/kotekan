@@ -1,14 +1,6 @@
 """Use Python to run a kotekan instance, particularly for testing.
 """
 
-# === Start Python 2/3 compatibility
-from __future__ import absolute_import, division, print_function, unicode_literals
-from future.builtins import *  # noqa  pylint: disable=W0401, W0614
-from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
-
-# === End Python 2/3 compatibility
-
-
 import itertools
 import json
 import os
@@ -827,7 +819,13 @@ class DumpVisBuffer(OutputBuffer):
 
 
 class ReadChordBuffer(InputBuffer):
-    """Write down a ChordBuffer and reads it with hdf5FileRead."""
+    """Write down a ChordBuffer and reads it with hdf5FileRead.
+
+    When the first buffer's metadata carries name/type/dim_names, the
+    kotekan buffer is declared as `kotekan_buffer: ndarray` so the frame
+    descriptor is attached at startup (and hdf5FileRead validates against
+    it); otherwise it falls back to a plain standard buffer.
+    """
 
     _buf_ind = 0
 
@@ -840,14 +838,29 @@ class ReadChordBuffer(InputBuffer):
         self.input_dir = input_dir
         self.buffer_list = buffer_list
 
-        self.buffer_block = {
-            self.name: {
-                "kotekan_buffer": "standard",
-                "metadata_pool": "main_pool",
-                "num_frames": "buffer_depth",
-                "frame_size": buffer_list[0].data.nbytes,
+        meta = buffer_list[0].metadata
+        if all(key in meta for key in ("name", "type", "dim_names", "dim_scalings")):
+            self.buffer_block = {
+                self.name: {
+                    "kotekan_buffer": "ndarray",
+                    "metadata_pool": "main_pool",
+                    "num_frames": "buffer_depth",
+                    "value_type": str(meta["type"]),
+                    "quantity_name": str(meta["name"]),
+                    "extents": [int(n) for n in buffer_list[0].data.shape],
+                    "dimnames": [str(d) for d in meta["dim_names"]],
+                    "dimscalings": [int(n) for n in meta["dim_scalings"]],
+                }
             }
-        }
+        else:
+            self.buffer_block = {
+                self.name: {
+                    "kotekan_buffer": "standard",
+                    "metadata_pool": "main_pool",
+                    "num_frames": "buffer_depth",
+                    "frame_size": buffer_list[0].data.nbytes,
+                }
+            }
 
         stage_config = {
             "kotekan_stage": "hdf5FileRead",
@@ -874,6 +887,19 @@ class DumpChordBuffer(OutputBuffer):
     ----------
     output_dir : str
         Temp. directory to output to. Dumped files are not removed.
+    quantity_name : str, optional
+        Together with `dimnames` and `dimscalings`, declare the buffer as `kotekan_buffer:
+        ndarray`, attaching the frame descriptor at startup (the stage under
+        test then validates against it instead of allocating it). Must match
+        the descriptor the producing stage declares exactly.
+    dimnames : list of str, optional
+        Axis labels, one per entry of `shape`. See `quantity_name`.
+    dimscalings : list of int, optional
+        Axis scalings, one per entry of `shape`. See `quantity_name`.
+    value_type : str, optional
+        kotekan DataType name for the ndarray declaration. Defaults to the
+        numpy name of `dtype`, which is correct for plain types; packed
+        types (e.g. "uint1x8", "int4x2") must be given explicitly.
     """
 
     _buf_ind = 0
@@ -881,7 +907,16 @@ class DumpChordBuffer(OutputBuffer):
     name = None
 
     def __init__(
-        self, output_dir, shape, dtype, max_frames=-1, input_order="CHORDBeamformer"
+        self,
+        output_dir,
+        shape,
+        dtype,
+        max_frames=-1,
+        input_order="CHORDBeamformer",
+        quantity_name=None,
+        dimnames=None,
+        dimscalings=None,
+        value_type=None,
     ):
         self.name = f"dumpchord_buf{self._buf_ind}"
         stage_name = f"dump{self._buf_ind}"
@@ -893,14 +928,38 @@ class DumpChordBuffer(OutputBuffer):
         self.max_frames = max_frames
         self.dtype = dtype
 
-        self.buffer_block = {
-            self.name: {
-                "kotekan_buffer": "standard",
-                "metadata_pool": "main_pool",
-                "num_frames": "buffer_depth",
-                "frame_size": self.num_entries * np.dtype(self.dtype).itemsize,
+        if quantity_name is not None:
+            if dimnames is None or len(dimnames) != len(shape):
+                raise ValueError(
+                    "dimnames must be given with quantity_name, one per axis"
+                )
+            if dimscalings is None:
+                # Optional: default each axis to a scaling of 1, matching
+                # GenericNDArray::from_config when `dimscalings` is omitted.
+                dimscalings = [1] * len(shape)
+            elif len(dimscalings) != len(shape):
+                raise ValueError("dimscalings must have one entry per axis")
+            self.buffer_block = {
+                self.name: {
+                    "kotekan_buffer": "ndarray",
+                    "metadata_pool": "main_pool",
+                    "num_frames": "buffer_depth",
+                    "value_type": value_type or np.dtype(self.dtype).name,
+                    "quantity_name": quantity_name,
+                    "extents": [int(n) for n in shape],
+                    "dimnames": list(dimnames),
+                    "dimscalings": list(dimscalings),
+                }
             }
-        }
+        else:
+            self.buffer_block = {
+                self.name: {
+                    "kotekan_buffer": "standard",
+                    "metadata_pool": "main_pool",
+                    "num_frames": "buffer_depth",
+                    "frame_size": self.num_entries * np.dtype(self.dtype).itemsize,
+                }
+            }
 
         self.stage_block = {
             stage_name: {
@@ -1356,107 +1415,6 @@ class ReadBasebandBuffer(InputBuffer):
         )
 
 
-class DumpFrbPostProcessBuffer(InputBuffer):
-    """Consume a FRB output buffer and provide its contents as a list of `frbbuffer.FrbPacket`s.
-
-    Parameters
-    ----------
-    output_dir : string
-        Temporary directory to output to. The dumped files are not removed.
-    """
-
-    def __init__(self, output_dir, **kwargs):
-        self.name = "frb_post_process_buffer"
-        self.output_dir = output_dir
-
-        self.buffer_block = {
-            self.name: {
-                "num_frames": "buffer_depth + 4",
-                "frame_size": "(samples_per_data_set / downsample_time / factor_upchan / timesamples_per_frb_packet)"
-                "* 256 * (num_beams_per_frb_packet * num_gpus "
-                "* factor_upchan_out * timesamples_per_frb_packet "
-                "+ 24 + sizeof_short * num_beams_per_frb_packet + sizeof_short * num_gpus "
-                "+ sizeof_float * num_beams_per_frb_packet * num_gpus "
-                "+ sizeof_float * num_beams_per_frb_packet * num_gpus)",
-                "sizeof_short": 2,
-                "sizeof_float": 4,
-                "kotekan_buffer": "standard",
-                "metadata_pool": "main_pool",
-            }
-        }
-
-        stage_name = kwargs.get("stage_name", "dump_frb_post_process")
-        stage_config = {
-            "kotekan_stage": "rawFileWrite",
-            "in_buf": self.name,
-            "file_name": self.name,
-            "file_ext": "dump",
-            "base_dir": self.output_dir,
-        }
-        stage_config.update(kwargs)
-
-        self.stage_block = {stage_name: stage_config}
-
-    def load(self):
-        """Load the output data from the frbPostProcess buffer.
-
-        Returns
-        -------
-        dumps : list of lists of FrbPacket
-            The buffer output, one list per frame, a list of packets within the frame.
-        """
-        return frbbuffer.FrbPacket.load_files(
-            "{}/*{}*.dump".format(self.output_dir, self.name)
-        )
-
-
-class DumpPsrPostProcessBuffer(InputBuffer):
-    """Consume a Pulsar output buffer and provide its contents as a list of `psrbuffer.PsrPacket`s.
-
-    Parameters
-    ----------
-    output_dir : string
-        Temporary directory to output to. The dumped files are not removed.
-    """
-
-    def __init__(self, output_dir, **kwargs):
-        self.name = "psr_post_process_buffer"
-        self.output_dir = output_dir
-
-        self.buffer_block = {
-            self.name: {
-                "num_frames": "buffer_depth + 4",
-                "frame_size": "udp_pulsar_packet_size * num_stream * num_packet_per_stream",
-                "kotekan_buffer": "standard",
-                "metadata_pool": "main_pool",
-            }
-        }
-
-        stage_name = kwargs.get("stage_name", "dump_psr_post_process")
-        stage_config = {
-            "kotekan_stage": "rawFileWrite",
-            "in_buf": self.name,
-            "file_name": self.name,
-            "file_ext": "dump",
-            "base_dir": self.output_dir,
-        }
-        stage_config.update(kwargs)
-
-        self.stage_block = {stage_name: stage_config}
-
-    def load(self):
-        """Load the output data from the frbPostProcess buffer.
-
-        Returns
-        -------
-        dumps : list of lists of PsrPacket
-            The buffer output, one list per frame, a list of packets within the frame.
-        """
-        return psrbuffer.PsrPacket.load_files(
-            "{}/*{}*.dump".format(self.output_dir, self.name)
-        )
-
-
 class DropFramesBuffer(InputBuffer):
 
     _buf_ind = 0
@@ -1670,7 +1628,7 @@ def fix_strings(d):
 
 
 def has_hdf5():
-    """ Check for HDF5 via registered stages """
+    """Check for HDF5 via registered stages"""
     config = KotekanRunner.kotekan_config()
 
     available = set(config.get("available_stages", []))
@@ -1678,14 +1636,6 @@ def has_hdf5():
     missing = required - available
 
     return len(missing) == 0
-
-
-def has_eigenvis():
-    """Check for eigenVis via registered stages."""
-
-    config = KotekanRunner.kotekan_config()
-    available = set(config.get("available_stages", []))
-    return "eigenVis" in available
 
 
 def has_openmp():

@@ -1,0 +1,24 @@
+# Commits that change only formatting, which git blame should skip.
+# GitHub reads this file. For local blame, run once:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# Each entry changes whitespace or line endings only (git diff -w shows nothing).
+# Add a formatter commit here once it is on develop, with its develop hash.
+
+# various files: remove DOS CRLF endings
+5b99d1d7ed22e8e8ffedfb624f444349280ff894
+# N2Metadata: remove DOS CRLF line endings
+c4bbb3d78e3133de1749d96ca1ca4977e3c14628
+# Convert github workflow flows to Unix line endings (#1314)
+508330a009b4cff8c42c3566ffbb70b9dd2fb6f0
+# Fix alignment spacing
+692c4178069b54c33ee11de5a0398b7dd0523572
+# Tidied up psr bf phase delay (whitespace)
+c6d87c57627b9012945c0475736b8c3a56d5bc69
+# Removed White spaces were necessary
+1302e795ad3031da446a67ca762cd1ce21940cfc
+# Removed some extra blank lines.
+0425ec8e6acec046b26182e82838938046c05da1
+# Removed surplus linebreaks.
+5e957601fdb2336125485a45f0fc22389d4278da
+# build: move black to the Ubuntu 24.04 package and reformat (#1890)
+a612b84909e18708690b41a46d4269d70a57b129

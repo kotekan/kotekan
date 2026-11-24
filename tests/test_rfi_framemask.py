@@ -42,6 +42,9 @@ small_config = {
     },
 }
 
+# The frames carry coarse frequencies 10, 11, 12.
+exempt_config = dict(prod_config, rfi_first_stage_excision_exempt_freq_ids=[11])
+
 very_small_config = {
     "buffer_depth": 2,
     "samples_per_data_set": 1024,
@@ -55,7 +58,9 @@ very_small_config = {
     },
     "rfi_thresholds": {
         "kotekan_update_endpoint": "json",
-        "thresholds": [{"threshold": 1.0, "fraction": 0.5},],
+        "thresholds": [
+            {"threshold": 1.0, "fraction": 0.5},
+        ],
         "valid_at_time_ns": 0,
     },
 }
@@ -66,6 +71,7 @@ very_small_config = {
     params=[
         (very_small_config, [[4.0]], [[0.1]]),
         (small_config, [[4.0]], [[0.1]]),
+        (exempt_config, [[4.0]], [[0.1]]),
         (
             prod_config,
             [
@@ -124,11 +130,13 @@ def sktilde_data(setup):
 
         data = np.empty((rfi_num_times, config["num_local_freq"], 3), dtype=np.float32)
 
+        rfi_downsampling_factor = config["rfi_downsampling_factor"]
         meta = runner.chordbuffer.get_metadata(
-            "SKtilde", "float32", ("Trfi", "F", "SK")
+            "SKtilde", "float32", ("Trfi", "F", "SK"), (rfi_downsampling_factor, 1, 1)
         )
         meta["fpga_seq_num"] = seq_num
-        meta["time_downsampling_fpga"] = config["rfi_downsampling_factor"]
+        meta["time_downsampling_fpga"] = rfi_downsampling_factor
+        meta["coarse_freq"] = np.arange(10, 10 + config["num_local_freq"])
 
         trfi0 = idx * rfi_num_times
 
@@ -187,6 +195,9 @@ def rfiframemask_data(tmpdir_factory, setup, sktilde_data):
         dtype=np.uint8,
         max_frames=num_frames,
         input_order="CHIMEBeamformer",
+        quantity_name="RFIFrameMask",
+        dimnames=["Tc", "F"],
+        dimscalings=[config["sub_integration_ntime"], 1],
     )
 
     # The test stage!
@@ -258,6 +269,13 @@ def make_frame_mask(sktilde, config):
 
         # set the bad integrations to 0
         frame_mask[tint, bad] = 0
+
+    # Exempt channels are never masked
+    exempt = np.isin(
+        sktilde.metadata["coarse_freq"],
+        config.get("rfi_first_stage_excision_exempt_freq_ids", []),
+    )
+    frame_mask[:, exempt] = 1
 
     return frame_mask
 

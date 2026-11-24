@@ -1,32 +1,34 @@
-#include <stddef.h>             // for size_t
-#include <stdint.h>             // for int64_t, uint8_t
-#include <json.hpp>             // for basic_json, json, iter_impl
-#include <functional>           // for bind, function, _1
-#include <memory>               // for allocator, shared_ptr, __shared_ptr_access
-#include <vector>               // for vector
-#include <algorithm>            // for copy, max, fill
-#include <array>                // for array
-#include <exception>            // for exception
-#include <initializer_list>     // for initializer_list
-#include <limits>               // for numeric_limits
-#include <mutex>                // for mutex, lock_guard
-#include <string>               // for basic_string, operator+, char_traits, string, operator!=
+#include "Config.hpp"          // for Config
+#include "DataType.hpp"        // for DataType
+#include "N2Util.hpp"          // for frameID, modulo
+#include "NDArray.hpp"         // for GenericNDArray, Config
+#include "Stage.hpp"           // for Stage
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"       // for Telescope
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "configUpdater.hpp"   // for configUpdater
+#include "div.hpp"             // for div_noremainder
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, WARN, INFO, DEBUG
+#include "restServer.hpp"      // for restServer, connectionInstance
 
-#include "Config.hpp"           // for Config
-#include "N2Util.hpp"           // for frameID, modulo
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"        // for Telescope
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata
-#include "configUpdater.hpp"    // for configUpdater
-#include "div.hpp"              // for div_noremainder
-#include "kotekanLogging.hpp"   // for FATAL_ERROR, WARN, INFO, DEBUG
-#include "restServer.hpp"       // for restServer, connectionInstance
-#include "fmt.hpp"              // for compile_string_to_view, format, format_string
-#include "DataType.hpp"         // for DataType
-#include "Stage.hpp"            // for Stage
-#include "jsonMetadata.hpp"     // for MAX_NUM_RFI_THRESHOLDS
+#include "fmt.hpp"          // for compile_string_to_view, format, format_string
+#include "jsonMetadata.hpp" // for MAX_NUM_RFI_THRESHOLDS
+
+#include <algorithm>        // for copy, max, fill, find
+#include <array>            // for array
+#include <exception>        // for exception
+#include <functional>       // for bind, function, _1
+#include <initializer_list> // for initializer_list
+#include <json.hpp>         // for basic_json, json, iter_impl
+#include <limits>           // for numeric_limits
+#include <memory>           // for allocator, shared_ptr, __shared_ptr_access
+#include <mutex>            // for mutex, lock_guard
+#include <stddef.h>         // for size_t
+#include <stdint.h>         // for int64_t, uint8_t
+#include <string>           // for basic_string, operator+, char_traits, string, operator!=
+#include <vector>           // for vector
 
 
 using namespace std::placeholders;
@@ -67,6 +69,11 @@ using N2::frameID;
  *                                          in n2k.
  * @conf    rfi_downsampling_factor     int64_t Number of time samples integrated into each SK
  entry.
+ * @conf    rfi_first_stage_excision_exempt_freq_ids  vector of int  Default empty. Coarse
+ *                                          frequency IDs that are never masked here. This is
+ *                                          the list cudaRFISKtilde exempts from first-stage
+ *                                          excision. They are matched against the coarse
+ *                                          frequencies in the metadata of the first frame.
  *
  * @par Updatable Config
  * @conf    enabled_updatable_config    Set whether RFI excision is enabled. If false, the generated
@@ -111,16 +118,16 @@ public:
     void main_thread() override;
 
 protected:
-    /// Updates _next_enabled_* from updatable config
+    /// Updates the `_next_enabled_*` fields from updatable config
     bool receive_rfi_excision_enabled(nlohmann::json& json);
-    /// Updates _next_threshold* from updatable config
+    /// Updates the `_next_threshold*` fields from updatable config
     bool receive_rfi_excision_thresholds(nlohmann::json& json);
     void send_rfi_excision_enabled(connectionInstance& conn);
     void send_rfi_excision_thresholds(connectionInstance& conn);
 
 private:
     /**
-     * @brief Update the active _enabled, _threshold, and _fraction values from their "next_*"
+     * @brief Update the active `_enabled`, `_threshold`, and `_fraction` values from their `next_*`
      * values if the correct sequence number has been reached.
      */
     void update_enabled_and_thresholds(int64_t seq_num);
@@ -139,6 +146,7 @@ private:
     const int64_t _num_rfi_per_int;
     const std::string _enabled_config_path;
     const std::string _thresholds_config_path;
+    const std::vector<int> _exempt_freq_ids;
 
     std::mutex _update_mutex;
     int64_t _enabled_valid_at_seq;
@@ -151,6 +159,7 @@ private:
     bool _next_enabled;
     std::vector<float> _next_threshold;
     std::vector<float> _next_fraction;
+    int64_t _start_time_ns;
 };
 
 REGISTER_KOTEKAN_STAGE(RfiFrameMask);
@@ -167,16 +176,20 @@ RfiFrameMask::RfiFrameMask(Config& config, const std::string& unique_name,
     _num_integrations(div_noremainder(_samples_per_data_set, _sub_integration_ntime)),
     _num_rfi_per_int(div_noremainder(_sub_integration_ntime, _rfi_downsampling_factor)),
     _enabled_config_path(config.get<std::string>(unique_name, "enabled_updatable_config")),
-    _thresholds_config_path(config.get<std::string>(unique_name, "thresholds_updatable_config")) {
+    _thresholds_config_path(config.get<std::string>(unique_name, "thresholds_updatable_config")),
+    _exempt_freq_ids(config.get_default<std::vector<int>>(
+        unique_name, "rfi_first_stage_excision_exempt_freq_ids", {})) {
 
     in_buf = get_buffer("in_buf");
     in_buf->register_consumer(unique_name);
     out_buf = get_buffer("out_buf");
     out_buf->register_producer(unique_name);
 
-    // Ensure outgoing buffer is standard type
-    if (out_buf->buffer_type != "standard")
-        FATAL_ERROR("RfiFrameMask out_buf ({:s}) is not of type standard.", out_buf->buffer_name);
+    // The output buffer must carry an NDArray frame descriptor (declared with
+    // `kotekan_buffer: ndarray` in the config); require_frame_desc below validates
+    // its shape/type.
+    if (out_buf->buffer_type != "ndarray")
+        FATAL_ERROR("RfiFrameMask out_buf ({:s}) is not of type ndarray.", out_buf->buffer_name);
 
     // Sanity checks on initialization
     {
@@ -208,10 +221,12 @@ RfiFrameMask::RfiFrameMask(Config& config, const std::string& unique_name,
 
     // Set up frame descriptors. This also checks their shape, type, and size is consistent with
     // other stages in the pipeline.
-    in_buf->allocate_ndarray_frame_desc(kotekan::float32, "SKtilde",
-                                        {_rfi_num_times, _num_local_freq, 3}, {"Trfi", "F", "SK"});
-    out_buf->allocate_ndarray_frame_desc(kotekan::uint8, "RFIFrameMask",
-                                         {_num_integrations, _num_local_freq}, {"Tc", "F"});
+    in_buf->require_frame_desc(kotekan::GenericNDArray::describe(
+        kotekan::float32, "SKtilde", {_rfi_num_times, _num_local_freq, 3}, {"Trfi", "F", "SK"},
+        {_rfi_downsampling_factor, 1, 1}));
+    out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
+        kotekan::uint8, "RFIFrameMask", {_num_integrations, _num_local_freq}, {"Tc", "F"},
+        {_sub_integration_ntime, 1}));
 
     // Initialize current RFI excision status, the "next" values are taken care of by the
     // configUpdater)
@@ -222,6 +237,8 @@ RfiFrameMask::RfiFrameMask(Config& config, const std::string& unique_name,
     _thresholds_valid_at_seq = 0;
 
     // Set up REST endpoints
+    _start_time_ns = Telescope::instance().to_time_ns(0);
+
     INFO("Subscribing {:s} to updatable config.", _enabled_config_path);
     kotekan::configUpdater::instance().subscribe(
         _enabled_config_path, std::bind(&RfiFrameMask::receive_rfi_excision_enabled, this, _1));
@@ -256,6 +273,10 @@ void RfiFrameMask::main_thread() {
 
     std::vector<int64_t> num_sk_exceeds(MAX_NUM_RFI_THRESHOLDS);
 
+    // Local channels that are never masked, set from the first frame's coarse frequencies.
+    std::vector<bool> exempt(_num_local_freq, false);
+    bool exempt_resolved = _exempt_freq_ids.empty();
+
     while (!stop_thread) {
 
         // Fetch a new frame and get its sequence id
@@ -285,6 +306,27 @@ void RfiFrameMask::main_thread() {
                         _threshold.size(), _fraction.size(), MAX_NUM_RFI_THRESHOLDS);
         }
 
+        if (!exempt_resolved) {
+            exempt_resolved = true;
+            if (!in_meta->has_coarse_freq())
+                FATAL_ERROR("rfi_first_stage_excision_exempt_freq_ids needs the coarse "
+                            "frequencies in {:s}'s metadata, and it has none",
+                            in_buf->buffer_name);
+            const std::vector<int> coarse_freq = in_meta->get_coarse_freq();
+            if (coarse_freq.size() != size_t(_num_local_freq))
+                FATAL_ERROR("{:s} has {:d} coarse frequencies for {:d} channels",
+                            in_buf->buffer_name, coarse_freq.size(), _num_local_freq);
+            int64_t num_exempt = 0;
+            for (int64_t f = 0; f < _num_local_freq; f++) {
+                exempt[f] =
+                    std::find(_exempt_freq_ids.begin(), _exempt_freq_ids.end(), coarse_freq[f])
+                    != _exempt_freq_ids.end();
+                num_exempt += exempt[f];
+            }
+            INFO("Second-stage RFI excision exempts {:d} of {:d} local channels", num_exempt,
+                 _num_local_freq);
+        }
+
         DEBUG("Computing RFI frame mask");
         for (int64_t t_int = 0; t_int < _num_integrations; t_int++) {
 
@@ -296,7 +338,7 @@ void RfiFrameMask::main_thread() {
                 frame_mask[idx] = 1;
 
                 // Only bother if we're enabled!
-                if (_enabled) {
+                if (_enabled && !exempt[f]) {
                     // Reset the counter array to 0
                     std::fill(num_sk_exceeds.begin(), num_sk_exceeds.end(), 0);
 
@@ -335,7 +377,7 @@ void RfiFrameMask::main_thread() {
         // Start with a copy
         out_meta->deepCopy(in_meta);
         // Set the array shape stuff from the frame descriptor.
-        out_meta->set_from_frame_desc(out_buf->get_ndarray_frame_desc());
+        out_meta->set_from_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // Set other metadata we changed or added.
         out_meta->set_time_downsampling_fpga(
@@ -350,7 +392,7 @@ void RfiFrameMask::main_thread() {
         out_meta->set_rfi_frame_excision_thresholds(meta_thresholds);
 
         // Check we're consistent with the frame desc, just in case!
-        out_meta->check_frame_desc(out_buf->get_ndarray_frame_desc());
+        out_meta->check_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // Advance to the next frame
         in_buf->mark_frame_empty(unique_name, in_frame_id++);
@@ -399,7 +441,18 @@ bool RfiFrameMask::receive_rfi_excision_enabled(nlohmann::json& json) {
     }
 
     // We have values! Compute the sequence number and print a status message.
-    int64_t seq_num = Telescope::instance().to_seq(new_time_ns);
+    int64_t seq_num;
+    if (new_time_ns == 0) {
+        // special case - assume this means we _always_ want to enable
+        seq_num = 0;
+    } else if (new_time_ns >= _start_time_ns) {
+        seq_num = Telescope::instance().to_seq(new_time_ns);
+    } else {
+        WARN("Got invalid start time: {:d} - maintaining current state (excision enabled={})",
+             new_time_ns, _enabled);
+        // need to return `true` or else kotekan will abort
+        return true;
+    }
 
     std::string time_str =
         fmt::format("t_inst = {:d} s + {:d} ns (seq {:d})", new_time_ns / 1'000'000'000,
@@ -491,7 +544,19 @@ bool RfiFrameMask::receive_rfi_excision_thresholds(nlohmann::json& update) {
     }
 
     // We have values! Compute the sequence number and print a status message.
-    int64_t seq_num = Telescope::instance().to_seq(new_time_ns);
+    int64_t seq_num;
+    if (new_time_ns == 0) {
+        // special case - assume this means we _always_ want to enable
+        seq_num = 0;
+    } else if (new_time_ns >= _start_time_ns) {
+        seq_num = Telescope::instance().to_seq(new_time_ns);
+    } else {
+        WARN("Got invalid start time: {:d} - maintaining current state (excision enabled={})",
+             new_time_ns, _enabled);
+        // need to return `true` or else kotekan will abort
+        return true;
+    }
+
     std::string time_str =
         fmt::format("t_inst = {:d} s + {:d} ns (seq {:d})", new_time_ns / 1'000'000'000,
                     new_time_ns % 1'000'000'000, seq_num);

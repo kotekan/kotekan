@@ -15,6 +15,8 @@ num_elements: num_polarizations * num_dishes
 num_components: 2 # Re/Im
 num_freq_host_buf: 1
 {% set num_freq_gpu_buf = 16 %}
+{# run_xpose2048's cuda_stream_base, a pipeline index. test_xpose2048_stream_base.j2 includes this file with 1. #}
+{% set xpose_stream_base = xpose_stream_base | default(0) %}
 num_freq_gpu_buf: {{ num_freq_gpu_buf }}
 
 samples_per_data_set: 16384
@@ -39,20 +41,22 @@ main_pool:
 # Buffers
 
 host_scatter_indices_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: 1
-    frame_size: sizeof_int32 * num_dishes * num_polarizations
+    value_type: int32
+    extents: [num_polarizations, num_dishes]
     metadata_pool: main_pool
 
 host_voltage_buffers:
   num_frames: host_buffer_depth
-  frame_size: samples_per_data_set * num_elements * num_freq_host_buf
   metadata_pool: main_pool
   numa_0:
     numa_node: 0
 {%- for id in range(num_freq_gpu_buf) %}
     host_voltage_buffer_{{ id }}:
-      kotekan_buffer: standard
+      kotekan_buffer: ndarray
+      value_type: int4x2_swapped_withoffset
+      extents: [num_freq_host_buf, samples_per_data_set, num_elements]
 {%- endfor %}
 
 host_voltage_ringbuffer:
@@ -67,17 +71,19 @@ host_xposed_voltage_ringbuffer:
 
 host_xposed_voltage_buffer:
   num_frames: host_buffer_depth
-  frame_size: samples_per_data_set * num_elements * num_freq_gpu_buf
   metadata_pool: main_pool
   host_xposed_voltage_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
+    value_type: int4x2_swapped_withoffset
+    extents: [samples_per_data_set, num_freq_gpu_buf, num_polarizations, num_dishes]
 
 cpu_xposed_voltage_buffer:
   num_frames: host_buffer_depth
-  frame_size: samples_per_data_set * num_elements * num_freq_gpu_buf
   metadata_pool: main_pool
   cpu_xposed_voltage_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
+    value_type: int4x2_swapped_withoffset
+    extents: [samples_per_data_set, num_freq_gpu_buf, num_polarizations, num_dishes]
 # Stages
 
 set_voltage:
@@ -121,6 +127,8 @@ run_xpose2048:
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
+        cuda_stream_base: {{ xpose_stream_base }}
+        num_cuda_streams: {{ 3 * xpose_stream_base + 3 }}
         buffer_depth: gpu_buffer_depth
         frame_arrival_period: network_frame_arrival_period
         num_times: samples_per_data_set

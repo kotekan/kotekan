@@ -259,6 +259,33 @@ void RingBuffer::finish_write(const std::string& name, [[maybe_unused]] const in
     }
 }
 
+std::vector<std::string> RingBuffer::dot_label_lines(const kotekan::GraphOptions& options) {
+    std::vector<std::string> lines = GenericBuffer::dot_label_lines(options);
+
+    // A ring is measured in elements, not frames: what matters is how much of it
+    // is written and waiting to be read.
+    std::ptrdiff_t readable, capacity;
+    {
+        std::unique_lock<std::recursive_mutex> lock(mutex);
+        readable = first_write_head - last_read_tail;
+        capacity = size;
+    }
+    lines.push_back(fmt::format(fmt("{:d} elements"), capacity));
+    if (options.runtime)
+        lines.push_back(fmt::format(fmt("{:d} readable ({:.1f}%)"), readable,
+                                    capacity > 0 ? 100.0 * readable / capacity : 0.0));
+    return lines;
+}
+
+kotekan::BufferState RingBuffer::dot_buffer_state() {
+    std::unique_lock<std::recursive_mutex> lock(mutex);
+    if (first_write_head == 0)
+        return kotekan::BufferState::Idle; // nothing has ever been written
+    if (size > 0 && first_write_head - last_read_tail >= size)
+        return kotekan::BufferState::Full;
+    return kotekan::BufferState::Flowing;
+}
+
 void RingBuffer::print_buffer_status() {
     std::ptrdiff_t read_tail, read_head;
     std::ptrdiff_t write_tail, write_head;

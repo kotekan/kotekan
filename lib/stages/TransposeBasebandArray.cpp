@@ -1,23 +1,27 @@
 #include "TransposeBasebandArray.hpp"
 
-#include <visUtil.hpp>          // for frameID, modulo
-#include <xmmintrin.h>          // for _mm_sfence, _MM_HINT_T0, _mm_prefetch
-#include <cstring>              // for memcpy, memset
-#include <stdexcept>            // for runtime_error
-#include <memory>               // for __shared_ptr_access, shared_ptr
-#include <vector>               // for vector
+#include "Config.hpp"   // for Config
+#include "DataType.hpp" // for DataType
+#include "NDArray.hpp"
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"  // for INFO, DEBUG, ERROR
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata
-#include "kotekanLogging.hpp"   // for INFO, DEBUG, ERROR
-#include "fmt.hpp"              // for compile_string_to_view, format, fmt
-#include "DataType.hpp"         // for DataType
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
+
+#include <cstring>     // for memcpy, memset
+#include <memory>      // for __shared_ptr_access, shared_ptr
+#include <stdexcept>   // for runtime_error
+#include <vector>      // for vector
+#include <visUtil.hpp> // for frameID, modulo
+#if defined(__x86_64__) || defined(__i386__)
+#include <xmmintrin.h> // for _mm_sfence, _MM_HINT_T0, _mm_prefetch
+#endif
 
 #ifdef __AVX512F__
-#include <immintrin.h>          // for __m512i, _mm512_stream_si512, _mm512_set1_epi8, _mm512_se...
+#include <immintrin.h> // for __m512i, _mm512_stream_si512, _mm512_set1_epi8, _mm512_se...
 #endif
 
 using kotekan::bufferContainer;
@@ -27,7 +31,6 @@ using kotekan::Stage;
 REGISTER_KOTEKAN_STAGE(TransposeBasebandArray);
 
 // Compile-time constants for optimized code paths
-static constexpr uint32_t NUM_LOCAL_FREQ = 384;
 static constexpr uint32_t NUM_ELEMENTS = 128;
 static constexpr uint32_t TIME_SHORT = 16;
 static constexpr uint32_t ELEMENT_SHORT = 8;
@@ -48,17 +51,12 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
     timesamples_per_frame = config.get<uint32_t>(unique_name, "timesamples_per_frame");
 
     // Validate that config matches our constants
-    uint32_t cfg_num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");
+    num_local_freq = config.get<uint32_t>(unique_name, "num_local_freq");
     uint32_t cfg_num_elements = config.get<uint32_t>(unique_name, "num_elements");
     uint32_t cfg_time_short = config.get_default<uint32_t>(unique_name, "time_short", 16);
     uint32_t cfg_element_short = config.get_default<uint32_t>(unique_name, "element_short", 8);
     check_for_zero_nibbles = config.get_default<bool>(unique_name, "check_for_zero_nibbles", false);
 
-    if (cfg_num_local_freq != NUM_LOCAL_FREQ) {
-        throw std::runtime_error(
-            fmt::format(fmt("TransposeBasebandArray: num_local_freq ({:d}) must be {:d}"),
-                        cfg_num_local_freq, NUM_LOCAL_FREQ));
-    }
     if (cfg_num_elements != NUM_ELEMENTS) {
         throw std::runtime_error(
             fmt::format(fmt("TransposeBasebandArray: num_elements ({:d}) must be {:d}"),
@@ -104,24 +102,24 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
     // Validate input buffer size
     // Input format: E[time_long][frequency_local][element_long][time_short][element_short]
     size_t expected_input_size =
-        (size_t)time_long * NUM_LOCAL_FREQ * ELEMENT_LONG * TIME_SHORT * ELEMENT_SHORT;
+        (size_t)time_long * num_local_freq * ELEMENT_LONG * TIME_SHORT * ELEMENT_SHORT;
     if (in_buf->frame_size != expected_input_size) {
         throw std::runtime_error(fmt::format(
             fmt("TransposeBasebandArray: in_buf frame size ({:d}) does not match expected "
                 "size ({:d}) for shape [time_long={:d}][num_local_freq={:d}][element_long={:d}]"
                 "[time_short={:d}][element_short={:d}]"),
-            in_buf->frame_size, expected_input_size, time_long, NUM_LOCAL_FREQ, ELEMENT_LONG,
+            in_buf->frame_size, expected_input_size, time_long, num_local_freq, ELEMENT_LONG,
             TIME_SHORT, ELEMENT_SHORT));
     }
 
     // Validate output buffer size
     // Output format: E[time][frequency_local][element]
-    size_t expected_output_size = (size_t)timesamples_per_frame * NUM_LOCAL_FREQ * NUM_ELEMENTS;
+    size_t expected_output_size = (size_t)timesamples_per_frame * num_local_freq * NUM_ELEMENTS;
     if (out_buf->frame_size != expected_output_size) {
         throw std::runtime_error(fmt::format(
             fmt("TransposeBasebandArray: out_buf frame size ({:d}) does not match expected "
                 "size ({:d}) for shape [time={:d}][num_local_freq={:d}][num_elements={:d}]"),
-            out_buf->frame_size, expected_output_size, timesamples_per_frame, NUM_LOCAL_FREQ,
+            out_buf->frame_size, expected_output_size, timesamples_per_frame, num_local_freq,
             NUM_ELEMENTS));
     }
 
@@ -129,37 +127,45 @@ STAGE_CONSTRUCTOR(TransposeBasebandArray) {
     // pl_mask format: uint64_t[T/64][F][E/8]
     size_t T = timesamples_per_frame;
     size_t expected_pl_mask_size =
-        (T / 64) * NUM_LOCAL_FREQ * (NUM_ELEMENTS / 8) * sizeof(uint64_t);
+        (T / 64) * num_local_freq * (NUM_ELEMENTS / 8) * sizeof(uint64_t);
     if (pl_mask_buf->frame_size != expected_pl_mask_size) {
         throw std::runtime_error(fmt::format(
             fmt("TransposeBasebandArray: pl_mask_buf frame size ({:d}) does not match expected "
                 "size ({:d}) for shape [T/64={:d}][F={:d}][E/8={:d}] * sizeof(uint64_t)"),
-            pl_mask_buf->frame_size, expected_pl_mask_size, T / 64, NUM_LOCAL_FREQ,
+            pl_mask_buf->frame_size, expected_pl_mask_size, T / 64, num_local_freq,
             NUM_ELEMENTS / 8));
     }
 
-    // AVX512 fast path is always enabled with these constants
+    // Escape hatch to run the scalar path on a machine that supports AVX512, so that both
+    // paths can be exercised and compared without rebuilding for a different -march.
+    const bool disable_avx512 = config.get_default<bool>(unique_name, "disable_avx512", false);
+
     use_avx512_fast_path = false;
+    if (disable_avx512) {
+        INFO("TransposeBasebandArray: AVX512 fast path disabled by config, using scalar path");
+    } else {
 #ifdef __AVX512F__
-    // With our constants: time_short=16, element_short=8, num_elements=128, element_long=16
-    // All requirements are met
-    use_avx512_fast_path = true;
-    INFO("TransposeBasebandArray: AVX512 fast path enabled");
+        // With our constants: time_short=16, element_short=8, num_elements=128, element_long=16
+        // All requirements are met
+        use_avx512_fast_path = true;
+        INFO("TransposeBasebandArray: AVX512 fast path enabled");
 #else
-    INFO("TransposeBasebandArray: AVX512 not available, using scalar path");
+        INFO("TransposeBasebandArray: AVX512 not available, using scalar path");
 #endif
+    }
 
     // Set the output buffer frame ndarray shape
 
     // Confusingly the array name is "E" for electric field
-    out_buf->allocate_ndarray_frame_desc(
+    out_buf->require_frame_desc(kotekan::GenericNDArray::describe(
         kotekan::int4x2_swapped_withoffset, "E",
-        {timesamples_per_frame, NUM_LOCAL_FREQ, 2, NUM_ELEMENTS / 2}, {"T", "F", "P", "D"});
+        {timesamples_per_frame, num_local_freq, 2, NUM_ELEMENTS / 2}, {"T", "F", "P", "D"},
+        {1, 1, 1, 1}));
 
     INFO("TransposeBasebandArray: Input shape: [{:d}][{:d}][{:d}][{:d}][{:d}]", time_long,
-         NUM_LOCAL_FREQ, ELEMENT_LONG, TIME_SHORT, ELEMENT_SHORT);
+         num_local_freq, ELEMENT_LONG, TIME_SHORT, ELEMENT_SHORT);
     INFO("TransposeBasebandArray: Output shape: [{:d}][{:d}][{:d}]", timesamples_per_frame,
-         NUM_LOCAL_FREQ, NUM_ELEMENTS);
+         num_local_freq, NUM_ELEMENTS);
 }
 
 TransposeBasebandArray::~TransposeBasebandArray() {}
@@ -257,15 +263,15 @@ void TransposeBasebandArray::main_thread() {
 
     // Pre-calculate strides for the loops (using constants where possible)
     constexpr size_t in_freq_stride = (size_t)ELEMENT_LONG * TIME_SHORT * ELEMENT_SHORT; // 2048
-    const size_t in_tlong_stride = (size_t)NUM_LOCAL_FREQ * in_freq_stride;
+    const size_t in_tlong_stride = (size_t)num_local_freq * in_freq_stride;
     constexpr size_t out_freq_stride = (size_t)NUM_ELEMENTS; // 128
-    const size_t out_time_stride = (size_t)NUM_LOCAL_FREQ * out_freq_stride;
+    const size_t out_time_stride = (size_t)num_local_freq * out_freq_stride;
 
     // pl_mask strides: shape is uint64_t[T/64][F][E/8]
     constexpr size_t pl_mask_e_dim = NUM_ELEMENTS / 8;    // E/8 = 16
     constexpr size_t pl_mask_freq_stride = pl_mask_e_dim; // stride to next frequency
-    constexpr size_t pl_mask_t64_stride =
-        (size_t)NUM_LOCAL_FREQ * pl_mask_freq_stride; // stride to next T/64
+    const size_t pl_mask_t64_stride =
+        (size_t)num_local_freq * pl_mask_freq_stride; // stride to next T/64
 
     while (!stop_thread) {
         // Wait for input frame
@@ -308,13 +314,13 @@ void TransposeBasebandArray::main_thread() {
         // Transpose the data
         // Input:  E[time_long][frequency_local][element_long][time_short][element_short]
         // Output: E'[time][frequency_local][element]
+        // Read only by the DEBUG log below, which Release builds compile out.
+        [[maybe_unused]] size_t lost_blocks = 0;
 
 #ifdef __AVX512F__
         if (use_avx512_fast_path) {
             // AVX512 fast path: process one (t_long, freq) block at a time
             // Each block is 2048 bytes and produces 16 rows of 128 bytes
-            size_t lost_blocks = 0;
-
             for (uint32_t t_long = 0; t_long < time_long; t_long++) {
                 const uint32_t base_time = t_long * TIME_SHORT;
 
@@ -331,9 +337,9 @@ void TransposeBasebandArray::main_thread() {
                 const uint8_t* first_block = in_frame + t_long * in_tlong_stride;
                 prefetch_block(first_block);
 
-                for (uint32_t freq = 0; freq < NUM_LOCAL_FREQ; freq++) {
+                for (uint32_t freq = 0; freq < num_local_freq; freq++) {
                     // Prefetch next block while processing current one
-                    if (freq + 1 < NUM_LOCAL_FREQ) {
+                    if (freq + 1 < num_local_freq) {
                         const uint8_t* next_block =
                             in_frame + t_long * in_tlong_stride + (freq + 1) * in_freq_stride;
                         prefetch_block(next_block);
@@ -368,12 +374,6 @@ void TransposeBasebandArray::main_thread() {
             }
             // Memory fence to ensure all non-temporal stores are completed
             _mm_sfence();
-
-            // Log packet loss percentage
-            double loss_percentage =
-                100.0 * double(lost_blocks) / double(time_long * NUM_LOCAL_FREQ);
-            DEBUG("TransposeBasebandArray: Frame {:d} data loss = {:.4f}%", (int)in_frame_id,
-                  loss_percentage);
         } else
 #endif
         {
@@ -384,42 +384,46 @@ void TransposeBasebandArray::main_thread() {
                 const size_t bit_start = (t_long * TIME_SHORT) % 64;
                 const uint64_t check_mask = 0xffffull << bit_start;
 
-                for (uint32_t freq = 0; freq < NUM_LOCAL_FREQ; freq++) {
+                for (uint32_t freq = 0; freq < num_local_freq; freq++) {
                     // Check pl_mask for this (t_long, freq)
                     size_t pl_mask_idx = t64_idx * pl_mask_t64_stride + freq * pl_mask_freq_stride;
                     uint64_t mask_val = pl_mask_ptr[pl_mask_idx];
                     bool has_packet_loss = (mask_val & check_mask) != check_mask;
+                    if (has_packet_loss)
+                        lost_blocks++;
 
-                    for (uint32_t e_long = 0; e_long < ELEMENT_LONG; e_long++) {
-                        for (uint32_t t_short = 0; t_short < TIME_SHORT; t_short++) {
-                            // Calculate output time index
-                            uint32_t time = t_long * TIME_SHORT + t_short;
+                    // Loop over time samples outermost so each one's whole row of elements is
+                    // written in order, rather than writing element_short bytes per
+                    // element_long and stepping by out_time_stride between them.
+                    for (uint32_t t_short = 0; t_short < TIME_SHORT; t_short++) {
+                        // Calculate output time index
+                        uint32_t time = t_long * TIME_SHORT + t_short;
 
-                            // Calculate output base index
-                            size_t out_base = (size_t)time * out_time_stride
-                                              + freq * out_freq_stride + e_long * ELEMENT_SHORT;
+                        // Calculate output base index
+                        size_t out_base = (size_t)time * out_time_stride + freq * out_freq_stride;
 
-                            if (has_packet_loss) {
-                                // Fill with 0x88 instead of copying
-                                std::memset(&out_frame[out_base], 0x88, ELEMENT_SHORT);
-                            } else {
-                                // Calculate input base index
-                                size_t in_base = (size_t)t_long * in_tlong_stride
-                                                 + freq * in_freq_stride
-                                                 + e_long * (TIME_SHORT * ELEMENT_SHORT)
-                                                 + t_short * ELEMENT_SHORT;
+                        if (has_packet_loss) {
+                            // Fill with 0x88 instead of copying
+                            std::memset(&out_frame[out_base], 0x88, NUM_ELEMENTS);
+                        } else {
+                            // Calculate input base index for this time sample
+                            size_t in_base = (size_t)t_long * in_tlong_stride
+                                             + freq * in_freq_stride + t_short * ELEMENT_SHORT;
 
-                                // Copy element_short contiguous bytes
-                                std::memcpy(&out_frame[out_base], &in_frame[in_base],
-                                            ELEMENT_SHORT);
-                            }
+                            // Copy element_short contiguous bytes per element_long
+                            for (uint32_t e_long = 0; e_long < ELEMENT_LONG; e_long++)
+                                std::memcpy(
+                                    &out_frame[out_base + e_long * ELEMENT_SHORT],
+                                    &in_frame[in_base + e_long * (TIME_SHORT * ELEMENT_SHORT)],
+                                    ELEMENT_SHORT);
                         }
                     }
                 }
             }
         }
 
-        DEBUG("TransposeBasebandArray: Transposed frame {:d}", in_frame_id);
+        DEBUG("TransposeBasebandArray: Transposed frame {:d}, data loss = {:.4f}%", in_frame_id,
+              100.0 * double(lost_blocks) / double(time_long * num_local_freq));
 
         // get a copy of the input metadata
         auto in_meta = get_chord_metadata(in_buf, in_frame_id);
@@ -431,10 +435,10 @@ void TransposeBasebandArray::main_thread() {
         out_meta->type = kotekan::int4x2_swapped_withoffset;
         out_meta->dims = 4;
         out_meta->set_name("E");
-        out_meta->set_array_dimension(0, timesamples_per_frame, "T");
-        out_meta->set_array_dimension(1, NUM_LOCAL_FREQ, "F");
-        out_meta->set_array_dimension(2, 2, "P");
-        out_meta->set_array_dimension(3, NUM_ELEMENTS / 2, "D");
+        out_meta->set_array_dimension(0, timesamples_per_frame, "T", 1);
+        out_meta->set_array_dimension(1, num_local_freq, "F", 1);
+        out_meta->set_array_dimension(2, 2, "P", 1);
+        out_meta->set_array_dimension(3, NUM_ELEMENTS / 2, "D", 1);
 
         out_meta->set_strides_simple();
         out_meta->set_coarse_freq(in_meta->get_coarse_freq());

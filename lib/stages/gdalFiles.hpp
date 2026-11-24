@@ -14,7 +14,7 @@ namespace gdal {
 // The version number of the CHORD metadata format in GDAL files.
 // This uses semver: A file with version X.Y can be read by software
 // that understands X.Z even when Y > Z.
-constexpr std::array<int, 2> chord_metadata_version{1, 0};
+constexpr std::array<int, 2> chord_metadata_version{2, 0};
 
 GDALDataType chord2gdal(const kotekan::DataType type);
 

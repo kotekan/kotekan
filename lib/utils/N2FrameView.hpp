@@ -7,21 +7,22 @@
 #ifndef N2BUFFER_HPP
 #define N2BUFFER_HPP
 
-#include <stddef.h>          // for size_t
-#include <stdint.h>          // for uint64_t, uint32_t, int32_t, uint8_t
-#include <memory>            // for shared_ptr
-#include <set>               // for set
-#include <array>             // for array
+#include "FrameView.hpp"   // for FrameView
+#include "N2FrameDesc.hpp" // for N2EigenMethod, N2Field, N2FrameDesc, n2frame_layout_t
+#include "N2Layout.hpp"    // for N2Layout
+#include "N2Metadata.hpp"  // for N2Metadata
+#include "N2Util.hpp"      // for cfloat
+#include "buffer.hpp"      // for Buffer
+#include "dataset.hpp"     // for dset_id_t
 
-#include "FrameView.hpp"     // for FrameView
-#include "N2FrameDesc.hpp"   // for N2EigenMethod, N2Field, N2FrameDesc, n2frame_layout_t
-#include "N2Metadata.hpp"    // for N2Metadata
-#include "N2Util.hpp"        // for cfloat
-#include "buffer.hpp"        // for Buffer
-#include "gsl-lite.hpp"      // for span
-#include "N2Layout.hpp"      // for N2Layout
-#include "dataset.hpp"       // for dset_id_t
-#include "jsonMetadata.hpp"  // for MAX_NUM_RFI_THRESHOLDS
+#include "gsl-lite.hpp"     // for span
+#include "jsonMetadata.hpp" // for MAX_NUM_RFI_THRESHOLDS
+
+#include <array>    // for array
+#include <memory>   // for shared_ptr
+#include <set>      // for set
+#include <stddef.h> // for size_t
+#include <stdint.h> // for uint64_t, uint32_t, int32_t, uint8_t
 
 using kotekan::N2EigenMethod;
 using kotekan::N2Field;
@@ -82,9 +83,17 @@ public:
     uint64_t& n_rfi_only_fpga_ticks;
     /// The number of lost samples due to Packet Loss (PL)
     uint64_t& n_pl_fpga_ticks;
+    /// FPGA ticks during which first-stage (GPU) RFI excision was enabled
+    uint64_t& n_rfi_first_stage_enabled_fpga_ticks;
+    /// FPGA ticks during which the DTV mask was applied
+    uint64_t& n_dtv_mask_enabled_fpga_ticks;
+    /// Accepted frame pairs with samples in both frames (k of the EvenOddPosDef weight)
+    uint64_t& n_usable_variance_pairs;
 
     /// Whether second stage RFI excision was applied to this frame
     bool& rfi_frame_excision_enabled;
+    /// Whether the visibilities in this frame were fringestopped
+    bool& fringestop_enabled;
     /// The number of active RFI excision thresholds.
     int32_t& rfi_frame_excision_num;
     /// The SK thresholds (in sigma) for RFI excision
@@ -99,7 +108,10 @@ public:
     const gsl_lite::span<N2::cfloat> vis;
     /// View of the weight data.
     const gsl_lite::span<float> weight;
-    /// View of the input flags
+    /// View of the input flags, one per element: 1.0 is good, 0.0 is bad. This
+    /// is where bad feeds are reported, and it follows the convention the RFI,
+    /// packet loss and bad input masks all use. Consumers treat any non-zero
+    /// value as good.
     const gsl_lite::span<float> flags;
     /// View of the eigenvalues.
     const gsl_lite::span<float> eval;
@@ -113,7 +125,9 @@ public:
     const gsl_lite::span<float> radiometer_chi2;
     /// View of the applied gains
     const gsl_lite::span<N2::cfloat> gain;
-    /// View of per-element masks (uint8_t per element)
+    /// View of per-element masks (uint8_t per element). Reserved: nothing
+    /// writes it but N2Accumulate's fill of 255, no consumer interprets it, and
+    /// no convention has been settled for it. Bad feeds live in `flags`.
     const gsl_lite::span<uint8_t> mask;
 
     /**

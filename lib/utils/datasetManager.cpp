@@ -1,14 +1,14 @@
 #include "datasetManager.hpp"
 
-#include <fmt.hpp>         // for fmt
-#include <json.hpp>        // for json, operator!=, basic_json, input_adapter, operator==, iter_...
-#include <functional>      // for bind, function, _1
-#include <mutex>           // for mutex, lock_guard, lock, adopt_lock, unique_lock
+#include "Config.hpp"     // for Config
+#include "Hash.hpp"       // for operator<, hash, Hash, operator==
+#include "restClient.hpp" // for restClient
+#include "restServer.hpp" // for HTTP_RESPONSE, restServer, connectionInstance
 
-#include "Config.hpp"      // for Config
-#include "Hash.hpp"        // for operator<, hash, Hash, operator==
-#include "restClient.hpp"  // for restClient
-#include "restServer.hpp"  // for HTTP_RESPONSE, restServer, connectionInstance
+#include <fmt.hpp>    // for fmt
+#include <functional> // for bind, function, _1
+#include <json.hpp>   // for json, operator!=, basic_json, input_adapter, operator==, iter_...
+#include <mutex>      // for mutex, lock_guard, lock, adopt_lock, unique_lock
 
 using nlohmann::json;
 
@@ -69,7 +69,9 @@ datasetManager& datasetManager::instance(kotekan::Config& config) {
 datasetManager::~datasetManager() {
     _stop_request_threads = true;
 
-    kotekan::restServer::instance().remove_get_callback(DS_FORCE_UPDATE_ENDPOINT_NAME);
+    // Guard against static destruction order: restServer may already be destroyed.
+    if (kotekan::restServer::is_alive())
+        kotekan::restServer::instance().remove_get_callback(DS_FORCE_UPDATE_ENDPOINT_NAME);
 
     // wait for the detached threads
     std::unique_lock<std::mutex> lk(_lock_stop_request_threads);

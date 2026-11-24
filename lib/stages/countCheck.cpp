@@ -1,26 +1,27 @@
 #include "countCheck.hpp"
 
-#include <stdlib.h>             // for llabs
-#include <sys/time.h>           // for timeval
-#include <time.h>               // for timespec
-#include <functional>           // for bind, function
-#include <memory>               // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast
-#include <utility>              // for pair
-#include <vector>               // for vector
+#include "BeamMetadata.hpp"    // for BeamMetadata
+#include "Config.hpp"          // for Config
+#include "HFBMetadata.hpp"     // for HFBMetadata
+#include "N2Metadata.hpp"      // for N2Metadata
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "Telescope.hpp"       // for Telescope
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"  // for FATAL_ERROR, DEBUG
+#include "metadata.hpp"        // for metadataObject, metadataPool
+#include "visBuffer.hpp"       // for VisMetadata
 
-#include "BeamMetadata.hpp"     // for BeamMetadata
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "Telescope.hpp"        // for Telescope
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "chordMetadata.hpp"    // for chordMetadata, get_chord_metadata
-#include "kotekanLogging.hpp"   // for FATAL_ERROR, DEBUG
-#include "visBuffer.hpp"        // for VisMetadata
-#include "fmt.hpp"              // for compile_string_to_view
-#include "HFBMetadata.hpp"      // for HFBMetadata
-#include "N2Metadata.hpp"       // for N2Metadata
-#include "metadata.hpp"         // for metadataObject, metadataPool
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <functional> // for bind, function
+#include <memory>     // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast
+#include <stdlib.h>   // for llabs
+#include <sys/time.h> // for timeval
+#include <time.h>     // for timespec
+#include <utility>    // for pair
+#include <vector>     // for vector
 
 
 using kotekan::bufferContainer;

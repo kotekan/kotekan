@@ -1,26 +1,27 @@
 #include "AirspyAlign.hpp"
 
-#include <fftw3.h>              // for fftwf_free, fftwf_malloc, fftwf_complex, fftwf_destroy_plan
-#include <stdint.h>             // for uint32_t
-#include <stdlib.h>             // for free, malloc
-#include <string.h>             // for memcpy, memset
-#include <json.hpp>             // for json, basic_json
-#include <algorithm>            // for min
-#include <condition_variable>   // for condition_variable
-#include <functional>           // for bind, function, _1
-#include <mutex>                // for mutex, lock_guard, unique_lock
-#include <cmath>                // for fabs, sqrt
-#include <memory>               // for shared_ptr
+#include "Config.hpp"          // for Config
+#include "NDArray.hpp"         // for GenericNDArray
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "airspyFrameDesc.hpp" // for make_input_desc
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "fftwPlannerLock.hpp" // for fftw_planner_mutex
+#include "kotekanLogging.hpp"  // for DEBUG
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "airspyFrameDesc.hpp"  // for make_input_desc
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "fftwPlannerLock.hpp"  // for fftw_planner_mutex
-#include "kotekanLogging.hpp"   // for DEBUG
-#include "NDArray.hpp"          // for GenericNDArray
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>          // for min
+#include <cmath>              // for fabs, sqrt
+#include <condition_variable> // for condition_variable
+#include <fftw3.h>            // for fftwf_free, fftwf_malloc, fftwf_complex, fftwf_destroy_plan
+#include <functional>         // for bind, function, _1
+#include <json.hpp>           // for json, basic_json
+#include <memory>             // for shared_ptr
+#include <mutex>              // for mutex, lock_guard, unique_lock
+#include <stdint.h>           // for uint32_t
+#include <stdlib.h>           // for free, malloc
+#include <string.h>           // for memcpy, memset
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -37,10 +38,11 @@ AirspyAlign::AirspyAlign(Config& config, const std::string& unique_name,
     buf_inB = get_buffer("in_bufB");
     buf_inB->register_consumer(unique_name);
 
-    // Both inputs are int16 1-D airspy sample streams; set_frame_desc
-    // records or cross-checks against airspyInput's earlier assertion.
-    buf_inA->set_frame_desc(kotekan_airspy::make_input_desc(buf_inA->frame_size / sizeof(short)));
-    buf_inB->set_frame_desc(kotekan_airspy::make_input_desc(buf_inB->frame_size / sizeof(short)));
+    // Both inputs are int16 1-D airspy sample streams whose descriptors are
+    // declared in config (kotekan_buffer: ndarray). require_frame_desc confirms
+    // the config declaration is present; this stage reads only the byte length.
+    buf_inA->require_frame_desc();
+    buf_inB->require_frame_desc();
 
     _lag_window = config.get_default<uint32_t>(unique_name, "lag_window",
                                                buf_inA->frame_size / sizeof(short));

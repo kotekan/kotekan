@@ -1,24 +1,25 @@
 #include "visBuffer.hpp"
 
-#include <assert.h>       // for assert
-#include <gsl-lite.hpp>   // for span
-#include <json.hpp>       // for basic_json, json
-#include <algorithm>      // for copy
-#include <complex>        // for complex
-#include <cstdint>   // for uint64_t // IWYU pragma: keep
-#include <cstring>        // for memset
-#include <ctime>          // for gmtime
-#include <map>            // for map
-#include <set>            // for set
-#include <stdexcept>      // for runtime_error
-#include <vector>         // for vector
+#include "FrameView.hpp" // for bind_span, bind_scalar, FrameView
+#include "Telescope.hpp" // for freq_id_t
+#include "buffer.hpp"    // for Buffer
+#include "factory.hpp"   // for REGISTER_TYPE_WITH_FACTORY
+#include "metadata.hpp"  // for metadataObject, _factory_aliasmetadataObject
 
-#include "FrameView.hpp"  // for bind_span, bind_scalar, FrameView
-#include "Telescope.hpp"  // for freq_id_t
-#include "buffer.hpp"     // for Buffer
-#include "factory.hpp"    // for REGISTER_TYPE_WITH_FACTORY
-#include "metadata.hpp"   // for metadataObject, _factory_aliasmetadataObject
-#include "fmt.hpp"        // for format, compile_string_to_view, fmt, format_string
+#include "fmt.hpp" // for format, compile_string_to_view, fmt, format_string
+
+#include <algorithm>    // for copy
+#include <assert.h>     // for assert
+#include <complex>      // for complex
+#include <cstdint>      // for uint64_t // IWYU pragma: keep
+#include <cstring>      // for memset
+#include <ctime>        // for gmtime
+#include <gsl-lite.hpp> // for span
+#include <json.hpp>     // for basic_json, json
+#include <map>          // for map
+#include <set>          // for set
+#include <stdexcept>    // for runtime_error
+#include <vector>       // for vector
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, VisMetadata);
 
@@ -71,6 +72,8 @@ size_t VisMetadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t le
 size_t VisMetadata::serialize(char* bytes) {
     size_t sz = get_serialized_size();
     VisMetadataFormat* fmt = reinterpret_cast<VisMetadataFormat*>(bytes);
+    // Zero first so struct padding is not written out uninitialized
+    memset(bytes, 0, sz);
     fmt->fpga_seq_start = fpga_seq_start;
     fmt->ctime = ctime;
     fmt->fpga_seq_length = fpga_seq_length;

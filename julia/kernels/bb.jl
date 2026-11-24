@@ -9,8 +9,6 @@ using Random
 
 const Memory = IndexSpaces.Memory
 
-chimify(x::Int4x8) = Int4x8(x.val ⊻ 0x88888888)
-unchimify(x) = chimify(x)
 idiv(i::Integer, j::Integer) = (@assert iszero(i % j); i ÷ j)
 # shift(x::Number, s) = (@assert s ≥ 0; s == 0 ? x : (x + (1 << (s - 1))) >> s)
 shift(x::Number, s) = (@assert s ≥ 1; (x + (1 << (s - 1))) >> s)
@@ -77,6 +75,18 @@ elseif setup ≡ :hirax
     const Wd = 2
     const Wp = 1
 
+elseif setup ≡ :hirax128
+
+    # HIRAX 128
+    const B = 16                # 8...32
+
+    const T1_stride = 128
+    const T2_stride = 32
+
+    const Wb = idiv(B, 8)
+    const Wd = 1
+    const Wp = 2
+
 elseif setup ≡ :pathfinder || setup ≡ :smallfinder
 
     # CHORD pathfinder
@@ -118,6 +128,11 @@ else
 end
 
 const Tout = idiv(T, 4)         # always process 1/4 of the ringbuffer at a time
+
+# The phase matrix is recalculated periodically, and the matrices are handed to the GPU through a
+# ring buffer holding this many of them (the Kotekan buffer depth). How many FPGA samples one
+# matrix covers is a run-time setting, `bb_phase_lifetime_in_samples`.
+const Tbb = idiv(T, Tout)
 
 # Since we introduced Tmin and Tmax, we don't support Bt != 1 any more
 # const Bt = 16                   # distribute time samples over that many blocks
@@ -520,6 +535,30 @@ function make_bb_kernel()
             Polr(:polr, 1, P) => Block(:block, Bt, Bp),
             freq => Block(:block, Bt * Bp, F),
         ])
+    elseif D == 128
+        num_time_warps_for_Ecopy = prevpow(2, Wb)
+        num_time_registers_for_Ecopy = idiv(8, num_time_warps_for_Ecopy)
+        num_warps_for_Ecopy = Wd * num_time_warps_for_Ecopy * Wp
+        @assert 4 * num_time_warps_for_Ecopy * num_time_registers_for_Ecopy == 32
+        @assert 1 ≤ num_warps_for_Ecopy ≤ 32
+        @assert Wd == 1
+        layout_E_registers = Layout([
+            int4value => SIMD(:simd, 1, 4),
+            cplx => SIMD(:simd, 4, C),
+            dish01 => SIMD(:simd, 4 * C, 4),
+            dish23 => Register(:dish, 4, 4),
+            dish456 => Thread(:thread, 1, 8),
+            time01 => Thread(:thread, 8, 4),
+            Time(:time, 4, num_time_warps_for_Ecopy) => Warp(:warp, Wd, num_time_warps_for_Ecopy),
+            Time(:time, 4 * num_time_warps_for_Ecopy, num_time_registers_for_Ecopy) =>
+                Register(:time, 4 * num_time_warps_for_Ecopy, num_time_registers_for_Ecopy),
+            time56 => loopT2,
+            time7etc => loopT1,
+            Time(:time, idiv(T, Bt), Bt) => Block(:block, 1, Bt),
+            Polr(:polr, 1, Bp) => Block(:block, Bt, Bp),
+            Polr(:polr, Bp, Wp) => Warp(:warp, Wd * num_time_warps_for_Ecopy, Wp),
+            freq => Block(:block, Bt * Bp, F),
+        ])
     elseif D == 64
         @assert Wd == 1
         num_time_warps_for_Ecopy = Wb
@@ -752,6 +791,30 @@ function make_bb_kernel()
         permute!(emitter, :A, :A, Register(:cplx, 1, C), SIMD(:simd, 8, 2))
         permute!(emitter, :A, :A, Register(:dish, 8, 2), Thread(:thread, 2, 2))
         permute!(emitter, :A, :A, Register(:dish, 16, 2), Thread(:thread, 4, 2))
+    elseif D == 128
+        @assert Wd == 1
+        layout_A0_registers = Layout([
+            int8value => SIMD(:simd, 1, 8),
+            cplx => SIMD(:simd, 8, 2),       # want register
+            dish0 => SIMD(:simd, 16, 2),     # want simd3
+            dish1 => Register(:cplx, 1, C),  # want simd4
+            dish2 => Register(:dish, 4, 2),  # final
+            dish34 => Thread(:thread, 2, 4), # want register
+            dish5 => Thread(:thread, 1, 2),  # final
+            dish6 => Register(:dish, 8, 2),  # want thread2
+            beam0 => Register(:dish, 16, 2), # want thread4
+            beam12 => Thread(:thread, 8, 4), # final
+            beam3etc => Warp(:warp, Wd, Wb),
+            Polr(:polr, 1, Bp) => Block(:block, Bt, Bp),
+            Polr(:polr, Bp, Wp) => Warp(:warp, Wd * Wb, Wp),
+            freq => Block(:block, Bt * Bp, F),
+        ])
+
+        load!(emitter, :A => layout_A0_registers, :A_memory => layout_A_memory; align=16)
+        permute!(emitter, :A, :A, Register(:cplx, 1, C), SIMD(:simd, 16, 2))
+        permute!(emitter, :A, :A, Register(:cplx, 1, C), SIMD(:simd, 8, 2))
+        permute!(emitter, :A, :A, Register(:dish, 8, 2), Thread(:thread, 2, 2))
+        permute!(emitter, :A, :A, Register(:dish, 16, 2), Thread(:thread, 4, 2))
     elseif D == 64
         @assert Wd == 1
         layout_A0_registers = Layout([
@@ -944,7 +1007,7 @@ function make_bb_kernel()
                 split!(emitter, [:Julo, :Juhi], :Ju, Dish(:dish, 128, 2))
                 # TODO use add_sat
                 apply!(emitter, :J, [:Julo, :Juhi], (Julo, Juhi) -> :($Julo + $Juhi))
-            elseif D == 64
+            elseif D == 128 || D == 64
                 apply!(emitter, :J, [:Ju], (Ju,) -> :($Ju))
             else
                 @assert false
@@ -1187,6 +1250,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             cxx,
             Dict(
                 "kernel_name" => "BasebandBeamformer_$setup",
+                "cuda_arch" => cuda_arch,
                 "kernel_design_parameters" => [
                     Dict("type" => "int", "name" => "cuda_number_of_beams", "value" => "$B"),
                     Dict("type" => "int", "name" => "cuda_number_of_complex_components", "value" => "$C"),
@@ -1215,6 +1279,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         "hasbuffer" => false,
                         "hasringbuffer" => false,
                         "do_once" => false,
+                        "haslifetime" => false,
                     ),
                     Dict(
                         "name" => "T_max",
@@ -1225,97 +1290,113 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         "hasbuffer" => false,
                         "hasringbuffer" => false,
                         "do_once" => false,
+                        "haslifetime" => false,
                     ),
                     Dict(
                         "name" => "A",
                         "kotekan_name" => "bb_phase_name",
                         "type" => "int8",
+                        # The slowest axis is the ring buffer direction. Its `dimscaling` is a
+                        # placeholder; it is overwritten at run time with the configured
+                        # `bb_phase_lifetime_in_samples`. The kernel itself still sees a single
+                        # phase matrix: the wrapper passes it the element covering the voltage
+                        # samples being processed.
                         "axes" => [
-                            Dict("label" => "C", "length" => C),
-                            Dict("label" => "D", "length" => D),
-                            Dict("label" => "B", "length" => B),
-                            Dict("label" => "P", "length" => P),
-                            Dict("label" => "F", "length" => F),
-                        ],
-                        "isoutput" => false,
-                        "isscalar" => false,
-                        "hasbuffer" => true,
-                        "hasringbuffer" => false,
-                        "do_once" => true,
-                    ),
-                    Dict(
-                        "name" => "E",
-                        "kotekan_name" => "voltage_name",
-                        "type" => "int4x2_swapped_withoffset",
-                        "axes" => [
-                            Dict("label" => "D", "length" => D),
-                            Dict("label" => "P", "length" => P),
-                            Dict("label" => "F", "length" => F),
-                            Dict("label" => "T", "length" => T),
+                            Dict("label" => "C", "length" => C, "dimscaling" => 1),
+                            Dict("label" => "D", "length" => D, "dimscaling" => 1),
+                            Dict("label" => "B", "length" => B, "dimscaling" => 1),
+                            Dict("label" => "P", "length" => P, "dimscaling" => 1),
+                            Dict("label" => "F", "length" => F, "dimscaling" => 1),
+                            Dict("label" => "Tbb", "length" => Tbb, "dimscaling" => 1),
                         ],
                         "isoutput" => false,
                         "isscalar" => false,
                         "hasbuffer" => true,
                         "hasringbuffer" => true,
                         "do_once" => false,
+                        "haslifetime" => true,
+                        "lifetime_config" => "bb_phase_lifetime_in_samples",
+                    ),
+                    Dict(
+                        "name" => "E",
+                        "kotekan_name" => "voltage_name",
+                        "type" => "int4x2_swapped_withoffset",
+                        "axes" => [
+                            Dict("label" => "D", "length" => D, "dimscaling" => 1),
+                            Dict("label" => "P", "length" => P, "dimscaling" => 1),
+                            Dict("label" => "F", "length" => F, "dimscaling" => 1),
+                            Dict("label" => "T", "length" => T, "dimscaling" => 1),
+                        ],
+                        "isoutput" => false,
+                        "isscalar" => false,
+                        "hasbuffer" => true,
+                        "hasringbuffer" => true,
+                        "do_once" => false,
+                        "haslifetime" => false,
                     ),
                     Dict(
                         "name" => "s",
                         "kotekan_name" => "bb_shift_name",
                         "type" => "int32",
                         "axes" => [
-                            Dict("label" => "B", "length" => B),
-                            Dict("label" => "P", "length" => P),
-                            Dict("label" => "F", "length" => F),
+                            Dict("label" => "B", "length" => B, "dimscaling" => 1),
+                            Dict("label" => "P", "length" => P, "dimscaling" => 1),
+                            Dict("label" => "F", "length" => F, "dimscaling" => 1),
                         ],
                         "isoutput" => false,
                         "isscalar" => false,
                         "hasbuffer" => true,
                         "hasringbuffer" => false,
                         "do_once" => true,
+                        "haslifetime" => false,
                     ),
                     Dict(
                         "name" => "J",
                         "type" => "int4x2_swapped_withoffset",
                         "kotekan_name" => "bb_beams_name",
                         "axes" => [
-                            Dict("label" => "T", "length" => Tout),
-                            Dict("label" => "P", "length" => P),
-                            Dict("label" => "F", "length" => F),
-                            Dict("label" => "B", "length" => B),
-                            Dict("label" => "Thi", "length" => 1),
+                            Dict("label" => "T", "length" => Tout, "dimscaling" => 1),
+                            Dict("label" => "P", "length" => P, "dimscaling" => 1),
+                            Dict("label" => "F", "length" => F, "dimscaling" => 1),
+                            Dict("label" => "B", "length" => B, "dimscaling" => 1),
+                            Dict("label" => "Thi", "length" => 1, "dimscaling" => Tout),
                         ],
                         "isoutput" => true,
                         "isscalar" => false,
                         "hasbuffer" => true,
                         "hasringbuffer" => false,
                         "do_once" => false,
+                        "haslifetime" => false,
                     ),
                     Dict(
                         "name" => "info",
                         "kotekan_name" => "gpu_mem_info",
                         "type" => "int32",
                         "axes" => [
-                            Dict("label" => "thread", "length" => num_threads),
-                            Dict("label" => "warp", "length" => num_warps),
-                            Dict("label" => "block", "length" => num_blocks),
+                            Dict("label" => "thread", "length" => num_threads, "dimscaling" => 1),
+                            Dict("label" => "warp", "length" => num_warps, "dimscaling" => 1),
+                            Dict("label" => "block", "length" => num_blocks, "dimscaling" => 1),
                         ],
                         "isoutput" => true,
                         "isscalar" => false,
                         "hasbuffer" => false,
                         "hasringbuffer" => false,
                         "do_once" => false,
+                        "haslifetime" => false,
                     ),
                     Dict(
                         "name" => "log",
                         "kotekan_name" => "gpu_mem_log",
                         "type" => "int32",
-                        "axes" => [Dict("label" => "block", "length" => num_blocks)],
+                        "axes" => [
+                            Dict("label" => "block", "length" => num_blocks, "dimscaling" => 1),
+                        ],
                         "isoutput" => true,
                         "isscalar" => false,
                         "hasbuffer" => false,
                         "hasringbuffer" => false,
                         "do_once" => false,
+                        "haslifetime" => false,
                     ),
                 ],
             ),
@@ -1432,7 +1513,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                 @assert max(abs(Ju.re), abs(Ju.im)) ≤ 32767
                 J = Ju
                 J = shift(J, s - σ)
-                reinterpret(Int4x2, J_wanted)[((b * F + f) * P + p) * T + t + 1] = Int4x2(
+                reinterpret(Int4x2, J_wanted)[((b * F + f) * P + p) * Tout + t + 1] = Int4x2(
                     Int32(clamp(J.re, -7:+7)), Int32(clamp(J.im, -7:+7))
                 )
             end
@@ -1441,9 +1522,9 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
 
     println("Copying data from CPU to GPU...")
     A_cuda = CuArray(A_memory)
-    E_cuda = CuArray(chimify.(E_memory))
+    E_cuda = CuArray(swap_offset.(E_memory))
     s_cuda = CuArray(s_memory)
-    J_cuda = CUDA.fill(chimify(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8)), idiv(Tout, 4) * P * F * B)
+    J_cuda = CUDA.fill(swap_offset(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8)), idiv(Tout, 4) * P * F * B)
     info_cuda = CUDA.fill(-1i32, num_threads * num_warps * num_blocks)
     log_cuda = CUDA.fill(0i32, num_blocks)
 
@@ -1521,7 +1602,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     end
 
     println("Copying data back from GPU to CPU...")
-    J_memory = unchimify.(Array(J_cuda))
+    J_memory = swap_offset.(Array(J_cuda))
     info_memory = Array(info_cuda)
     log_memory = Array(log_cuda)
     @assert all(info_memory .== 0)
@@ -1545,6 +1626,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         end
         @assert all(checked_J)
         println("    J: $error_count errors found")
+        error_count == 0 || error("*** SELF-TEST FAILED: $(error_count) mismatches ***")
+        println("Self-test passed.")
     end
 
     println("Done.")
@@ -1555,7 +1638,9 @@ if CUDA.functional()
     # Output kernel
     open("output/bb_$setup.ptx", "w") do fh
         redirect_stdout(fh) do
+            println("R\"===(")
             @device_code_ptx main(; compile_only=true)
+            println(")===\"")
         end
     end
     # This call needs to happen after generating PTX code since it

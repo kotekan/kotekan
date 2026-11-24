@@ -14,15 +14,25 @@ using mat3x3d_t = std::array<std::array<double, 3>, 3>;
  * @brief A class which defines a cartesian reference frame on the surface of the Earth
  * and facilitates transformations between this frame and the ITRS.
  *
- * The frame exists at a particular point on the Earth specified by geodetic Latitude and Longitude in ITRS. This object is concerned with three reference frames:
- * 
- * 1) ITRS (International Terrestrial Reference System). The coordinate system for the planet Earth, where geodetic Latitude and Longitude live. The x-, y-, and z- axes are at latitude and longitude (0, 0), (0, 90), and (90, *), the origin is at Earth Barycenter. The IAU defines the transformations between this frame and sky (e.g. ICRS).
+ * The frame exists at a particular point on the Earth specified by geodetic Latitude and
+ * Longitude in ITRS. This object is concerned with three reference frames:
  *
- * 2) TOPO (Topocentric coordinates). A local, Cartesian coordinate system with origin at a point on the Earth, aligned with geodetic latitude, longitude, and altitude.  The x-, y-, and z- axes are directed exactly East, North, and Up at the origin point and are mutually orthogonal.
+ * 1) ITRS (International Terrestrial Reference System). The coordinate system for the planet
+ * Earth, where geodetic Latitude and Longitude live. The x-, y-, and z- axes are at latitude and
+ * longitude (0, 0), (0, 90), and (90, *), the origin is at Earth Barycenter. The IAU defines the
+ * transformations between this frame and sky (e.g. ICRS).
  *
- * 3) This Frame (name). The frame defined by this object. A local, Cartesian coordinate system, with origin at a point on the Earth, and x-, y-, and z- axes mutually orthonormal but otherwise arbitrary.  This frame's origin may be displaced from the TOPO origin. The axes of this frame are provided in the TOPO basis.
+ * 2) TOPO (Topocentric coordinates). A local, Cartesian coordinate system with origin at a point
+ * on the Earth, aligned with geodetic latitude, longitude, and altitude.  The x-, y-, and z- axes
+ * are directed exactly East, North, and Up at the origin point and are mutually orthogonal.
  *
- * In practice this object is often defining the axes of an interferometric array, but it is also used to define the orientation of a dish pointing, and may serve other uses in the future.
+ * 3) This Frame (name). The frame defined by this object. A local, Cartesian coordinate system,
+ * with origin at a point on the Earth, and x-, y-, and z- axes mutually orthonormal but otherwise
+ * arbitrary.  This frame's origin may be displaced from the TOPO origin. The axes of this frame
+ * are provided in the TOPO basis.
+ *
+ * In practice this object is often defining the axes of an interferometric array, but it is also
+ * used to define the orientation of a dish pointing, and may serve other uses in the future.
  *
  * @author Geoffrey Ryan
  **/
@@ -35,13 +45,13 @@ public:
      * @param name          The name for this frame, e.g. "grid" or "dish".
      * @param itrs_lat_deg  The ITRS latitude of the origin point for the TOPO frame, in degrees.
      * @param itrs_lon_deg  The ITRS longitude of the origin point for the TOPO frame, in degrees.
-     * @param offset_m      This frame's origin point in the TOPO frame in meters. 
+     * @param offset_m      This frame's origin point in the TOPO frame in meters.
      *                      frame_origin = topo_origin + offset
-     * @param x_axis        This frame's x-axis, in the TOPO basis. Must be normalized 
+     * @param x_axis        This frame's x-axis, in the TOPO basis. Must be normalized
      *                      (|x| = 1.0) and orthogonal to the y- and z-axes.
-     * @param y_axis        This frame's y-axis, in the TOPO basis. Must be normalized 
+     * @param y_axis        This frame's y-axis, in the TOPO basis. Must be normalized
      *                      (|y| = 1.0) and orthogonal to the z- and x-axes.
-     * @param z_axis        This frame's z-axis, in the TOPO basis. Must be normalized  
+     * @param z_axis        This frame's z-axis, in the TOPO basis. Must be normalized
      *                      (|z| = 1.0) and orthogonal to the x- and y-axes.
      *
      * Will produce a FATAL_ERROR if x, y, and z are not mutually orthonormal
@@ -139,29 +149,30 @@ public:
 
 private:
     /**
-     * @brief Construct the TOPO -> this frame rotation matrix from this frame's basis vectors. Basis vectors must be orthonormal. The matrix is simply:
+     * @brief Construct the TOPO -> this frame rotation matrix from this frame's basis vectors.
+     * Basis vectors must be orthonormal. The matrix is simply:
      *
      *     (  x^T  )
      * R = (  y^T  )
      *     (  z^T  )
      */
     static mat3x3d_t make_R_topo_to_frame(const vec3d_t& x, const vec3d_t& y, const vec3d_t& z);
-    
+
     /**
      * @brief Construct the ITRS -> TOPO rotation matrix from the latitude and longitude
      * of the origin.
      */
     static mat3x3d_t make_R_itrs_to_topo(double lat_deg, double lon_deg);
 
-    std::string name;                   /// This frame's name
-    const double itrs_lat_deg;          /// Latitude of TOPO origin in ITRS
-    const double itrs_lon_deg;          /// Longitude of TOPO origin in ITRS
-    const vec3d_t offset_m;             /// Offset of frame origin from TOPO
-    const vec3d_t x_axis;               /// Frame x-axis in TOPO
-    const vec3d_t y_axis;               /// Frame y-axis in TOPO
-    const vec3d_t z_axis;               /// Frame z-axis in TOPO
-    const mat3x3d_t R_topo_to_frame;    /// Rotation matrix TOPO -> frame
-    const mat3x3d_t R_itrs_to_topo;     /// Rotation matrix ITRX -> TOPO
+    std::string name;                /// This frame's name
+    const double itrs_lat_deg;       /// Latitude of TOPO origin in ITRS
+    const double itrs_lon_deg;       /// Longitude of TOPO origin in ITRS
+    const vec3d_t offset_m;          /// Offset of frame origin from TOPO
+    const vec3d_t x_axis;            /// Frame x-axis in TOPO
+    const vec3d_t y_axis;            /// Frame y-axis in TOPO
+    const vec3d_t z_axis;            /// Frame z-axis in TOPO
+    const mat3x3d_t R_topo_to_frame; /// Rotation matrix TOPO -> frame
+    const mat3x3d_t R_itrs_to_topo;  /// Rotation matrix ITRX -> TOPO
 };
 
 /**

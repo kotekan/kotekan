@@ -1,4 +1,5 @@
 #include "Config.hpp"          // for Config
+#include "N2Util.hpp"          // for frameID
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "beamUtil.hpp"        // for FixedBBBeam, TrackingBBBeam
 #include "buffer.hpp"          // for Buffer
@@ -6,17 +7,16 @@
 #include "chordMetadata.hpp"   // for chordMetadata, metadata_is_chord, CHORD_META_MAX_DIM, CHO...
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, DEBUG, INFO
 #include "restServer.hpp"      // for restServer, connectionInstance
-#include "N2Util.hpp"          // for frameID
 
 #include <vector>
 
+using Beams::FixedBBBeam;
+using Beams::TrackingBBBeam;
 using kotekan::bufferContainer;
 using kotekan::Config;
 using kotekan::connectionInstance;
-using kotekan::Stage;
 using kotekan::restServer;
-using Beams::FixedBBBeam;
-using Beams::TrackingBBBeam;
+using kotekan::Stage;
 using N2::frameID;
 
 constexpr double deg2rad = M_PI / 180.0;
@@ -33,11 +33,12 @@ constexpr double deg2rad = M_PI / 180.0;
  *   - `"manual"`: Read beams from the `fixed_beams` config parameter, which is a list of
  *              FixedBBBeam objects.
  *   - `"grid"`: A rectangular grid of beams on the sky, uniform in vector components nx & ny.
- *              Requires `num_x`, `num_y`, `x_min`, `x_max`, `y_min`, `y_max` parameters.
+ *              Requires `num_x`, `num_y`, `x_min`, `x_max`, `y_min`, `y_max` parameters. With a
+ *              single beam along an axis, that beam sits midway between the minimum and maximum.
  *   - `"grid_degrees"`: As `grid`, but the grid is uniform in angle theta_x and theta_y from
  *              telescope zenith. `x_min`, etc are interpreted as angles in degrees.
  *
- * Tracking beams are only set via the `tracking_beams` config parameter, which takes a list of 
+ * Tracking beams are only set via the `tracking_beams` config parameter, which takes a list of
  * `TrackingBBBeam` objects, each with the RA & DEC of the target location in CIRS.
  *
  * The output beam position buffer contains the nx and ny components of each beam pointing
@@ -46,17 +47,17 @@ constexpr double deg2rad = M_PI / 180.0;
  *
  * Beam IDs are u64 values used to identify beams in post.
  *
- * NOTE: This stage is intended to be run continuously, so as to produce the time-dependent
- * tracking beams. However, this will require modification of the calcBBPhases stage and the
- * cudaBBBeamformer wrapper. It was written to demonstrate how beams should be produced and
- * how to use the Telescope for Tracking beams.
+ * This stage runs continuously, emitting one frame every `time_downsampling_fpga` FPGA samples,
+ * so that tracking beams can be time-dependent. The positions are consumed by calcBBPhase, which
+ * turns them into a phase matrix at the same cadence.
  *
  * NOTE: This stage is likely a placeholder, or will require (possibly telescope-specific) upgrades
  * to be used in production (e.g. updating beams via REST).
  *
  * @par Buffers
- * @buffer in_clock_buf     Any time-dependent buffer with an `fpga_seq_num`. Used to synchronize
- *                          output buffers. Only first frame is read. `host_voltage_buffer` recommended.
+ * @buffer metadata_source     Any time-dependent buffer with an `fpga_seq_num`. Used to synchronize
+ *                          output buffers. Only first frame is read. `host_voltage_buffer`
+ * recommended.
  *      @buffer_format      Any
  *      @buffer_metadata    chordMetadata
  * @buffer out_pos_buf      Output beam positions in the GRID frame.
@@ -69,11 +70,12 @@ constexpr double deg2rad = M_PI / 180.0;
  * @conf fixed_mode         string. Mode to generate fixed beams.
  * @conf num_beams          uint32. Total number of beams to produce (fixed + tracking). Must be
  *                          consistent with fixed + tracking.
- * @conf time_downsampling_fpga   uint64. Number of fpga sequence number ticks between output frames.
+ * @conf time_downsampling_fpga   uint64. Number of fpga sequence number ticks between output
+ * frames.
  * @conf fixed_beams        List of FixedBBBeam.  For `fixed_mode` = "manual". Beams to produce.
- * @conf num_x              uint32. For `fixed_mode` = "grid" or "grid_degrees". Number of beams in 
+ * @conf num_x              uint32. For `fixed_mode` = "grid" or "grid_degrees". Number of beams in
  *                          grid X direction (~East/West)
- * @conf num_y              uint32. For `fixed_mode` = "grid" or "grid_degrees". Number of beams in 
+ * @conf num_y              uint32. For `fixed_mode` = "grid" or "grid_degrees". Number of beams in
  *                          grid Y direction (~North/South)
  * @conf x_min              double. For `fixed_mode` = "grid" or "grid_degrees". Minimum value of nx
  *                          ("grid", dimensionless) or theta_x ("grid_degrees", degrees)
@@ -88,8 +90,7 @@ constexpr double deg2rad = M_PI / 180.0;
  */
 class setBBBeams : public Stage {
 public:
-    setBBBeams(Config& config, const std::string& unique_name,
-                   bufferContainer& buffer_container);
+    setBBBeams(Config& config, const std::string& unique_name, bufferContainer& buffer_container);
     ~setBBBeams();
     void main_thread() override;
 
@@ -100,7 +101,7 @@ protected:
     std::vector<FixedBBBeam> build_grid_deg_beams() const;
 
 private:
-    Buffer* in_buf;
+    Buffer* metadata_source;
     Buffer* out_pos_buf;
     Buffer* out_id_buf;
     const std::string fixed_mode;
@@ -121,23 +122,24 @@ private:
 REGISTER_KOTEKAN_STAGE(setBBBeams);
 
 setBBBeams::setBBBeams(Config& config, const std::string& unique_name,
-                         bufferContainer& buffer_container) :
+                       bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&setBBBeams::main_thread, this)),
     fixed_mode(config.get<std::string>(unique_name, "fixed_mode")),
     num_beams(config.get<uint32_t>(unique_name, "num_beams")),
     time_downsampling_fpga(config.get<uint64_t>(unique_name, "time_downsampling_fpga")),
     fixed_beam_table(config.get_default<std::vector<FixedBBBeam>>(unique_name, "fixed_beams", {})),
-    tracking_beam_table(config.get_default<std::vector<TrackingBBBeam>>(unique_name, "tracking_beams", {})),
+    tracking_beam_table(
+        config.get_default<std::vector<TrackingBBBeam>>(unique_name, "tracking_beams", {})),
     num_x(config.get_default<uint32_t>(unique_name, "num_x", 0)),
     num_y(config.get_default<uint32_t>(unique_name, "num_y", 0)),
     x_min(config.get_default<double>(unique_name, "x_min", 0.0)),
     x_max(config.get_default<double>(unique_name, "x_max", 0.0)),
     y_min(config.get_default<double>(unique_name, "y_min", 0.0)),
     y_max(config.get_default<double>(unique_name, "y_max", 0.0)) {
-        
+
     // Get Buffer
-    in_buf = get_buffer("in_clock_buf");
-    in_buf->register_consumer(unique_name);
+    metadata_source = get_buffer("metadata_source");
+    metadata_source->register_consumer(unique_name);
     out_pos_buf = get_buffer("out_pos_buf");
     out_pos_buf->register_producer(unique_name);
     out_id_buf = get_buffer("out_id_buf");
@@ -163,15 +165,17 @@ setBBBeams::setBBBeams(Config& config, const std::string& unique_name,
 
     if (fixed_beams.size() + tracking_beams.size() != num_beams)
         FATAL_ERROR("Number of fixed {:d} + tracking {:d} beams != num_beams {:d}",
-                fixed_beams.size(), tracking_beams.size(), num_beams);
+                    fixed_beams.size(), tracking_beams.size(), num_beams);
 
     using namespace std::placeholders;
     restServer& rest_server = restServer::instance();
     rest_server.register_get_callback(unique_name + "/beams",
                                       std::bind(&setBBBeams::send_beams, this, _1));
 
-    out_pos_buf->allocate_ndarray_frame_desc<float, 2>("bb_beam_positions", {static_cast<ptrdiff_t>(num_beams), 2}, {"B", "X/Y"});
-    out_id_buf->allocate_ndarray_frame_desc<uint64_t, 1>("bb_beam_ids", {static_cast<ptrdiff_t>(num_beams)}, {"B"});
+    out_pos_buf->require_frame_desc(kotekan::NDArray<float, 2>::describe(
+        "bb_beam_positions", {static_cast<ptrdiff_t>(num_beams), 2}, {"B", "X/Y"}, {1, 1}));
+    out_id_buf->require_frame_desc(kotekan::NDArray<uint64_t, 1>::describe(
+        "bb_beam_ids", {static_cast<ptrdiff_t>(num_beams)}, {"B"}, {1}));
 }
 
 setBBBeams::~setBBBeams() {
@@ -185,7 +189,7 @@ void setBBBeams::send_beams(connectionInstance& conn) const {
     reply.emplace("tracking_beams", tracking_beams);
     conn.send_json_reply(reply);
 }
-    
+
 std::vector<FixedBBBeam> setBBBeams::build_grid_beams() const {
 
     std::vector<FixedBBBeam> grid_beams(num_x * num_y);
@@ -194,15 +198,18 @@ std::vector<FixedBBBeam> setBBBeams::build_grid_beams() const {
         for (uint32_t bx = 0; bx < num_x; bx++) {
             const uint32_t b = bx + num_x * by;
 
-            double x = (x_min * (num_x - bx - 1) + x_max * bx) / (num_x - 1);
-            double y = (y_min * (num_y - by - 1) + y_max * by) / (num_y - 1);
-            grid_beams.at(b) = {.id=b, .x_dir_grid=x, .y_dir_grid=y};
+            // A single beam along an axis sits at the midpoint
+            double x = num_x == 1 ? (x_min + x_max) / 2
+                                  : (x_min * (num_x - bx - 1) + x_max * bx) / (num_x - 1);
+            double y = num_y == 1 ? (y_min + y_max) / 2
+                                  : (y_min * (num_y - by - 1) + y_max * by) / (num_y - 1);
+            grid_beams.at(b) = {.id = b, .x_dir_grid = x, .y_dir_grid = y};
         }
     }
 
     return grid_beams;
 }
-    
+
 std::vector<FixedBBBeam> setBBBeams::build_grid_deg_beams() const {
 
     std::vector<FixedBBBeam> grid_beams(num_x * num_y);
@@ -211,59 +218,65 @@ std::vector<FixedBBBeam> setBBBeams::build_grid_deg_beams() const {
         for (uint32_t bx = 0; bx < num_x; bx++) {
             const uint32_t b = bx + num_x * by;
 
-            double x = (x_min * (num_x - bx - 1) + x_max * bx) / (num_x - 1);
-            double y = (y_min * (num_y - by - 1) + y_max * by) / (num_y - 1);
-            grid_beams.at(b) = {.id=b, .x_dir_grid=sin(x * deg2rad), .y_dir_grid=sin(y * deg2rad)};
+            // A single beam along an axis sits at the midpoint
+            double x = num_x == 1 ? (x_min + x_max) / 2
+                                  : (x_min * (num_x - bx - 1) + x_max * bx) / (num_x - 1);
+            double y = num_y == 1 ? (y_min + y_max) / 2
+                                  : (y_min * (num_y - by - 1) + y_max * by) / (num_y - 1);
+            grid_beams.at(b) = {
+                .id = b, .x_dir_grid = sin(x * deg2rad), .y_dir_grid = sin(y * deg2rad)};
         }
     }
 
     return grid_beams;
 }
-    
+
 
 void setBBBeams::main_thread() {
 
-    frameID in_frame_id(in_buf);
+    frameID metadata_source_frame_id(metadata_source);
     frameID pos_frame_id(out_pos_buf);
     frameID id_frame_id(out_id_buf);
 
     if (stop_thread)
         return;
-    
+
     // Grab the input buffer we're using for a clock.
-    uint8_t *in_ptr = (uint8_t *)in_buf->wait_for_full_frame(unique_name, in_frame_id);
-    if (in_ptr == nullptr)
+    uint8_t* metadata_source_frame =
+        (uint8_t*)metadata_source->wait_for_full_frame(unique_name, metadata_source_frame_id);
+    if (metadata_source_frame == nullptr)
         return;
 
     // Grab the metadata and ensure it has the fields we need.
-    const std::shared_ptr<const chordMetadata> in_meta = get_chord_metadata(in_buf, in_frame_id);
-    if (!in_meta->has_fpga_seq_num())
-        FATAL_ERROR("in_buf {:s} has no fpga_seq_num, needed for setting clock.",
-                in_buf->buffer_name);
+    const std::shared_ptr<const chordMetadata> metadata_source_meta =
+        get_chord_metadata(metadata_source, metadata_source_frame_id);
+    if (!metadata_source_meta->has_fpga_seq_num())
+        FATAL_ERROR("metadata_source {:s} has no fpga_seq_num, needed for setting clock.",
+                    metadata_source->buffer_name);
 
     // Grab the seq num
-    uint64_t input_seq = in_meta->get_fpga_seq_num();
-    
-    // All we need, release the frame.
-    in_buf->mark_frame_empty(unique_name, in_frame_id++);
-    // And unregister from the buffer entirely (otherwise would have to mark all frame as they come in)
-    in_buf->unregister_consumer(unique_name);
+    uint64_t input_seq = metadata_source_meta->get_fpga_seq_num();
 
-    // Set the seq_num of the first output to be on our output cadence and <= the seq_num
-    // of the first frame we saw. This means these beams will already be considered valid.
-    uint64_t num_frames = 0; // Total number of frame output
-    uint64_t seq0 = time_downsampling_fpga * (input_seq / time_downsampling_fpga); // seq number of 1st output frame
+    // All we need, release the frame.
+    metadata_source->mark_frame_empty(unique_name, metadata_source_frame_id++);
+    // And unregister from the buffer entirely (otherwise would have to mark all frame as they come
+    // in)
+    metadata_source->unregister_consumer(unique_name);
+
+    // Start this stream at the voltage stream's first sequence number, without rounding to our
+    // own cadence: the GPU-side consumers locate phase-matrix element `k` at
+    // `k * time_downsampling_fpga` FPGA samples after the logical beginning of the voltage ring
+    // buffer, so both streams have to share an origin. (Same reasoning as PR #1644 for the bad
+    // feed mask.)
+    uint64_t num_frames = 0;         // Total number of frame output
+    const uint64_t seq0 = input_seq; // seq number of 1st output frame
 
     while (!stop_thread) {
-        // TODO: remove this (and update the cuda wrappers) to make the beam positions time dependent.  Have to keep this stage spinning on the input buffer to not stall the pipeline.
-        if (num_frames > 0)
-            break;
-
         // Grab output buffer frames
-        float *beam_pos = (float *)out_pos_buf->wait_for_empty_frame(unique_name, pos_frame_id);
+        float* beam_pos = (float*)out_pos_buf->wait_for_empty_frame(unique_name, pos_frame_id);
         if (beam_pos == nullptr)
             break;
-        uint64_t *beam_id = (uint64_t *)out_id_buf->wait_for_empty_frame(unique_name, id_frame_id);
+        uint64_t* beam_id = (uint64_t*)out_id_buf->wait_for_empty_frame(unique_name, id_frame_id);
         if (beam_id == nullptr)
             break;
 
@@ -276,13 +289,13 @@ void setBBBeams::main_thread() {
         const EOP eop = tel.get_EOP_at_time_ns(t_inst_ns);
 
         DEBUG("Writing {:d} beams to {:s} and {:s}", fixed_beams.size() + tracking_beams.size(),
-                out_pos_buf->buffer_name, out_id_buf->buffer_name);
-       
+              out_pos_buf->buffer_name, out_id_buf->buffer_name);
+
         // Write the fixed beams
         for (size_t b = 0; b < fixed_beams.size(); b++) {
             beam_id[b] = fixed_beams.at(b).id;
-            beam_pos[2*b+0] = fixed_beams.at(b).x_dir_grid;
-            beam_pos[2*b+1] = fixed_beams.at(b).y_dir_grid;
+            beam_pos[2 * b + 0] = fixed_beams.at(b).x_dir_grid;
+            beam_pos[2 * b + 1] = fixed_beams.at(b).y_dir_grid;
         }
 
         // Write the tracking beams
@@ -292,36 +305,36 @@ void setBBBeams::main_thread() {
 
             // Get the pointing vector in the grid frame for this beam from its RA and DEC.
             vec3d_t n_grid = tel.vec_cirs_ra_dec_to_grid(tracking_beams.at(b).ra_cirs_deg,
-                                                         tracking_beams.at(b).dec_cirs_deg,
-                                                         eop);
+                                                         tracking_beams.at(b).dec_cirs_deg, eop);
             // Set the beam position
-            beam_pos[2*(b+b_off)+0] = n_grid[0];
-            beam_pos[2*(b+b_off)+1] = n_grid[1];
+            beam_pos[2 * (b + b_off) + 0] = n_grid[0];
+            beam_pos[2 * (b + b_off) + 1] = n_grid[1];
         }
 
         // Set pos metadata
         out_pos_buf->allocate_new_metadata_object(pos_frame_id);
-        const std::shared_ptr<chordMetadata> pos_meta = get_chord_metadata(out_pos_buf, pos_frame_id);
+        const std::shared_ptr<chordMetadata> pos_meta =
+            get_chord_metadata(out_pos_buf, pos_frame_id);
 
         // Set ndarray sizes and timing
-        pos_meta->set_from_frame_desc(out_pos_buf->get_ndarray_frame_desc());
+        pos_meta->set_from_frame_desc(out_pos_buf->get_frame_desc<kotekan::GenericNDArray>());
         pos_meta->set_fpga_seq_num(seq_num);
         pos_meta->set_time_downsampling_fpga(time_downsampling_fpga);
 
         // Check consistency just in case
-        pos_meta->check_frame_desc(out_pos_buf->get_ndarray_frame_desc());
+        pos_meta->check_frame_desc(out_pos_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // Set id metadata
         out_id_buf->allocate_new_metadata_object(id_frame_id);
         const std::shared_ptr<chordMetadata> id_meta = get_chord_metadata(out_id_buf, id_frame_id);
 
         // Check consistency just in case
-        id_meta->set_from_frame_desc(out_id_buf->get_ndarray_frame_desc());
+        id_meta->set_from_frame_desc(out_id_buf->get_frame_desc<kotekan::GenericNDArray>());
         id_meta->set_fpga_seq_num(seq_num);
         id_meta->set_time_downsampling_fpga(time_downsampling_fpga);
 
         // Check consistency just in case
-        id_meta->check_frame_desc(out_id_buf->get_ndarray_frame_desc());
+        id_meta->check_frame_desc(out_id_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // Increment frames so next loop gets a new seq_num
         num_frames++;
@@ -329,7 +342,5 @@ void setBBBeams::main_thread() {
         // Release filled frames.
         out_pos_buf->mark_frame_full(unique_name, pos_frame_id++);
         out_id_buf->mark_frame_full(unique_name, id_frame_id++);
-    } 
+    }
 }
-    
-

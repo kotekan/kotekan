@@ -1,21 +1,22 @@
 #ifndef PRINT_SPARSE_H
 #define PRINT_SPARSE_H
 
-#include <stdlib.h>             // for size_t
-#include <cstdint>              // for uint32_t
-#include <functional>           // for bind
-#include <stdexcept>            // for invalid_argument
-#include <string>               // for allocator, basic_string, operator+, string, char_traits
-#include <vector>               // for vector
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for INFO
+#include "oneHotMetadata.hpp"  // for get_onehot_frame_counter, metadata_is_onehot
+#include "visUtil.hpp"         // for frameID, format_nice_string, format_python_string, modulo
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "kotekanLogging.hpp"   // for INFO
-#include "oneHotMetadata.hpp"   // for get_onehot_frame_counter, metadata_is_onehot
-#include "visUtil.hpp"          // for frameID, format_nice_string, format_python_string, modulo
-#include "fmt.hpp"              // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <cstdint>    // for uint32_t
+#include <functional> // for bind
+#include <stdexcept>  // for invalid_argument
+#include <stdlib.h>   // for size_t
+#include <string>     // for allocator, basic_string, operator+, string, char_traits
+#include <vector>     // for vector
 
 /**
  * @class printSparse

@@ -11,13 +11,14 @@
 #include "fmt.hpp"      // for compile_string_to_view
 #include "gsl-lite.hpp" // for span
 
-#include <cmath>       // for abs, sqrt
-#include <complex>     // for complex
-#include <cstdint>     // for int32_t
-#include <cstring>     // for memset, size_t
-#include <functional>  // for bind, function
+#include <cmath>      // for abs, sqrt
+#include <complex>    // for complex
+#include <cstdint>    // for int32_t
+#include <cstring>    // for memset, size_t
+#include <functional> // for bind, function
+#ifdef __AVX2__
 #include <immintrin.h> // for __m256, _mm256_div_ps, _mm256_loadu_ps, _mm256_set1_ps
-#include <mm_malloc.h> // for _mm_free, _mm_malloc
+#endif
 
 
 using kotekan::bufferContainer;
@@ -54,12 +55,13 @@ void VisTruncate::main_thread() {
 
     unsigned int frame_id = 0;
     unsigned int output_frame_id = 0;
-    const float err_init = 0.5 * err_sq_lim;
-
     float err_r, err_i;
+#ifdef __AVX2__
+    const float err_init = 0.5 * err_sq_lim;
     const __m256 err_init_vec = _mm256_set1_ps(err_init);
-    cfloat tr_vis, tr_evec;
     __m256 err_vec, wgt_vec;
+#endif
+    cfloat tr_vis, tr_evec;
     int32_t i_vec;
     float* err_all;
 
@@ -70,8 +72,7 @@ void VisTruncate::main_thread() {
     auto frame = VisFrameView(in_buf, frame_id);
 
     // reserve enough memory for all err_r to be computed per frame
-    // 32byte-aligned memory allocation (_m256_store_ps() asks for it)
-    err_all = (float*)_mm_malloc(sizeof(float) * frame.num_prod, 32);
+    err_all = (float*)std::malloc(sizeof(float) * frame.num_prod);
     std::memset(err_all, 0, sizeof(float) * (frame.num_prod));
 
     while (!stop_thread) {
@@ -89,15 +90,18 @@ void VisTruncate::main_thread() {
         // Copy frame into output buffer
         auto output_frame = VisFrameView::copy_frame(in_buf, frame_id, out_buf, output_frame_id);
 
-        // truncate visibilities and weights (8 at a time)
-        for (i_vec = 0; i_vec < int32_t(frame.num_prod) - 7; i_vec += 8) {
+        // truncate visibilities and weights (8 at a time on x86)
+        i_vec = 0;
+#ifdef __AVX2__
+        for (; i_vec < int32_t(frame.num_prod) - 7; i_vec += 8) {
             wgt_vec = _mm256_loadu_ps(&output_frame.weight[i_vec]);
             err_vec = _mm256_div_ps(err_init_vec, wgt_vec);
             err_vec = _mm256_sqrt_ps(err_vec);
-            _mm256_store_ps(err_all + i_vec, err_vec);
+            _mm256_storeu_ps(err_all + i_vec, err_vec);
         }
-        // use std::sqrt for the last few (less than 8)
-        for (i_vec = (frame.num_prod < 8) ? 0 : i_vec - 8; i_vec < int32_t(frame.num_prod); i_vec++)
+#endif
+        // scalar path for remaining elements (or all elements on non-x86)
+        for (; i_vec < int32_t(frame.num_prod); i_vec++)
             err_all[i_vec] = std::sqrt(0.5 / output_frame.weight[i_vec] * err_sq_lim);
 
 #pragma omp parallel for private(err_r, err_i, tr_vis)
@@ -155,5 +159,5 @@ void VisTruncate::main_thread() {
         in_buf->mark_frame_empty(unique_name, frame_id);
         frame_id = (frame_id + 1) % in_buf->num_frames;
     }
-    _mm_free(err_all);
+    std::free(err_all);
 }

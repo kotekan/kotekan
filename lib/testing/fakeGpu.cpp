@@ -179,6 +179,7 @@ void FakeGpu::main_thread() {
 FakeTelescope::FakeTelescope(const kotekan::Config& config, const std::string& path) :
     Telescope(path, config.get<std::string>(path, "log_level"),
               config.get_default<bool>(path, "require_eop", false),
+              config.get_default<bool>(path, "fatal_eop_out_of_range", false),
               config.get_default<std::string>(path, "eop_updatable_config", ""),
               GeoFrame(config.get<std::string>(path, "log_level"), "grid", 0.0, 0.0, {0, 0, 0},
                        {1, 0, 0}, {0, 1, 0}, {0, 0, 1})) {
@@ -227,7 +228,7 @@ uint64_t FakeTelescope::to_seq(timespec time) const {
     return ns / seq_length_nsec();
 }
 
-size_t FakeTelescope::seq_length_nsec() const {
+uint64_t FakeTelescope::seq_length_nsec() const {
     return 2560;
 }
 
@@ -235,15 +236,22 @@ bool FakeTelescope::gps_time_enabled() const {
     return true;
 }
 
-station_id_t FakeTelescope::element_index_to_station_id(uint64_t el_idx, [[maybe_unused]] ElementOrder ord) const {
+ElementOrder FakeTelescope::fiducial_element_order() const {
+    return ElementOrder::CHIMEBeamformer;
+}
+
+station_id_t FakeTelescope::element_index_to_station_id(uint64_t el_idx,
+                                                        [[maybe_unused]] ElementOrder ord) const {
     return el_idx;
 }
 
-uint64_t FakeTelescope::station_id_to_element_index(station_id_t st_id, [[maybe_unused]] ElementOrder ord) const {
+uint64_t FakeTelescope::station_id_to_element_index(station_id_t st_id,
+                                                    [[maybe_unused]] ElementOrder ord) const {
     return st_id;
 }
 
-grid_idx_2d_t FakeTelescope::station_id_to_main_array_grid_indices([[maybe_unused]] station_id_t st_id) const {
+grid_idx_2d_t
+FakeTelescope::station_id_to_main_array_grid_indices([[maybe_unused]] station_id_t st_id) const {
     return grid_idx_2d_t{-1, -1};
 }
 

@@ -1,0 +1,4 @@
+# Third-party JS/CSS and image assets fetched on demand by fetch_extfiles.sh
+# for offline mode (index.html ?offline=1). Not committed.
+/extlibs/
+/imgs/

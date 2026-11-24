@@ -1,30 +1,31 @@
 // Test 8-bit FRB beam quantizer for CHIME, using the float16 FRB beamformer and CHIME's
 // sending-to-Bonsai network format
 
-#include <algorithm>                // for fill, fill_n
-#include <cassert>                  // for assert
-#include <cfloat>                   // for FLT_MAX
-#include <cmath>                    // for fabs, isfinite, isnan, fmax, fmin
-#include <cstdint>                  // for uint8_t
-#include <cstdlib>                  // for abort
-#include <string>                   // for allocator, string
-#include <vector>                   // for vector
-#include <functional>               // for function
+#include "Config.hpp"              // for Config
+#include "DataType.hpp"            // for float16_t
+#include "Stage.hpp"               // for Stage
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "cudaQuantizeKernel8.hpp" // for cpu_quantize8, gpu_quantize8
+#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
+#include "cuda_fp16.h"             // for __half, __half::operator float
+#include "cuda_runtime.h"          // for cudaMalloc
+#include "cuda_runtime_api.h"      // for cudaMemcpy
+#include "driver_types.h"          // for cudaMemcpyKind
+#include "errors.h"                // for TEST_PASSED
+#include "kotekanLogging.hpp"      // for FATAL_ERROR, INFO
 
-#include "Config.hpp"               // for Config
-#include "DataType.hpp"             // for float16_t
-#include "Stage.hpp"                // for Stage
-#include "StageFactory.hpp"         // for REGISTER_KOTEKAN_STAGE
-#include "bufferContainer.hpp"      // for bufferContainer
-#include "cudaQuantizeKernel8.hpp"  // for cpu_quantize8, gpu_quantize8
-#include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
-#include "cuda_fp16.h"              // for __half, __half::operator float
-#include "cuda_runtime.h"           // for cudaMalloc
-#include "cuda_runtime_api.h"       // for cudaMemcpy
-#include "driver_types.h"           // for cudaMemcpyKind
-#include "errors.h"                 // for TEST_PASSED
-#include "fmt.hpp"                  // for compile_string_to_view
-#include "kotekanLogging.hpp"       // for FATAL_ERROR, INFO
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>  // for fill, fill_n
+#include <cassert>    // for assert
+#include <cfloat>     // for FLT_MAX
+#include <cmath>      // for fabs, isfinite, isnan, fmax, fmin
+#include <cstdint>    // for uint8_t
+#include <cstdlib>    // for abort
+#include <functional> // for function
+#include <string>     // for allocator, string
+#include <vector>     // for vector
 
 class testQuantizeKernel8 : public kotekan::Stage {
 public:
@@ -53,11 +54,11 @@ public:
         const int out_nfreqs_chunk = 16;
         // Chunks are combined into packets.
         const int out_nfreqs_packet = 4;
-        const int out_nbeams_packet = 8;
+        const int out_nbeams_packet = 4;
         // There are several packets.
         const int out_ntimes_outer = 16;
         const int out_nfreqs_outer = 4;
-        const int out_nbeams_outer = 128;
+        const int out_nbeams_outer = 256;
 
         static_assert(out_ntimes_chunk * out_ntimes_outer == in_ntimes);
         static_assert(out_nfreqs_chunk * out_nfreqs_packet * out_nfreqs_outer == in_nfreqs);
@@ -137,7 +138,7 @@ public:
             return beams.at(
                 time_chunk
                 + out_ntimes_chunk
-                      * (freq_chunk
+                      * ((out_nfreqs_chunk - 1 - freq_chunk)
                          + out_nfreqs_chunk
                                * (freq_packet
                                   + out_nfreqs_packet
@@ -194,7 +195,33 @@ public:
             std::abort();
         };
 
+        // Invent a packet loss mask (true = valid). It does not depend on the beam. A chunk covers
+        // 16 frequencies and 16 times.
+        const auto valid = [&](const int freq, const int time) -> bool {
+            switch (freq / out_nfreqs_chunk % 5) {
+                case 0:
+                    return true;
+                case 1:
+                    return time % 7 != 0;
+                case 2:
+                    return (freq + time) % 5 != 0;
+                case 3:
+                    return time / out_ntimes_chunk != 3; // some chunks are fully masked
+                case 4:
+                    return time % 23 != 0; // masks the not-a-numbers above
+            }
+            std::abort();
+        };
+
         ////////////////////////////////////////////////////////////////////////////////
+
+        // Set packet loss mask; use a larger stride to test it. The 3 extra entries per time are
+        // padding that the quantizer does not read.
+        const int pl_mask_stride = in_nfreqs + 3;
+        std::vector<std::uint8_t> pl_mask(in_ntimes * pl_mask_stride, 0xff);
+        for (int time = 0; time < in_ntimes; ++time)
+            for (int freq = 0; freq < in_nfreqs; ++freq)
+                pl_mask.at(time * pl_mask_stride + freq) = valid(freq, time);
 
         // Set input
         for (int beam = 0; beam < in_nbeams; ++beam) {
@@ -231,6 +258,7 @@ public:
                                 // comparing when this happens. For example, there might be an
                                 // overflow on the GPU, but not in the CPU implementation. This
                                 // should not be flagged as error.
+                                int count = 0;
                                 float minval = +FLT_MAX, maxval = -FLT_MAX;
                                 bool may_overflow = false;
                                 for (int freq_chunk = 0; freq_chunk < out_nfreqs_chunk;
@@ -238,10 +266,13 @@ public:
                                     for (int time_chunk = 0; time_chunk < out_ntimes_chunk;
                                          ++time_chunk) {
                                         const int freq =
-                                            freq_chunk
+                                            (out_nfreqs_chunk - 1 - freq_chunk)
                                             + out_nfreqs_chunk
                                                   * (freq_packet + out_nfreqs_packet * freq_outer);
                                         const int time = time_chunk + out_ntimes_chunk * time_outer;
+                                        if (!valid(freq, time))
+                                            continue;
+                                        ++count;
                                         const float x = f(beam, freq, time);
                                         minval = isnan(minval) || isnan(x) ? 0.0f / 0.0f
                                                                            : fmin(minval, x);
@@ -260,8 +291,10 @@ public:
                                 const int uint8_range = 254; // avoid 0 and 255
                                 float expected_scale = (maxval - minval) / uint8_range;
                                 float expected_offset = minval - 0.5f * expected_scale;
-                                if (!isfinite(expected_offset) || !isfinite(expected_scale)) {
-                                    may_overflow = true;
+                                if (count == 0 || !isfinite(expected_offset)
+                                    || !isfinite(expected_scale)) {
+                                    // Without valid values the offset and scale must be zero
+                                    may_overflow = count > 0;
                                     expected_offset = 0.0f;
                                     expected_scale = 0.0f;
                                 }
@@ -276,10 +309,8 @@ public:
                                     FATAL_ERROR("Found non-finite offset {}", offset);
 
                                 // Check relative error of offset
-                                bool offset_is_good =
-                                    fabs(offset - expected_offset)
-                                    <= epsilon
-                                           * fmax(1.0f, fmax(fabs(offset), fabs(expected_offset)));
+                                bool offset_is_good = fabs(offset - expected_offset)
+                                                      <= epsilon * fabs(expected_offset);
                                 // If we think an overflow is allowed, and if the other
                                 // implementation might have detected one (offset=0), then
                                 // all is fine as well
@@ -290,8 +321,9 @@ public:
                                                 "{}, scale_may_collapse={}",
                                                 beam, expected_offset, offset, scale_may_collapse);
 
-                                // Check absolute error of scale
-                                bool scale_is_good = fabs(scale - expected_scale) <= epsilon;
+                                // Check relative error of scale
+                                bool scale_is_good =
+                                    fabs(scale - expected_scale) <= epsilon * fabs(expected_scale);
                                 // If the scale is close to zero then don't worry about the
                                 // scale at all
                                 if (scale_may_collapse)
@@ -323,6 +355,15 @@ public:
                                         if (i == 255)
                                             FATAL_ERROR("Unexpected value {}", i);
                                         const float x = i == 0 ? 0.0f / 0.0f : offset + scale * i;
+
+                                        // Masked values are encoded as 0
+                                        if (!valid(freq, time)) {
+                                            if (i != 0)
+                                                FATAL_ERROR("Found masked value encoded as {}: "
+                                                            "beam {}, freq {}, time {}",
+                                                            int(i), beam, freq, time);
+                                            continue;
+                                        }
 
                                         bool isgood = false;
 
@@ -367,7 +408,8 @@ public:
 
         // Quantize on the CPU
         INFO("Testing on CPU...");
-        cpu_quantize8(input.data(), offsetscale.data(), beams.data());
+        cpu_quantize8(input.data(), pl_mask.data(), pl_mask_stride, offsetscale.data(),
+                      beams.data());
 
         // Check CPU result
         check_result();
@@ -377,6 +419,8 @@ public:
         // Allocate memory on the GPU
         float16_t* gpu_input;
         CHECK_CUDA_ERROR(cudaMalloc(&gpu_input, input.size() * sizeof *input.data()));
+        std::uint8_t* gpu_pl_mask;
+        CHECK_CUDA_ERROR(cudaMalloc(&gpu_pl_mask, pl_mask.size() * sizeof *pl_mask.data()));
         float16_t* gpu_offsetscale;
         CHECK_CUDA_ERROR(
             cudaMalloc(&gpu_offsetscale, offsetscale.size() * sizeof *offsetscale.data()));
@@ -390,6 +434,9 @@ public:
         // Copy input and poisoned outputs to GPU
         CHECK_CUDA_ERROR(cudaMemcpy(gpu_input, input.data(), input.size() * sizeof *input.data(),
                                     cudaMemcpyHostToDevice));
+        CHECK_CUDA_ERROR(cudaMemcpy(gpu_pl_mask, pl_mask.data(),
+                                    pl_mask.size() * sizeof *pl_mask.data(),
+                                    cudaMemcpyHostToDevice));
         CHECK_CUDA_ERROR(cudaMemcpy(gpu_offsetscale, offsetscale.data(),
                                     offsetscale.size() * sizeof *offsetscale.data(),
                                     cudaMemcpyHostToDevice));
@@ -398,7 +445,7 @@ public:
 
         // Quantize on the GPU
         INFO("Testing on GPU...");
-        gpu_quantize8(gpu_input, gpu_offsetscale, gpu_beams, nullptr);
+        gpu_quantize8(gpu_input, gpu_pl_mask, pl_mask_stride, gpu_offsetscale, gpu_beams, nullptr);
 
         // Copy output from GPU
         CHECK_CUDA_ERROR(cudaMemcpy(offsetscale.data(), gpu_offsetscale,
@@ -409,6 +456,67 @@ public:
 
         // Check GPU result
         check_result();
+
+        ////////////////////////////////////////////////////////////////////////////////
+
+        // Check that each value lands at its own time: quantize a ramp in time that is the same
+        // for all frequencies and beams. The scale is then small, and a misplaced value is off by
+        // many quantization steps.
+        for (int beam = 0; beam < in_nbeams; ++beam)
+            for (int freq = 0; freq < in_nfreqs; ++freq)
+                for (int time = 0; time < in_ntimes; ++time)
+                    inputat(beam, freq, time) = float16_t(time % out_ntimes_chunk);
+
+        const auto check_ramp = [&]() {
+            for (int beam_outer = 0; beam_outer < out_nbeams_outer; ++beam_outer)
+                for (int freq_outer = 0; freq_outer < out_nfreqs_outer; ++freq_outer)
+                    for (int time_outer = 0; time_outer < out_ntimes_outer; ++time_outer)
+                        for (int beam_packet = 0; beam_packet < out_nbeams_packet; ++beam_packet)
+                            for (int freq_packet = 0; freq_packet < out_nfreqs_packet;
+                                 ++freq_packet) {
+                                const float offset =
+                                    offsetscaleat(beam_outer, freq_outer, time_outer, beam_packet,
+                                                  freq_packet, 0);
+                                const float scale =
+                                    offsetscaleat(beam_outer, freq_outer, time_outer, beam_packet,
+                                                  freq_packet, 1);
+                                for (int freq_chunk = 0; freq_chunk < out_nfreqs_chunk;
+                                     ++freq_chunk)
+                                    for (int time_chunk = 0; time_chunk < out_ntimes_chunk;
+                                         ++time_chunk) {
+                                        const int i =
+                                            beamsat(beam_outer, freq_outer, time_outer, beam_packet,
+                                                    freq_packet, freq_chunk, time_chunk);
+                                        const float x = offset + scale * i;
+                                        if (!(std::fabs(x - time_chunk) <= scale))
+                                            FATAL_ERROR("Ramp: time {} quantized as {} (value {}), "
+                                                        "offset {}, scale {}",
+                                                        time_chunk, i, x, offset, scale);
+                                    }
+                            }
+        };
+
+        // No samples are masked
+        std::fill(pl_mask.begin(), pl_mask.end(), 1);
+
+        INFO("Testing ramp on CPU...");
+        cpu_quantize8(input.data(), pl_mask.data(), pl_mask_stride, offsetscale.data(),
+                      beams.data());
+        check_ramp();
+
+        INFO("Testing ramp on GPU...");
+        CHECK_CUDA_ERROR(cudaMemcpy(gpu_input, input.data(), input.size() * sizeof *input.data(),
+                                    cudaMemcpyHostToDevice));
+        CHECK_CUDA_ERROR(cudaMemcpy(gpu_pl_mask, pl_mask.data(),
+                                    pl_mask.size() * sizeof *pl_mask.data(),
+                                    cudaMemcpyHostToDevice));
+        gpu_quantize8(gpu_input, gpu_pl_mask, pl_mask_stride, gpu_offsetscale, gpu_beams, nullptr);
+        CHECK_CUDA_ERROR(cudaMemcpy(offsetscale.data(), gpu_offsetscale,
+                                    offsetscale.size() * sizeof *offsetscale.data(),
+                                    cudaMemcpyDeviceToHost));
+        CHECK_CUDA_ERROR(cudaMemcpy(beams.data(), gpu_beams, beams.size() * sizeof *beams.data(),
+                                    cudaMemcpyDeviceToHost));
+        check_ramp();
 
         // Done.
         TEST_PASSED();

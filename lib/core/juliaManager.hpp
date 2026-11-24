@@ -49,7 +49,7 @@ std::any juliaCallAny(const std::function<std::any()>& fun);
  * Wrapper to execute a function in the thread that runs the Julia
  * run-time (for functions returning `void`)
  */
-template<typename F, typename R = std::result_of_t<F()>>
+template<typename F, typename R = std::invoke_result_t<F>>
 std::enable_if_t<std::is_void_v<R>> juliaCall(const F& fun) {
     juliaCallAny([&]() {
         fun();
@@ -63,7 +63,7 @@ std::enable_if_t<std::is_void_v<R>> juliaCall(const F& fun) {
  * Wrapper to execute a function in the thread that runs the Julia
  * run-time (for functions not returning `void`)
  */
-template<typename F, typename R = std::result_of_t<F()>>
+template<typename F, typename R = std::invoke_result_t<F>>
 std::enable_if_t<!std::is_void_v<R>, R> juliaCall(const F& fun) {
     return std::any_cast<R>(juliaCallAny([&]() { return std::any(fun()); }));
 }

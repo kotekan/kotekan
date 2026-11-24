@@ -1,0 +1,11 @@
+# Repo-hygiene for the browser viewer's web assets. (Line endings are already
+# normalised to LF by the root .gitattributes.)
+
+# Vendored third-party lib (https://github.com/rfink/polyfit.js): keep it out of
+# GitHub language stats and flag it as not our code. img_plotting.js and the
+# app/ modules are first-party and intentionally left to count normally.
+lib/polyfit.js linguist-vendored
+
+# Example notebooks for reading recorded .dat files: documentation, not core
+# code -- excluded from language stats.
+*.ipynb linguist-documentation

@@ -3,6 +3,7 @@
 #include "Config.hpp"          // for Config
 #include "DataType.hpp"        // for DataType, GetType
 #include "N2Util.hpp"          // for frameID
+#include "NDArray.hpp"         // for NDArray, GenericNDArray, Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -47,10 +48,6 @@ gpuSimulateRFIS012::gpuSimulateRFIS012(Config& config, const std::string& unique
     out_rfis012_buf->register_producer(unique_name);
 
 
-    size_t voltage_size = _samples_per_data_set * _num_local_freq * _num_elements;
-    size_t plmask_size =
-        ((_samples_per_data_set / 2) * (_num_local_freq / 4) * (_num_elements / 8)) / 8;
-
     // Check input sizes and buffer compatibility
     if (_samples_per_data_set % _rfi_downsampling_factor != 0) {
         FATAL_ERROR("samples_per_data_set must be a multiple of rfi_downsampling_factor");
@@ -60,25 +57,21 @@ gpuSimulateRFIS012::gpuSimulateRFIS012(Config& config, const std::string& unique
     if (_num_elements % 8 != 0) {
         FATAL_ERROR("num_elements (num_polarizations x num_dishes) must be a multiple of 8");
     }
-    assert(_samples_per_data_set % _rfi_downsampling_factor == 0);
 
-    if (in_voltage_buf->frame_size != voltage_size) {
-        FATAL_ERROR("in_voltage_buf ({:s}) has frame size: {:d}, expected: {:d}",
-                    in_voltage_buf->buffer_name, in_voltage_buf->frame_size, voltage_size);
-    }
-    assert(in_voltage_buf->frame_size == voltage_size);
-
-    if (in_plmask_buf->frame_size != plmask_size) {
-        FATAL_ERROR("in_plmask_buf ({:s}) has frame size: {:d}, expected: {:d}",
-                    in_plmask_buf->buffer_name, in_plmask_buf->frame_size, plmask_size);
-    }
-    assert(in_plmask_buf->frame_size == plmask_size);
+    in_voltage_buf->require_frame_desc(
+        kotekan::NDArray<kotekan::int4x2_swapped_withoffset_t, 4>::describe(
+            "E", {_samples_per_data_set, _num_local_freq, _num_polarizations, _num_dishes},
+            {"T", "F", "P", "D"}, {1, 1, 1, 1}));
+    in_plmask_buf->require_frame_desc(kotekan::NDArray<kotekan::uint1x8_t, 5>::describe(
+        "pl_mask",
+        {_samples_per_data_set / 128, _num_local_freq / 4, _num_polarizations, _num_dishes / 8, 8},
+        {"T2hi64", "F4", "P", "D8", "T2lo64"}, {128, 4, 1, 8, 16}));
 
     // Make frame desc for produced buffer
     int64_t nt = _samples_per_data_set / _rfi_downsampling_factor;
-    out_rfis012_buf->allocate_ndarray_frame_desc<uint64_t, 5>(
+    out_rfis012_buf->require_frame_desc(kotekan::NDArray<uint64_t, 5>::describe(
         "S012", {nt, _num_local_freq, 3, _num_polarizations, _num_dishes},
-        {"Trfi", "F", "S", "P", "D"});
+        {"Trfi", "F", "S", "P", "D"}, {_rfi_downsampling_factor, 1, 1, 1, 1}));
 }
 
 gpuSimulateRFIS012::~gpuSimulateRFIS012() {}
@@ -213,10 +206,10 @@ void gpuSimulateRFIS012::main_thread() {
         // Start with a copy
         meta_out->deepCopy(meta_in);
 
-        meta_out->set_from_frame_desc(out_rfis012_buf->get_ndarray_frame_desc());
+        meta_out->set_from_frame_desc(out_rfis012_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // test that things are consistent
-        meta_out->check_frame_desc(out_rfis012_buf->get_ndarray_frame_desc());
+        meta_out->check_frame_desc(out_rfis012_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // Set non-NDArray things.
         meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());

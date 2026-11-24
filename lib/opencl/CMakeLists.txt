@@ -30,11 +30,10 @@ add_library(
 
 target_link_libraries(
     kotekan_opencl
-    INTERFACE ${OPENCL_LIBRARIES}
+    INTERFACE OpenCL::OpenCL
     PRIVATE libexternal kotekan_libs)
 
 target_include_directories(kotekan_opencl PUBLIC .)
-target_include_directories(kotekan_opencl SYSTEM INTERFACE ${OPENCL_INCLUDE_DIRS})
 
 add_custom_target(
     kernel_copy

@@ -187,7 +187,7 @@ class SharedMemoryReader:
 
     def __del__(self):
         if hasattr(self, "semaphore"):
-            self.semaphore.release()
+            self.semaphore.close()
 
         if hasattr(self, "shared_mem_file"):
             os.close(self.shared_mem_file.fd)
@@ -415,7 +415,7 @@ class SharedMemoryReader:
         )
 
         # copy all data
-        for (idx_shm, idx_data) in time_samples_to_copy:
+        for idx_shm, idx_data in time_samples_to_copy:
             logger.debug("Copying from time index {} to {}.".format(idx_data, idx_shm))
             self._data[idx_data, :] = tmp[idx_shm, :]
 

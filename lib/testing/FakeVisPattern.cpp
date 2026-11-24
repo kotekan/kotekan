@@ -133,6 +133,7 @@ void FillIJMissingVisPattern::fill(N2FrameView& frame) {
     frame._metadata->n_valid_fpga_ticks = frame._metadata->frame_length_fpga_ticks - 2;
     frame._metadata->n_rfi_fpga_ticks = 1;
     frame._metadata->n_rfi_only_fpga_ticks = 1;
+    frame._metadata->n_usable_variance_pairs = 3;
 }
 
 PhaseIJVisPattern::PhaseIJVisPattern(kotekan::Config& config, const std::string& path) :
@@ -181,8 +182,10 @@ void ChimeVisPattern::fill(VisFrameView& frame) {
 }
 
 void ChimeVisPattern::fill(N2FrameView& frame) {
-    std::shared_ptr<metadataPool> pool = frame._metadata->parent_pool.lock();
-    ERROR("Invalid fill pattern (ChimeVisPattern) for N2 frame {:d}.", pool->type_name);
+    // This pattern has no N2 implementation. Stop rather than send an unfilled frame.
+    const std::shared_ptr<metadataPool> pool = frame._metadata->parent_pool.lock();
+    FATAL_ERROR("ChimeVisPattern cannot fill an N2 frame (metadata type \"{:s}\").",
+                pool->type_name);
 }
 
 
@@ -323,8 +326,10 @@ void TestPatternFreqVisPattern::fill(VisFrameView& frame) {
 }
 
 void TestPatternFreqVisPattern::fill(N2FrameView& frame) {
-    std::shared_ptr<metadataPool> pool = frame._metadata->parent_pool.lock();
-    ERROR("Invalid fill pattern (ChimeVisPattern) for N2 frame {:d}.", pool->type_name);
+    // This pattern has no N2 implementation. Stop rather than send an unfilled frame.
+    const std::shared_ptr<metadataPool> pool = frame._metadata->parent_pool.lock();
+    FATAL_ERROR("TestPatternFreqVisPattern cannot fill an N2 frame (metadata type \"{:s}\").",
+                pool->type_name);
 }
 
 
@@ -382,8 +387,10 @@ void TestPatternInputVisPattern::fill(VisFrameView& frame) {
 }
 
 void TestPatternInputVisPattern::fill(N2FrameView& frame) {
-    std::shared_ptr<metadataPool> pool = frame._metadata->parent_pool.lock();
-    ERROR("Invalid fill pattern (ChimeVisPattern) for N2 frame {:d}.", pool->type_name);
+    // This pattern has no N2 implementation. Stop rather than send an unfilled frame.
+    const std::shared_ptr<metadataPool> pool = frame._metadata->parent_pool.lock();
+    FATAL_ERROR("TestPatternInputVisPattern cannot fill an N2 frame (metadata type \"{:s}\").",
+                pool->type_name);
 }
 
 
@@ -525,8 +532,10 @@ void PointSourceVisPattern::fill(VisFrameView& frame) {
             uint32_t pol_i = el_i / num_dishes;
             uint32_t pol_j = el_j / num_dishes;
 
-            vec3d_t pos_i = tel.element_index_to_feed_position_m(el_i, ElementOrder::CHORDBeamformer);
-            vec3d_t pos_j = tel.element_index_to_feed_position_m(el_j, ElementOrder::CHORDBeamformer);
+            vec3d_t pos_i =
+                tel.element_index_to_feed_position_m(el_i, ElementOrder::CHORDBeamformer);
+            vec3d_t pos_j =
+                tel.element_index_to_feed_position_m(el_j, ElementOrder::CHORDBeamformer);
 
             double phase = 2 * M_PI
                            * ((pos_i[0] - pos_j[0]) * n[0] + (pos_i[1] - pos_j[1]) * n[1]
@@ -610,8 +619,10 @@ void PointSourceVisPattern::fill(N2FrameView& frame) {
             uint32_t pol_i = el_i / num_dishes;
             uint32_t pol_j = el_j / num_dishes;
 
-            vec3d_t pos_i = tel.element_index_to_feed_position_m(el_i, ElementOrder::CHORDBeamformer);
-            vec3d_t pos_j = tel.element_index_to_feed_position_m(el_j, ElementOrder::CHORDBeamformer);
+            vec3d_t pos_i =
+                tel.element_index_to_feed_position_m(el_i, ElementOrder::CHORDBeamformer);
+            vec3d_t pos_j =
+                tel.element_index_to_feed_position_m(el_j, ElementOrder::CHORDBeamformer);
 
             double phase = 2 * M_PI
                            * ((pos_i[0] - pos_j[0]) * n[0] + (pos_i[1] - pos_j[1]) * n[1]

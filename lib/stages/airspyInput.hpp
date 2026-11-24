@@ -7,20 +7,21 @@
 #ifndef AIRSPY_INPUT_HPP
 #define AIRSPY_INPUT_HPP
 
-#include <airspy.h>             // for airspy_transfer_t
-#include <pthread.h>            // for pthread_mutex_t
-#include <stdint.h>             // for uint32_t
-#include <atomic>               // for atomic
-#include <condition_variable>   // for condition_variable
-#include <mutex>                // for mutex
-#include <string>               // for string, basic_string
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "restServer.hpp"      // for connectionInstance
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "restServer.hpp"       // for connectionInstance
-#include "json.hpp"             // for json
+#include "json.hpp" // for json
+
+#include <airspy.h>           // for airspy_transfer_t
+#include <atomic>             // for atomic
+#include <condition_variable> // for condition_variable
+#include <mutex>              // for mutex
+#include <pthread.h>          // for pthread_mutex_t
+#include <stdint.h>           // for uint32_t
+#include <string>             // for string, basic_string
 
 #define BYTES_PER_SAMPLE 2
 
@@ -48,10 +49,10 @@
  *     @buffer_format Array of @c shorts (real samples, DC-corrected and Nyquist-shifted)
  *     @buffer_metadata none
  *
- * @par REST endpoints (registered under @c <unique_name>/)
+ * @par REST endpoints
+ * Registered under `<unique_name>/`.
  *  - GET  @c /get_config  — returns current gain/freq/samplerate as JSON.
  *  - GET  @c /adcstat     — triggers a one-shot ADC stats sample (mean, RMS, rail fraction).
- *  - GET  @c /restart     — stops, re-opens, and re-starts the airspy device.
  *  - POST @c /set_config  — updates @c freq, @c gain_lna, @c gain_mix, @c gain_if, or @c add_lag.
  *
  * @conf   freq         Float (default 1420.0). LO tuning frequency, in MHz.
@@ -71,8 +72,18 @@
  * @conf   serial       Long (default 0). Specific airspy serial-number to open; 0 = any.
  * @conf   airspy_file  String (default ""). Read from this file instead of a real device; for
  *                      offline testing. Ignored if @c serial is set.
- * @conf   autostart    Bool (default true). Start streaming immediately. If false, the device
- *                      is initialised but waits for a REST @c /restart to begin RX.
+ * @conf   adcstat_timeout_ms Int (default 250). How long a GET @c /adcstat waits for the next
+ *                      frame before failing. Must be positive and exceed the time to fill
+ *                      one frame.
+ *
+ * @par Metrics
+ * @metric kotekan_airspyinput_dropped_samples_total
+ *         The number of samples libairspy dropped because the stage fell behind, usually
+ *         while waiting for an empty frame.
+ *
+ * The stage stops kotekan if libairspy stops streaming. A device can also start without an
+ * error and then deliver nothing; run a @c monitorBuffer with @c wait_for_first_frame false on
+ * @c out_buf to catch that, as the example configs do.
  *
  * @warning If incoming USB transfers ever overlap, sample ordering becomes undefined.
  *
@@ -100,9 +111,12 @@ public:
     void get_config_callback(kotekan::connectionInstance& conn);
     void set_config_callback(kotekan::connectionInstance& conn, nlohmann::json& json_request);
     void adcstat_callback(kotekan::connectionInstance& conn);
-    void restart_callback(kotekan::connectionInstance& conn);
 
 private:
+    /// Runs on the stage thread once streaming starts: publishes the dropped-sample count and
+    /// stops kotekan if libairspy stops streaming.
+    void stream_watchdog();
+
     /// Kotekan buffer object which will be fed.
     Buffer* buf;
     /// Handle to the airspy device.
@@ -140,8 +154,10 @@ private:
     long _airspy_sn;
     /// Optional file path to read raw samples from instead of a device.
     std::string _airspy_fn;
-    /// Whether to begin streaming immediately on startup.
-    bool _autostart;
+    /// Longest wait in @c adcstat_callback for the producer, in ms.
+    int _adcstat_timeout_ms;
+    /// Samples libairspy dropped, counted by the producer for @c stream_watchdog.
+    std::atomic<uint64_t> samples_dropped{0};
 
     /// ADC statistics. The REST adcstat handler requests a dump and waits on
     /// @c adcstat_cv until the producer fills @c adc{rms,mean,railfrac} on the

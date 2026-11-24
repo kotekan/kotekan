@@ -1,10 +1,3 @@
-# === Start Python 2/3 compatibility
-from __future__ import absolute_import, division, print_function, unicode_literals
-from future.builtins import *  # noqa  pylint: disable=W0401, W0614
-from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
-
-# === End Python 2/3 compatibility
-
 import glob
 import itertools
 import pytest
@@ -74,9 +67,9 @@ def psr_post_process_data(tmpdir_factory, missing_frames=None, test_env=None):
                 ],
             )
             input_buffers.append(drop_frames_buffer)
-            stage_params[
-                "network_input_buffer_{:d}".format(i)
-            ] = drop_frames_buffer.name
+            stage_params["network_input_buffer_{:d}".format(i)] = (
+                drop_frames_buffer.name
+            )
         else:
             stage_params["network_input_buffer_{:d}".format(i)] = beamform_buffer.name
 

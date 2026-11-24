@@ -1,26 +1,33 @@
 #include "rawFileWrite.hpp"
 
-#include <errno.h>                  // for errno
-#include <fcntl.h>                  // for open, O_CREAT, O_WRONLY
-#include <stdint.h>                 // for uint32_t, int32_t, uint8_t
-#include <stdio.h>                  // for snprintf, size_t
-#include <stdlib.h>                 // for exit
-#include <unistd.h>                 // for write, close, gethostname, ssize_t
-#include <atomic>                   // for __atomic_base, atomic
-#include <functional>               // for bind, function
-#include <memory>                   // for shared_ptr, __shared_ptr_access
+#include "Config.hpp"              // for Config
+#include "NDArray.hpp"             // for GenericNDArray, Config
+#include "StageFactory.hpp"        // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"              // for Buffer
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "errors.h"                // for ReturnCode, exit_kotekan
+#include "kotekanLogging.hpp"      // for ERROR, DEBUG, FATAL_ERROR, INFO
+#include "metadata.hpp"            // for metadataObject
+#include "prometheusMetrics.hpp"   // for Metrics, Gauge
+#include "util.h"                  // for mkdir_p
+#include "visUtil.hpp"             // for current_time
+#include "waitingForMaxFrames.hpp" // for waiting_for_max_frames
 
-#include "Config.hpp"               // for Config
-#include "StageFactory.hpp"         // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"               // for Buffer
-#include "bufferContainer.hpp"      // for bufferContainer
-#include "errors.h"                 // for ReturnCode, exit_kotekan
-#include "kotekanLogging.hpp"       // for ERROR, DEBUG, FATAL_ERROR, INFO
-#include "metadata.hpp"             // for metadataObject
-#include "prometheusMetrics.hpp"    // for Metrics, Gauge
-#include "visUtil.hpp"              // for current_time
-#include "waitingForMaxFrames.hpp"  // for waiting_for_max_frames
-#include "fmt.hpp"                  // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>  // for max
+#include <atomic>     // for __atomic_base, atomic
+#include <errno.h>    // for errno
+#include <fcntl.h>    // for open, O_CREAT, O_WRONLY
+#include <filesystem> // for directory_iterator, error_code
+#include <functional> // for bind, function
+#include <memory>     // for shared_ptr, __shared_ptr_access
+#include <stdint.h>   // for uint32_t, uint64_t, UINT32_MAX, int32_t, uint8_t
+#include <stdio.h>    // for snprintf, size_t
+#include <stdlib.h>   // for exit
+#include <string.h>   // for strerror
+#include <string>     // for string, stoull
+#include <unistd.h>   // for write, close, gethostname, ssize_t
 
 
 using kotekan::bufferContainer;
@@ -43,6 +50,19 @@ rawFileWrite::rawFileWrite(Config& config, const std::string& unique_name,
     _num_frames_per_file = config.get_default<uint32_t>(unique_name, "num_frames_per_file", 1);
     _prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
     _exit_after_n_files = config.get_default<uint32_t>(unique_name, "exit_after_n_files", 0);
+    _continue_numbering = config.get_default<bool>(unique_name, "continue_numbering", false);
+    // Opt-in escape from the NDArray refusal below. The refusal exists because the frame
+    // descriptor is set dynamically and is not written to the file, so a reader cannot
+    // recover the shape from the file alone. That is no hazard when the shape is fixed and
+    // known out of band (a flat sample stream whose only "shape" is samples_per_data_set,
+    // pinned in both the capture and the replay config). Default false: you must say you know.
+    _allow_ndarray = config.get_default<bool>(unique_name, "allow_ndarray", false);
+
+    if (config.get_default<bool>(unique_name, "create_base_dir", false)
+        && mkdir_p(_base_dir.c_str(), 0777) != 0) {
+        const char* const msg = strerror(errno);
+        FATAL_ERROR("Could not create base_dir {:s}: {:s}", _base_dir, msg);
+    }
 
     if (_exit_after_n_files > 0)
         waiting_for_max_frames++;
@@ -64,6 +84,41 @@ void rawFileWrite::main_thread() {
     const int full_path_len = 200;
     char full_path[full_path_len];
 
+    if (_continue_numbering) {
+        // Start one past the highest file number in base_dir. Only the names this stage writes,
+        // "<prefix><file number as %07u>.<file_ext>", count. Other names are ignored, so writers
+        // with different file names can share a base_dir.
+        const std::string prefix = _prefix_hostname
+                                       ? fmt::format(fmt("{:s}_{:s}_"), hostname, _file_name)
+                                       : fmt::format(fmt("{:s}_"), _file_name);
+        const std::string suffix = "." + _file_ext;
+        uint64_t next_file_num = 0;
+        std::error_code ec;
+        for (const auto& entry : std::filesystem::directory_iterator(_base_dir, ec)) {
+            const std::string name = entry.path().filename().string();
+            if (name.size() < prefix.size() + 7 + suffix.size()
+                || name.compare(0, prefix.size(), prefix) != 0
+                || name.compare(name.size() - suffix.size(), suffix.size(), suffix) != 0)
+                continue;
+            const std::string digits =
+                name.substr(prefix.size(), name.size() - prefix.size() - suffix.size());
+            if (digits.size() > 10 || digits.find_first_not_of("0123456789") != std::string::npos)
+                continue;
+            const uint64_t num = std::stoull(digits);
+            if (num > UINT32_MAX || fmt::format(fmt("{:07d}"), num) != digits)
+                continue;
+            next_file_num = std::max(next_file_num, num + 1);
+        }
+        if (ec)
+            FATAL_ERROR("Cannot list base_dir {:s} for continue_numbering: {:s}", _base_dir,
+                        ec.message());
+        if (next_file_num > UINT32_MAX)
+            FATAL_ERROR("continue_numbering: the file numbers in {:s} are exhausted", _base_dir);
+        file_num = next_file_num;
+        INFO("continue_numbering: the first file number is {:07d}", file_num);
+    }
+    const uint32_t first_file_num = file_num;
+
     auto& write_time_metric =
         Metrics::instance().add_gauge("kotekan_rawfilewrite_write_time_seconds", unique_name);
     while (!stop_thread) {
@@ -74,16 +129,24 @@ void rawFileWrite::main_thread() {
             break;
 
         // Check for NDArray on first frame (after producer may have set the descriptor)
-        if (buf->get_ndarray_frame_desc()) {
+        if (buf->get_frame_desc<kotekan::GenericNDArray>() && !_allow_ndarray) {
             FATAL_ERROR(
                 "rawFileWrite does not support NDArray buffers. The NDArray frame descriptor "
-                "is set dynamically and will not be written to the file.");
+                "is set dynamically and will not be written to the file. Set "
+                "allow_ndarray: true to write the raw bytes anyway (the descriptor is then "
+                "the READER's responsibility -- see the note on the option).");
         }
 
         // Start timing the write time
         double st = current_time();
 
         if (!isFileOpen) {
+
+            // The number comes back to 0 only by wrapping past UINT32_MAX, and with
+            // continue_numbering file 0 is then an earlier run's file.
+            if (_continue_numbering && file_num == 0 && first_file_num != 0)
+                FATAL_ERROR("continue_numbering: the file numbers in {:s} are exhausted",
+                            _base_dir);
 
             if (_prefix_hostname) {
                 snprintf(full_path, full_path_len, "%s/%s_%s_%07u.%s", _base_dir.c_str(), hostname,
@@ -157,7 +220,7 @@ void rawFileWrite::main_thread() {
         // Useful for some tests and burst modes.  Uses the atomic "waiting_for_max_frames",
         // may be replaced by frames which can contain a "final" signal or some other
         // mechanism.
-        if (_exit_after_n_files > 0 && file_num >= _exit_after_n_files) {
+        if (_exit_after_n_files > 0 && file_num - first_file_num >= _exit_after_n_files) {
 
             // Unregister to allow the pipeline to continue, unless I'm the last
             // consumer on this buffer.

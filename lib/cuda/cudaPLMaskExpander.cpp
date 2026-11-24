@@ -1,26 +1,27 @@
-#include <driver_types.h>           // for cudaEvent_t, CUevent_st, CUstream_st
-#include <sys/types.h>              // for ulong
-#include <algorithm>                // for min
-#include <array>                    // for array
-#include <cstddef>                  // for ptrdiff_t
-#include <functional>               // for function
-#include <memory>                   // for allocator, shared_ptr, __shared_ptr_access
-#include <string>                   // for basic_string, string
-#include <vector>                   // for vector
+#include "Config.hpp"              // for Config
+#include "DataType.hpp"            // for uint1x8_t
+#include "NDArray.hpp"             // for NDArray
+#include "NDArrayRingBuffer.hpp"   // for NDArrayRingBuffer, extent_t, read_descriptor_t
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "chordMetadata.hpp"       // for chordMetadata
+#include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "div.hpp"                 // for div_noremainder, round_down
+#include "gpuCommand.hpp"          // for gpuCommandType
+#include "kotekanLogging.hpp"      // for DEBUG, FATAL_ERROR
+#include "n2k/pl_kernels.hpp"      // for launch_pl_mask_expander
 
-#include "Config.hpp"               // for Config
-#include "DataType.hpp"             // for uint1x8_t
-#include "NDArray.hpp"              // for NDArray
-#include "NDArrayRingBuffer.hpp"    // for NDArrayRingBuffer, extent_t, read_descriptor_t
-#include "bufferContainer.hpp"      // for bufferContainer
-#include "chordMetadata.hpp"        // for chordMetadata
-#include "cudaCommand.hpp"          // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
-#include "cudaDeviceInterface.hpp"  // for cudaDeviceInterface
-#include "div.hpp"                  // for div_noremainder, round_down
-#include "gpuCommand.hpp"           // for gpuCommandType
-#include "kotekanLogging.hpp"       // for DEBUG, FATAL_ERROR
-#include "n2k/pl_kernels.hpp"       // for launch_pl_mask_expander
-#include "fmt.hpp"                  // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>      // for min
+#include <array>          // for array
+#include <cstddef>        // for ptrdiff_t
+#include <driver_types.h> // for cudaEvent_t, CUevent_st, CUstream_st
+#include <functional>     // for function
+#include <memory>         // for allocator, shared_ptr, __shared_ptr_access
+#include <string>         // for basic_string, string
+#include <sys/types.h>    // for ulong
+#include <vector>         // for vector
 
 using kotekan::div_noremainder;
 using kotekan::round_down;
@@ -84,6 +85,8 @@ private:
     // Buffers
     NDArrayRingBuffer<kotekan::uint1x8_t, 5> pl_mask;
     NDArrayRingBuffer<kotekan::uint1x8_t, 5> pl_expanded_mask;
+    // Set once, on the first frame; see `NDArrayRingBuffer::set_metadata`
+    bool did_set_metadata;
 };
 
 REGISTER_CUDA_COMMAND(cudaPLMaskExpander);
@@ -108,12 +111,15 @@ cudaPLMaskExpander::cudaPLMaskExpander(kotekan::Config& config, const std::strin
             std::array<std::ptrdiff_t, 5>{buffer_depth * div_noremainder(num_times, 2 * 64),
                                           div_noremainder(num_frequencies, 4), num_polarizations,
                                           div_noremainder(num_dishes, 8), 64 / 8},
-            std::array<std::string, 5>{"T2hi64", "F4", "P", "D8", "T2lo64"}, *this),
+            std::array<std::string, 5>{"T2hi64", "F4", "P", "D8", "T2lo64"}, {2 * 64, 4, 1, 8, 16},
+            *this),
     pl_expanded_mask(pl_expanded_mask_name, "pl_mask_exp",
                      std::array<std::ptrdiff_t, 5>{buffer_depth * div_noremainder(num_times, 64),
                                                    num_frequencies, num_polarizations,
                                                    div_noremainder(num_dishes, 8), 64 / 8},
-                     std::array<std::string, 5>{"Thi64", "F", "P", "D8", "Tlo64"}, *this)
+                     std::array<std::string, 5>{"Thi64", "F", "P", "D8", "Tlo64"}, {64, 1, 1, 8, 8},
+                     *this),
+    did_set_metadata(false)
 //
 {
     // For pl_mask_T128_sample_bytes
@@ -165,13 +171,15 @@ cudaEvent_t cudaPLMaskExpander::execute(cudaPipelineState& /*pipestate*/,
 
     pl_mask.check_metadata();
 
-    pl_expanded_mask.set_metadata(pl_mask.get_metadata());
-    const auto& pl_mask_meta = pl_mask.get_metadata();
-    const auto& pl_expanded_mask_meta = pl_expanded_mask.get_metadata();
-
-    // TODO: Set these metadata only once
-    pl_expanded_mask_meta->set_time_downsampling_fpga(
-        div_noremainder(pl_mask_meta->get_time_downsampling_fpga(), 2));
+    // Set the ring buffer metadata once; see `NDArrayRingBuffer::set_metadata`
+    if (instance_num == 0 && !did_set_metadata) {
+        did_set_metadata = true;
+        pl_expanded_mask.set_metadata(pl_mask.get_metadata());
+        const auto& pl_mask_meta = pl_mask.get_metadata();
+        const auto& pl_expanded_mask_meta = pl_expanded_mask.get_metadata();
+        pl_expanded_mask_meta->set_time_downsampling_fpga(
+            div_noremainder(pl_mask_meta->get_time_downsampling_fpga(), 2));
+    }
 
     // There is no poison value
     // if (poison_buffers)

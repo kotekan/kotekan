@@ -1,17 +1,17 @@
 #ifndef N2FRAME_TO_VISFRAME_HPP
 #define N2FRAME_TO_VISFRAME_HPP
 
-#include <stdint.h>             // for uint32_t
-#include <string>               // for string, basic_string
-#include <vector>               // for vector
-#include <utility>              // for pair
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for datasetManager, state_id_t
+#include "visUtil.hpp"         // for freq_ctype, input_ctype, prod_ctype
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "datasetManager.hpp"   // for datasetManager, state_id_t
-#include "visUtil.hpp"          // for freq_ctype, input_ctype, prod_ctype
+#include <stdint.h> // for uint32_t
+#include <string>   // for string, basic_string
+#include <utility>  // for pair
+#include <vector>   // for vector
 
 /**
  * @brief Translates a N2FrameView buffer to a VisFrameView buffer by complex
@@ -26,9 +26,17 @@
  * @buffer vis_buf Output buffer.
  *         @buffer_format VisBuffer structured.
  *         @buffer_metadata VisMetadata
+ * @buffer metadata_source Optional. One buffer or a list; the coarse frequencies in the
+ *         metadata of their first frames, concatenated, are the frequencies of this stream.
+ *         @buffer_format any
+ *         @buffer_metadata chordMetadata
  *
  * @conf  n2_buf  Buffers to hold the N2FrameView
  * @conf  vis_buf Buffers to hold the VisFrameView
+ * @conf  metadata_source String or array of strings. Optional. Buffer(s) to take the
+ *        frequencies of this stream from. Takes precedence over freq_ids.
+ * @conf  freq_ids Array of UInt32. Optional. Frequencies of this stream, used when no
+ *        metadata_source is given. Defaults to all channels of the telescope.
  * @conf  fake_git_tag String. Fake git hash in visMetadata to make receiver
  *        accept it. Leave empty to use actual git tag.
  *
@@ -64,8 +72,19 @@ private:
     /// The target buffer for a visFrame
     Buffer* vis_buf;
 
+    /// Optional buffers whose first frames' metadata list the frequencies of the stream
+    std::vector<Buffer*> metadata_sources;
+
     /// Fake git hash to record in visMetadata dataset id
     std::string fake_git_tag;
+
+    //@{
+    /// Ingredients of the base dataset states, registered at the start of main_thread()
+    std::string instrument_name;
+    std::vector<uint32_t> freq_ids;
+    std::vector<input_ctype> inputs;
+    std::vector<prod_ctype> prods;
+    //@}
 };
 
 #endif /* N2FRAME_TO_VISFRAME_HPP */

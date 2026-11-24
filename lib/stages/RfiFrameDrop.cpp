@@ -1,32 +1,33 @@
 #include "RfiFrameDrop.hpp"
 
-#include <assert.h>               // for assert
-#include <stdint.h>               // for int64_t, uint32_t, uint8_t
-#include <json.hpp>               // for json, basic_json, iter_impl
-#include <algorithm>              // for equal, copy
-#include <cmath>                  // for fabs, sqrt
-#include <cstring>                // for memcpy
-#include <functional>             // for function, bind, _1
-#include <map>                    // for map
-#include <memory>                 // for __shared_ptr_access, shared_ptr
-#include <stdexcept>              // for runtime_error
-#include <string>                 // for basic_string, allocator, to_string, operator<, string
-#include <tuple>                  // for tie, tuple
-#include <utility>                // for pair
+#include "Config.hpp"            // for Config
+#include "Hash.hpp"              // for Hash, operator!=
+#include "Stage.hpp"             // for Stage
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"            // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "chordMetadata.hpp"     // for get_chord_metadata, chordMetadata
+#include "configUpdater.hpp"     // for configUpdater
+#include "datasetManager.hpp"    // for dset_id_t, datasetManager, state_id_t
+#include "kotekanLogging.hpp"    // for WARN, INFO, DEBUG, DEBUG2
+#include "prometheusMetrics.hpp" // for Counter, Metrics, MetricFamily
+#include "visUtil.hpp"           // for frameID, modulo
 
-#include "Config.hpp"             // for Config
-#include "Hash.hpp"               // for Hash, operator!=
-#include "Stage.hpp"              // for Stage
-#include "StageFactory.hpp"       // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"             // for Buffer
-#include "bufferContainer.hpp"    // for bufferContainer
-#include "chordMetadata.hpp"      // for get_chord_metadata, chordMetadata
-#include "configUpdater.hpp"      // for configUpdater
-#include "datasetManager.hpp"     // for dset_id_t, datasetManager, state_id_t
-#include "kotekanLogging.hpp"     // for WARN, INFO, DEBUG, DEBUG2
-#include "prometheusMetrics.hpp"  // for Counter, Metrics, MetricFamily
-#include "visUtil.hpp"            // for frameID, modulo
-#include "fmt.hpp"                // for compile_string_to_view, format, fmt
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
+
+#include <algorithm>  // for equal, copy
+#include <assert.h>   // for assert
+#include <cmath>      // for fabs, sqrt
+#include <cstring>    // for memcpy
+#include <functional> // for function, bind, _1
+#include <json.hpp>   // for json, basic_json, iter_impl
+#include <map>        // for map
+#include <memory>     // for __shared_ptr_access, shared_ptr
+#include <stdexcept>  // for runtime_error
+#include <stdint.h>   // for int64_t, uint32_t, uint8_t
+#include <string>     // for basic_string, allocator, to_string, operator<, string
+#include <tuple>      // for tie, tuple
+#include <utility>    // for pair
 
 
 using kotekan::bufferContainer;
@@ -125,8 +126,14 @@ void RfiFrameDrop::main_thread() {
         DEBUG2("Frames are synced. Vis frame: {}; SK frame: {}, diff {}", vis_seq, sk_seq,
                vis_seq - sk_seq);
 
-        // Calculate the scaling to turn kurtosis value into sigma
-        size_t num_inputs = num_elements - metadata_vis->get_rfi_num_bad_inputs();
+        // Calculate the scaling to turn kurtosis value into sigma.
+        // FIXME: this assumes every input is good. The bad-input count used to come from the
+        // frame metadata, written by the HSA correlator stages that consumed
+        // `bad_inputs_buffer`; neither those stages nor the metadata field are part of this
+        // tree any more. Whoever restores that path has to re-plumb the count to here --
+        // ignoring it overestimates `num_inputs`, and so `sigma_scale`, whenever feeds are
+        // flagged.
+        const size_t num_inputs = num_elements;
         float sigma_scale = sqrt((num_inputs * (sk_step - 1) * (sk_step + 2) * (sk_step + 3))
                                  / (4.0 * sk_step * sk_step));
 

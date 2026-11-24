@@ -18,6 +18,23 @@ log_level: info
 
 instrument_name: airspy
 
+# kotekan builds a telescope at startup; the airspy stages do not use it. ICETelescope is
+# here only because it is always built.
+telescope:
+    name: ICETelescope
+    num_polarizations: 1
+    num_dishes: 1
+
+# Permit cross-origin REST access so the browser-based viewer can call
+# airspyInput's set_config / get_config / adcstat endpoints.
+# Scoped to the viewer's own origin(s) via an allowlist (validated Origin
+# reflection) rather than a wildcard. The viewer is served on :8080; add
+# whatever host you actually browse to (localhost / hostname / IP).
+rest_server:
+    cors_allow_origins:
+        - "http://localhost:8080"
+        - "http://127.0.0.1:8080"
+
 samples_per_data_set: 32768
 bytes_per_sample: 2
 buffer_depth: 10
@@ -33,10 +50,11 @@ sizeof_float: 4
 # chordMetadata pool the forward-port inherited).
 
 input_buf:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
+    value_type: int16
+    extents: [samples_per_data_set]
     metadata_pool: none
     num_frames: buffer_depth
-    frame_size: samples_per_data_set * bytes_per_sample
 
 sample_bw: 10. #MHz, must be float?
 freq: 1421.    #MHz
@@ -47,8 +65,14 @@ airspy_input:
     gain_mix: 10 #0-15
     gain_if: 10  #0-15
     biast_power: false
-    autostart: true
 #    serial: 0x03A464C834658167  # uncomment & edit to pick a specific dongle
+
+# Stop kotekan if the device starts but never delivers, or stops delivering.
+input_monitor:
+    kotekan_stage: monitorBuffer
+    bufs: [input_buf]
+    timeout: 5
+    wait_for_first_frame: false
 
 
 spectrum_output:
@@ -57,10 +81,11 @@ spectrum_output:
     spectrum_length: 1024
 
     post_fengine_buf:
-        kotekan_buffer: standard
+        kotekan_buffer: ndarray
+        value_type: cfloat32
+        extents: [samples_per_data_set * sizeof_float / 8]
         metadata_pool: none
         num_frames: buffer_depth
-        frame_size: samples_per_data_set * sizeof_float # * 2 for complex / 2 for half-size
 
     fengine:
         kotekan_stage: fftwEngine
@@ -88,4 +113,8 @@ spectrum_output:
         destination_ip: "127.0.0.1"
         destination_protocol: TCP
         in_buf: post_corr_buf
+
+# The browser viewer is a separate process; start it before or after kotekan
+# (see python/scripts/js_viewer/README.md):
+#   python3 python/scripts/js_viewer/livebeam_server.py
 

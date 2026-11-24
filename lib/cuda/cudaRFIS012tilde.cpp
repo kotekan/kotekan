@@ -1,32 +1,34 @@
-#include <cuda_runtime_api.h>       // for cudaStreamSynchronize
-#include <driver_types.h>           // for cudaEvent_t, CUevent_st, CUstream_st
-#include <sys/types.h>              // for ulong
-#include <assert.h>                 // for assert
-#include <algorithm>                // for min
-#include <array>                    // for array
-#include <cstddef>                  // for ptrdiff_t
-#include <cstdint>                  // for uint64_t, int8_t, uint8_t
-#include <functional>               // for function
-#include <memory>                   // for allocator, shared_ptr
-#include <string>                   // for basic_string, string
-#include <vector>                   // for vector
+#include "Config.hpp"              // for Config
+#include "NDArray.hpp"             // for NDArray
+#include "NDArrayBuffer.hpp"       // for NDArrayBuffer, buffer_type_t
+#include "NDArrayRingBuffer.hpp"   // for NDArrayRingBuffer, extent_t, read_descriptor_t
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
+#include "div.hpp"                 // for div_noremainder, round_down
+#include "gpuCommand.hpp"          // for gpuCommandType
+#include "kotekanLogging.hpp"      // for DEBUG, FATAL_ERROR
+#include "n2k/rfi_kernels.hpp"     // for launch_s012_station_downsample_kernel
 
-#include "Config.hpp"               // for Config
-#include "NDArray.hpp"              // for NDArray
-#include "NDArrayBuffer.hpp"        // for NDArrayBuffer, buffer_type_t
-#include "NDArrayRingBuffer.hpp"    // for NDArrayRingBuffer, extent_t, read_descriptor_t
-#include "bufferContainer.hpp"      // for bufferContainer
-#include "cudaCommand.hpp"          // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
-#include "cudaDeviceInterface.hpp"  // for cudaDeviceInterface
-#include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
-#include "div.hpp"                  // for div_noremainder, round_down
-#include "gpuCommand.hpp"           // for gpuCommandType
-#include "kotekanLogging.hpp"       // for DEBUG, FATAL_ERROR
-#include "n2k/rfi_kernels.hpp"      // for launch_s012_station_downsample_kernel
-#include "fmt.hpp"                  // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>          // for min
+#include <array>              // for array
+#include <assert.h>           // for assert
+#include <cstddef>            // for ptrdiff_t
+#include <cstdint>            // for uint64_t, int8_t, uint8_t
+#include <cuda_runtime_api.h> // for cudaStreamSynchronize
+#include <driver_types.h>     // for cudaEvent_t, CUevent_st, CUstream_st
+#include <functional>         // for function
+#include <memory>             // for allocator, shared_ptr
+#include <string>             // for basic_string, string
+#include <sys/types.h>        // for ulong
+#include <vector>             // for vector
 
 using kotekan::div_noremainder;
 using kotekan::round_down;
+using kotekan::round_up;
 
 class cudaRFIS012tilde : public cudaCommand {
 public:
@@ -67,8 +69,12 @@ private:
     const int num_frequencies;
     const int num_polarizations;
     const int num_dishes;
+    const std::int64_t bf_mask_lifetime_in_samples;
+    const int rfi_downsampling_factor;
     const int rfi_num_times;
     const bool poison_buffers;
+
+    const std::int64_t rfi_samples_per_bf_sample;
 
     // Kotekan buffer names
     const std::string bf_mask_name;
@@ -76,9 +82,11 @@ private:
     const std::string rfi_S012tilde_name;
 
     // Buffers
-    NDArrayBuffer<std::int8_t, 2> bf_mask;
+    NDArrayRingBuffer<std::int8_t, 3> bf_mask;
     NDArrayRingBuffer<std::uint64_t, 5> rfi_S012;
     NDArrayRingBuffer<std::uint64_t, 3> rfi_S012tilde;
+    // Set once, on the first frame; see `NDArrayRingBuffer::set_metadata`
+    bool did_set_metadata;
 };
 
 REGISTER_CUDA_COMMAND(cudaRFIS012tilde);
@@ -94,29 +102,54 @@ cudaRFIS012tilde::cudaRFIS012tilde(kotekan::Config& config, const std::string& u
     num_frequencies(config.get<int>(unique_name, "num_frequencies")),
     num_polarizations(config.get<int>(unique_name, "num_polarizations")),
     num_dishes(config.get<int>(unique_name, "num_dishes")),
+    bf_mask_lifetime_in_samples(
+        config.get<std::int64_t>(unique_name, "bf_mask_lifetime_in_samples")),
+    rfi_downsampling_factor(config.get<int>(unique_name, "rfi_downsampling_factor")),
     rfi_num_times(config.get<int>(unique_name, "rfi_num_times")),
     poison_buffers(config.get_default<bool>(unique_name, "poison_buffers", false)),
+    rfi_samples_per_bf_sample(
+        div_noremainder(bf_mask_lifetime_in_samples, rfi_downsampling_factor)),
     // Buffer names
     bf_mask_name(config.get<std::string>(unique_name, "bf_mask_name")),
     rfi_S012_name(config.get<std::string>(unique_name, "rfi_S012_name")),
     rfi_S012tilde_name(config.get<std::string>(unique_name, "rfi_S012tilde_name")),
     // Buffers
-    bf_mask(bf_mask_name, "bf_mask", std::array<std::ptrdiff_t, 2>{num_polarizations, num_dishes},
-            std::array<std::string, 2>{"P", "D"}, *this, buffer_type_t::do_once),
+    bf_mask(bf_mask_name, "bf_mask",
+            std::array<std::ptrdiff_t, 3>{buffer_depth * 1, num_polarizations, num_dishes},
+            std::array<std::string, 3>{"Tbf", "P", "D"},
+            std::array<std::ptrdiff_t, 3>{bf_mask_lifetime_in_samples, 1, 1}, *this),
     rfi_S012(rfi_S012_name, "S012",
              std::array<std::ptrdiff_t, 5>{buffer_depth * rfi_num_times, num_frequencies, 3,
                                            num_polarizations, num_dishes},
-             std::array<std::string, 5>{"Trfi", "F", "S", "P", "D"}, *this),
+             std::array<std::string, 5>{"Trfi", "F", "S", "P", "D"},
+             std::array<std::ptrdiff_t, 5>{rfi_downsampling_factor, 1, 1, 1, 1}, *this),
     rfi_S012tilde(rfi_S012tilde_name, "S012tilde",
                   std::array<std::ptrdiff_t, 3>{buffer_depth * rfi_num_times, num_frequencies, 3},
-                  std::array<std::string, 3>{"Trfi", "F", "S"}, *this)
+                  std::array<std::string, 3>{"Trfi", "F", "S"},
+                  std::array<std::ptrdiff_t, 3>{rfi_downsampling_factor, 1, 1}, *this),
+    did_set_metadata(false)
 //
 {
     if (num_times % rfi_num_times != 0)
         FATAL_ERROR("num_times {:d} must be a multiple of rfi_num_times {:d}", num_times,
                     rfi_num_times);
-    assert(num_times % rfi_num_times == 0);
+    if (bf_mask_lifetime_in_samples % rfi_downsampling_factor != 0)
+        FATAL_ERROR(
+            "rfi_downsampling_factor {:d} must evenly divide bf_mask_lifetime_in_samples {:d}",
+            rfi_downsampling_factor, bf_mask_lifetime_in_samples);
 
+    // We read at most this many `rfi_S012` elements per frame, and we stop at the end of a
+    // bad feed mask element. If a mask lifetime were not a whole number of these batches we
+    // would have to read a short batch at the end of each lifetime, which would leave the
+    // read position unaligned and could make a later batch straddle the end of the
+    // ringbuffer.
+    const std::ptrdiff_t rfi_S012_read_max = rfi_S012.get_ndarray().extent(0) / buffer_depth;
+    if (rfi_samples_per_bf_sample % rfi_S012_read_max != 0)
+        FATAL_ERROR("The bad feed mask lifetime of {:d} rfi_S012 elements must be a multiple of "
+                    "the {:d} elements read per frame",
+                    rfi_samples_per_bf_sample, rfi_S012_read_max);
+
+    bf_mask.register_consumer();
     rfi_S012.register_consumer();
     rfi_S012tilde.register_producer();
 
@@ -127,9 +160,26 @@ cudaRFIS012tilde::~cudaRFIS012tilde() {}
 
 int cudaRFIS012tilde::wait_on_precondition() {
     // Wait for data to be available in input ringbuffers
+
+    // Which bad feed mask element covers the data we are about to read? Ask the ringbuffer
+    // where our next read will begin. We must not use our own `read_valid` for this: every
+    // instance of this command shares one ringbuffer read head, so our own position lags it
+    // by whatever the other instances have claimed since our previous frame.
+    const std::ptrdiff_t rfi_S012_begin = rfi_S012.peek_read_head();
+    if (rfi_S012_begin < 0)
+        return -1; // shutting down
+    // (`kotekan::div` must be qualified; an unqualified `div` finds C's `::div`)
+    const std::ptrdiff_t bf_mask_element = kotekan::div(rfi_S012_begin, rfi_samples_per_bf_sample);
+    const std::ptrdiff_t bf_mask_lifetime_end =
+        round_up(rfi_S012_begin + 1, rfi_samples_per_bf_sample);
+
     DEBUG("Waiting for rfi_S012 input ringbuffer data for frame {:d}...", gpu_frame_id);
     const std::ptrdiff_t rfi_S012_ringbuf = rfi_S012.get_ndarray().extent(0);
-    const std::ptrdiff_t rfi_S012_read_max = rfi_S012_ringbuf / 4;
+    // Do not overshoot the bf mask lifetime
+    using std::min;
+    const std::ptrdiff_t rfi_S012_read_max =
+        min(rfi_S012_ringbuf / buffer_depth, bf_mask_lifetime_end - rfi_S012_begin);
+    assert(rfi_S012_read_max > 0);
     std::ptrdiff_t rfi_S012_read = -1;
     const int rfi_S012_errcode =
         rfi_S012.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
@@ -141,6 +191,32 @@ int cudaRFIS012tilde::wait_on_precondition() {
         return rfi_S012_errcode;
     DEBUG("Done waiting for rfi_S012 input ringbuffer data for frame {:d}; will read {:d} elements",
           gpu_frame_id, rfi_S012_read);
+    assert(rfi_S012.get_read_valid().begin() == rfi_S012_begin);
+    assert(rfi_S012.get_read_valid().end() <= bf_mask_lifetime_end);
+
+    // Read the bad feed mask element covering these data. We claim it only when we have
+    // reached the end of its lifetime, i.e. when this is the last frame that will use it.
+    // Until then it stays in the ringbuffer and the following frames read it again.
+    //
+    // We are holding a claim on `rfi_S012` while we wait here. That is safe because the bad
+    // feed mask producer does not depend on `rfi_S012` being drained: it is fed by its own
+    // stage, and all consumers of the bad feed mask advance at the same rate through the
+    // data, so none of them can hold the mask ringbuffer's read tail far enough back to
+    // keep this element from being written.
+    const bool bf_mask_last_use = rfi_S012.get_read_valid().end() == bf_mask_lifetime_end;
+    DEBUG("Waiting for bf_mask input ringbuffer data for frame {:d}...", gpu_frame_id);
+    const int bf_mask_errcode =
+        bf_mask.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
+            if (available_elements < 1)
+                return read_descriptor_t{.claimed = 0, .read = 0};
+            return read_descriptor_t{.claimed = bf_mask_last_use ? 1 : 0, .read = 1};
+        });
+    if (bf_mask_errcode < 0)
+        return bf_mask_errcode;
+    DEBUG("Done waiting for bf_mask input ringbuffer data for frame {:d}; using element {:d}{:s}",
+          gpu_frame_id, bf_mask_element, bf_mask_last_use ? " (last use)" : "");
+    // The two ringbuffers must agree on which mask element covers these data
+    assert(bf_mask.get_read_valid().begin() == bf_mask_element);
 
     DEBUG("Waiting for rfi_S012tilde output ringbuffer space for frame {:d}...", gpu_frame_id);
     const std::ptrdiff_t rfi_S012tilde_written = rfi_S012_read;
@@ -159,9 +235,24 @@ cudaEvent_t cudaRFIS012tilde::execute(cudaPipelineState& /*pipestate*/,
     pre_execute();
     record_start_event();
 
+    bf_mask.check_metadata();
     rfi_S012.check_metadata();
 
-    rfi_S012tilde.set_metadata(rfi_S012.get_metadata());
+    // The mask is looked up by ring position, so its stream must start at the sequence
+    // number the data stream starts at (the voltage stream's first frame); a mask stream
+    // clocked to another stream would gate the wrong samples.
+    const std::int64_t bad_feed_mask_start = bf_mask.get_metadata()->get_fpga_seq_num();
+    const std::int64_t data_start = rfi_S012.get_metadata()->get_fpga_seq_num();
+    if (bad_feed_mask_start != data_start)
+        FATAL_ERROR("The bad feed mask stream starts at seq {:d} but the data stream at {:d}: "
+                    "clock bufferBadInputs (metadata_source) to this GPU's voltage buffer",
+                    bad_feed_mask_start, data_start);
+
+    // Set the ring buffer metadata once; see `NDArrayRingBuffer::set_metadata`
+    if (instance_num == 0 && !did_set_metadata) {
+        did_set_metadata = true;
+        rfi_S012tilde.set_metadata(rfi_S012.get_metadata());
+    }
 
     // There is no poison value
     // if (poison_buffers)
@@ -171,12 +262,16 @@ cudaEvent_t cudaRFIS012tilde::execute(cudaPipelineState& /*pipestate*/,
     const std::uint64_t* const rfi_S012_memory = rfi_S012.get_ndarray().data();
     std::uint64_t* const rfi_S012tilde_memory = rfi_S012tilde.get_ndarray().data();
 
+    const std::ptrdiff_t Tbfsize = bf_mask.get_ndarray().extent(0);
+    // Tbfmin wraps around into actual array index to avoid overflows
+    const std::ptrdiff_t Tbfmin = bf_mask.get_read_valid().begin() % Tbfsize;
     const std::ptrdiff_t Trfisize = rfi_S012.get_ndarray().extent(0);
     // Trfimin wraps around into actual array index to avoid overflows
     const std::ptrdiff_t Trfimin = rfi_S012.get_read_valid().begin() % Trfisize;
     const std::ptrdiff_t Trfi = rfi_S012.get_read_valid().size();
 
     // Offsets into rfi_S012 and rfi_S012tilde to start reading/writing.
+    const std::ptrdiff_t Tbf_offset = Tbfmin * bf_mask.get_ndarray().stride(0);
     if (Trfimin + Trfi > Trfisize) {
         FATAL_ERROR("Chunk starting at Trfimin={:d} of size Trfi={:d} runs past end of ringbuffer "
                     "{:s} of size Trfisize={:d}",
@@ -187,11 +282,11 @@ cudaEvent_t cudaRFIS012tilde::execute(cudaPipelineState& /*pipestate*/,
     const std::ptrdiff_t Trfitilde_offset = Trfimin * rfi_S012tilde.get_ndarray().stride(0);
     DEBUG("Trfisize={:d} Trfimin={:d} Trfi={:d}", Trfisize, Trfimin, Trfi);
 
-    n2k::launch_s012_station_downsample_kernel((ulong*)(rfi_S012tilde_memory + Trfitilde_offset),
-                                               (const ulong*)(rfi_S012_memory + Trfi_offset),
-                                               (const uint8_t*)bf_mask_memory, Trfi, 0, Trfisize,
-                                               num_frequencies, num_dishes * num_polarizations,
-                                               device.getStream(cuda_stream_id));
+    n2k::launch_s012_station_downsample_kernel(
+        (ulong*)(rfi_S012tilde_memory + Trfitilde_offset),
+        (const ulong*)(rfi_S012_memory + Trfi_offset), (const uint8_t*)bf_mask_memory + Tbf_offset,
+        Trfi, 0, Trfisize, num_frequencies, num_dishes * num_polarizations,
+        device.getStream(cuda_stream_id));
 #ifdef DEBUGGING
     CHECK_CUDA_ERROR(cudaStreamSynchronize(device.getStream(cuda_stream_id)));
 #endif
@@ -204,7 +299,9 @@ cudaEvent_t cudaRFIS012tilde::execute(cudaPipelineState& /*pipestate*/,
 }
 
 void cudaRFIS012tilde::finalize_frame() {
-    // Advance the ring buffers
+    // Advance the ring buffers. The bad feed mask advances by the one element we claimed if
+    // this was the last frame using it, and by nothing otherwise.
+    bf_mask.finish_read();
     rfi_S012.finish_read();
     rfi_S012tilde.finish_write();
 

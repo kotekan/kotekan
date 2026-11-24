@@ -10,7 +10,9 @@ add_library(
     computeDualpolPower.cpp
     fullPacketDump.cpp
     pulsarPostProcess.cpp
-    processGains.cpp
+    loadFeedGains.cpp
+    processFeedGains.cpp
+    processFRBFeedGains.cpp
     nDiskFileWrite.cpp
     nDiskFileRead.cpp
     networkPowerStream.cpp
@@ -18,7 +20,6 @@ add_library(
     monitorBuffer.cpp
     networkInputPowerStream.cpp
     parseReorderDefault.cpp
-    pyPlotN2.cpp
     rawFileRead.cpp
     rawFileWrite.cpp
     waitingForMaxFrames.cpp
@@ -46,11 +47,11 @@ add_library(
     FreqSubset.cpp
     prodSubset.cpp
     N2Subset.cpp
+    N2AutoSpectrum.cpp
     countCheck.cpp
     visAccumulate.cpp
     visCompression.cpp
     timeDownsample.cpp
-    frbPostProcess.cpp
     basebandReadout.cpp
     BasebandWriter.cpp
     BaseWriter.cpp
@@ -60,7 +61,7 @@ add_library(
     VisWriter.cpp
     HFBRawReader.cpp
     restInspectFrame.cpp
-    frbNetworkProcess.cpp
+    frbNetworkSend.cpp
     pulsarNetworkProcess.cpp
     pirateFrbSend.cpp
     bufferMerge.cpp
@@ -71,7 +72,6 @@ add_library(
     BufferSplit.cpp
     InputSubset.cpp
     setScatterIndices.cpp
-    UpchannelizationSchedule.cpp
     setBBBeams.cpp
     calcBBPhase.cpp
     setUpchanGain.cpp
@@ -99,8 +99,10 @@ add_library(
     BeamExtract.cpp
     BeamInspect.cpp
     configTrackerWriter.cpp
+    FPGAMonitor.cpp
     givenDataGen.cpp
     testDataGen.cpp
+    testDataGenFewHot.cpp
     DPDKShuffleSimulate.cpp
     BadInputFlag.cpp
     hexDump.cpp
@@ -115,7 +117,10 @@ add_library(
     dropAllFrames.cpp
     N2FrameToVisFrame.cpp
     RfiMaskSum.cpp
+    DtvRfiMask.cpp
+    NDArrayTimeConcat.cpp
     RfiFrameMask.cpp
+    RfiSKMetrics.cpp
     CountLostPLSamplesScalar.cpp
     PLMaskExpandedToCompact.cpp
     # Julia
@@ -127,10 +132,10 @@ target_include_directories(kotekan_stages PRIVATE libpirate)
 if(LIBAIRSPY_FOUND)
     target_sources(kotekan_stages PRIVATE airspyInput.cpp)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${LIBAIRSPY_INCLUDE_DIR})
-    target_include_directories(kotekan_stages SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(kotekan_stages PRIVATE ${LIBAIRSPY_LIBRARIES})
     if(FFTW_FOUND)
         target_sources(kotekan_stages PRIVATE AirspyAlign.cpp)
+        target_include_directories(kotekan_stages SYSTEM PRIVATE ${FFTW_INCLUDES})
         target_link_libraries(kotekan_stages PRIVATE ${FFTW_LIBRARIES})
     endif()
 endif()
@@ -147,9 +152,7 @@ if(ASDF_CXX_FOUND)
 endif()
 
 if(GDAL_FOUND)
-    target_include_directories(kotekan_stages PRIVATE ${GDAL_INCLUDE_DIRS})
-    target_link_options(kotekan_stages PUBLIC ${GDAL_LDFLAGS})
-    target_link_libraries(kotekan_stages PUBLIC ${GDAL_LIBRARIES})
+    target_link_libraries(kotekan_stages PRIVATE GDAL::GDAL)
 endif()
 
 if(HDF5_FOUND
@@ -159,8 +162,11 @@ if(HDF5_FOUND
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${HDF5_INCLUDE_DIRS})
     target_link_libraries(kotekan_stages PRIVATE ${HDF5_HL_LIBRARIES} ${HDF5_LIBRARIES}
                                                  HighFive::HighFive)
-    # applyGains.cpp uses std::atomic<timespec>, which relies on libatomic on some platforms
-    target_link_libraries(kotekan_stages PRIVATE atomic)
+    # applyGains.cpp uses std::atomic<timespec>, which relies on libatomic on some platforms (not
+    # needed on macOS where atomics are built into the compiler runtime)
+    if(NOT APPLE)
+        target_link_libraries(kotekan_stages PRIVATE atomic)
+    endif()
 endif()
 
 if(${USE_ZARR})
@@ -187,8 +193,7 @@ if(OpenMP_FOUND)
 endif()
 
 if(LAPACKE_FOUND AND BLAZE_FOUND)
-    target_sources(kotekan_stages PRIVATE eigenVis.cpp RingMapMaker.cpp EigenVisIter.cpp
-                                          EigenN2Iter.cpp)
+    target_sources(kotekan_stages PRIVATE RingMapMaker.cpp EigenN2Iter.cpp)
     target_include_directories(kotekan_stages SYSTEM PRIVATE ${LAPACKE_INCLUDE_DIRS} ${BLAZE_PATH})
     target_link_libraries(kotekan_stages PRIVATE ${LAPACKE_LIBRARIES})
     if(DEFINED OPENBLAS_EXTRA_LIB AND OPENBLAS_EXTRA_LIB)
@@ -203,7 +208,7 @@ target_link_libraries(
     PUBLIC ${LIBEVENT_CORE}
     PRIVATE ${LIBEVENT_PTHREAD})
 
-target_link_libraries(kotekan_stages PRIVATE kotekan_libs libexternal)
+target_link_libraries(kotekan_stages PRIVATE kotekan_libs libexternal pilotproxy_decision)
 
 # -lrt is needed for shm_open in VisSharedMemWriter on linux but not Clang
 if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")

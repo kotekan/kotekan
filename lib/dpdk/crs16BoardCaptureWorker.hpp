@@ -20,9 +20,75 @@
 #include "json.hpp"
 
 #include <algorithm>
+#include <array>
 #include <immintrin.h>
 
 
+/**
+ * @brief DPDK packet handler that captures CRS board packets from one port and
+ *        assembles them into output frames with deterministic memory positioning.
+ *
+ * Each packet's location in the output frame is computed from its FPGA sequence
+ * number (time axis), stream ID (frequency axis), and source ID (element/board
+ * axis), so a frame always covers an exact sequence-number range. Frames are
+ * supplied by a @c kotekan::FramePrefetchService running on separate cores, which
+ * keeps this handler's hot path to a header parse and a non-temporal copy.
+ * Several workers (one per port) write into the same frames, each covering its
+ * own subset of stream IDs.
+ *
+ * The 16 CRS boards feeding a node are identified by a raw source ID
+ * (slot_id + 16 * crate_id). By default board data is placed along the output
+ * element axis in raw source-ID order; the optional @c crs_board_remap config
+ * reorders the boards for downstream consumers. A per-packet receipt bitmap is
+ * maintained alongside each data frame with layout
+ * [time_long][board output slot][stream ID], one bit per packet; it uses the
+ * same (possibly remapped) board axis as the data, so packet-loss accounting
+ * (e.g. ProcessPacketMask) follows the output ordering. Log messages always
+ * report the raw stream/source IDs as they appear in the packets.
+ *
+ * @par Buffers
+ * @buffer out_buf  Kotekan buffer the packet payloads are placed in.
+ *       @buffer_format uint8_t array of 4+4-bit complex voltage data
+ *       @buffer_metadata chordMetadata (filled only by the worker with allocate_metadata set)
+ * @buffer receipt_bitmap_buf  Kotekan buffer holding the per-packet receipt bitmap.
+ *       @buffer_format uint8_t array of packet receipt bits
+ *       @buffer_metadata none
+ *
+ * @conf  port                        Int. The DPDK port this worker accepts packets from.
+ * @conf  out_buf                     String. Name of the output data buffer.
+ * @conf  receipt_bitmap_buf          String. Name of the packet receipt bitmap buffer.
+ * @conf  packet_size                 UInt32. Total packet size in bytes; must equal
+ *                                    payload_size plus the 64-byte header.
+ * @conf  payload_size                UInt32. Payload bytes per packet: 128 for each of the
+ *                                    telescope's frequencies per stream. The output frame
+ *                                    size must be a multiple of
+ *                                    payload_size * num_source_ids * num_stream_ids.
+ * @conf  num_expected_stream_ids     UInt32. Number of distinct stream IDs expected on
+ *                                    this port; capture starts once all have been seen.
+ * @conf  capture_n_frames            UInt64. Default 0. Number of frames to capture
+ *                                    before stopping, 0 = unlimited.
+ * @conf  prefetch_depth              Int. Default 4. Number of frames the prefetch
+ *                                    service keeps ready ahead of the write position.
+ * @conf  frame_service_cpu_affinity  Array of Int. CPU cores the frame prefetch service
+ *                                    thread may run on.
+ * @conf  allocate_metadata           Bool. Default false. Enable on the worker that
+ *                                    should allocate and fill each frame's chordMetadata
+ *                                    (exactly one worker per buffer).
+ * @conf  crs_board_remap             Array of UInt32. Default empty (identity). Desired
+ *                                    board order by output slot: output slot i receives
+ *                                    the board whose raw source_id is crs_board_remap[i].
+ *                                    Must be a permutation of [0, num_source_ids).
+ *                                    Applies to both the data frame element axis and the
+ *                                    receipt bitmap.
+ *
+ * @par Metrics
+ * @metric kotekan_dpdk_crs16_out_of_window_packets_total
+ *         Packets dropped for a sequence number outside the active frames and the catch-up
+ *         window, labelled by port. Non-zero means a packet arrived with a sequence number out of
+ *         step with the rest of the stream.
+ *
+ * @author Andre Renard
+ */
 class crs16BoardCaptureWorker : public dpdkRXhandler {
 public:
     /// Default constructor
@@ -37,6 +103,7 @@ public:
     virtual void update_stats() override {};
 
 protected:
+    /// Rings the distributor uses to hand packets to the workers (unused here).
     const std::vector<rte_ring*>& worker_rings;
 
     /// The output buffer
@@ -44,31 +111,51 @@ protected:
     /// The packet recepit bitmap buffer
     Buffer* receipt_bitmap_buf;
 
+    /// Index of this worker within the DPDK stage.
     int worker_id;
 
     /// The packet size
     uint32_t packet_size;
 
+    /// The packet payload size (packet_size minus header_size)
     uint32_t payload_size;
 
+    /// Number of distinct stream IDs to see on this port before starting capture.
     uint32_t num_expected_stream_ids;
 
+    /// Size of the CRS packet headers in bytes.
     const uint32_t header_size = 64;
     // Each node processes data from 16 source IDs (16 CRS boards) and 8 stream IDs (1/16 of the
     // total streams)
-    const uint32_t num_source_ids = 16;
+    static constexpr uint32_t num_source_ids = 16;
     const uint32_t num_stream_ids = 8;
     const uint32_t time_samples_per_packet = 16;
+    /// Bytes one frequency bin takes in a packet: 16 time samples of 8 elements.
+    static constexpr uint32_t bytes_per_bin = 128;
+    /// Frequency bins per packet, payload_size / bytes_per_bin.
+    uint32_t bins_per_packet;
 
+    /// Output slot in the frame for each raw CRS source_id. Identity unless the
+    /// optional `crs_board_remap` config is set, in which case this is the inverse
+    /// of that list: output slot i receives the board whose raw source_id is
+    /// crs_board_remap[i].
+    std::array<uint16_t, num_source_ids> dest_slot_for_source_id;
+
+    /// The stream IDs seen on this port during startup; packets with other IDs are dropped.
     std::vector<uint32_t> stream_ids_expected;
 
+    /// True until the expected stream ID list is complete and the prefetch service started.
     bool first_run = true;
 
+    /// Number of FPGA time samples covered by one output frame.
     uint64_t time_samples_per_frame;
+    /// Number of packets (across all boards and streams) that make up one output frame.
     uint64_t packets_per_frame;
 
+    /// Prefetches, zeros, and hands out output frames on separate cores.
     std::unique_ptr<kotekan::FramePrefetchService> prefetch_service;
 
+    /// The frame currently being filled, and the next one (for out-of-order margin).
     const kotekan::FrameInfo* active_f0 = nullptr;
     const kotekan::FrameInfo* active_f1 = nullptr;
 
@@ -80,9 +167,52 @@ protected:
     uint64_t _last_check_seq = 0;
     uint64_t _seq_check_packet_count = 0;
 
+    /// A packet at least this many frames past the start of the next active frame is not caught
+    /// up to (see handle_packet). About 0.34 s of 8192-sample frames.
+    ///
+    /// Why there is a window at all: a packet lands ahead of the active frames when this worker
+    /// went without frames to fill. Downstream stalled until the output buffer was full, the
+    /// packets that arrived meanwhile were dropped, and the first one after the stall belongs to
+    /// a later frame. Skipping forward to it loses only those packets, and the receipt bitmap
+    /// already marks them missing. Following a packet further ahead would advance the frames this
+    /// worker shares with the port's other worker past packets that worker is still writing, and
+    /// then send empty frames downstream.
+    ///
+    /// Why 8: the stalls seen once the output buffer was full have been at most 4 frames, and a
+    /// stall that outlasts the buffer by a third of a second is a downstream fault in itself.
+    static constexpr uint64_t _max_frames_ahead = 8;
+
+    /// Packets outside the active frames and the window above. A one-off among good packets is
+    /// dropped, logged with its sequence number and counted
+    /// (kotekan_dpdk_crs16_out_of_window_packets_total): it may come from a fault in how the
+    /// F-engine assembles packets. This many within _out_of_window_burst_gap packets of each
+    /// other mean the stream is out of step -- an FPGA reset puts every packet behind the active
+    /// frames, a stall longer than the window puts every packet ahead of them, and a board in a
+    /// bad state sends bad sequence numbers continuously -- and kotekan stops.
+    static constexpr uint64_t _max_out_of_window_burst = 100;
+    /// Packets (about 2 s on one worker) after which an out-of-window packet starts a new burst.
+    static constexpr uint64_t _out_of_window_burst_gap = 1000000;
+    /// Out-of-window packets logged per burst; the rest are only counted.
+    static constexpr uint64_t _out_of_window_logged = 10;
+    uint64_t _out_of_window_burst = 0;
+    uint64_t _packets_since_out_of_window = 0;
+
+    /**
+     * @brief Copies one packet's payload into the output frame using non-temporal stores.
+     *
+     * @param mbuf              The packet to copy.
+     * @param frame_ptr         The output frame to copy into.
+     * @param relative_seq_num  Sequence number of the packet relative to the frame start.
+     * @param stream_id         Raw stream ID of the packet (frequency axis position).
+     * @param dest_slot         Output slot on the element axis (the board's raw
+     *                          source_id passed through @c dest_slot_for_source_id).
+     */
     inline void packet_copy_to_frame(struct rte_mbuf* mbuf, uint8_t* frame_ptr,
                                      uint64_t relative_seq_num, uint16_t stream_id,
-                                     uint16_t source_id);
+                                     uint16_t dest_slot);
+
+    /// kotekan_dpdk_crs16_out_of_window_packets_total for this worker's port.
+    kotekan::prometheus::Counter& out_of_window_packets_metric;
 };
 
 inline crs16BoardCaptureWorker::crs16BoardCaptureWorker(
@@ -96,7 +226,11 @@ inline crs16BoardCaptureWorker::crs16BoardCaptureWorker(
         buffer_container.get_buffer(config.get<std::string>(unique_name, "receipt_bitmap_buf"))),
     worker_id(worker_id), packet_size(config.get<uint32_t>(unique_name, "packet_size")),
     payload_size(config.get<uint32_t>(unique_name, "payload_size")),
-    num_expected_stream_ids(config.get<uint32_t>(unique_name, "num_expected_stream_ids")) {
+    num_expected_stream_ids(config.get<uint32_t>(unique_name, "num_expected_stream_ids")),
+    out_of_window_packets_metric(
+        kotekan::prometheus::Metrics::instance()
+            .add_counter("kotekan_dpdk_crs16_out_of_window_packets_total", unique_name, {"port"})
+            .labels({std::to_string(port)})) {
 
     out_buf->register_producer(unique_name);
     receipt_bitmap_buf->register_producer(unique_name);
@@ -106,8 +240,15 @@ inline crs16BoardCaptureWorker::crs16BoardCaptureWorker(
                                  "size of all source and stream IDs for a given time sample.");
     }
 
-    if ((payload_size % 32) != 0) {
-        throw std::runtime_error("The packet_size must be a multiple of 32 bytes");
+    if ((payload_size % bytes_per_bin) != 0) {
+        throw std::runtime_error("The payload_size must be a multiple of 128 bytes");
+    }
+    bins_per_packet = payload_size / bytes_per_bin;
+    if (bins_per_packet != Telescope::instance().num_freq_per_stream()) {
+        throw std::runtime_error(fmt::format(
+            fmt("crs16BoardCaptureWorker: payload_size {:d} holds {:d} frequency bins, but the "
+                "telescope has {:d} frequencies per stream"),
+            payload_size, bins_per_packet, Telescope::instance().num_freq_per_stream()));
     }
 
     if (payload_size + header_size != packet_size) {
@@ -128,6 +269,41 @@ inline crs16BoardCaptureWorker::crs16BoardCaptureWorker(
         config.get<std::vector<int>>(unique_name, "frame_service_cpu_affinity");
     bool allocate_metadata = config.get_default<bool>(unique_name, "allocate_metadata", false);
 
+    // Optional reordering of CRS boards in the output frame. The list is the
+    // desired board order by output slot: output slot i receives the board whose
+    // raw source_id is crs_board_remap[i]. Must be a permutation of
+    // [0, num_source_ids). Absent or empty = identity (no reordering).
+    std::vector<uint32_t> crs_board_remap =
+        config.get_default<std::vector<uint32_t>>(unique_name, "crs_board_remap", {});
+
+    for (uint32_t i = 0; i < num_source_ids; ++i)
+        dest_slot_for_source_id[i] = (uint16_t)i;
+
+    if (!crs_board_remap.empty()) {
+        if (crs_board_remap.size() != num_source_ids) {
+            throw std::runtime_error(
+                fmt::format(fmt("crs16BoardCaptureWorker: crs_board_remap must have exactly {:d} "
+                                "entries, got {:d}"),
+                            num_source_ids, crs_board_remap.size()));
+        }
+        std::array<bool, num_source_ids> seen{};
+        for (uint32_t i = 0; i < num_source_ids; ++i) {
+            const uint32_t src = crs_board_remap[i];
+            if (src >= num_source_ids) {
+                throw std::runtime_error(
+                    fmt::format(fmt("crs16BoardCaptureWorker: crs_board_remap entry {:d} is out of "
+                                    "range [0, {:d})"),
+                                src, num_source_ids));
+            }
+            if (seen[src]) {
+                throw std::runtime_error(fmt::format(
+                    fmt("crs16BoardCaptureWorker: crs_board_remap has duplicate entry {:d}"), src));
+            }
+            seen[src] = true;
+            dest_slot_for_source_id[src] = (uint16_t)i; // board `src` lands in output slot i
+        }
+    }
+
     prefetch_service = std::make_unique<kotekan::FramePrefetchService>(
         out_buf, receipt_bitmap_buf, unique_name, port, time_samples_per_frame, prefetch_depth,
         cpu_affinity, capture_n_frames, allocate_metadata);
@@ -138,23 +314,8 @@ inline crs16BoardCaptureWorker::crs16BoardCaptureWorker(
 
 inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
 
-    // Check the packet size, checksum, and the packet cookie
-    if (unlikely((mbuf->ol_flags & RTE_MBUF_F_RX_IP_CKSUM_MASK) == RTE_MBUF_F_RX_IP_CKSUM_BAD)) {
-        WARN("Port: {:d}, Worker: {:d}; Got bad packet IP checksum", port, worker_id);
-        return 0;
-    }
-
-    if (unlikely(mbuf->pkt_len != packet_size)) {
-        // WARN("Port: {:d}; Got packet with invalid size {:d}, expected {:d}", port, mbuf->pkt_len,
-        //      packet_size);
-        return 0;
-    }
-
-    if (unlikely(get_crs_packet_cookie(mbuf) != CRS_PACKET_COOKIE)) {
-        WARN("Port: {:d}, Worker: {:d}; Got packet with invalid cookie {:08X}", port, worker_id,
-             get_crs_packet_cookie(mbuf));
-        return 0;
-    }
+    // Packet validation (size, IP checksum, cookie, stream_id range) is done
+    // upstream in crs16BoardDistributor before packets reach this worker.
 
     // Print the worker ID and stream ID
     uint16_t stream_id = get_crs_packet_stream_id(mbuf);
@@ -217,6 +378,15 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
         return 0;
     }
 
+    // A raw source_id can exceed num_source_ids if a board's crate_id is
+    // misconfigured (crate_id is a 4-bit field). Drop such packets: they would
+    // index past the remap table, receipt bitmap, and frame board axis.
+    if (unlikely(source_id >= num_source_ids)) {
+        WARN("Port: {:d}, Worker: {:d}; Got packet with out-of-range Source ID {:d}", port,
+             worker_id, source_id);
+        return 0;
+    }
+
     // Print packet details for every 100,000 sequence numbers.
 #ifdef DEBUGGING
     if ((seq_num / 16) % 100000 == 0) {
@@ -253,7 +423,7 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
     }
 
     if (seq_num < active_f0->start_seq
-        || seq_num >= active_f1->start_seq + time_samples_per_frame) {
+        || seq_num >= active_f1->start_seq + _max_frames_ahead * time_samples_per_frame) {
 
         // Don't warn if we are just waiting for the first frame
         if (seq_num < active_f0->start_seq
@@ -261,18 +431,56 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
             return 0;
         }
 
-        // Packet is outside the range of the two active frames, drop it
-        ERROR("Port: {:d}, Worker: {:d}; Dropping packet with sequence number {:d} outside active "
-              "frame range [{:d}, {:d}]",
-              port, worker_id, seq_num, active_f0->start_seq,
-              active_f1->start_seq + time_samples_per_frame);
+        // Behind the active frames (late, or after an FPGA reset), or too far ahead to catch up
+        // to. A one-off is dropped, logged and counted; a burst of them stops kotekan (see
+        // _max_out_of_window_burst), since ending only this worker leaves the frames it shares
+        // unfinished.
+        out_of_window_packets_metric.inc();
+        if (_packets_since_out_of_window > _out_of_window_burst_gap)
+            _out_of_window_burst = 0;
+        _packets_since_out_of_window = 0;
+        if (++_out_of_window_burst < _max_out_of_window_burst) {
+            if (_out_of_window_burst > _out_of_window_logged) {
+                return 0;
+            }
+            if (seq_num < active_f0->start_seq) {
+                WARN("Port: {:d}, Worker: {:d}; Dropped packet with sequence number {:d} (source "
+                     "ID {:d}, stream ID {:d}): behind the active frames [{:d}, {:d})",
+                     port, worker_id, seq_num, source_id, stream_id, active_f0->start_seq,
+                     active_f1->start_seq + time_samples_per_frame);
+            } else {
+                WARN("Port: {:d}, Worker: {:d}; Dropped packet with sequence number {:d} (source "
+                     "ID {:d}, stream ID {:d}): {:d} frames past the start of the next active "
+                     "frame, the limit is {:d}",
+                     port, worker_id, seq_num, source_id, stream_id,
+                     (seq_num - active_f1->start_seq) / time_samples_per_frame, _max_frames_ahead);
+            }
+            return 0;
+        }
+        FATAL_ERROR("Port: {:d}, Worker: {:d}; {:d} packets outside the active frames [{:d}, {:d}) "
+                    "and the {:d}-frame window, each within {:d} packets of the last: the stream "
+                    "is out of step (an FPGA reset, a stall, or boards sending bad sequence "
+                    "numbers). The last had sequence number {:d} (source ID {:d}, stream ID {:d}). "
+                    "kotekan stopping...",
+                    port, worker_id, _out_of_window_burst, active_f0->start_seq,
+                    active_f1->start_seq + time_samples_per_frame, _max_frames_ahead,
+                    _out_of_window_burst_gap, seq_num, source_id, stream_id);
         return -1;
     }
+    ++_packets_since_out_of_window;
 
-    // If we are at least 160 time samples past the start of the next frame,
-    // then advance the frames. The 160 time sample margin ensures that we do not
-    // miss any packets that are slightly out of order.
-    if (seq_num >= active_f1->start_seq + 160) {
+    // Advance the frames while we are at least 160 time samples past the start of the next
+    // frame. The 160 time sample margin ensures that we do not miss any packets that are
+    // slightly out of order.
+    if (unlikely(seq_num >= active_f1->start_seq + time_samples_per_frame)) {
+        // Past the next frame: the packets in between were dropped while this worker had no
+        // frames (a downstream stall) or never arrived (a gap in the input). The frames passed
+        // over go downstream with them missing from the receipt bitmap.
+        WARN("Port: {:d}, Worker: {:d}; Packet with sequence number {:d} is {:d} frame(s) past "
+             "the start of the next frame; advancing the frames toward it",
+             port, worker_id, seq_num, (seq_num - active_f1->start_seq) / time_samples_per_frame);
+    }
+    while (seq_num >= active_f1->start_seq + 160) {
         _mm_sfence(); // Ensure all NT stores are complete before advancing
         prefetch_service->advance();
         active_f0 = prefetch_service->get_frame(0);
@@ -289,19 +497,14 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
     }
 
 
-    uint8_t* frame_ptr;
-    uint64_t relative_seq_num;
-    if (seq_num < active_f1->start_seq) {
-        // Packet belongs to the current frame
-        frame_ptr = active_f0->frame_ptr;
-        relative_seq_num = seq_num - active_f0->start_seq;
-    } else {
-        // Packet belongs to the next frame
-        frame_ptr = active_f1->frame_ptr;
-        relative_seq_num = seq_num - active_f1->start_seq;
-    }
+    // The packet belongs to the current frame or the next one.
+    const kotekan::FrameInfo* frame = (seq_num < active_f1->start_seq) ? active_f0 : active_f1;
+    const uint64_t relative_seq_num = seq_num - frame->start_seq;
 
-    packet_copy_to_frame(mbuf, frame_ptr, relative_seq_num, stream_id, source_id);
+    // Map the raw board id to its output slot (identity unless crs_board_remap is set).
+    const uint16_t dest_slot = dest_slot_for_source_id[source_id];
+
+    packet_copy_to_frame(mbuf, frame->frame_ptr, relative_seq_num, stream_id, dest_slot);
 
     // Record which packets were received.
     // The layout of the packet receipt bitmap is:
@@ -311,8 +514,9 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
     // source_id = num_source_ids
     // stream_id = num_stream_ids
     // For the pathfinder this is [512][16][8] = 65536 bits = 8192 bytes
-    active_f0->receipt_bitmap_ptr[(relative_seq_num / time_samples_per_packet) * num_source_ids
-                                  + source_id] |= (1 << (stream_id / 16));
+    // The source_id axis is in output-slot order (after crs_board_remap, if configured).
+    frame->receipt_bitmap_ptr[(relative_seq_num / time_samples_per_packet) * num_source_ids
+                              + dest_slot] |= (1 << (stream_id / 16));
 
     return 0;
 }
@@ -320,14 +524,15 @@ inline int crs16BoardCaptureWorker::handle_packet(struct rte_mbuf* mbuf) {
 
 inline void crs16BoardCaptureWorker::packet_copy_to_frame(struct rte_mbuf* mbuf, uint8_t* frame_ptr,
                                                           uint64_t relative_seq_num,
-                                                          uint16_t stream_id, uint16_t source_id) {
+                                                          uint16_t stream_id, uint16_t dest_slot) {
     const uint64_t time_long = relative_seq_num / 16;
-    const uint64_t element_long = source_id;
+    const uint64_t element_long = dest_slot;
 
     // Base offset calculation
-    // stride_time_long = (num_stream_ids * 48) * 2048
+    // stride_time_long = (num_stream_ids * bins_per_packet) * 2048
     // stride_element_long = 128
-    uint64_t base_offset = time_long * (uint64_t)(num_stream_ids * 48) * 2048 + element_long * 128;
+    uint64_t base_offset =
+        time_long * (uint64_t)(num_stream_ids * bins_per_packet) * 2048 + element_long * 128;
 
     uint8_t* dst_base = frame_ptr + base_offset;
 
@@ -336,7 +541,7 @@ inline void crs16BoardCaptureWorker::packet_copy_to_frame(struct rte_mbuf* mbuf,
     uint8_t* src = rte_pktmbuf_mtod_offset(m, uint8_t*, header_size);
     int rem = rte_pktmbuf_data_len(m) - header_size;
 
-    for (int bin = 0; bin < 48; ++bin) {
+    for (uint32_t bin = 0; bin < bins_per_packet; ++bin) {
         uint64_t freq_bin_idx = stream_id / 16 + 8 * bin;
         uint8_t* dst = dst_base + freq_bin_idx * 2048;
 

@@ -1,30 +1,31 @@
-#include <cuda_runtime_api.h>       // for cudaStreamSynchronize
-#include <driver_types.h>           // for cudaEvent_t, CUevent_st, CUstream_st
-#include <sys/types.h>              // for ulong
-#include <array>                    // for array
-#include <cassert>                  // for assert
-#include <cstddef>                  // for ptrdiff_t
-#include <cstdint>                  // for uint64_t
-#include <functional>               // for function
-#include <memory>                   // for allocator, shared_ptr, __shared_ptr_access
-#include <string>                   // for basic_string, string
-#include <vector>                   // for vector
+#include "Config.hpp"              // for Config
+#include "DataType.hpp"            // for uint1x8_t
+#include "NDArray.hpp"             // for NDArray
+#include "NDArrayBuffer.hpp"       // for NDArrayBuffer
+#include "NDArrayRingBuffer.hpp"   // for NDArrayRingBuffer, extent_t, read_descriptor_t
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "chordMetadata.hpp"       // for chordMetadata
+#include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
+#include "div.hpp"                 // for div_noremainder, round_down
+#include "gpuCommand.hpp"          // for gpuCommandType
+#include "kotekanLogging.hpp"      // for FATAL_ERROR, DEBUG
+#include "n2k/rfi_kernels.hpp"     // for launch_s0_kernel
 
-#include "Config.hpp"               // for Config
-#include "DataType.hpp"             // for uint1x8_t
-#include "NDArray.hpp"              // for NDArray
-#include "NDArrayBuffer.hpp"        // for NDArrayBuffer
-#include "NDArrayRingBuffer.hpp"    // for NDArrayRingBuffer, extent_t, read_descriptor_t
-#include "bufferContainer.hpp"      // for bufferContainer
-#include "chordMetadata.hpp"        // for chordMetadata
-#include "cudaCommand.hpp"          // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
-#include "cudaDeviceInterface.hpp"  // for cudaDeviceInterface
-#include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
-#include "div.hpp"                  // for div_noremainder, round_down
-#include "gpuCommand.hpp"           // for gpuCommandType
-#include "kotekanLogging.hpp"       // for FATAL_ERROR, DEBUG
-#include "n2k/rfi_kernels.hpp"      // for launch_s0_kernel
-#include "fmt.hpp"                  // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <array>              // for array
+#include <cassert>            // for assert
+#include <cstddef>            // for ptrdiff_t
+#include <cstdint>            // for uint64_t
+#include <cuda_runtime_api.h> // for cudaStreamSynchronize
+#include <driver_types.h>     // for cudaEvent_t, CUevent_st, CUstream_st
+#include <functional>         // for function
+#include <memory>             // for allocator, shared_ptr, __shared_ptr_access
+#include <string>             // for basic_string, string
+#include <sys/types.h>        // for ulong
+#include <vector>             // for vector
 
 using kotekan::div_noremainder;
 using kotekan::round_down;
@@ -88,6 +89,8 @@ private:
     const int num_dishes;
     const int sub_integration_ntime;
     const int num_subintegrations;
+    /// FPGA samples per pl_mask element along the time axis; the kernel's layout is fixed to it
+    static constexpr int pl_mask_samples = 128;
 
     // Kotekan buffer names
     const std::string pl_mask_name;
@@ -122,25 +125,27 @@ cudaPLMaskAccumulator::cudaPLMaskAccumulator(kotekan::Config& config,
             std::array<std::ptrdiff_t, 5>{buffer_depth * div_noremainder(num_times, 2 * 64),
                                           div_noremainder(num_frequencies, 4), num_polarizations,
                                           div_noremainder(num_dishes, 8), 64 / 8},
-            std::array<std::string, 5>{"T2hi64", "F4", "P", "D8", "T2lo64"}, *this),
+            std::array<std::string, 5>{"T2hi64", "F4", "P", "D8", "T2lo64"}, {128, 4, 1, 8, 16},
+            *this),
     pl_counts(pl_counts_name, "pl_counts",
               std::array<std::ptrdiff_t, 4>{num_subintegrations, num_frequencies, num_polarizations,
                                             num_dishes},
-              std::array<std::string, 4>{"Tc", "F", "P", "D"}, *this)
+              std::array<std::string, 4>{"Tc", "F", "P", "D"}, {sub_integration_ntime, 1, 1, 1},
+              *this)
 //
 {
     // For pl_mask_T128_sample_bytes
     if (sub_integration_ntime % 2 != 0)
         FATAL_ERROR("sub_integration_ntime % 2 != 0");
 
-    if (num_times % 128 != 0)
-        FATAL_ERROR("num_times % 128 != 0");
+    if (num_times % pl_mask_samples != 0)
+        FATAL_ERROR("num_times % pl_mask_samples != 0");
 
     if (num_times % sub_integration_ntime != 0)
         FATAL_ERROR("num_times % sub_integration_ntime != 0");
 
-    if ((num_dishes * num_polarizations) % 128 != 0)
-        FATAL_ERROR("num_elements (dish x pol) % 128 != 0");
+    if ((num_dishes * num_polarizations) % pl_mask_samples != 0)
+        FATAL_ERROR("num_elements (dish x pol) % pl_mask_samples != 0");
 
     pl_mask.register_consumer();
     pl_counts.register_producer();
@@ -154,7 +159,7 @@ cudaPLMaskAccumulator::~cudaPLMaskAccumulator() {}
 int cudaPLMaskAccumulator::wait_on_precondition() {
     // Wait for data to be available in input ringbuffers
     DEBUG("Waiting for pl_mask input ringbuffer data for frame {:d}...", gpu_frame_id);
-    const std::ptrdiff_t pl_samples_per_frame = num_times / 128;
+    const std::ptrdiff_t pl_samples_per_frame = num_times / pl_mask_samples;
     const int pl_mask_errcode =
         pl_mask.wait_and_claim_readable([&](const std::ptrdiff_t available_elements) {
             if (available_elements < pl_samples_per_frame)
@@ -180,10 +185,18 @@ cudaEvent_t cudaPLMaskAccumulator::execute(cudaPipelineState& /*pipestate*/,
     pl_mask.check_metadata();
     pl_counts.set_metadata(pl_mask.get_metadata());
 
+    const auto& pl_mask_meta = pl_mask.get_metadata();
     const auto& pl_counts_meta = pl_counts.get_metadata();
-    pl_counts_meta->set_fpga_seq_num(pl_mask.get_read_valid().begin() * 128);
+    if (pl_mask_meta->get_time_downsampling_fpga() != pl_mask_samples)
+        FATAL_ERROR("pl_mask time_downsampling_fpga {:d} != {:d}, the kernel's samples per element",
+                    pl_mask_meta->get_time_downsampling_fpga(), pl_mask_samples);
+    // The ring buffer's `fpga_seq_num` is the sequence number of its logical beginning, not
+    // zero.
+    pl_counts_meta->set_fpga_seq_num(pl_mask_meta->get_fpga_seq_num()
+                                     + pl_mask.get_read_valid().begin() * pl_mask_samples);
     pl_counts_meta->set_time_downsampling_fpga(
-        div_noremainder(pl_counts_meta->get_time_downsampling_fpga(), 128) * sub_integration_ntime);
+        div_noremainder(pl_counts_meta->get_time_downsampling_fpga(), pl_mask_samples)
+        * sub_integration_ntime);
 
     const kotekan::uint1x8_t* const pl_mask_memory = pl_mask.get_ndarray().data();
     std::uint64_t* const pl_counts_memory = pl_counts.get_ndarray().data();
@@ -200,13 +213,12 @@ cudaEvent_t cudaPLMaskAccumulator::execute(cudaPipelineState& /*pipestate*/,
     }
     assert(Tplmin + Tpl <= Tplsize);
 
-    const std::ptrdiff_t T = Tpl * 128;
-    const std::ptrdiff_t Tmin = Tplmin * 128;
-    const std::ptrdiff_t Tsize = Tplsize * 128;
+    const std::ptrdiff_t T = Tpl * pl_mask_samples;
+    const std::ptrdiff_t Tmin = Tplmin * pl_mask_samples;
+    const std::ptrdiff_t Tsize = Tplsize * pl_mask_samples;
 
     const std::ptrdiff_t F_stride = pl_counts.get_ndarray().stride(1);
 
-    const auto& pl_mask_meta = pl_mask.get_metadata();
     const std::ptrdiff_t Tpl_stride = pl_mask.get_ndarray().stride(0);
     const std::ptrdiff_t Tpl_offset = Tplmin * Tpl_stride;
 

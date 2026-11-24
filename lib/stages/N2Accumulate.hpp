@@ -6,22 +6,23 @@
 #ifndef N2_ACCUMULATE_HPP
 #define N2_ACCUMULATE_HPP
 
-#include <time.h>                 // for timespec
-#include <json.hpp>               // for json
-#include <cstdint>                // for int64_t, int32_t, uint64_t, uint32_t
-#include <string>                 // for string
-#include <vector>                 // for vector
-#include <complex>                // for complex
-#include <iosfwd>                 // for ostream
+#include "Config.hpp"            // for Config
+#include "N2Util.hpp"            // for frameID
+#include "Stage.hpp"             // for Stage
+#include "Telescope.hpp"         // for Telescope
+#include "buffer.hpp"            // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "prometheusMetrics.hpp" // for Counter, MetricFamily
+#include "timeUtil.hpp"          // for EOP
 
-#include "Config.hpp"             // for Config
-#include "N2Util.hpp"             // for frameID
-#include "Stage.hpp"              // for Stage
-#include "Telescope.hpp"          // for Telescope
-#include "buffer.hpp"             // for Buffer
-#include "bufferContainer.hpp"    // for bufferContainer
-#include "prometheusMetrics.hpp"  // for Counter, MetricFamily
-#include "timeUtil.hpp"           // for EOP
+#include <complex>  // for complex
+#include <cstdint>  // for int64_t, int32_t, uint64_t, uint32_t
+#include <iosfwd>   // for ostream
+#include <json.hpp> // for json
+#include <mutex>    // for mutex
+#include <string>   // for string
+#include <time.h>   // for timespec
+#include <vector>   // for vector
 
 using N2::frameID;
 
@@ -96,11 +97,25 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  * changes. A bias correction is applied, however, it is not guaranteed the resulting variance value
  * is positive definite.
  *
- * The "EvenOddPosDef" estimator differences normalized visibility samples and accounts for the
- * number of samples in each. It produces an unbiased estimate of the variance and is positive
- * definite, it only produces 0 if the visibilities in each pair are identical or there are no
- * samples in the accumulation bin. On Gaussian data it has the same variance as the CHIMEv1
- * estimator.
+ * The "EvenOddPosDef" estimator sums Q_pair = n0*n1/(n0+n1) * |corr1/n1-corr0/n0|^2
+ * over accepted pairs with samples in both frames. With k such pairs and N accepted samples,
+ * the weight is N*k/Q. A pair with samples in only one frame contributes to the mean, but
+ * not Q or k. The weight is zero if N, k or Q is zero, or if Q or the weight is nonfinite.
+ * Q/(k*N) estimates the variance of the mean for independent sample errors with a common
+ * variance and equal expected visibility within each pair after fringestopping. Masking
+ * based on the data can break these assumptions. Taking its reciprocal does not give an
+ * unbiased estimate of inverse variance. For Gaussian errors the weight's mean is
+ * k/(k-1) times the inverse variance for cross-correlations and k/(k-2) for
+ * autocorrelations, so it is infinite at k = 1 (k <= 2 for autocorrelations). Weights
+ * from fewer than about 4 pairs are heavy-tailed and should be cut on k. Masking that
+ * leaves single-frame pairs makes small k common.
+ * The mean is V = sum_accepted corr / N, and the output conjugates the lower-triangular
+ * input into upper-triangular order.
+ *
+ * The five input streams must agree on coarse frequencies and on the correlation period, which
+ * must equal sub_integration_ntime; correlation frames must be consecutive and start on a frame
+ * boundary; the valid count plus packet loss, and the RFI count, must not exceed
+ * sub_integration_ntime.
  *
  * TODO:    - radiometer_chi2
  *
@@ -133,7 +148,17 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  * excise.
  *         @buffer_format   NDArray uint8 [num_integrations, num_freq]
  *         @buffer_metadata chordMetadata
- * @buffer  out_buf         The accumulated and tagged data.
+ * @buffer  in_bad_feed_mask_buf  Optional bad feed mask (1 == good) in the input order, as
+ * produced by bufferBadInputs and fed to the GPU, folded (AND) over each accumulation
+ * bin into the output frames' per-element flags. Consumed 1:1 with the correlation
+ * frames and checked against them by FPGA sequence number, so the recorded flags are
+ * exactly the masks the GPU applied to the accumulated data. Each mask frame must be one
+ * mask sample covering exactly one correlation frame. Without this input the flags are
+ * all good.
+ *         @buffer_format   NDArray int8 [1, num_polarizations, num_dishes]
+ *         @buffer_metadata chordMetadata
+ * @buffer  out_buf         The accumulated and tagged data. The metadata carries k, in either
+ * variance mode, as n_usable_variance_pairs.
  *      @buffer_format N2Buffer. layout=FullUpperTri, num_ev=0
  *      @buffer_metadata N2Metadata
  *
@@ -155,6 +180,33 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  *                                          the buffers.
  * @conf    do_fringestop                   bool    Whether to fringestop incoming correlations.
  *                                          Default: False
+ * @conf    fringestop_updatable_config     String  Optional path to an updatable config block
+ *                                          with fields `enabled` (bool) and `valid_at_time_ns`
+ *                                          (int64, instrument time). Overrides do_fringestop;
+ *                                          a change takes effect at the first accumulation bin
+ *                                          starting at or after valid_at_time_ns. Only one
+ *                                          change is pending at a time; a new post replaces
+ *                                          a pending one.
+ * @conf    input_order                     String. Ordering of data in input correlation matrix.
+ *                                          Default: Telescope::fiducial_element_order()
+ * @conf    output_order                    String. Ordering of data in ouput correlation matrix.
+ *                                          Default: Telescope::fiducial_element_order()
+ * @conf    rfi_first_stage_enabled_updatable_config  String. Optional path to the updatable
+ *                                          config block that switches first-stage (GPU) RFI
+ *                                          excision, the block cudaRFISKtilde subscribes to.
+ *                                          Used to count the FPGA ticks of each output frame
+ *                                          during which excision was on. Without this key the
+ *                                          count is the whole frame.
+ * @conf    dtv_mask_enabled_updatable_config  String. Optional path to the updatable config
+ *                                          block that switches the DTV mask, the block
+ *                                          DtvRfiMask subscribes to. Used to count the FPGA
+ *                                          ticks of each output frame during which the mask
+ *                                          was applied. Without this key the count is zero.
+ *                                          The config value applies from startup. A POST
+ *                                          applies at valid_at_time_ns in the node's system
+ *                                          time; 0, or a time already passed, applies from
+ *                                          the next whole 5 s at least 1 s ahead, as in
+ *                                          DtvRfiMask.
  */
 class N2Accumulate : public kotekan::Stage {
 public:
@@ -221,6 +273,7 @@ public:
      * Helper function to keep code a bit more readable.
      *
      * @param in_frame_id The input frame ID.
+     * @param in_rfiframemask_frame_id The input RFI frame mask ID.
      * @param out_frame_id The output frame ID.
      * @return bool True if successful, false otherwise.
      */
@@ -228,13 +281,19 @@ public:
                           frameID& out_frame_id);
 
 private:
+    /// Queue an update from the `rfi_first_stage_enabled_updatable_config` block
+    bool receive_rfi_first_stage_enabled(nlohmann::json& update);
+    /// Queue an update from the `dtv_mask_enabled_updatable_config` block
+    bool receive_dtv_mask_enabled(nlohmann::json& update);
+
     // Buffers to read/write
-    Buffer* in_buf;              /// Buffer containing input correlations
-    Buffer* in_counts_buf;       /// Buffer containing input counts
-    Buffer* in_rficounts_buf;    /// Buffer containing input rficounts
-    Buffer* in_plcounts_buf;     /// Buffer containing input plcounts
-    Buffer* in_rfiframemask_buf; /// Buffer containing input rfiframemask
-    Buffer* out_buf;             /// Output for the main vis dataset only
+    Buffer* in_buf;               /// Buffer containing input correlations
+    Buffer* in_counts_buf;        /// Buffer containing input counts
+    Buffer* in_rficounts_buf;     /// Buffer containing input rficounts
+    Buffer* in_plcounts_buf;      /// Buffer containing input plcounts
+    Buffer* in_rfiframemask_buf;  /// Buffer containing input rfiframemask
+    Buffer* in_bad_feed_mask_buf; /// Optional buffer containing the bad feed mask; may be null
+    Buffer* out_buf;              /// Output for the main vis dataset only
 
     // Parameters saved from the config files
     const int64_t _num_freq_per_n2k_frame;
@@ -254,11 +313,35 @@ private:
 
     const int _num_workers; ///< number of OpenMP threads to use to process data
 
-    const bool _do_fringestop; ///< Whether to fringestop
-    const ElementOrder _input_order; ///< Order label of the inputs
+    bool _do_fringestop; ///< Whether to fringestop the current accumulation bin
+    /// Updatable config path for the fringestop setting; empty if not set
+    const std::string _fringestop_config_path;
+    /// Pending fringestop setting from updatable config; applied at a bin start
+    std::mutex _fringestop_mutex;
+    bool _next_do_fringestop;
+    int64_t _next_fringestop_valid_at_seq;
+    /// configUpdater callback: store the next fringestop setting and its valid-at seq
+    bool receive_fringestop_enabled(nlohmann::json& json);
+    /// Apply a pending fringestop setting to the bin starting at @c bin_start_seq
+    void update_fringestop(int64_t bin_start_seq);
     const N2VarianceMode _variance_mode;
     const bool _debug_accum_mode;
     const bool _profile_info;
+    const std::string _rfi_first_stage_config_path;
+    /// First-stage RFI excision state, tracked in step with cudaRFISKtilde; `_next_*` hold a
+    /// pending update
+    std::mutex _rfi_first_stage_mutex;
+    bool _rfi_first_stage_enabled;
+    bool _next_rfi_first_stage_enabled;
+    int64_t _next_rfi_first_stage_valid_at_seq;
+    const std::string _dtv_mask_config_path;
+    /// DTV mask state, tracked in step with DtvRfiMask; `_next_*` hold a pending update
+    std::mutex _dtv_mask_mutex;
+    bool _dtv_mask_enabled;
+    bool _next_dtv_mask_enabled;
+    int64_t _next_dtv_mask_valid_at_seq;
+    /// Whether receive_dtv_mask_enabled has had the config value, so later calls are POSTs
+    bool _dtv_mask_config_read = false;
 
 
     // Some derived parameters
@@ -286,23 +369,40 @@ private:
     // number of fpga samples, per frequency, in frame
     std::vector<int32_t> _n_valid_fpga_samples_in_vis;
     std::vector<float> _n_valid_sample_diff_sq_sum;
+    std::vector<int32_t> _n_usable_variance_pairs; ///< Accepted pairs with samples in both frames
     std::vector<uint64_t> _n_rfi_samples_in_vis;
     std::vector<uint64_t> _n_pl_samples_in_vis;
+    /// Bad feed mask folded (AND) over the current accumulation bin (1 == good), input order
+    std::vector<uint8_t> _accum_bad_feed_mask;
+    /// AND a bad feed mask frame (@c _num_elements bytes, input order) into @c _accum_bad_feed_mask
+    void fold_bad_feed_mask_into_accum(const uint8_t* bad_feed_mask);
     int64_t _vis_samples_in_out_frame;
+    /// FPGA ticks of the current bin during which first-stage RFI excision was enabled
+    uint64_t _n_rfi_first_stage_enabled_ticks;
+    /// FPGA ticks of the current bin during which the DTV mask was applied
+    uint64_t _n_dtv_mask_enabled_ticks;
     uint64_t _accum_fpga_start_tick;
     int64_t _accum_bin_idx;
 
 
     // The telescope
     const Telescope& _tel;
-    
-    const std::vector<vec3d_t> _feed_positions_m; ///< The position of each element in the telescope grid frame
-    static constexpr std::complex<float> _sentinel_phase = std::complex<float>(2.0f, 2.0f); //  fringestop phases have |z| = 1.0
 
-    // Reference to the prometheus metric that we will use for counting skipped
-    // frames
-    // TODO ...
-    kotekan::prometheus::MetricFamily<kotekan::prometheus::Counter>& skipped_frame_counter;
+    // these must bye after _tel sine their initialization requires _tel
+    const ElementOrder _input_order;  ///< ordering of data in input matrix
+    const ElementOrder _output_order; ///< ordering of data in output matrix
+    const std::vector<int> _reorder;  // cache of mapping input_order_index -> output_order_index
+
+    const std::vector<vec3d_t>
+        _feed_positions_m; ///< The position of each element in the telescope grid frame
+    static constexpr std::complex<float> _sentinel_phase =
+        std::complex<float>(2.0f, 2.0f); //  fringestop phases have |z| = 1.0
+
+    // Prometheus metric for tracking valid and flagged sample counts
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& n_valid_gauge;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& n_pl_gauge;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& n_rfi_gauge;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& n_rfi_only_gauge;
 };
 
 #endif

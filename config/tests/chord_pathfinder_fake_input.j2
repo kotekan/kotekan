@@ -6,68 +6,91 @@
 # Buffers
 
 # Main voltage buffer
+# testDataGen (gen_fake_voltage, type random_signed_offset -> int4x2_swapped_withoffset,
+# array_shape [samples_per_data_set, num_local_freq, num_polarizations, num_dishes]).
 host_voltage_buffer_0:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: samples_per_data_set * num_local_freq * num_elements
+    value_type: int4x2_swapped_withoffset
+    extents: [samples_per_data_set, num_local_freq, num_polarizations, num_dishes]
     metadata_pool: main_pool
     numa_node: 0
 host_voltage_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: samples_per_data_set * num_local_freq * num_elements
+    value_type: int4x2_swapped_withoffset
+    extents: [samples_per_data_set, num_local_freq, num_polarizations, num_dishes]
     metadata_pool: main_pool
     numa_node: 1
 
 
+# Produced by testRFImaskGen (gen_dummy_rfi_mask, name "RFImask", type const -> uint1x8;
+# shape [samples_per_data_set / 1024, num_local_freq, 128] is fixed in testRFImaskGen.cpp:133).
 host_rfi_RFImask_dummy_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: num_local_freq * samples_per_data_set / 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 1024, num_local_freq, 128]
     zero_new_frames: true
     zero_value: 0xFF
     metadata_pool: main_pool
 
 host_rfi_RFImask_dummy_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: num_local_freq * samples_per_data_set / 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 1024, num_local_freq, 128]
     zero_new_frames: true
     zero_value: 0xFF
     numa_node: 1
     metadata_pool: main_pool
 
+# testDataGen (gen_fake_pl_mask, type random1x8 -> uint1x8, name "pl_mask").
+# extents = [samples_per_data_set/128, (num_local_freq+3)/4, num_polarizations, num_dishes/8, 8]
 host_pl_mask_buffer:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / 128) * (num_local_freq/4) * (num_elements / 8) * 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 128, (num_local_freq + 3) / 4, num_polarizations, num_dishes / 8, 8]
     metadata_pool: main_pool
 
 host_pl_mask_buffer_1:
-    kotekan_buffer: standard
+    kotekan_buffer: ndarray
     num_frames: host_side_buffer_depth
-    frame_size: (samples_per_data_set / 128) * (num_local_freq/4) * (num_elements / 8) * 8
+    value_type: uint1x8
+    extents: [samples_per_data_set / 128, (num_local_freq + 3) / 4, num_polarizations, num_dishes / 8, 8]
     metadata_pool: main_pool
     numa_node: 1
 
-# Bad feed mask - marks which feeds to exclude from RFI calculations
-# Shape: [P, D] = [2, num_dishes] - all ones means all feeds are good
+# The bad feed mask is valid for this many input samples. Four frames, so that a mask
+# element spans several frames and a short test run still hands the mask over many times.
+# This must be a multiple of samples_per_data_set: rfi_downsampling_factor has to divide it,
+# and the quotient has to be a multiple of rfi_num_times.
+bf_mask_lifetime_in_samples: 4 * samples_per_data_set
+
+# Bad feed mask - marks which feeds to exclude from RFI calculations.
+# Shape: [1, P, D] = [1, 2, num_dishes], one mask element per bf_mask_lifetime_in_samples input
+# samples. It reaches the GPU through host_bf_mask_ringbuffer (see chord_pathfinder_core.j2).
 host_bf_mask_buffer:
-    kotekan_buffer: standard
-    num_frames: 1
-    frame_size: sizeof_int8 * num_dishes * num_polarizations
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: int8
+    extents: [1, num_polarizations, num_dishes]
+    quantity_name: "bf_mask"
+    dimnames: ["Tbf", "P", "D"]
+    dimscalings: [bf_mask_lifetime_in_samples, 1, 1]
     metadata_pool: main_pool
-    zero_new_frames: true
-    zero_value: 0xFF
     numa_node: 0
 
 host_bf_mask_buffer_1:
-    kotekan_buffer: standard
-    num_frames: 1
-    frame_size: sizeof_int8 * num_dishes * num_polarizations
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: int8
+    extents: [1, num_polarizations, num_dishes]
+    quantity_name: "bf_mask"
+    dimnames: ["Tbf", "P", "D"]
+    dimscalings: [bf_mask_lifetime_in_samples, 1, 1]
     metadata_pool: main_pool
-    zero_new_frames: true
-    zero_value: 0xFF
     numa_node: 1
 
 
@@ -79,6 +102,8 @@ gen_fake_voltage:
     name: "E"
     array_shape: [ 8192, 16, 2, 64 ]
     dim_name: ["T", "F", "P", "D" ]
+    # One FPGA sample per time index, as inventVoltage and the fengine configs describe "E".
+    dim_scaling: [1, 1, 1, 1]
     num_frames: -1
 
     voltage_0:
@@ -94,6 +119,7 @@ gen_fake_pl_mask:
     name: "pl_mask"
     array_shape: [ 64, 4, 2, 8, 8 ]  # = num_times/128, num_freq/4, 2, num_dishes/8, 8
     dim_name: ["T2hi64", "F4", "P", "D8", "T2lo64" ]
+    dim_scaling: [128, 4, 1, 8, 16]
     num_frames: -1
     meta_time_downsample_factor: 128 
 

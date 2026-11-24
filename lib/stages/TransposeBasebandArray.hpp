@@ -1,14 +1,14 @@
 #ifndef TRANSPOSE_BASEBAND_ARRAY_HPP
 #define TRANSPOSE_BASEBAND_ARRAY_HPP
 
-#include <stddef.h>             // for size_t
-#include <cstdint>              // for uint8_t, uint32_t
-#include <string>               // for string
+#include "Config.hpp"          // for Config
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
 
-#include "Config.hpp"           // for Config
-#include "Stage.hpp"            // for Stage
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
+#include <cstdint>  // for uint8_t, uint32_t
+#include <stddef.h> // for size_t
+#include <string>   // for string
 
 /**
  * @class TransposeBasebandArray
@@ -46,6 +46,9 @@
  *                              Use "even"/"odd" to parallelize two instances on alternate frames.
  * @conf check_for_zero_nibbles Bool. Enable checking for zero nibbles in the input data (default:
  * false).
+ * @conf disable_avx512        Bool. Force the scalar path even where AVX512 is available
+ *                             (default: false).  Intended for testing and for comparing the
+ *                             two paths against each other.
  *
  * @author Kotekan Team
  */
@@ -68,6 +71,7 @@ private:
 
     /// Configuration parameter (runtime)
     uint32_t timesamples_per_frame;
+    uint32_t num_local_freq;
 
     /// Frame processing mode: which frames this instance should handle
     enum class FrameMode { All, Even, Odd };

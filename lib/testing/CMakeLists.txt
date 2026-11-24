@@ -31,6 +31,7 @@ add_library(
     networkOutputSim.cpp
     simVdifData.cpp
     testDataCheck.cpp
+    testDataCheckExpected.cpp
     testDataGenQuad.cpp
     testDataGenFloat.cpp
     testLostCountsGen.cpp

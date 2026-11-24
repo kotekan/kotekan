@@ -1,20 +1,21 @@
 #include "simpleAutocorr.hpp"
 
-#include <stdint.h>             // for uint32_t
-#include <stdlib.h>             // for calloc, free
-#include <string.h>             // for memset
-#include <sys/types.h>          // for uint
-#include <functional>           // for bind, function
-#include <memory>               // for shared_ptr
+#include "Config.hpp"          // for Config
+#include "NDArray.hpp"         // for GenericNDArray
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "airspyFrameDesc.hpp" // for make_fengine_desc
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "kotekanLogging.hpp"  // for DEBUG
 
-#include "Config.hpp"           // for Config
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "airspyFrameDesc.hpp"  // for make_fengine_desc
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "kotekanLogging.hpp"   // for DEBUG
-#include "fmt.hpp"              // for compile_string_to_view
-#include "NDArray.hpp"          // for GenericNDArray
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <functional>  // for bind, function
+#include <memory>      // for shared_ptr
+#include <stdint.h>    // for uint32_t
+#include <stdlib.h>    // for calloc, free
+#include <string.h>    // for memset
+#include <sys/types.h> // for uint
 
 
 using kotekan::bufferContainer;
@@ -42,7 +43,7 @@ simpleAutocorr::simpleAutocorr(Config& config, const std::string& unique_name,
     // test pipeline captures buf_out through rawFileWrite. networkPowerStream
     // asserts the expected power_corr layout on its consumer side, so the
     // contract is still documented in code.
-    buf_in->set_frame_desc(
+    buf_in->ensure_frame_desc(
         kotekan_airspy::make_fengine_desc(buf_in->frame_size / (2 * sizeof(float))));
 }
 
@@ -75,8 +76,11 @@ void simpleAutocorr::main_thread() {
             integration_ct++;
 
             if (integration_ct >= integration_length) {
-                if (out_loc == 0)
+                if (out_loc == 0) {
                     out_local = (float*)buf_out->wait_for_empty_frame(unique_name, frame_out);
+                    if (out_local == nullptr)
+                        return;
+                }
                 for (int i = 0; i < spectrum_length; i++)
                     out_local[out_loc++] = spectrum_out[i];
                 // Trailing slot is the integration count, packed as uint32 in the

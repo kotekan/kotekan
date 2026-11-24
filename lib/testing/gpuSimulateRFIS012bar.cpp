@@ -3,6 +3,7 @@
 #include "Config.hpp"          // for Config
 #include "DataType.hpp"        // for DataType, GetType
 #include "N2Util.hpp"          // for frameID
+#include "NDArray.hpp"         // for NDArray, GenericNDArray, Config
 #include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
 #include "buffer.hpp"          // for Buffer
 #include "bufferContainer.hpp" // for bufferContainer
@@ -60,19 +61,17 @@ gpuSimulateRFIS012bar::gpuSimulateRFIS012bar(Config& config, const std::string& 
     assert((_samples_per_data_set / _rfi_downsampling_factor) % _rfi_second_downsampling_factor
            == 0);
 
-    size_t rfi_s012_size = (_samples_per_data_set / _rfi_downsampling_factor) * _num_local_freq * 3
-                           * _num_elements * sizeof(uint64_t);
-
-    if (in_buf->frame_size != rfi_s012_size) {
-        FATAL_ERROR("in_buf ({:s}) has frame size: {:d}, expected {:d}", in_buf->buffer_name,
-                    in_buf->frame_size, rfi_s012_size);
-    }
-    assert(in_buf->frame_size == rfi_s012_size);
+    in_buf->require_frame_desc(kotekan::NDArray<uint64_t, 5>::describe(
+        "S012",
+        {_samples_per_data_set / _rfi_downsampling_factor, _num_local_freq, 3, _num_polarizations,
+         _num_dishes},
+        {"Trfi", "F", "S", "P", "D"}, {_rfi_downsampling_factor, 1, 1, 1, 1}));
 
     int64_t nt = _samples_per_data_set / _rfi_downsampling_factor / _rfi_second_downsampling_factor;
-    out_buf->allocate_ndarray_frame_desc<uint64_t, 5>(
+    out_buf->require_frame_desc(kotekan::NDArray<uint64_t, 5>::describe(
         "S012bar", {nt, _num_local_freq, 3, _num_polarizations, _num_dishes},
-        {"Trfibar", "F", "S", "P", "D"});
+        {"Trfibar", "F", "S", "P", "D"},
+        {_rfi_downsampling_factor * _rfi_second_downsampling_factor, 1, 1, 1, 1}));
 }
 
 gpuSimulateRFIS012bar::~gpuSimulateRFIS012bar() {}
@@ -125,10 +124,10 @@ void gpuSimulateRFIS012bar::main_thread() {
 
         // Start with a copy
         meta_out->deepCopy(meta_in);
-        meta_out->set_from_frame_desc(out_buf->get_ndarray_frame_desc());
+        meta_out->set_from_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // test that things are consistent
-        meta_out->check_frame_desc(out_buf->get_ndarray_frame_desc());
+        meta_out->check_frame_desc(out_buf->get_frame_desc<kotekan::GenericNDArray>());
 
         // Set non-NDArray things.
         meta_out->set_fpga_seq_num(meta_in->get_fpga_seq_num());

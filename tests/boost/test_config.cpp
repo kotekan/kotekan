@@ -1,5 +1,7 @@
 #define BOOST_TEST_MODULE "test_config"
 
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
+
 #include <boost/test/included/unit_test.hpp> // for BOOST_PP_IIF_1, BOOST_PP_IIF_0, BOOST_PP_BO...
 #include <cstdint>                           // for int32_t
 #include <exception>                         // for exception
@@ -16,6 +18,9 @@
 using kotekan::Config;
 
 using json = nlohmann::json;
+
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(_get_value_recursive) {
     json json_config = {
@@ -130,4 +135,93 @@ BOOST_AUTO_TEST_CASE(_get_value_recursive) {
     BOOST_CHECK(config.get_value("").empty());
     BOOST_CHECK(config.get_value(" ").empty());
     BOOST_CHECK(config.get_value("/").empty());
+}
+
+BOOST_AUTO_TEST_CASE(_access_tracking) {
+    json json_config = {
+        {"pi", 3.141},
+        {"unused_top", 7},
+        {"stage_a", {{"value", 10}, {"expr", "2 * pi"}}},
+        {"stage_b", {{"value", 20}, {"unused_b", 99}}},
+    };
+    Config config;
+    config.update_config(json_config);
+
+    // With tracking enabled, get() must still resolve values normally, while
+    // recording the resolved leaf paths and the requesting base paths.
+    config.set_usage_report_level(Config::UsageReportLevel::info);
+
+    BOOST_CHECK_EQUAL(config.get<int>("/stage_a", "value"), 10);
+    BOOST_CHECK_EQUAL(config.get<int>("/stage_b", "value"), 20);
+    // stage_a/value reachable from a deeper scope (walks up the tree).
+    BOOST_CHECK_EQUAL(config.get_default<int>("/stage_a/child", "value", -1), 10);
+    // Expression evaluation reads "pi" via the top-level scope; that access is
+    // recorded too, attributed to the requesting stage path.
+    BOOST_CHECK_EQUAL(config.get<double>("/stage_a", "expr"), 2 * 3.141);
+
+    // Should run cleanly whether or not every item was touched; "unused_top"
+    // and "stage_b/unused_b" remain unaccessed and appear in the summary log.
+    config.log_access_summary();
+
+    // Tracking does not perturb subsequent reads.
+    BOOST_CHECK_EQUAL(config.get<int>("/stage_b", "value"), 20);
+}
+
+BOOST_AUTO_TEST_CASE(_parse_usage_report_level) {
+    using L = Config::UsageReportLevel;
+
+    // Boolean forms.
+    BOOST_CHECK(Config::parse_usage_report_level(json(false)) == L::off);
+    BOOST_CHECK(Config::parse_usage_report_level(json(true)) == L::info);
+
+    // String forms (case-insensitive), including aliases.
+    BOOST_CHECK(Config::parse_usage_report_level(json("off")) == L::off);
+    BOOST_CHECK(Config::parse_usage_report_level(json("info")) == L::info);
+    BOOST_CHECK(Config::parse_usage_report_level(json("WARN")) == L::warn);
+    BOOST_CHECK(Config::parse_usage_report_level(json("error")) == L::error);
+    BOOST_CHECK(Config::parse_usage_report_level(json("fatal_error")) == L::fatal);
+    BOOST_CHECK(Config::parse_usage_report_level(json("fatal")) == L::fatal);
+
+    // Anything else is a hard error so config typos are caught at startup.
+    BOOST_CHECK_THROW(Config::parse_usage_report_level(json("loud")), std::runtime_error);
+    BOOST_CHECK_THROW(Config::parse_usage_report_level(json(3)), std::runtime_error);
+}
+
+// get_default() must distinguish an absent value, where the default is what the
+// caller asked for, from one that is set but unreadable, which is fatal. In a boost
+// test the ERROR_NON_OO inside FATAL_ERROR_NON_OO throws before exit_kotekan runs,
+// so the fatal case is observed here as a std::runtime_error and raises no SIGTERM.
+BOOST_AUTO_TEST_CASE(_get_default_malformed_value) {
+    json json_config = {
+        {"good_list", {0, 2, 4, 6}},
+        // A list of lists, as a YAML "- [0, 2, 4, 6]" produces.
+        {"nested_list", {{0, 2, 4, 6}}},
+        {"a_string", "not a number"},
+        {"stage", {{"child", json::object()}}},
+    };
+    Config config;
+    config.update_config(json_config);
+
+    const std::vector<uint32_t> fallback = {99};
+
+    // A readable value is returned unchanged.
+    BOOST_CHECK_EQUAL(config.get_default<std::vector<uint32_t>>("/", "good_list", fallback).size(),
+                      4u);
+
+    // An absent value returns the default and is not reported.
+    BOOST_CHECK_EQUAL(config.get_default<std::vector<uint32_t>>("/", "absent", fallback).size(),
+                      1u);
+
+    // A value of the wrong type is fatal.
+    BOOST_CHECK_THROW(config.get_default<std::vector<uint32_t>>("/", "nested_list", fallback),
+                      std::runtime_error);
+    BOOST_CHECK_THROW(config.get_default<int>("/", "a_string", -1), std::runtime_error);
+
+    // Including one reached by walking up the tree from a deeper scope.
+    BOOST_CHECK_THROW(
+        config.get_default<std::vector<uint32_t>>("/stage/child", "nested_list", fallback),
+        std::runtime_error);
+
+    // get() remains strict for callers that want the failure themselves.
+    BOOST_CHECK_THROW(config.get<std::vector<uint32_t>>("/", "nested_list"), std::runtime_error);
 }

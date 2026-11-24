@@ -147,6 +147,10 @@ inline int iceBoardStandard::handle_packet(struct rte_mbuf* mbuf) {
     if (unlikely(!iceBoardHandler::check_order(diff)))
         return 0; // For not we just disgard any dublicate/out-of-order packets.
 
+    // Accepting the packet, add to stats
+    rx_packets_total += 1;
+    rx_bytes_total += mbuf->pkt_len;
+
     // Handle lost packets
     if (unlikely(diff > samples_per_packet))
         if (unlikely(!iceBoardStandard::handle_lost_samples(diff - samples_per_packet)))

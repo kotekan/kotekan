@@ -1,10 +1,3 @@
-# === Start Python 2/3 compatibility
-from __future__ import absolute_import, division, print_function, unicode_literals
-from future.builtins import *  # noqa  pylint: disable=W0401, W0614
-from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
-
-# === End Python 2/3 compatibility
-
 from os import path
 from setuptools import setup, find_packages
 import versioneer
@@ -29,7 +22,7 @@ setup(
     long_description=long_description,
     url="http://github.com/kotekan/kotekan/",
     packages=find_packages(),
-    py_modules=["_version"],
+    python_requires=">=3.12",
     install_requires=requirements,
     entry_points="""
         [console_scripts]
@@ -37,5 +30,4 @@ setup(
         polyco-tools=kotekan.scripts.polyco_tools:cli
         baseband-archiver=kotekan.scripts.baseband_archiver:cli
     """,
-    scripts=["scripts/rfi_receiver/rfi_receiver.py"],
 )

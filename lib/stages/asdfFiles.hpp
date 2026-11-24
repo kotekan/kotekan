@@ -13,7 +13,7 @@ namespace asdf {
 // The version number of the CHORD metadata format in ASDF files.
 // This uses semver: A file with version X.Y can be read by software
 // that understands X.Z even when Y > Z.
-constexpr std::array<int, 2> chord_metadata_version{1, 0};
+constexpr std::array<int, 2> chord_metadata_version{2, 0};
 
 inline ASDF::scalar_type_id_t chord2asdf(const kotekan::DataType type) {
     switch (type) {

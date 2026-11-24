@@ -1,10 +1,3 @@
-# === Start Python 2/3 compatibility
-from __future__ import absolute_import, division, print_function, unicode_literals
-from future.builtins import *  # noqa  pylint: disable=W0401, W0614
-from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
-
-# === End Python 2/3 compatibility
-
 import pytest
 import numpy as np
 import time
@@ -89,7 +82,12 @@ def output_frames(tmpdir_factory, input_frames):
     dump_buffer = runner.DumpVisBuffer(str(tmpdir))
 
     test = runner.KotekanStageTester(
-        "BadInputFlag", {}, read_buffer, dump_buffer, root_params, expect_failure=True,
+        "BadInputFlag",
+        {},
+        read_buffer,
+        dump_buffer,
+        root_params,
+        expect_failure=True,
     )
 
     test.run()

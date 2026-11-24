@@ -9,11 +9,15 @@ on:
       build_branch:
         description: "Tag/branch name to use for the Docker images (will be sanitized for tag)"
         required: true
-        default: 'chord'
+        default: 'develop'
         type: string
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   manual-build-docker:
-    uses: ./.github/workflows/build_push_docker.yml
+    uses: ./.github/workflows/build_push_docker.yaml
     with:
       build_branch: ${{ github.event.inputs.build_branch }}

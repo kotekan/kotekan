@@ -35,14 +35,18 @@ add_library(
     N2FrameView.cpp
     timeUtil.cpp
     CHORDTelescope.cpp
+    UpchannelizationSchedule.cpp
     geoUtil.cpp
-    beamUtil.cpp)
+    beamUtil.cpp
+    pfbPrototype.cpp)
 
 target_link_libraries(
     kotekan_utils
     PRIVATE libexternal
     PUBLIC kotekan_libs)
 target_include_directories(kotekan_utils PUBLIC .)
+# For upchannelizeReference.hpp, which has no CUDA dependency
+target_include_directories(kotekan_utils PRIVATE ../cuda)
 
 # HDF5 stuff
 if(HDF5_FOUND

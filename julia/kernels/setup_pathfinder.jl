@@ -1,7 +1,10 @@
 # Configuration name
 const setup = :pathfinder
+# See `setup_charts.jl` for what `compute_capability`, `ptx_compat`, and
+# `cuda_arch` mean.
 const compute_capability = v"8.6" # A40
 const ptx_compat = v"8.0"
+const cuda_arch = "sm_86" # A40
 
 # Time between time samples
 const sampling_time_μsec = 16384 / 3200
@@ -22,7 +25,7 @@ const F = 384
 const T = 4 * 8192
 
 # Maximum number of coarse frequencies per upchannelization factor, rounded up to a power of 2
-const F_per_U = Dict(1 => 128, 2 => 128, 4 => 128, 8 => 64, 16 => 64, 32 => 64, 64 => 32)
+const F_per_U = Dict(1 => 128, 2 => 128, 4 => 128, 8 => 64, 16 => 64, 32 => 64, 64 => 32, 128 => 96)
 
 # Maximum number of fine frequencies per GPU, for all upchannelization factors combined
 const Fbar_out = 4096

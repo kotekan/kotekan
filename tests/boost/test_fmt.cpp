@@ -1,12 +1,16 @@
 #define BOOST_TEST_MODULE "test_fmt"
 #include "errors.h"
-#include "kotekanLogging.hpp" // for DEBUG, INFO, ERROR, FATAL_ERROR, WARN
+#include "kotekanLogging.hpp"        // for DEBUG, INFO, ERROR, FATAL_ERROR, WARN
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 
 #include "fmt.hpp" // for format
 
 #include <boost/test/included/unit_test.hpp>
 #include <chrono> // for duration, operator-, seconds, operator/, operator>, tim...
 #include <thread>
+
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(test_output_macros) {
     _global_log_level = 4;
@@ -30,4 +34,23 @@ BOOST_AUTO_TEST_CASE(test_output_macros) {
     WARN_NON_OO("duration {:.3f}", diff.count());
     DEBUG_NON_OO("duration {:.3f}", diff.count());
     DEBUG2_NON_OO("duration {:.3f}", diff.count());
+}
+
+BOOST_AUTO_TEST_CASE(test_error_message_keeps_braces) {
+    // The stored message is the formatted text verbatim; a brace in an argument or an escaped
+    // brace in the format must come through unchanged rather than be parsed again.
+    kotekan::kotekanLogging::set_error_message(fmt("Failed to deserialize from {:s}: {:s}"),
+                                               std::string("10.0.0.1"),
+                                               std::string("expected '[', '{', or a literal"));
+    BOOST_CHECK_EQUAL(kotekan::kotekanLogging::get_error_message(),
+                      "Failed to deserialize from 10.0.0.1: expected '[', '{', or a literal");
+
+    kotekan::kotekanLogging::set_error_message(fmt("must be an object (e.g. {{enabled: true}})"));
+    BOOST_CHECK_EQUAL(kotekan::kotekanLogging::get_error_message(),
+                      "must be an object (e.g. {enabled: true})");
+
+    // A message longer than the buffer is cut, still NUL-terminated.
+    kotekan::kotekanLogging::set_error_message(fmt("{:s}"), std::string(2 * MAX_LOG_MSG_LEN, 'x'));
+    BOOST_CHECK_EQUAL(kotekan::kotekanLogging::get_error_message(),
+                      std::string(MAX_LOG_MSG_LEN - 1, 'x'));
 }

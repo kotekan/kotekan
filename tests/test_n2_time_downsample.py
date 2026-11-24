@@ -1,10 +1,3 @@
-# === Start Python 2/3 compatibility
-from __future__ import absolute_import, division, print_function, unicode_literals
-from future.builtins import *  # noqa  pylint: disable=W0401, W0614
-from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
-
-# === End Python 2/3 compatibility
-
 import pytest
 import numpy as np
 from astropy.time import Time, TimeDelta
@@ -51,6 +44,7 @@ downsamp_params = {
     "num_bins_per_rotation": n_bins_per_rot,
     "max_age": 2 * T_rot_sec / n_bins_per_rot,
     "input_order": "CHORDBeamformer",
+    "do_fringestop": False,  # FakeN2 frames are not fringestopped.
 }
 
 global_params = {
@@ -415,6 +409,10 @@ def test_metadata(n2_data):
         assert frame.metadata.frame_length_fpga_ticks == frame_meta[i]["seq_len"]
         assert frame.metadata.n_valid_fpga_ticks == frame_meta[i]["seq_valid"]
         assert frame.metadata.n_rfi_fpga_ticks == frame_meta[i]["seq_rfi"]
+        if fake_params["mode"] == "fill_ij_missing":
+            assert (
+                frame.metadata.n_usable_variance_pairs == 3 * frame_meta[i]["n_frames"]
+            )
 
 
 def test_time(n2_data):

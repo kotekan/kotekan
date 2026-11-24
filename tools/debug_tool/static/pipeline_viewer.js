@@ -288,8 +288,7 @@ async function get_data(endpoint) {
             var elements = doc.querySelectorAll("a");
             var files = [];
             elements.forEach(function(el) {
-                var text = ((el.innerHTML).replaceAll("\n", "")).replaceAll(" ", "");
-                files.push(text);
+                files.push(el.getAttribute("href"));
             })
             return files;
         } else if (endpoint.includes("crash_stats")) {

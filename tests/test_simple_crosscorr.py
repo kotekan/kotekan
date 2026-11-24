@@ -1,10 +1,3 @@
-# === Start Python 2/3 compatibility
-from __future__ import absolute_import, division, print_function, unicode_literals
-from future.builtins import *  # noqa  pylint: disable=W0401, W0614
-from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
-
-# === End Python 2/3 compatibility
-
 import os
 import struct
 
@@ -200,8 +193,8 @@ def test_simple_crosscorr_random_matches_numpy(tmpdir, seed):
     for t in range(INTEGRATION_LENGTH):
         a = A[t * SPECTRUM_LENGTH : (t + 1) * SPECTRUM_LENGTH]
         b = B[t * SPECTRUM_LENGTH : (t + 1) * SPECTRUM_LENGTH]
-        AA_ref += (a.real ** 2 + a.imag ** 2) / INTEGRATION_LENGTH
-        BB_ref += (b.real ** 2 + b.imag ** 2) / INTEGRATION_LENGTH
+        AA_ref += (a.real**2 + a.imag**2) / INTEGRATION_LENGTH
+        BB_ref += (b.real**2 + b.imag**2) / INTEGRATION_LENGTH
         ReAB_ref += (a.real * b.real + a.imag * b.imag) / INTEGRATION_LENGTH
         ImAB_ref += (a.imag * b.real - b.imag * a.real) / INTEGRATION_LENGTH
 

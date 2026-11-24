@@ -57,6 +57,11 @@
  * @conf num_local_freq        Int.  Number of frequencies.
  * @conf samples_per_data_set  Int.  Number of samples per frame.
  * @conf rfi_downsampling_factor  Int.  Downsampling factor of input buffer
+ * @conf bf_mask_lifetime_in_samples  Int.  Number of FPGA samples that one bad feed mask is
+ *                             valid for. This stage consumes one mask per input frame, so this
+ *                             must equal `samples_per_data_set`. This is checked at construction,
+ *                             and each mask frame's metadata is checked against the S012 frame it
+ *                             is applied to.
  */
 class gpuSimulateRFIS012tilde : public kotekan::Stage {
 public:
@@ -77,6 +82,7 @@ private:
     const int64_t _num_local_freq;
     const int64_t _samples_per_data_set;
     const int64_t _rfi_downsampling_factor;
+    const int64_t _bf_mask_lifetime_in_samples;
 };
 
 #endif

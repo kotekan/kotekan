@@ -28,6 +28,7 @@ WORKDIR /code/build
 RUN apt-get update && \
     apt-get install -y \
         bison \
+        black \
         build-essential \
         ccache \
         clang \
@@ -35,7 +36,6 @@ RUN apt-get update && \
         cmake \
         coreutils \
         curl \
-        default-jre \
         doxygen \
         dpdk \
         dpdk-dev \
@@ -58,7 +58,6 @@ RUN apt-get update && \
         libfftw3-dev \
         libgdal-dev \
         libhdf5-dev \
-        libhdf5-serial-dev \
         liblapack-dev \
         liblapacke-dev \
         liblz4-dev \
@@ -74,40 +73,38 @@ RUN apt-get update && \
         make \
         pkg-config \
         python3 \
+        python3-breathe \
         python3-dev \
+        python3-pip \
+        python3-sphinx \
+        python3-sphinx-rtd-theme \
+        python3-venv \
         software-properties-common \
         valgrind \
         wget \
-        xtensor-dev \
         && \
     apt-get clean && apt-get autoclean && rm -rf /var/lib/apt/lists/*
 
-# Install pip and python packages
-# Disable pip caching (keep docker image size smaller)
+# Keep pip packages separate from Ubuntu's Python packages.
+RUN python3 -m venv /opt/kotekan_env
+ENV PATH="/opt/kotekan_env/bin:${PATH}"
+
+# Disable pip caching to keep the image smaller.
 ENV PIP_NO_CACHE_DIR=1
-# Overwrite system install of python/pip if needed
-RUN rm /usr/lib/python*/EXTERNALLY-MANAGED && \
-    wget https://bootstrap.pypa.io/get-pip.py && \
-    python3 get-pip.py && \
-    python3 -m pip install --upgrade \
+RUN python3 -m pip install --upgrade \
         astropy \
         bitshuffle \
-        black==19.10b0 \
-        breathe==4.35.* \
-        click==8.0.2 \
+        click \
         cmake_format \
-        cython \
-        distro-info \
         flask \
+        flask-cors \
         future \
-        gmpy2 \
         h5py \
         hdf5plugin \
         jinja2 \
         mpmath \
         msgpack \
         numpy \
-        pip \
         pkgconfig \
         posix_ipc \
         pytest \
@@ -117,29 +114,25 @@ RUN rm /usr/lib/python*/EXTERNALLY-MANAGED && \
         pytest-xdist \
         requests \
         ruamel.yaml \
-        setuptools \
-        sphinx==6.2.* \
-        sphinx_rtd_theme==2.0.* \
-        sphinxcontrib-plantuml==0.25 \
-        tabulate \
-        wheel
+        tabulate
 
 # Uncomment this to check what version got installed
 # RUN python3 -m pip show <package>
 # RUN apt-cache policy <package>
 
-# We want the `python` command to point to python3
-RUN ln -sf /usr/bin/python3 /usr/bin/python
-
-# Install Blaze for the eigenvalue processes
+# Install Blaze v3.8.2 for the eigenvalue processes. Pin the cache size: Blaze bakes the build
+# host's L3 size into a header and rejects values above 100 MB at compile time.
+# 30 MiB matches the per-socket L3 of the CHORD compute nodes.
 RUN mkdir src && \
     ( \
-        git clone -b v3.8.2 https://bitbucket.org/blaze-lib/blaze.git blaze && \
+        git clone https://bitbucket.org/blaze-lib/blaze.git blaze && \
         cd blaze && \
-        git checkout && \
+        git checkout 3156507a4b7a6a9cd413ef87df0a0aa2b1c697d9 && \
         cmake -B cmake-build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DBLAZE_CACHE_SIZE_AUTO=OFF \
+            -DBLAZE_CACHE_SIZE=31457280 \
             && \
         cmake --build cmake-build --parallel $(nproc) && \
         cmake --install cmake-build && \
@@ -161,12 +154,14 @@ RUN mkdir src && \
 # Depends on lz4.pc (called liblz4.pc in apt install)
 RUN ln -s /usr/lib/x86_64-linux-gnu/pkgconfig/liblz4.pc /usr/local/lib/pkgconfig/lz4.pc
 
-# Clone HighFive
+# Install HighFive v3.3.0
 RUN mkdir src && \
     ( \
         cd src && \
-        git clone --recurse-submodules --single-branch --branch v3.2.0 https://github.com/highfive-devs/highfive && \
+        git clone https://github.com/highfive-devs/highfive && \
         cd highfive && \
+        git checkout be0ddb3d43ce0f53db2d8b1438e819c5a5cb278a && \
+        git submodule update --init --recursive && \
         cmake -B cmake-build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr/local \
@@ -189,7 +184,7 @@ ENV CCACHE_MAXSIZE=1G
 
 # Set the plugin path so kotekan can find bitshuffle
 # Ideally this would be determined dynamically, but for now...
-ENV HDF5_PLUGIN_PATH=/usr/local/lib/python3.12/dist-packages/hdf5plugin/plugins
+ENV HDF5_PLUGIN_PATH=/opt/kotekan_env/lib/python3.12/site-packages/hdf5plugin/plugins
 
 ENV KOTEKAN_BUILD_DIRNAME=build-2404
 
@@ -201,6 +196,40 @@ ENV PYTHONPATH=/code/kotekan/python/
 
 # Do nothing when the container launches
 CMD ["/bin/bash"]
+
+
+##############################################################
+# INTEL IMAGE
+# This image extends the cpu image with the Intel oneAPI
+# C/C++ compilers (icx/icpx). It is a separate target (rather
+# than part of the cpu image) to keep the cpu and gpu images
+# small, i.e. build with `--target intel`.
+##############################################################
+
+FROM cpu AS intel
+
+# Add the Intel oneAPI apt repository and install the DPC++/C++
+# compilers (icx/icpx), pinned to a specific oneAPI release.
+# The gdb-oneapi debugger (~530 MB) is forced in by a hard package
+# dependency but is not needed for CI builds, so remove it in the
+# same layer to keep the image smaller.
+RUN wget -qO /usr/share/keyrings/oneapi-archive-keyring.asc \
+        https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB && \
+    echo "deb [signed-by=/usr/share/keyrings/oneapi-archive-keyring.asc] https://apt.repos.intel.com/oneapi all main" \
+        > /etc/apt/sources.list.d/oneAPI.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends intel-oneapi-compiler-dpcpp-cpp-2026.1 && \
+    apt-get clean && apt-get autoclean && rm -rf /var/lib/apt/lists/* && \
+    rm -rf /opt/intel/oneapi/debugger
+
+# Make icx/icpx and the Intel runtime libraries available without
+# needing to source /opt/intel/oneapi/setvars.sh. The symlinks
+# keep the compilers reachable even where the image ENV is not
+# propagated (e.g. some CI step runners).
+ENV PATH="/opt/intel/oneapi/compiler/latest/bin${PATH:+:${PATH}}"
+ENV LD_LIBRARY_PATH="/opt/intel/oneapi/compiler/latest/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+RUN ln -s /opt/intel/oneapi/compiler/latest/bin/icx /usr/local/bin/icx && \
+    ln -s /opt/intel/oneapi/compiler/latest/bin/icpx /usr/local/bin/icpx
 
 
 ##############################################################
@@ -228,6 +257,7 @@ RUN mkdir src && \
     ( \
         cd src && \
         wget https://developer.nvidia.com/downloads/compute/cuFFTDx/redist/cuFFTDx/cuda13/nvidia-mathdx-26.03.0-cuda13.tar.gz && \
+        echo "95c274405102f6a263f79eb04447bd7539f66ce649779bd8e225fcb8cc71594d  nvidia-mathdx-26.03.0-cuda13.tar.gz" | sha256sum -c && \
         tar -xzf nvidia-mathdx-26.03.0-cuda13.tar.gz && \
         cd nvidia-mathdx-26.03.0-cuda13 && \
         mv nvidia/mathdx/26.03/include /usr/local/include/mathdx && \

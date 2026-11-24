@@ -27,6 +27,19 @@ Use ``-b <ipv4:port>`` to change the REST bind address/port (IPv4 only), ``-s`` 
 and ``-e '{"foo": "bar"}'`` to provide Jinja variables for ``.j2`` configs. Running with no ``-c``
 starts the REST server only and waits for a POST to ``/start`` with the config.
 
+Two flags validate a config instead of running it, and both exit non-zero if it is bad.
+``--check-config`` is a static check: it parses the config and inspects it, constructing no
+stages, allocating no buffers, opening no devices and binding no port, so it is safe to run on
+a node with a live pipeline. ``--dry-run`` is the authoritative one: it builds the whole
+pipeline and tears it down without running it, which catches everything the static check
+cannot (buffer wiring, per-stage required keys) but needs the node's hardware to itself,
+because stage constructors open DPDK and CUDA devices and buffers claim hugepages.
+
+.. code:: bash
+
+    ./kotekan -c <config_file>.yaml --check-config   # safe anywhere, catches the cheap errors
+    sudo ./kotekan -c <config_file>.yaml --dry-run   # authoritative, needs a free node
+
 
 
 .. _user_pipeline_example:

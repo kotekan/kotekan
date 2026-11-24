@@ -1,22 +1,23 @@
 #include "cudaCopyFromRingbuffer.hpp"
 
-#include <assert.h>            // for assert
-#include <stdint.h>            // for uint8_t
-#include <string.h>            // for strnlen
-#include <sys/types.h>         // for uint
-#include <cstddef>             // for ptrdiff_t
-#include <memory>              // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast, mak...
-#include <optional>            // for optional
-#include <stdexcept>           // for runtime_error
-#include <tuple>               // for tuple, make_tuple
+#include "NDArray.hpp"        // for GenericNDArray
+#include "chordMetadata.hpp"  // for chordMetadata
+#include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
+#include "cuda_runtime_api.h" // for cudaHostGetFlags, cudaMemcpyAsync, cudaHostRegister, cudaH...
+#include "gpuCommand.hpp"     // for gpuCommandType
+#include "kotekanLogging.hpp" // for DEBUG, FATAL_ERROR
 
-#include "Symbol.hpp"          // for Symbol
-#include "chordMetadata.hpp"   // for chordMetadata
-#include "cudaUtils.hpp"       // for CHECK_CUDA_ERROR
-#include "cuda_runtime_api.h"  // for cudaHostGetFlags, cudaMemcpyAsync, cudaHostRegister, cudaH...
-#include "gpuCommand.hpp"      // for gpuCommandType
-#include "kotekanLogging.hpp"  // for DEBUG
-#include "fmt.hpp"             // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <assert.h>    // for assert
+#include <cstddef>     // for ptrdiff_t
+#include <memory>      // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast, mak...
+#include <optional>    // for optional
+#include <stdexcept>   // for runtime_error
+#include <stdint.h>    // for uint8_t
+#include <sys/types.h> // for uint
+#include <tuple>       // for tuple, make_tuple
+#include <vector>      // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -46,18 +47,12 @@ cudaCopyFromRingbuffer::cudaCopyFromRingbuffer(Config& config, const std::string
         if (instance_num == 0)
             out_buffer->register_producer(unique_name);
 
-        if (out_buffer->frame_size) {
-            uint flags;
-            // only register the memory if it isn't already...
-            if (cudaErrorInvalidValue
-                == cudaHostGetFlags(&flags, out_buffer->frames[instance_num])) {
-                CHECK_CUDA_ERROR(
-                    cudaHostRegister(out_buffer->frames[instance_num], out_buffer->frame_size, 0));
-            }
-        }
+        register_host_buffer(out_buffer);
     } else {
         out_buffer = nullptr;
         gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_output, true, false, true));
+        // Taken in execute(); attribute it to this stage now (see gpuMemoryClaims.hpp).
+        device.register_gpu_memory_name(_gpu_mem_output);
         DEBUG("Initializing cudaCopyFromRingbuffer: from GPU ringbuffer memory \"{:s}\" to GPU "
               "memory \"{:s}\", "
               "chunk size {:d}, ring buffer size {:d}",
@@ -66,22 +61,29 @@ cudaCopyFromRingbuffer::cudaCopyFromRingbuffer(Config& config, const std::string
 
     signal_buffer = dynamic_cast<RingBuffer*>(
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "host_signal")));
+    // Producer and consumer stages both name this backing store on purpose, and the ring they
+    // wait on and signal is what orders them. Declare the share through the ring's own name
+    // (config aliases in in/out_buffers resolve to it) so the one-owner check accepts exactly
+    // that pairing, and register the store as this stage's now: it is only taken in execute(),
+    // and a conflict belongs at construction, where --dry-run can see it (gpuMemoryClaims.hpp).
+    device.declare_shared_gpu_memory(_gpu_mem_input, signal_buffer->buffer_name);
+    device.register_gpu_memory_name(_gpu_mem_input);
     if (instance_num == 0)
         signal_buffer->register_consumer(unique_name);
 
     set_command_type(gpuCommandType::COPY_OUT);
 
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_input, true, true, false));
+    // The ring it reads from is one region, not a per-frame array.
+    register_gpu_buffer_user({.name = _gpu_mem_input,
+                              .is_array = false,
+                              .does_read = true,
+                              .does_write = false,
+                              .signal_buffer = signal_buffer->buffer_name});
 }
 
 cudaCopyFromRingbuffer::~cudaCopyFromRingbuffer() {
-    if (out_buffer && out_buffer->frame_size) {
-        uint flags;
-        // only unregister if it's already been registered
-        if (cudaSuccess == cudaHostGetFlags(&flags, out_buffer->frames[instance_num])) {
-            CHECK_CUDA_ERROR(cudaHostUnregister(out_buffer->frames[instance_num]));
-        }
-    }
+    if (out_buffer)
+        unregister_host_buffer(out_buffer);
 }
 
 int cudaCopyFromRingbuffer::wait_on_precondition() {
@@ -119,30 +121,41 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
 
     void* rb_memory = device.get_gpu_memory(_gpu_mem_input, _ring_buffer_size);
 
+    // The ring's descriptor covers the whole ring. One index of its slowest dimension takes
+    // `granularity` bytes, and the output holds `out_extent0` of them.
+    const auto ring_desc = signal_buffer->require_frame_desc<kotekan::GenericNDArray>();
+    const std::ptrdiff_t granularity =
+        std::ptrdiff_t(ring_desc->get_byte_size()) / ring_desc->get_extent(0);
+    if (std::ptrdiff_t(_output_size) % granularity != 0)
+        FATAL_ERROR("{:s}: output_size {:d} is not a multiple of {:d} bytes, the size of one "
+                    "index of the slowest dimension of ring buffer {:s}",
+                    unique_name, _output_size, granularity, signal_buffer->buffer_name);
+    const std::ptrdiff_t out_extent0 = std::ptrdiff_t(_output_size) / granularity;
+
     auto in_meta = std::dynamic_pointer_cast<chordMetadata>(signal_buffer->get_metadata(0));
     assert(in_meta);
     // Copy metadata (because we modify it)
     auto out_meta = std::make_shared<chordMetadata>();
     out_meta->deepCopy(in_meta);
 
-    assert(input_cursor % in_meta->sample_bytes() == 0);
+    // Read only `out_meta`, the locked snapshot: `get_metadata(0)` is the live slot-0 object
+    // its producer fills in place, and a torn read of `time_downsampling_fpga` is scaled by
+    // the absolute byte count below.
+    assert(input_cursor % granularity == 0);
     if (initial_fpga_seq_num == -1) { // first time
-        if (instance_num == 0) {      // we handle frame 0 of the buffer depth
-            assert(input_cursor == 0);
-            initial_fpga_seq_num = in_meta->get_fpga_seq_num();
-        } else { // handle one of the later frames, frame 0 handler has set metadata
-            initial_fpga_seq_num = in_meta->get_fpga_seq_num();
-        }
-    } else { // not first time
-        assert(in_meta->get_fpga_seq_num() == initial_fpga_seq_num);
+        // Instance 0 handles frame 0 of the buffer depth, so it starts at the ring's origin
+        if (instance_num == 0 && input_cursor != 0)
+            FATAL_ERROR("Instance 0 of {:s} started at ring offset {:d}, expected 0", unique_name,
+                        input_cursor);
+        initial_fpga_seq_num = out_meta->get_fpga_seq_num();
+    } else {
+        assert(out_meta->get_fpga_seq_num() == initial_fpga_seq_num);
     }
-    out_meta->set_fpga_seq_num(in_meta->get_fpga_seq_num()
-                               + in_meta->get_time_downsampling_fpga()
-                                     * (input_cursor / in_meta->sample_bytes()));
-    assert(input_cursor % in_meta->sample_bytes() == 0);
+    out_meta->set_fpga_seq_num(initial_fpga_seq_num
+                               + out_meta->get_time_downsampling_fpga()
+                                     * (input_cursor / granularity));
     assert(out_meta->dims > 0);
-    assert(out_buffer->frame_size % out_meta->sample_bytes() == 0);
-    out_meta->dim[0] = out_buffer->frame_size / out_meta->sample_bytes();
+    out_meta->dim[0] = out_extent0;
 
     size_t start = input_cursor % _ring_buffer_size;
     size_t ncopy = _output_size;
@@ -166,19 +179,14 @@ cudaEvent_t cudaCopyFromRingbuffer::execute(cudaPipelineState& pipestate,
                                           cuda_stream_id, nullptr, nullptr, nullptr);
 
         out_buffer->set_metadata(out_id, out_meta);
-        /* new style array description */
-        // difficult to move to constructor since it depends on frame_desc in the
-        // signal_buffer which may not be set at contructor time
-        std::vector<std::ptrdiff_t> extents(out_meta->dim, out_meta->dim + out_meta->dims);
-        std::vector<kotekan::Symbol> dimnames;
-        for (int d = 0; d < out_meta->dims; ++d)
-            dimnames.push_back(
-                std::string(out_meta->dim_name[d],
-                            strnlen(out_meta->dim_name[d], sizeof(out_meta->dim_name[d]))));
-        out_buffer->allocate_ndarray_frame_desc(out_meta->type, out_meta->get_name(), extents,
-                                                dimnames);
+        // The output frame has the ring's layout, with `out_extent0` in the slowest dimension
+        std::vector<std::ptrdiff_t> extents = ring_desc->get_extents();
+        extents.at(0) = out_extent0;
+        out_buffer->ensure_frame_desc(kotekan::GenericNDArray::describe(
+            ring_desc->get_value_datatype(), ring_desc->get_quantity_name(), extents,
+            ring_desc->get_dimnames(), ring_desc->get_dimscalings()));
         /* test that things are consistent */
-        out_meta->check_frame_desc(out_buffer->get_ndarray_frame_desc());
+        out_meta->check_frame_desc(out_buffer->get_frame_desc<kotekan::GenericNDArray>());
 
     } else {
         int out_id = gpu_frame_id % _gpu_buffer_depth;

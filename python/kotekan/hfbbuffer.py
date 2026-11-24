@@ -1,11 +1,5 @@
 """Read a HFBBuffer dump into python.
 """
-# === Start Python 2/3 compatibility
-from __future__ import absolute_import, division, print_function, unicode_literals
-from future.builtins import *  # noqa  pylint: disable=W0401, W0614
-from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
-
-# === End Python 2/3 compatibility
 
 import ctypes
 import os
@@ -378,9 +372,7 @@ class HFBRaw(object):
             }
         )
         raw = buffer.view(dtype=frame_struct_simple)
-        num_beams = np.unique(
-            raw["metadata"][raw["valid"].astype(np.bool)]["num_beams"]
-        )
+        num_beams = np.unique(raw["metadata"][raw["valid"].astype(bool)]["num_beams"])
         if len(num_beams) > 1:
             raise ValueError(
                 "Found more than 1 value for `num_beams` in numpy ndarray: {}.".format(
@@ -389,7 +381,7 @@ class HFBRaw(object):
             )
         num_beams = num_beams[0]
         num_subfreq = np.unique(
-            raw["metadata"][raw["valid"].astype(np.bool)]["num_subfreq"]
+            raw["metadata"][raw["valid"].astype(bool)]["num_subfreq"]
         )
         if len(num_subfreq) > 1:
             raise ValueError(
@@ -426,7 +418,7 @@ class HFBRaw(object):
             ts = []
             fpga = []
             for f in range(num_freq):
-                if valid_frames[t, f].astype(np.bool):
+                if valid_frames[t, f].astype(bool):
                     ts.append(
                         timespec.time_spec.from_buffer_copy(ctime[t, f]).to_float()
                     )
@@ -454,7 +446,7 @@ class HFBRaw(object):
                 ("sub-frequencies", "subfreq"),
                 ("frequencies", "freq"),
             ]
-            ds = np.array(metadata["dataset_id"][valid_frames.astype(np.bool)]).view(
+            ds = np.array(metadata["dataset_id"][valid_frames.astype(bool)]).view(
                 "u8,u8"
             )
             unique_ds = np.unique(ds)

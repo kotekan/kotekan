@@ -28,8 +28,11 @@ The minimal toolchain for a standard build includes:
 
 * C++ compiler: GCC or Clang (C++17), plus build tools: ``build-essential``, ``cmake``, ``pkg-config``, ``make``, ``git``
 * Libraries: ``libevent-dev``, ``libssl-dev``, ``libyaml-cpp-dev``
-* Python: ``python3``, ``python3-dev``; Python packages: ``pyyaml``, ``jinja2``, ``requests``, ``tabulate``, ``futures``
+* Python 3.12 or newer: ``python3``, ``python3-dev``; Python packages: ``pyyaml``, ``jinja2``, ``requests``, ``tabulate``
 * Optional but useful: ``ccache``, ``clang-format``, ``iwyu``
+
+The Ubuntu 24.04 runtime images use Python 3.12. CI checks Python package
+installation and the debug viewer on this minimum supported version.
 
 On Ubuntu (24.04 reference), install with:
 
@@ -94,8 +97,7 @@ This section maps common CMake options (see :doc:`cmake_options`) to the package
   - Ubuntu packages: ``libboost-test-dev`` (plus typical Boost dependencies)
 
 - ``COMPILE_DOCS`` (documentation)
-  - Ubuntu packages: ``doxygen``, ``graphviz``
-  - Python: ``sphinx``, ``breathe``, ``sphinx_rtd_theme`` (see below)
+  - Ubuntu packages: ``doxygen``, ``graphviz``, ``python3-sphinx``, ``python3-breathe``, ``python3-sphinx-rtd-theme``
 
 Developer Python Packages
 =========================
@@ -105,11 +107,9 @@ For linting, testing, and documentation, install these Python packages (often in
 .. code:: bash
 
    python3 -m pip install \
-     black \
      cmake_format \
      pytest pytest-xdist pytest-timeout \
      pytest-cpp \
-     sphinx==6.2.* sphinx_rtd_theme==2.0.* breathe==4.35.* \
      h5py hdf5plugin bitshuffle \
      numpy \
      requests tabulate \
@@ -178,17 +178,11 @@ Documentation:
 
 * Sphinx::
 
-    sudo apt-get install python-sphinx
-    sudo pip install sphinx_rtd_theme sphinxcontrib-plantuml
-
-* PlantUml::
-
-    sudo wget https://phoenixnap.dl.sourceforge.net/project/plantuml/plantuml.jar -P /opt/plantuml
-    sudo apt-get install default-jre
+    sudo apt-get install python3-sphinx python3-sphinx-rtd-theme
 
 * Breathe::
 
-    sudo pip install breathe
+    sudo apt-get install python3-breathe
 
 Building documentation
 ----------------------
@@ -210,7 +204,7 @@ To build only one part of the documentation:
 
 * Black::
 
-    sudo pip3 install black
+    sudo apt-get install black
 
 Hardware
 =========
@@ -252,6 +246,8 @@ feature when its dependencies are present and otherwise continues without it. Se
     Build the HIP backend when the HIP toolchain is available.
 * ``-DUSE_DPDK=<AUTO|ON|OFF>`` (default ``AUTO``)
     Enable DPDK components when ``libdpdk >= 19.11`` is discoverable via ``pkg-config``. Forced ``OFF`` when ``-DWITH_BOOST_TESTS=ON``.
+* ``-DDPDK_EXTRA_STATS=<ON|OFF>`` (default ``OFF``)
+    Time the DPDK rx poll loop and export it as the ``kotekan_dpdk_rx_loop_*`` metrics. Off by default because it costs cycles in the packet loop.
 * ``-DUSE_AIRSPY=<AUTO|ON|OFF>`` (default ``AUTO``)
     Build the Airspy capture stages when ``libairspy`` is present.
 * ``-DUSE_ASDF``, ``-DUSE_GDAL``, ``-DUSE_HDF5`` (each default ``AUTO``)

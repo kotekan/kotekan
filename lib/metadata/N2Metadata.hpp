@@ -1,28 +1,29 @@
 #ifndef N2_METADATA
 #define N2_METADATA
 
-#include "Config.hpp"          // for Config
+#include "Config.hpp"    // for Config
+#include "FrameDesc.hpp" // for FrameDesc
+#include "Hash.hpp"      // for Hash
 #include "N2Metadata.hpp"
-#include "buffer.hpp"          // for Buffer
-#include "dataset.hpp"         // for dset_id_t
-#include "kotekanLogging.hpp"  // for WARN_NON_OO
-#include "metadata.hpp"        // for metadataObject, metadataPool
-#include "timeUtil.hpp"        // for EOP, eop_null
-#include "fmt.hpp"             // for compile_string_to_view
-#include "json.hpp"            // for json
-#include "FrameDesc.hpp"       // for FrameDesc
-#include "Hash.hpp"            // for Hash
-#include "jsonMetadata.hpp"    // for MAX_NUM_RFI_THRESHOLDS
+#include "buffer.hpp"         // for Buffer
+#include "dataset.hpp"        // for dset_id_t
+#include "kotekanLogging.hpp" // for WARN_NON_OO
+#include "metadata.hpp"       // for metadataObject, metadataPool
+#include "timeUtil.hpp"       // for EOP, eop_null
+
+#include "fmt.hpp"          // for compile_string_to_view
+#include "json.hpp"         // for json
+#include "jsonMetadata.hpp" // for MAX_NUM_RFI_THRESHOLDS
 
 using kotekan::Config;
 
-#include <assert.h>            // for assert
-#include <stddef.h>            // for size_t
-#include <stdint.h>            // for uint64_t, int32_t, uint32_t
-#include <memory>              // for shared_ptr, __shared_ptr_access, allocator, static_pointer...
-#include <string>              // for operator==, char_traits, basic_string
-#include <vector>              // for vector
-#include <array>               // for array
+#include <array>    // for array
+#include <assert.h> // for assert
+#include <memory>   // for shared_ptr, __shared_ptr_access, allocator, static_pointer...
+#include <stddef.h> // for size_t
+#include <stdint.h> // for uint64_t, int32_t, uint32_t
+#include <string>   // for operator==, char_traits, basic_string
+#include <vector>   // for vector
 
 // Struct containing metadata fields for an N2 frame
 struct N2MetadataFormat {
@@ -64,8 +65,17 @@ struct N2MetadataFormat {
     uint64_t n_rfi_only_fpga_ticks = 0;
     /// Number of FPGA samples lost to Packet Loss.
     uint64_t n_pl_fpga_ticks = 0;
+    /// FPGA ticks of this frame during which first-stage (GPU) RFI excision was enabled.
+    uint64_t n_rfi_first_stage_enabled_fpga_ticks = 0;
+    /// FPGA ticks of this frame during which the DTV mask was applied.
+    uint64_t n_dtv_mask_enabled_fpga_ticks = 0;
+    /// Number of accepted frame pairs with samples in both frames, the k of the
+    /// EvenOddPosDef weight.
+    uint64_t n_usable_variance_pairs = 0;
     /// Whether second stage RFI excision was applied to this frame
     bool rfi_frame_excision_enabled = false;
+    /// Whether the visibilities in this frame were fringestopped
+    bool fringestop_enabled = false;
     /// The number of active RFI excision thresholds.
     int32_t rfi_frame_excision_num = 0;
     /// The SK thresholds (in sigma) for RFI excision

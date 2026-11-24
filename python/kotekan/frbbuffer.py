@@ -1,11 +1,5 @@
 """Read a frbBuffer dump into python.
 """
-# === Start Python 2/3 compatibility
-from __future__ import absolute_import, division, print_function, unicode_literals
-from future.builtins import *  # noqa  pylint: disable=W0401, W0614
-from future.builtins.disabled import *  # noqa  pylint: disable=W0401, W0614
-
-# === End Python 2/3 compatibility
 
 import ctypes
 import os
@@ -35,12 +29,10 @@ class FrbPacket(ctypes.Structure):
 
     @classmethod
     def from_file(cls, filename, max_packets=None):
-        """Load a list of frbPackets from a kotekan dump file.
+        """Load a list of frbPackets from a file.
 
-        FrbPostProcess stores packets for all 256 streams into a single frame,
-        one after the other, so they ought to appear like that in the dumped
-        buffer.
-
+        FrbNetworkSend sends packets for all 256 streams, one after the other,
+        so they ought to appear like that in the captured file.
         """
         filesize = os.path.getsize(filename)
 
@@ -49,15 +41,14 @@ class FrbPacket(ctypes.Structure):
         with io.FileIO(filename, "rb") as fh:
             fh.readinto(buf)
 
-        return from_buffer(cls, buf[4:], max_packets, filename)
+        return cls.from_buffer(buf[4:], max_packets, filename)
 
     @classmethod
     def from_buffer(cls, buffer, max_packets=None, name=None):
         """Load a list of frbPackets from a bytes buffer.
 
-        FrbPostProcess stores packets for all 256 streams into a single frame,
-        one after the other, so they ought to appear like that in the dumped
-        buffer.
+        FrbNetworkSend sends packets for all 256 streams, one after the other,
+        so they ought to appear like that in the buffer.
 
         """
 

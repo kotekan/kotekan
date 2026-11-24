@@ -1,30 +1,31 @@
-#include <cuda_runtime_api.h>       // for cudaStreamSynchronize
-#include <driver_types.h>           // for CUstream_st, cudaEvent_t, CUevent_st
-#include <sys/types.h>              // for ulong
-#include <algorithm>                // for min
-#include <array>                    // for array
-#include <cassert>                  // for assert
-#include <cstddef>                  // for ptrdiff_t
-#include <cstdint>                  // for uint64_t, uint8_t
-#include <functional>               // for function
-#include <memory>                   // for allocator, shared_ptr, __shared_ptr_access
-#include <string>                   // for basic_string, string
-#include <vector>                   // for vector
+#include "Config.hpp"              // for Config
+#include "DataType.hpp"            // for int4x2_swapped_withoffset_t, uint1x8_t
+#include "NDArray.hpp"             // for NDArray
+#include "NDArrayRingBuffer.hpp"   // for NDArrayRingBuffer, read_descriptor_t, extent_t
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "chordMetadata.hpp"       // for chordMetadata
+#include "cudaCommand.hpp"         // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
+#include "div.hpp"                 // for div_noremainder, round_down
+#include "gpuCommand.hpp"          // for gpuCommandType
+#include "kotekanLogging.hpp"      // for DEBUG, FATAL_ERROR
+#include "n2k/rfi_kernels.hpp"     // for launch_s0_kernel, launch_s12_kernel
 
-#include "Config.hpp"               // for Config
-#include "DataType.hpp"             // for int4x2_swapped_withoffset_t, uint1x8_t
-#include "NDArray.hpp"              // for NDArray
-#include "NDArrayRingBuffer.hpp"    // for NDArrayRingBuffer, read_descriptor_t, extent_t
-#include "bufferContainer.hpp"      // for bufferContainer
-#include "chordMetadata.hpp"        // for chordMetadata
-#include "cudaCommand.hpp"          // for cudaCommand, cudaPipelineState, REGISTER_CUDA_COMMAND
-#include "cudaDeviceInterface.hpp"  // for cudaDeviceInterface
-#include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
-#include "div.hpp"                  // for div_noremainder, round_down
-#include "gpuCommand.hpp"           // for gpuCommandType
-#include "kotekanLogging.hpp"       // for DEBUG, FATAL_ERROR
-#include "n2k/rfi_kernels.hpp"      // for launch_s0_kernel, launch_s12_kernel
-#include "fmt.hpp"                  // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <algorithm>          // for min
+#include <array>              // for array
+#include <cassert>            // for assert
+#include <cstddef>            // for ptrdiff_t
+#include <cstdint>            // for uint64_t, uint8_t
+#include <cuda_runtime_api.h> // for cudaStreamSynchronize
+#include <driver_types.h>     // for CUstream_st, cudaEvent_t, CUevent_st
+#include <functional>         // for function
+#include <memory>             // for allocator, shared_ptr, __shared_ptr_access
+#include <string>             // for basic_string, string
+#include <sys/types.h>        // for ulong
+#include <vector>             // for vector
 
 using kotekan::div_noremainder;
 using kotekan::round_down;
@@ -81,6 +82,8 @@ private:
     NDArrayRingBuffer<kotekan::uint1x8_t, 5> pl_mask;
     NDArrayRingBuffer<kotekan::int4x2_swapped_withoffset_t, 4> voltage;
     NDArrayRingBuffer<std::uint64_t, 5> rfi_S012;
+    // Set once, on the first frame; see `NDArrayRingBuffer::set_metadata`
+    bool did_set_metadata;
 };
 
 REGISTER_CUDA_COMMAND(cudaRFIS012);
@@ -108,15 +111,19 @@ cudaRFIS012::cudaRFIS012(kotekan::Config& config, const std::string& unique_name
             std::array<std::ptrdiff_t, 5>{buffer_depth * div_noremainder(num_times, 2 * 64),
                                           div_noremainder(num_frequencies, 4), num_polarizations,
                                           div_noremainder(num_dishes, 8), 64 / 8},
-            std::array<std::string, 5>{"T2hi64", "F4", "P", "D8", "T2lo64"}, *this),
+            std::array<std::string, 5>{"T2hi64", "F4", "P", "D8", "T2lo64"},
+            std::array<std::ptrdiff_t, 5>{128, 4, 1, 8, 16}, *this),
     voltage(voltage_name, "E",
             std::array<std::ptrdiff_t, 4>{buffer_depth * num_times, num_frequencies,
                                           num_polarizations, num_dishes},
-            std::array<std::string, 4>{"T", "F", "P", "D"}, *this),
+            std::array<std::string, 4>{"T", "F", "P", "D"},
+            std::array<std::ptrdiff_t, 4>{1, 1, 1, 1}, *this),
     rfi_S012(rfi_S012_name, "S012",
              std::array<std::ptrdiff_t, 5>{buffer_depth * rfi_num_times, num_frequencies, 3,
                                            num_polarizations, num_dishes},
-             std::array<std::string, 5>{"Trfi", "F", "S", "P", "D"}, *this)
+             std::array<std::string, 5>{"Trfi", "F", "S", "P", "D"},
+             std::array<std::ptrdiff_t, 5>{rfi_downsampling_factor, 1, 1, 1, 1}, *this),
+    did_set_metadata(false)
 //
 {
     // For pl_mask_T128_sample_bytes
@@ -196,11 +203,14 @@ cudaEvent_t cudaRFIS012::execute(cudaPipelineState& /*pipestate*/,
     pl_mask.check_metadata();
     voltage.check_metadata();
 
-    // TODO: Set these metadata only once
-    rfi_S012.set_metadata(voltage.get_metadata());
-    const auto& rfi_S012_meta = rfi_S012.get_metadata();
-    rfi_S012_meta->set_time_downsampling_fpga(rfi_S012_meta->get_time_downsampling_fpga()
-                                              * rfi_downsampling_factor);
+    // Set the ring buffer metadata once; see `NDArrayRingBuffer::set_metadata`
+    if (instance_num == 0 && !did_set_metadata) {
+        did_set_metadata = true;
+        rfi_S012.set_metadata(voltage.get_metadata());
+        const auto& rfi_S012_meta = rfi_S012.get_metadata();
+        rfi_S012_meta->set_time_downsampling_fpga(rfi_S012_meta->get_time_downsampling_fpga()
+                                                  * rfi_downsampling_factor);
+    }
 
     // There is no poison value
     // if (poison_buffers)

@@ -13,6 +13,4 @@ A minimalist stage is defined in ExampleProducer.cpp and reproduced below. This 
     :language: c++
     :linenos:
 
-Using breathe to parse the autodoc,
-
-.. doxygenclass:: ExampleProducer
+See :doc:`../user/processes/ExampleProducer` for the API reference.

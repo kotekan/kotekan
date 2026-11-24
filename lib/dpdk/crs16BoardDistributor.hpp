@@ -27,8 +27,20 @@ public:
     /// Processes the incoming packets
     int handle_packet(struct rte_mbuf* mbuf) override;
 
-    /// Update stats, not used by this handler yet.
-    virtual void update_stats() override {};
+    /// Export the distributed/dropped packet counters.
+    virtual void update_stats() override {
+        std::vector<std::string> port_label = {std::to_string(port)};
+        packets_total_metric.labels(port_label).set(total_packets);
+        bad_checksum_packets_total_metric.labels(port_label).set(bad_checksum_packets);
+        non_crs_packets_total_metric.labels(port_label).set(non_crs_packets);
+        invalid_stream_id_packets_total_metric.labels(port_label).set(invalid_stream_id_packets);
+        ring_full_dropped_packets_total_metric.labels(port_label).set(ring_full_dropped_packets);
+        for (size_t i = 0; i < worker_ring_ids.size(); ++i) {
+            ring_max_fill_metric.labels({std::to_string(port), std::to_string(worker_ring_ids[i])})
+                .set(ring_max_fill[i]);
+            ring_max_fill[i] = 0;
+        }
+    }
 
     /// This is a distributor: it takes ownership of the mbuf.
     bool is_distributor() const override {
@@ -42,7 +54,31 @@ protected:
 
     uint32_t num_crs_boards;
 
+    /// Expected size of a CRS packet; anything else is dropped before its
+    /// header fields are trusted.
+    uint32_t packet_size;
+
     uint64_t total_packets = 0;
+    /// Dropped packets with a bad IP checksum (NIC offload flag).
+    uint64_t bad_checksum_packets = 0;
+    /// Dropped packets that failed the size or cookie check (LLDP, ARP, etc.)
+    uint64_t non_crs_packets = 0;
+    /// Dropped CRS packets whose stream_id does not map to a worker ring.
+    uint64_t invalid_stream_id_packets = 0;
+    /// Dropped CRS packets that arrived while the destination worker ring was full.
+    uint64_t ring_full_dropped_packets = 0;
+    /// Most slots in use in each worker ring since the last update_stats().
+    std::vector<uint32_t> ring_max_fill;
+
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& packets_total_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>&
+        bad_checksum_packets_total_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& non_crs_packets_total_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>&
+        invalid_stream_id_packets_total_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>&
+        ring_full_dropped_packets_total_metric;
+    kotekan::prometheus::MetricFamily<kotekan::prometheus::Gauge>& ring_max_fill_metric;
 };
 
 inline crs16BoardDistributor::crs16BoardDistributor(kotekan::Config& config,
@@ -50,7 +86,20 @@ inline crs16BoardDistributor::crs16BoardDistributor(kotekan::Config& config,
                                                     kotekan::bufferContainer& buffer_container,
                                                     int port,
                                                     const std::vector<rte_ring*>& worker_rings) :
-    dpdkRXhandler(config, unique_name, buffer_container, port), worker_rings(worker_rings) {
+    dpdkRXhandler(config, unique_name, buffer_container, port), worker_rings(worker_rings),
+    packet_size(config.get<uint32_t>(unique_name, "packet_size")),
+    packets_total_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_dpdk_distributor_packets_total", unique_name, {"port"})),
+    bad_checksum_packets_total_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_dpdk_distributor_bad_checksum_packets_total", unique_name, {"port"})),
+    non_crs_packets_total_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_dpdk_distributor_non_crs_packets_total", unique_name, {"port"})),
+    invalid_stream_id_packets_total_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_dpdk_distributor_invalid_stream_id_packets_total", unique_name, {"port"})),
+    ring_full_dropped_packets_total_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_dpdk_distributor_ring_full_dropped_packets_total", unique_name, {"port"})),
+    ring_max_fill_metric(kotekan::prometheus::Metrics::instance().add_gauge(
+        "kotekan_dpdk_distributor_ring_max_fill", unique_name, {"port", "ring"})) {
 
     worker_ring_ids = config.get<std::vector<uint32_t>>(unique_name, "worker_rings");
 
@@ -64,6 +113,8 @@ inline crs16BoardDistributor::crs16BoardDistributor(kotekan::Config& config,
             fmt("The crs16BoardDistributor handler must have an even number of worker rings.")));
     }
 
+    ring_max_fill.assign(worker_ring_ids.size(), 0);
+
     num_crs_boards = config.get<uint32_t>(unique_name, "num_crs_boards");
 
     if (num_crs_boards != 16) {
@@ -74,20 +125,63 @@ inline crs16BoardDistributor::crs16BoardDistributor(kotekan::Config& config,
 
 inline int crs16BoardDistributor::handle_packet(struct rte_mbuf* mbuf) {
 
+    // Check the packet checksum flag from the NIC.
+    if (unlikely((mbuf->ol_flags & RTE_MBUF_F_RX_IP_CKSUM_MASK) == RTE_MBUF_F_RX_IP_CKSUM_BAD)) {
+        if (bad_checksum_packets == 0) {
+            WARN("Port {:d}: dropping packet with bad IP checksum; counting further drops in "
+                 "kotekan_dpdk_distributor_bad_checksum_packets_total",
+                 port);
+        }
+        bad_checksum_packets++;
+        rte_pktmbuf_free(mbuf);
+        return 0;
+    }
+
+    // The port runs in promiscuous mode, so stray traffic (LLDP, ARP, ...)
+    // lands here too, and its bytes at the CRS header offsets are arbitrary.
+    // Drop anything that isn't a CRS packet before trusting header fields.
+    if (unlikely(mbuf->pkt_len != packet_size
+                 || get_crs_packet_cookie(mbuf) != CRS_PACKET_COOKIE)) {
+        if (non_crs_packets == 0) {
+            WARN("Port {:d}: dropping non-CRS packet (len {:d}, expected {:d}); counting further "
+                 "drops in kotekan_dpdk_distributor_non_crs_packets_total",
+                 port, mbuf->pkt_len, packet_size);
+        }
+        non_crs_packets++;
+        rte_pktmbuf_free(mbuf);
+        return 0;
+    }
+
     uint16_t stream_id = get_crs_packet_stream_id(mbuf);
 
     // Divide the streams between the worker rings
     uint32_t ring_index = stream_id / (128 / worker_ring_ids.size());
 
+    // A CRS packet with a stream_id outside [0, 128) must not index past the
+    // ring table.
+    if (unlikely(ring_index >= worker_ring_ids.size())) {
+        if (invalid_stream_id_packets == 0) {
+            WARN("Port {:d}: dropping CRS packet with out-of-range stream_id {:d}", port,
+                 stream_id);
+        }
+        invalid_stream_id_packets++;
+        rte_pktmbuf_free(mbuf);
+        return 0;
+    }
+
     // Put the packet into the worker ring
-    int err = rte_ring_enqueue(worker_rings[worker_ring_ids[ring_index]], mbuf);
-    if (err != 0) {
-        // TODO Make this into a metric
+    struct rte_ring* ring = worker_rings[worker_ring_ids[ring_index]];
+    unsigned int free_slots;
+    if (rte_ring_enqueue_burst(ring, (void**)&mbuf, 1, &free_slots) == 0) {
         // Failed to enqueue packet into worker ring, dropping packet
+        ring_full_dropped_packets++;
         rte_pktmbuf_free(mbuf);
     } else {
         total_packets++;
     }
+    uint32_t fill = rte_ring_get_capacity(ring) - free_slots;
+    if (fill > ring_max_fill[ring_index])
+        ring_max_fill[ring_index] = fill;
 
     return 0;
 }

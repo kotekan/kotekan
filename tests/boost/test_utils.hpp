@@ -312,9 +312,9 @@ struct CompareCTypes {
 [[maybe_unused]] static kotekan::Config
 make_writer_config(const std::string& unique_name, const std::string& in_buf,
                    const std::string& base_dir, const std::string& file_name, bool prefix_hostname,
-                   uint64_t num_file_t, ElementOrder input_order = ElementOrder::CHORDBeamformer, uint64_t blocksize_f = 0, uint64_t blocksize_p = 0,
-                   uint64_t blocksize_t = 1, uint64_t late_frame_grace_seconds = 60,
-                   uint64_t seq_length_nsec_override = 0,
+                   uint64_t num_file_t, ElementOrder input_order = ElementOrder::CHORDBeamformer,
+                   uint64_t blocksize_f = 0, uint64_t blocksize_p = 0, uint64_t blocksize_t = 1,
+                   uint64_t late_frame_grace_seconds = 60, uint64_t seq_length_nsec_override = 0,
                    const std::string& baseband_gain_file = "") {
     using json = nlohmann::json;
 

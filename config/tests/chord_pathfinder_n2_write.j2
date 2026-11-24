@@ -12,6 +12,13 @@ write_n2:
     compression_level: 9
     use_bitshuffle: true
 
+    # The element order of the visibility matrices in n2_buffer / n2_eigen_buffer, used to look
+    # up feed positions and dish grid indices. The correlated element axis comes from the
+    # voltage buffer's [..., P, D], so element index = polarization * num_dishes + dish, which
+    # is what CHORDTelescope encodes as a station id and what CHORDBeamformer indexes by
+    # (CHORDEarly would be [D][P]).
+    input_order: CHORDBeamformer
+
     write_subsets:
         base_dir: subset_file_dir
 

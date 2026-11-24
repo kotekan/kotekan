@@ -1,19 +1,20 @@
 #include "removeEv.hpp"
 
-#include <functional>           // for bind, function
-#include <set>                  // for set
-#include <utility>              // for pair
+#include "Config.hpp"          // for Config
+#include "Hash.hpp"            // for operator<, Hash
+#include "StageFactory.hpp"    // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+#include "datasetManager.hpp"  // for datasetManager, dset_id_t
+#include "datasetState.hpp"    // for eigenvalueState
+#include "visBuffer.hpp"       // for VisField, VisFrameView
+#include "visUtil.hpp"         // for frameID, modulo
 
-#include "Config.hpp"           // for Config
-#include "Hash.hpp"             // for operator<, Hash
-#include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "datasetManager.hpp"   // for datasetManager, dset_id_t
-#include "datasetState.hpp"     // for eigenvalueState
-#include "visBuffer.hpp"        // for VisField, VisFrameView
-#include "visUtil.hpp"          // for frameID, modulo
-#include "fmt.hpp"              // for format
+#include "fmt.hpp" // for format
+
+#include <functional> // for bind, function
+#include <set>        // for set
+#include <utility>    // for pair
 
 
 using kotekan::bufferContainer;

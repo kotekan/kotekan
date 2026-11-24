@@ -46,7 +46,7 @@ void testDataGenQuad::main_thread() {
     int frame_id = 0;
     uint8_t* frame[4] = {nullptr, nullptr, nullptr, nullptr};
     uint64_t seq_num = 0;
-    static struct timeval now;
+    struct timeval now;
 
     // pre-seed everything!
     INFO("Seeding...");

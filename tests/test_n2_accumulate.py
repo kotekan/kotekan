@@ -20,6 +20,10 @@ prod_config = {
     "num_polarizations": 2,
     "num_dishes": 64,
     "num_subintegrations_per_bin": 2,
+    # One bad feed mask frame covers exactly one correlation frame, as required
+    # (N2Accumulate: "each bad feed mask frame must cover exactly one correlation
+    # frame") and as config/chord/pathfinder.j2 configures it in production.
+    "bf_mask_lifetime_in_samples": 16384,
     "variance_mode": "EvenOddPosDef",
     "num_ev": 0,
     "freq_ids": [0, 8191, 300, 1000, 4000],
@@ -116,6 +120,8 @@ def accum_setup(request):
                 "enabled": True,
                 "thresholds": np.array([[3.0, 0.1]], dtype=np.float32),
             },
+            # Switch first-stage excision off halfway through this input frame
+            "first_stage_off_frame": 23,
         },
         {
             "config": prod_config,
@@ -177,6 +183,31 @@ def setup(request, accum_setup):
 
     config["telescope"] = request.param["tel"]
 
+    # prod_config and accum_setup are shared between params, so set or clear both
+    config.pop("rfi_first_stage_enabled", None)
+    accum_setup.pop("rfi_first_stage_enabled_updatable_config", None)
+    config.pop("dtv_mask_enabled", None)
+    accum_setup.pop("dtv_mask_enabled_updatable_config", None)
+    if "first_stage_off_frame" in request.param:
+        frame_len = config["samples_per_data_set"]
+        off_seq = (
+            config["first_frame_index"] + request.param["first_stage_off_frame"]
+        ) * frame_len + frame_len // 2
+        config["rfi_first_stage_enabled"] = {
+            "kotekan_update_endpoint": "json",
+            "enabled": False,
+            "valid_at_time_ns": tel.get_t_inst_ns(off_seq, request.param["tel"]),
+        }
+        accum_setup["rfi_first_stage_enabled_updatable_config"] = (
+            "/rfi_first_stage_enabled"
+        )
+        request.param["first_stage_off_seq"] = off_seq
+        # The DTV mask config names the same time, but applies from startup
+        config["dtv_mask_enabled"] = dict(
+            config["rfi_first_stage_enabled"], enabled=True
+        )
+        accum_setup["dtv_mask_enabled_updatable_config"] = "/dtv_mask_enabled"
+
     request.param["rng"] = np.random.default_rng(seed=_TEST_SEED)
 
     if request.param["tel"]["name"] == "CHIMETelescope":
@@ -193,6 +224,7 @@ def make_zeroed_chord_buffer(
     typename,
     shape,
     dim_names,
+    dim_scalings,
     seq0,
     dseq,
     num_frames,
@@ -202,7 +234,7 @@ def make_zeroed_chord_buffer(
 ):
     """
     Produce ChordBuffer objects containing 0's in sequence.
-    
+
     Parameters
     ----------
     name : String
@@ -215,6 +247,8 @@ def make_zeroed_chord_buffer(
         Shape of data array
     dim_names : [String, ...]
         Names of each data axis
+    dim_scalings : [int, ...]
+        Dimension scales of each data axis
     seq0 : int
         FPGA sequence number for start of first buffer
     dseq : int
@@ -240,7 +274,7 @@ def make_zeroed_chord_buffer(
 
         data = np.zeros(shape, dtype=dtype)
 
-        meta = runner.chordbuffer.get_metadata(name, typename, dim_names)
+        meta = runner.chordbuffer.get_metadata(name, typename, dim_names, dim_scalings)
         meta["fpga_seq_num"] = seq
         if freq_ids is not None:
             meta["coarse_freq"] = freq_ids
@@ -296,6 +330,7 @@ def corr_data(setup):
         "int32",
         shape,
         ("Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"),
+        (config["sub_integration_ntime"], 1, 16, 1, 1, 1),
         config["first_frame_index"] * config["samples_per_data_set"],
         config["samples_per_data_set"],
         setup["num_frames"],
@@ -354,9 +389,11 @@ def count_data(setup):
         "int32",
         shape,
         ("Tc", "F", "D8Phi", "D8Plo1", "D8Plo2"),
+        (config["sub_integration_ntime"], 1, 64, 8, 8),
         config["first_frame_index"] * config["samples_per_data_set"],
         config["samples_per_data_set"],
         setup["num_frames"],
+        freq_ids=np.arange(num_freq, dtype=np.int32),
         time_downsampling=config["sub_integration_ntime"],
     )
 
@@ -410,9 +447,11 @@ def rficount_data(setup, count_data):
         "int32",
         shape,
         ("Tc", "F"),
+        (config["sub_integration_ntime"], 1),
         config["first_frame_index"] * config["samples_per_data_set"],
         config["samples_per_data_set"],
         setup["num_frames"],
+        freq_ids=np.arange(num_freq, dtype=np.int32),
         time_downsampling=config["sub_integration_ntime"],
     )
 
@@ -466,9 +505,11 @@ def plcount_data(setup, count_data):
         "int32",
         shape,
         ("Tc", "F"),
+        (config["sub_integration_ntime"], 1),
         config["first_frame_index"] * config["samples_per_data_set"],
         config["samples_per_data_set"],
         setup["num_frames"],
+        freq_ids=np.arange(num_freq, dtype=np.int32),
         time_downsampling=config["sub_integration_ntime"],
     )
 
@@ -519,9 +560,11 @@ def rfiframemask_data(setup):
         "uint8",
         shape,
         ("Tc", "F"),
+        (config["sub_integration_ntime"], 1),
         config["first_frame_index"] * config["samples_per_data_set"],
         config["samples_per_data_set"],
         setup["num_frames"],
+        freq_ids=np.arange(num_freq, dtype=np.int32),
         time_downsampling=config["sub_integration_ntime"],
         extra_meta={
             "rfi_frame_excision_enabled": rfiframemask_setup["enabled"],
@@ -546,6 +589,56 @@ def rfiframemask_data(setup):
     return bufs
 
 
+# Elements flagged bad in every bad_feed_mask frame; folded into the output flags.
+# Frame i additionally flags element i, so the flags show which frames were folded.
+BAD_FEEDS = [3, 17, 40]
+
+
+@pytest.fixture(scope="module")
+def bad_feed_mask_data(setup):
+    """
+    Generate a list of input bad feed mask frames in ChordBuffers
+
+    Frame i flags BAD_FEEDS and element i.
+    As with bufferBadInputs, a frame is one mask sample covering
+    bf_mask_lifetime_in_samples, so the sequence numbers step by that.
+
+    Parameters
+    ----------
+    setup : fixture
+        Includes the base config as well as generation parameters
+
+    Returns
+    -------
+    List of ChordBuffers each containing a bad feed mask frame.
+    """
+
+    config = setup["config"]
+    lifetime = config["bf_mask_lifetime_in_samples"]
+
+    shape = (1, config["num_polarizations"], config["num_dishes"])
+
+    bufs = make_zeroed_chord_buffer(
+        "bad_feed_mask",
+        np.int8,
+        "int8",
+        shape,
+        ("Tbf", "P", "D"),
+        (lifetime, 1, 1),
+        config["first_frame_index"] * lifetime,
+        lifetime,
+        setup["num_frames"],
+        time_downsampling=lifetime,
+    )
+
+    for i, buf in enumerate(bufs):
+        buf.data[...] = 1
+        buf.data.reshape(-1)[BAD_FEEDS] = 0
+        buf.data.reshape(-1)[i % config["num_elements"]] = 0
+
+    return bufs
+
+
 @pytest.fixture(scope="module")
 def accum_data(
     tmpdir_factory,
@@ -556,10 +649,11 @@ def accum_data(
     rficount_data,
     plcount_data,
     rfiframemask_data,
+    bad_feed_mask_data,
     accum_list,
 ):
     """
-    Run the N2Accumualte stage on the given input and yield the output buffers.
+    Run the N2Accumulate stage on the given input and yield the output buffers.
 
     Parameters
     ----------
@@ -579,6 +673,8 @@ def accum_data(
         input pl_lost_counts_scalar
     rfiframemask_data : fixture
         input RFIFrameMask
+    bad_feed_mask_data : fixture
+        input bad feed mask
     accum_list : fixture
         List of expected output accumulation frame metadata. Used only to set the number of expected output frames.
 
@@ -602,6 +698,8 @@ def accum_data(
     plcount_buffer.write()
     rfiframemask_buffer = runner.ReadChordBuffer(str(tmpdir), rfiframemask_data)
     rfiframemask_buffer.write()
+    bad_feed_mask_buffer = runner.ReadChordBuffer(str(tmpdir), bad_feed_mask_data)
+    bad_feed_mask_buffer.write()
 
     # Make the output buffer we'll read from
     dump_buffer = runner.DumpN2Buffer(
@@ -618,6 +716,17 @@ def accum_data(
     }
     accum_config.update(accum_setup)
 
+    # Switch fringestopping on mid-run through the updatable config. It should
+    # take effect only from the last bin.
+    config["fringestop_enabled"] = {
+        "kotekan_update_endpoint": "json",
+        "enabled": True,
+        "valid_at_time_ns": int(
+            tel.get_t_inst_ns(fringestop_switch_seq(accum_list), setup["tel"])
+        ),
+    }
+    accum_config["fringestop_updatable_config"] = "/fringestop_enabled"
+
     # The test stage!
     test = runner.KotekanStageTester(
         "N2Accumulate",
@@ -628,6 +737,7 @@ def accum_data(
             "in_rficounts_buf": rficount_buffer,
             "in_plcounts_buf": plcount_buffer,
             "in_rfiframemask_buf": rfiframemask_buffer,
+            "in_bad_feed_mask_buf": bad_feed_mask_buffer,
         },
         dump_buffer,
         config,
@@ -637,6 +747,11 @@ def accum_data(
     test.run()
 
     yield dump_buffer.load()
+
+
+def fringestop_switch_seq(accum_list):
+    """Sequence number one tick before the last bin starts."""
+    return accum_list[-1]["seq"] - 1
 
 
 def get_era_nrot_idx_of_seq(seq, tel_config, use_eop, num_bins_per_rotation):
@@ -901,7 +1016,8 @@ def expected_accum(
 
     Returns
     ------
-    NDArrays containing accum data: vis, weights, valid counts, RFI counts, PL counts
+    NDArrays containing accum data: vis, weights, valid counts, RFI counts, PL counts,
+    usable variance pairs
     """
 
     config = setup["config"]
@@ -950,6 +1066,7 @@ def expected_accum(
     accum_var_chime = np.zeros(corr_shape[:-1], dtype=np.float32)
     accum_bias_chime = np.zeros(corr_shape[:-1], dtype=np.float32)
     accum_count = np.zeros(count_shape, dtype=np.int32)
+    accum_usable_pairs = np.zeros(count_shape, dtype=np.int64)
     accum_plcount = np.zeros(count_shape, dtype=np.int32)
     accum_rficount = np.zeros(count_shape, dtype=np.int32)
     accum_n2 = np.zeros((num_accum, num_freq, num_n2_prod), dtype=np.complex128)
@@ -981,6 +1098,7 @@ def expected_accum(
             # apply the RFI frame mask and accumulate!
             accum_corr[i] += corr_mask * (corr1 + corr2)
             accum_count[i] += mask * (N1 + N2)
+            accum_usable_pairs[i] += (mask != 0) & (N1 > 0) & (N2 > 0)
             # Packet loss is accumulated regardless of the rfi frame mask
             accum_plcount[i] += (
                 plcount_data[tf1].data[tc1] + plcount_data[tf2].data[tc2]
@@ -1004,7 +1122,7 @@ def expected_accum(
             dcorr = (corr2 - corr1).astype(np.float32)
             dcorr2 = dcorr[..., 0] ** 2 + dcorr[..., 1] ** 2
             accum_var_chime[i] += mask_32[:, None, None, None] * dcorr2
-            accum_bias_chime[i] += (mask_32 * (dN ** 2))[:, None, None, None]
+            accum_bias_chime[i] += (mask_32 * (dN**2))[:, None, None, None]
 
             # Accumulate the EvenOddPosDef variance. Less worried about replicating truncation here.
             inv_N1 = safe_invert(N1, float)
@@ -1031,11 +1149,12 @@ def expected_accum(
             bias = accum_bias_chime[i, f] * (vis[..., 0] ** 2 + vis[..., 1] ** 2)
             accum_n2_var_chime[i, f, :] = (accum_var_chime[i, f] - bias)[
                 corr_idx_b, corr_idx_i, corr_idx_j
-            ] * (inv_N_32 ** 2)
+            ] * (inv_N_32**2)
 
             # compute final EvenOddPosDef var
-            M = len(accum["sub_idx"])
-            norm = 2 * inv_N / M
+            # Normalize by pairs that contributed to the variance estimate.
+            usable_pairs = accum_usable_pairs[i, f]
+            norm = inv_N / usable_pairs if usable_pairs > 0 else 0.0
             accum_n2_var_pos[i, f, :] = (
                 accum_var[i, f, corr_idx_b, corr_idx_i, corr_idx_j] * norm
             )
@@ -1050,7 +1169,7 @@ def expected_accum(
     elif accum_setup["variance_mode"] == "EvenOddPosDef":
         w = safe_invert(accum_n2_var_pos, float)
 
-    return vis, w, accum_count, accum_rficount, accum_plcount
+    return vis, w, accum_count, accum_rficount, accum_plcount, accum_usable_pairs
 
 
 def test_structure(accum_data, accum_list, setup):
@@ -1139,6 +1258,7 @@ def test_simple_meta(accum_data, setup, accum_list):
         )
         assert (data_threshold == setup["rfiframemask"]["thresholds"][:, 0]).all()
         assert (data_fraction == setup["rfiframemask"]["thresholds"][:, 1]).all()
+        assert frame.metadata.fringestop_enabled == (t == len(accum_list) - 1)
 
 
 def test_eop_meta(setup, accum_setup, accum_data, accum_list):
@@ -1217,7 +1337,7 @@ def test_counts(accum_data, expected_accum, accum_list, setup):
 
     config = setup["config"]
 
-    _, _, exp_cnts, exp_rficnts, exp_plcnts = expected_accum
+    _, _, exp_cnts, exp_rficnts, exp_plcnts, exp_pairs = expected_accum
 
     for idx, frame in enumerate(accum_data):
         t = idx // config["num_local_freq"]
@@ -1226,9 +1346,50 @@ def test_counts(accum_data, expected_accum, accum_list, setup):
         assert frame.metadata.n_valid_fpga_ticks == exp_cnts[t, f]
         assert frame.metadata.n_rfi_fpga_ticks == exp_rficnts[t, f]
         assert frame.metadata.n_pl_fpga_ticks == exp_plcnts[t, f]
+        assert frame.metadata.n_usable_variance_pairs == exp_pairs[t, f]
         assert frame.metadata.n_rfi_only_fpga_ticks == accum_list[t]["seq_len"] - (
             exp_cnts[t, f] + exp_plcnts[t, f]
         )
+
+
+def test_first_stage_enabled(accum_data, accum_list, setup):
+
+    if setup["fail"]:
+        return
+
+    config = setup["config"]
+    frame_len = config["samples_per_data_set"]
+    sub_len = config["sub_integration_ntime"]
+    off_seq = setup.get("first_stage_off_seq")
+
+    for idx, frame in enumerate(accum_data):
+        accum = accum_list[idx // config["num_local_freq"]]
+        expected = accum["seq_len"]
+        if off_seq is not None:
+            # A switch applies from the first input frame starting at or after it
+            sub_seqs = (
+                config["first_frame_index"] * frame_len + sub_len * accum["sub_idx"]
+            )
+            frame_starts = sub_seqs - sub_seqs % frame_len
+            expected = sub_len * np.count_nonzero(frame_starts < off_seq)
+        assert frame.metadata.n_rfi_first_stage_enabled_fpga_ticks == expected
+
+
+def test_dtv_mask_enabled(accum_data, accum_list, setup):
+
+    if setup["fail"]:
+        return
+
+    config = setup["config"]
+    sub_len = config["sub_integration_ntime"]
+    with_endpoint = setup.get("first_stage_off_seq") is not None
+
+    for idx, frame in enumerate(accum_data):
+        accum = accum_list[idx // config["num_local_freq"]]
+        # Without the endpoint the count is zero. The config value applies from
+        # startup, whatever its valid_at_time_ns.
+        expected = sub_len * len(accum["sub_idx"]) if with_endpoint else 0
+        assert frame.metadata.n_dtv_mask_enabled_fpga_ticks == expected
 
 
 def test_vis(accum_data, expected_accum, accum_list, setup):
@@ -1238,17 +1399,41 @@ def test_vis(accum_data, expected_accum, accum_list, setup):
 
     config = setup["config"]
 
-    exp_vis, _, _, _, _ = expected_accum
+    exp_vis, _, _, _, _, _ = expected_accum
 
     for idx, frame in enumerate(accum_data):
         t = idx // config["num_local_freq"]
         f = idx % config["num_local_freq"]
+
+        # expected_accum does not fringestop
+        if t == len(accum_list) - 1:
+            continue
 
         assert frame.vis.shape == exp_vis[t, f].shape
 
         # vis_diff = frame.vis - exp_vis[t, f]
         # tol =  1.0e-6 + 1.0e-6 * 0.5*np.abs(frame.vis + exp_vis[t, f])
         np.testing.assert_allclose(frame.vis, exp_vis[t, f], 1.0e-6, 1.0e-6)
+
+
+def test_flags(accum_data, accum_list, setup):
+    """
+    The per-element flags carry the bad feed mask (1.0 == good), ANDed over
+    exactly the mask frames of the correlation frames accumulated into the bin.
+    """
+
+    if setup["fail"]:
+        return
+
+    config = setup["config"]
+    subs_per_frame = config["samples_per_data_set"] // config["sub_integration_ntime"]
+
+    for idx, frame in enumerate(accum_data):
+        accum = accum_list[idx // config["num_local_freq"]]
+        expected = np.ones(config["num_elements"], dtype=np.float32)
+        expected[BAD_FEEDS] = 0.0
+        expected[np.unique(accum["sub_idx"] // subs_per_frame)] = 0.0
+        np.testing.assert_array_equal(frame.flags, expected)
 
 
 def test_weight(accum_data, expected_accum, accum_list, setup, accum_setup):
@@ -1258,11 +1443,15 @@ def test_weight(accum_data, expected_accum, accum_list, setup, accum_setup):
 
     config = setup["config"]
 
-    _, exp_w, _, _, _ = expected_accum
+    _, exp_w, _, _, _, _ = expected_accum
 
     for idx, frame in enumerate(accum_data):
         t = idx // config["num_local_freq"]
         f = idx % config["num_local_freq"]
+
+        # expected_accum does not fringestop
+        if t == len(accum_list) - 1:
+            continue
 
         assert frame.weight.shape == exp_w[t, f].shape
 

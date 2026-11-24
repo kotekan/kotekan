@@ -1,42 +1,43 @@
 #include "applyGains.hpp"
 
-#include <assert.h>                  // for assert
-#include <highfive/H5DataSet.hpp>    // for DataSet, DataSet::getDataType, DataSet::getMemSpace
-#include <highfive/H5File.hpp>       // for File, NodeTraits::getDataSet, File::File
-#include <highfive/H5Selection.hpp>  // for SliceTraits::read
-#include <pthread.h>                 // for pthread_setaffinity_np
-#include <sched.h>                   // for cpu_set_t, CPU_SET, CPU_ZERO
-#include <sys/stat.h>                // for stat
-#include <json.hpp>                  // for json, operator<, basic_json, input_adapter
-#include <chrono>                    // for operator""s
-#include <cmath>                     // for pow, abs
-#include <complex>                   // for operator*, complex, operator+, abs, conj, operator==
-#include <cstring>                   // for memcpy
-#include <exception>                 // for exception
-#include <functional>                // for bind, function, _1
-#include <memory>                    // for shared_ptr, operator==, __shared_ptr_access
-#include <set>                       // for set
-#include <stdexcept>                 // for invalid_argument, runtime_error
-#include <thread>                    // for thread, sleep_for
-#include <tuple>                     // for tuple, get, tie
-
-#include "Config.hpp"                // for Config
+#include "Config.hpp"            // for Config
 #include "H5Support.hpp"         // IWYU pragma: keep
-#include "Hash.hpp"                  // for operator<, Hash
-#include "StageFactory.hpp"          // for REGISTER_KOTEKAN_STAGE
-#include "buffer.hpp"                // for Buffer
-#include "bufferContainer.hpp"       // for bufferContainer
-#include "configUpdater.hpp"         // for configUpdater
-#include "datasetManager.hpp"        // for datasetManager, state_id_t, dset_id_t
-#include "datasetState.hpp"          // for gainState, freqState, inputState
-#include "kotekanLogging.hpp"        // for WARN, FATAL_ERROR, DEBUG, INFO, ERROR
-#include "modp_b64.hpp"              // for modp_b64_decode, MODP_B64_ERROR, modp_b64_decode_len
-#include "prometheusMetrics.hpp"     // for Metrics, Counter, Gauge
-#include "restClient.hpp"            // for restClient
-#include "visBuffer.hpp"             // for VisFrameView, VisField
-#include "visUtil.hpp"               // for modulo, cfloat, double_to_ts, ts_to_double, frameID
-#include "fmt.hpp"                   // for compile_string_to_view, format, fmt, format_string
-#include "gsl-lite.hpp"              // for span
+#include "Hash.hpp"              // for operator<, Hash
+#include "StageFactory.hpp"      // for REGISTER_KOTEKAN_STAGE
+#include "buffer.hpp"            // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "configUpdater.hpp"     // for configUpdater
+#include "datasetManager.hpp"    // for datasetManager, state_id_t, dset_id_t
+#include "datasetState.hpp"      // for gainState, freqState, inputState
+#include "kotekanLogging.hpp"    // for WARN, FATAL_ERROR, DEBUG, INFO, ERROR
+#include "modp_b64.hpp"          // for modp_b64_decode, MODP_B64_ERROR, modp_b64_decode_len
+#include "prometheusMetrics.hpp" // for Metrics, Counter, Gauge
+#include "restClient.hpp"        // for restClient
+#include "visBuffer.hpp"         // for VisFrameView, VisField
+#include "visUtil.hpp"           // for cfloat, double_to_ts, ts_to_double
+
+#include "fmt.hpp"      // for compile_string_to_view, format, fmt, format_string
+#include "gsl-lite.hpp" // for span
+
+#include <assert.h>                 // for assert
+#include <chrono>                   // for operator""s
+#include <cmath>                    // for pow, abs
+#include <complex>                  // for operator*, complex, operator+, abs, conj, operator==
+#include <cstring>                  // for memcpy
+#include <exception>                // for exception
+#include <functional>               // for bind, function, _1
+#include <highfive/H5DataSet.hpp>   // for DataSet, DataSet::getDataType, DataSet::getMemSpace
+#include <highfive/H5File.hpp>      // for File, NodeTraits::getDataSet, File::File
+#include <highfive/H5Selection.hpp> // for SliceTraits::read
+#include <json.hpp>                 // for json, operator<, basic_json, input_adapter
+#include <memory>                   // for shared_ptr, operator==, __shared_ptr_access
+#include <pthread.h>                // for pthread_setaffinity_np
+#include <sched.h>                  // for cpu_set_t, CPU_SET, CPU_ZERO
+#include <set>                      // for set
+#include <stdexcept>                // for invalid_argument, runtime_error
+#include <sys/stat.h>               // for stat
+#include <thread>                   // for thread, sleep_for
+#include <tuple>                    // for tuple, get, tie
 
 
 using nlohmann::json;
@@ -57,9 +58,9 @@ REGISTER_KOTEKAN_STAGE(applyGains);
 applyGains::applyGains(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container) :
     Stage(config, unique_name, buffer_container, std::bind(&applyGains::main_thread, this)),
-    in_buf(get_buffer("in_buf")), out_buf(get_buffer("out_buf")), frame_id_in(in_buf),
-    frame_id_out(out_buf), update_age_metric(Metrics::instance().add_gauge(
-                               "kotekan_applygains_update_age_seconds", unique_name)),
+    in_buf(get_buffer("in_buf")), out_buf(get_buffer("out_buf")),
+    update_age_metric(
+        Metrics::instance().add_gauge("kotekan_applygains_update_age_seconds", unique_name)),
     late_update_counter(
         Metrics::instance().add_counter("kotekan_applygains_late_update_count", unique_name)),
     late_frames_counter(
@@ -92,6 +93,11 @@ applyGains::applyGains(Config& config, const std::string& unique_name,
     num_threads = config.get_default<uint32_t>(unique_name, "num_threads", 1);
     if (num_threads == 0)
         throw std::invalid_argument("applyGains: num_threads has to be at least 1.");
+
+    // One "in use" flag per buffer slot, so two apply threads never process the
+    // same frame concurrently when the cursor wraps onto a slot still in use.
+    in_frame_busy.assign(in_buf->num_frames, false);
+    out_frame_busy.assign(out_buf->num_frames, false);
 
     // FIFO for gains and weights updates
     gains_fifo.resize(num_kept_updates);
@@ -214,19 +220,17 @@ void applyGains::main_thread() {
     fetch_thread.join();
 }
 
+void applyGains::release_frame(std::vector<bool>& busy, int frame_id) {
+    {
+        std::lock_guard<std::mutex> lock(m_frame_ids);
+        busy[frame_id] = false;
+    }
+    frame_cv.notify_all();
+}
+
 void applyGains::apply_thread() {
 
     auto& dm = datasetManager::instance();
-
-    int output_frame_id;
-    int input_frame_id;
-
-    // Get the current values of the shared frame IDs and increment them.
-    {
-        std::lock_guard<std::mutex> lock_frame_ids(m_frame_ids);
-        output_frame_id = frame_id_out++;
-        input_frame_id = frame_id_in++;
-    }
 
     // Vectors for storing gains computed on the fly, keep out here so they are
     // only allocated once
@@ -236,8 +240,25 @@ void applyGains::apply_thread() {
 
     while (!stop_thread) {
 
+        // Claim the next input frame in order, blocking while its slot is still
+        // in use by another thread (the cursor has wrapped onto it).
+        int input_frame_id;
+        int output_frame_id = -1;
+        uint64_t seq;
+        {
+            std::unique_lock<std::mutex> lock(m_frame_ids);
+            while (in_frame_busy[claim_seq % in_buf->num_frames] && !stop_thread)
+                frame_cv.wait_for(lock, std::chrono::milliseconds(100));
+            if (stop_thread)
+                break;
+            input_frame_id = claim_seq % in_buf->num_frames;
+            in_frame_busy[input_frame_id] = true;
+            seq = claim_seq++;
+        }
+
         // Wait for the input buffer to be filled with data
         if (in_buf->wait_for_full_frame(unique_name, input_frame_id) == nullptr) {
+            release_frame(in_frame_busy, input_frame_id);
             break;
         }
 
@@ -245,8 +266,10 @@ void applyGains::apply_thread() {
         auto input_frame = VisFrameView(in_buf, input_frame_id);
 
         // Check that the input frame has the right sizes
-        if (!validate_frame(input_frame))
+        if (!validate_frame(input_frame)) {
+            release_frame(in_frame_busy, input_frame_id);
             return;
+        }
 
         // get the frames timestamp
         ts_frame.store(std::get<1>(input_frame.time));
@@ -256,21 +279,53 @@ void applyGains::apply_thread() {
         auto freq_ind = freq_map.at(input_frame.freq_id);
         auto frame_time = ts_to_double(std::get<1>(input_frame.time));
 
-        // Calculate the gain factors we need to apply to this frame
+        // Calculate the gain factors we need to apply to this frame. This is the
+        // parallel part: different threads compute gains for different frames at
+        // the same time.
         auto [late, age, state_id] =
             calculate_gain(frame_time, freq_ind, gain, gain_conj, weight_factor);
 
-        // Report number of frames received late and skip the frame entirely
+        // Take this frame's turn to publish, in claim order, so the output stays
+        // in temporal order. A late frame is dropped here without taking an
+        // output slot, keeping the output dense.
+        {
+            std::unique_lock<std::mutex> lock(m_frame_ids);
+            while (emit_seq != seq && !stop_thread)
+                frame_cv.wait_for(lock, std::chrono::milliseconds(100));
+            // When not late, also wait for the output slot (only contended when
+            // the output buffer has fewer frames than there are threads).
+            if (!stop_thread && !late) {
+                while (out_frame_busy[out_count % out_buf->num_frames] && !stop_thread)
+                    frame_cv.wait_for(lock, std::chrono::milliseconds(100));
+            }
+            if (stop_thread) {
+                lock.unlock();
+                in_buf->mark_frame_empty(unique_name, input_frame_id);
+                release_frame(in_frame_busy, input_frame_id);
+                break;
+            }
+            if (!late) {
+                output_frame_id = out_count % out_buf->num_frames;
+                out_frame_busy[output_frame_id] = true;
+                out_count++;
+            }
+            emit_seq++;
+            frame_cv.notify_all();
+        }
+
+        // Report number of frames received late and skip the frame entirely.
         if (late) {
             late_frames_counter.inc();
-            std::lock_guard<std::mutex> lock_frame_ids(m_frame_ids);
             in_buf->mark_frame_empty(unique_name, input_frame_id);
-            input_frame_id = frame_id_in++;
+            release_frame(in_frame_busy, input_frame_id);
             continue;
         }
 
         // Wait for the output buffer to be empty of data
         if (out_buf->wait_for_empty_frame(unique_name, output_frame_id) == nullptr) {
+            in_buf->mark_frame_empty(unique_name, input_frame_id);
+            release_frame(in_frame_busy, input_frame_id);
+            release_frame(out_frame_busy, output_frame_id);
             break;
         }
         out_buf->allocate_new_metadata_object(output_frame_id);
@@ -327,16 +382,11 @@ void applyGains::apply_thread() {
         // Report how old the gains being applied to the current data are.
         update_age_metric.set(age);
 
-        // Mark the buffers and move on
+        // Mark the buffers and release the slots for reuse.
         out_buf->mark_frame_full(unique_name, output_frame_id);
         in_buf->mark_frame_empty(unique_name, input_frame_id);
-
-        // Get the current values of the shared frame IDs.
-        {
-            std::lock_guard<std::mutex> lock_frame_ids(m_frame_ids);
-            output_frame_id = frame_id_out++;
-            input_frame_id = frame_id_in++;
-        }
+        release_frame(out_frame_busy, output_frame_id);
+        release_frame(in_frame_busy, input_frame_id);
     }
 }
 

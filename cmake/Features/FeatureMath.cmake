@@ -91,6 +91,8 @@ if("${USE_LAPACK_BLAZE}" STREQUAL "AUTO" OR "${USE_LAPACK_BLAZE}" STREQUAL "ON")
         # Add the override directory ahead of the system Blaze install so the
         # patched headers shadow the originals throughout the project.
         include_directories(BEFORE SYSTEM "${_blaze_override_dir}")
+        # Blaze internally includes cblas.h; ensure it can find the LAPACKE headers.
+        include_directories(SYSTEM ${LAPACKE_INCLUDE_DIRS})
 
         if("${USE_LAPACK_BLAZE}" STREQUAL "AUTO")
             set(LAPACK_BLAZE_REASON "auto-detected")

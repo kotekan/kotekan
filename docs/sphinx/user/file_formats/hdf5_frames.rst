@@ -10,7 +10,9 @@ test configurations. The file layout depends on the metadata type of the
 input buffer:
 
 * **CHORD metadata** (n-dimensional GPU-pipeline buffers): one extensible
-  dataset per file, frames appended along the first axis;
+  dataset per file, frames appended along the first axis. Files may
+  contain a single frame, a fixed number of frames, or an unlimited
+  number of frames;
 * **N2 metadata** (visibility frames): one file per frame holding a fixed
   set of datasets and attributes.
 
@@ -33,6 +35,13 @@ Files are written to ``base_dir`` (created if missing) as::
 * ``<frame:08d>`` is an 8-digit frame counter, one file per frame. With
   ``create_single_file: true`` the counter is omitted and all frames go to
   one file.
+
+The counter starts at 0 in each run, so a restart overwrites the previous
+files. With ``acq_dir: true`` the files go to
+``<base_dir>/acq_YYYYMMDD_HHMMSS_NNNNNNNNN`` instead, named for the time the
+pipeline started (UTC), so a restart or a REST ``/stop`` and ``/start`` writes a
+new directory. Writers with the same ``base_dir`` in one pipeline share the
+directory.
 
 Files are created in HDF5 v1.10 format with **SWMR** (single-writer
 multiple-reader) write mode: they remain readable while being written, and
@@ -68,28 +77,33 @@ Dataset attributes:
    * - ``gps_time_enabled``
      - Whether the FPGA timestamp is GPS-disciplined.
    * - ``chord_metadata_version``
-     - int[2] metadata format version (currently {1, 0}).
+     - int[2] metadata format version (currently {2, 0}).
    * - ``name``
      - The ndarray name from the buffer metadata.
    * - ``type``
      - Element data type as a string (e.g. ``float16``).
    * - ``dim_names``
      - String array of dimension names (e.g. ``["T", "F", "D", "P"]``).
+   * - ``dim_scalings``
+     - int64 array of per-dimension scaling factors: how many elements of
+       the underlying, un-decimated axis one element along that dimension
+       represents (1 for an axis that is neither decimated nor combined).
    * - ``fpga_seq_num``, ``fpga_seq_time_nsec``
      - First FPGA sequence number of the frame and its instrument time in
        ns (only if the metadata carries a sequence number).
    * - ``time_downsampling_fpga``
-     - Total FPGA-tick downsampling factor of the time axis (if present).
+     - FPGA ticks spanned by one step along dimension 0, i.e.
+       ``dim_scalings[0]`` (if present). For a buffer whose time direction is
+       split across a slow dimension 0 and a fast trailing dimension this
+       includes the trailing axis' factor; it is not the spacing of
+       individual time samples.
    * - ``coarse_freq``, ``freq_upchan_factor``, ``freq_upchan_index``
      - Per-channel coarse frequency ids, upchannelization factors and
        indices (if present).
    * - ``rfi_frame_excision_enabled``, ``rfi_frame_excision_thresholds``
      - RFI frame-excision state (if present).
-   * - ``num_polarizations``, ``num_dishes``, ``num_elements``
+   * - ``num_polarizations``, ``num_dishes``
      - Telescope input counts (from the stage configuration).
-   * - ``input_order``
-     - Element ordering of the data (an ``ElementOrder`` name; see
-       :ref:`element_order`).
    * - ``itrs_lat_deg``, ``itrs_lon_deg``
      - Telescope origin ITRS coordinates, degrees.
    * - ``grid_orientation``
@@ -98,10 +112,110 @@ Dataset attributes:
      - Dish grid dimensions.
    * - ``feed_separation_x_m``, ``feed_separation_y_m``
      - Grid spacing, metres.
-   * - ``main_array_grid_indices``
-     - Per-element (x, y) grid indices; (-1, -1) off the main array.
+   * - ``dish_grid_indices``
+     - Per-dish (x, y) grid indices, int64 with shape
+       (``num_dishes``, 2); (-1, -1) off the main array.
    * - ``feed_positions_m``
      - Per-element 3D feed positions in the grid frame, metres.
+
+Single-file constraints
+-----------------------
+
+``create_single_file: true`` concatenates all frames along axis 0 and stores
+the attributes only once, taken from the first frame. The frame boundaries and
+the per-frame sequence numbers are therefore *not* on disk, and a reader can
+only reconstruct them if the file holds a contiguous, uniformly sampled time
+stream. ``hdf5FileWrite`` enforces that and aborts otherwise:
+
+* dimension 0 must be a time axis --- by kotekan convention a dimension is a
+  time axis iff its name starts with ``T`` (``T``, ``Tc``, ``Tbar``,
+  ``Ttilde``, ``Thi64``, ``T8hi128``, ...);
+* ``dim_scaling[0]`` must equal ``time_downsampling_fpga`` (1 when the
+  metadata does not carry that field). This is the general kotekan
+  convention, so a *split* time axis --- one whose slow and fast halves are
+  separate dimensions, e.g. ``Thi``/``T`` or ``Ttildehi256``/``Ttildelo256``
+  --- satisfies it as well, as long as ``time_downsampling_fpga`` describes
+  the slow half and hence includes the fast half's factor;
+* consecutive frames must advance ``fpga_seq_num`` by exactly ``dim[0] *
+  time_downsampling_fpga``, and must not change the frame shape or the
+  downsampling factor;
+* frame decimation (``write_x_frames``/``per_y_frames``) must not be
+  combined with ``create_single_file`` (rejected at startup).
+
+Time downsampling itself is allowed, as long as the time axis is sampled at
+the downsampling rate of the frame. A buffer that violates one of these rules
+has to be dumped as per-frame files (``create_single_file: false``): per-frame
+files store the full metadata of every frame and have no such constraints.
+That is why a number of writers in the F-engine configurations
+(``config/fengine/include/output_*.j2``, ``config/chime_upgrade_frb.j2``)
+override the group-wide ``create_single_file: true`` with
+``create_single_file: false`` --- the beamformer phases, gains, weights and
+beam positions are not time-major, and the packed beam outputs carry a single
+dimension-0 slice per frame, so per-frame files spare them the requirement of
+a gap-free frame stream.
+
+The checks run per frame, so a single-file writer that aborts part-way leaves
+a truncated (but still readable) file behind; a dump that ended in a ``FATAL``
+should therefore not be trusted without checking the log.
+
+Multi-frame constraints
+-----------------------
+Multi-frame files (with a fixed number of frames per file) use the same path
+as the single-file mode, and are thus subject to most of the same restrictions.
+The only difference is that the multi-frame write mode allows for non-contiguous
+values of ``fpga_seq_num``; however, a new file is created whenever a non-contiguous
+sample is received, which can result in significantly more files than expected
+being created.
+
+Per-frame metadata
+------------------
+
+With ``record_per_frame_metadata: true`` the file also holds the metadata of
+every frame, and the constraints above do not apply: the frames of a file need
+not be contiguous or in time order, for example when several senders share the
+buffer. The dataset attributes still describe the first frame only.
+
+The metadata is in the group ``frame_metadata``, as one dataset per metadata
+value with one row per frame, in the order the frames were appended. The
+datasets are named for the keys of the metadata's json form: the metadata
+fields in upper case (``FPGA_SEQ_NUM``, ``COARSE_FREQ``,
+``TIME_DOWNSAMPLING_FPGA``, ...) and the array description in lower case
+(``name``, ``type``, ``dims``, ``dim``, ``dim_name``, ``dim_scaling``,
+``stride``, ``offset``). A nested value is a subgroup, such as
+``FIRST_PACKET_RECV_TIME/TV_SEC``. A field that the frames do not carry has no
+dataset.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 66
+
+   * - Metadata value
+     - Dataset
+   * - integer
+     - int64, or uint64 for an unsigned value
+   * - float
+     - float64
+   * - boolean
+     - HDF5 enum ``FALSE``/``TRUE``, which h5py reads as ``bool``
+   * - string
+     - fixed-length string, at least 32 characters
+   * - array of one of these
+     - the same type, with the array's shape after the frame axis
+
+Frame *n* covers ``dim[n, 0]`` rows of the main dataset, starting after the
+rows of the frames before it. For example, to order the frames of two senders::
+
+    with h5py.File(path) as f:
+        seq = f["frame_metadata/FPGA_SEQ_NUM"][:]        # [frame]
+        freq = f["frame_metadata/COARSE_FREQ"][:]        # [frame, F]
+        rows = f["frame_metadata/dim"][:, 0]             # [frame]
+        mask = f["dtv_mask"][:].reshape(len(seq), rows[0], -1)
+
+A frame whose metadata does not fit the datasets of the current file starts a
+new file: one with other keys, another array shape, or a longer string than
+the dataset holds. With ``create_single_file`` that is fatal. A value that
+cannot be a dataset is fatal as well: null, an empty array or object, and an
+array that is ragged or of mixed types.
 
 N2-metadata layout
 ==================
@@ -169,9 +283,12 @@ as dotted scalar attributes (``time_center_eop.t_inst_ns``,
 ``bin_start_ERA_deg``, ``bin_end_ERA_deg``, ``bin_start_ERAL_deg``,
 ``bin_end_ERAL_deg``; ``fpga_start_tick``, ``frame_start_time_ns``,
 ``frame_length_fpga_ticks``, ``n_valid_fpga_ticks``, ``n_rfi_fpga_ticks``,
-``n_rfi_only_fpga_ticks``, ``n_pl_fpga_ticks``;
+``n_rfi_only_fpga_ticks``, ``n_pl_fpga_ticks``,
+``n_rfi_first_stage_enabled_fpga_ticks``, ``n_dtv_mask_enabled_fpga_ticks``,
+``n_usable_variance_pairs``;
 ``rfi_frame_excision_enabled``, ``rfi_frame_excision_num``,
-``rfi_frame_excision_threshold``, ``rfi_frame_excision_fraction``; and the
+``rfi_frame_excision_threshold``, ``rfi_frame_excision_fraction``,
+``fringestop_enabled``; and the
 telescope geometry set (``itrs_lat_deg``, ``itrs_lon_deg``,
 ``grid_orientation``, ``grid_size_x``, ``grid_size_y``,
 ``feed_separation_x_m``, ``feed_separation_y_m``,
@@ -190,6 +307,9 @@ Configuration
    * - ``base_dir``
      - required
      - Output directory (created if missing).
+   * - ``acq_dir``
+     - false
+     - Write into a per-run ``acq_<start time>`` directory under ``base_dir``.
    * - ``file_name``
      - required
      - Base file name; also the dataset name in CHORD mode.
@@ -205,22 +325,100 @@ Configuration
    * - ``create_single_file``
      - false
      - Append all frames to one file (CHORD mode only) instead of one file
-       per frame.
+       per frame. Only for buffers that satisfy the
+       `Single-file constraints`_ (time axis first, ``dim_scaling[0] ==
+       time_downsampling_fpga``, contiguous ``fpga_seq_num``, no
+       decimation); every other writer has to keep the default.
+   * - ``frames_per_file``
+     - 1
+     - The number of frames in each file. More than one is subject to the
+       `Multi-frame constraints`_, unless ``record_per_frame_metadata`` is
+       set. A file is named for its first frame.
+   * - ``record_per_frame_metadata``
+     - false
+     - Store the metadata of every frame in the group ``frame_metadata``; see
+       `Per-frame metadata`_.
+   * - ``use_compression``
+     - true
+     - Compress the data with bitshuffle+zstd (filter 32008).
    * - ``write_x_frames``, ``per_y_frames``
      - -1
-     - Decimation: write only the first X out of every Y frames.
+     - Decimation: write only the first X out of every Y frames. Cannot be
+       combined with ``create_single_file``.
    * - ``max_frames``
      - -1
-     - Stop (and shut kotekan down) after this many frames.
+     - Values <= 0 (the default) mean unlimited; N > 0 stops (and shuts
+       kotekan down) after N frames.
    * - ``skip_writing``
      - false
      - Consume frames without writing (for benchmarking).
    * - ``num_polarizations``, ``num_dishes``
      - required
      - Telescope input counts recorded in the attributes.
-   * - ``input_order``
-     - required
-     - Element ordering recorded in the attributes.
 
 Reading the files requires the bitshuffle HDF5 plugin with zstd support
 (``import hdf5plugin`` in Python).
+
+Reading the files back
+======================
+
+CHORD-metadata files can be replayed into a kotekan buffer with the
+``hdf5FileRead`` stage (``lib/stages/hdf5FileRead.cpp``). It reconstructs the
+payload and the chord metadata from the dataset and its attributes, and aborts
+if the telescope attributes disagree with the telescope of the replaying
+session. The destination buffer must be declared with ``kotekan_buffer:
+ndarray``; the reader validates the declared frame descriptor against the file.
+
+* **Per-frame files**: point ``input_dir``/``file_name`` (and
+  ``prefix_hostname``/``prefix_host_rank``) at the files written above. The
+  reader starts at frame index 0 and stops when the next file is missing,
+  which it reports at ``INFO``; a missing file at index 0 is fatal. Per-frame
+  files carry their own metadata, so this mode places no constraints on the
+  axis order or on the sequence numbers of the frames.
+* **Single file**: additionally set ``read_single_file: true``. The reader
+  splits axis 0 of the dataset into frames. It re-checks the
+  `Single-file constraints`_ that the writer enforced --- dimension 0 has to
+  be a time axis and ``dim_scalings[0]`` has to equal
+  ``time_downsampling_fpga`` --- and aborts if they do not hold, because the
+  reconstruction below would otherwise silently mislabel the frames.
+* **Multi-frame files**: the read does _not_ currently handle multi-frame files
+  as a single batch --- they must be read as individual files in single file mode.
+* **Files with per-frame metadata**: a file that has the group
+  ``frame_metadata`` is replayed frame by frame in either mode, with the
+  metadata of each frame taken from its row and none of the reconstruction
+  below. Among numbered files the reader goes from a file to the one named for
+  the frame after its last, so files of several frames each are read as one
+  stream. If the metadata datasets differ in length, as after the writer was
+  killed while it appended a frame, the reader replays the frames that every
+  dataset has and warns about the samples left over.
+
+In both modes the attributes ``chord_metadata_version``, ``name``, ``type``,
+``dim_names`` and ``dim_scalings`` are mandatory and the HDF5 storage type of
+the dataset has to match the declared ``type``; a missing attribute, a type
+mismatch, or any other HDF5 error while reading is fatal.
+
+Because a single file stores the attributes only once (taken from the first
+frame), some per-frame information is *not* preserved: ``frame_counter``,
+``first_packet_recv_time``, the per-frame ``fpga_seq_num``, and the frame
+boundary itself. The replay therefore reconstructs them:
+
+* the axis-0 extent of one frame is the first extent declared for the
+  reader's ``out_buf`` (the remaining extents, the element type and the
+  labels must match the file);
+* ``fpga_seq_num`` of frame *i* is ``fpga_seq_num + i * extents[0] *
+  time_downsampling_fpga`` (a downsampling factor of 1 is assumed when the
+  attribute is absent);
+* the number of frames is ``axis0 / extents[0]``; a remainder is reported and
+  ignored, but a dataset holding fewer than one frame is a read error.
+
+The writer must have finished before the reader starts, so the two have to run
+in separate kotekan sessions: the whole single file, or the first per-frame
+file, has to exist and be complete at startup. After a writer crash the file
+may need ``h5clear -s FILENAME.h5`` first.
+
+``hdf5FileReadSingleFile`` (``lib/stages/hdf5FileReadSingleFile.cpp``) is a
+different, special-purpose stage: it replays only CHIME/F-engine baseband
+voltages (rank-4 ``int4x2_swapped_withoffset`` data with a leading ``T`` axis
+and an ``F`` axis), selecting a subset of the frequency channels and optionally
+transposing time and frequency or combining dishes and polarizations. Use
+``hdf5FileRead`` with ``read_single_file`` for everything else.

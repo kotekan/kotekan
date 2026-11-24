@@ -1,22 +1,23 @@
 // Copyright (c) 2025 Kotekan Project
 #include "cudaCopyNToRingbuffer.hpp"
 
-#include <stdint.h>            // for int64_t, uint8_t
-#include <sys/types.h>         // for uint
-#include <cassert>             // for assert
-#include <memory>              // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast, mak...
-#include <optional>            // for optional
-#include <stdexcept>           // for runtime_error
-#include <tuple>               // for tuple, make_tuple
-#include <vector>              // for vector
+#include "DataType.hpp"       // for DataType
+#include "chordMetadata.hpp"  // for chordMetadata
+#include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
+#include "cuda_runtime_api.h" // for cudaHostGetFlags, cudaHostUnregister
+#include "gpuCommand.hpp"     // for gpuCommandType
+#include "kotekanLogging.hpp" // for DEBUG, ERROR, INFO
 
-#include "DataType.hpp"        // for DataType
-#include "chordMetadata.hpp"   // for chordMetadata
-#include "cudaUtils.hpp"       // for CHECK_CUDA_ERROR
-#include "cuda_runtime_api.h"  // for cudaHostGetFlags, cudaHostUnregister
-#include "gpuCommand.hpp"      // for gpuCommandType
-#include "kotekanLogging.hpp"  // for DEBUG, ERROR, INFO
-#include "fmt.hpp"             // for compile_string_to_view, join
+#include "fmt.hpp" // for compile_string_to_view, join
+
+#include <cassert>     // for assert
+#include <memory>      // for shared_ptr, __shared_ptr_access, dynamic_pointer_cast, mak...
+#include <optional>    // for optional
+#include <stdexcept>   // for runtime_error
+#include <stdint.h>    // for int64_t, uint8_t
+#include <sys/types.h> // for uint
+#include <tuple>       // for tuple, make_tuple
+#include <vector>      // for vector
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -50,25 +51,32 @@ cudaCopyNToRingbuffer::cudaCopyNToRingbuffer(Config& config, const std::string& 
 
     _gpu_mem_output = config.get<std::string>(unique_name, "gpu_mem_output");
 
+
     signal_buffer = dynamic_cast<RingBuffer*>(
         host_buffers.get_generic_buffer(config.get<std::string>(unique_name, "signal_buf")));
     assert(signal_buffer && "Buffer given by signal_buf is null or not a RingBuffer");
+    // Producer and consumer stages both name this backing store on purpose, and the ring they
+    // wait on and signal is what orders them. Declare the share through the ring's own name
+    // (config aliases in in/out_buffers resolve to it) so the one-owner check accepts exactly
+    // that pairing, and register the store as this stage's now: it is only taken in execute(),
+    // and a conflict belongs at construction, where --dry-run can see it (gpuMemoryClaims.hpp).
+    device.declare_shared_gpu_memory(_gpu_mem_output, signal_buffer->buffer_name);
+    device.register_gpu_memory_name(_gpu_mem_output);
     if (instance_num == 0)
         signal_buffer->register_producer(unique_name);
 
     set_command_type(gpuCommandType::COPY_IN);
-    gpu_buffers_used.push_back(std::make_tuple(_gpu_mem_output, false, false, true));
+    register_gpu_buffer_user({.name = _gpu_mem_output,
+                              .is_array = false,
+                              .does_read = false,
+                              .does_write = true,
+                              .signal_buffer = signal_buffer->buffer_name});
 }
 
 cudaCopyNToRingbuffer::~cudaCopyNToRingbuffer() {
     for (auto buf : in_buffers) {
         assert(buf);
-        if (buf->frame_size) {
-            uint flags;
-            if (cudaSuccess == cudaHostGetFlags(&flags, buf->frames[instance_num])) {
-                CHECK_CUDA_ERROR(cudaHostUnregister(buf->frames[instance_num]));
-            }
-        }
+        unregister_host_buffer(buf);
     }
 }
 
@@ -155,13 +163,20 @@ cudaEvent_t cudaCopyNToRingbuffer::execute(cudaPipelineState& /*pipestate*/,
 
         // Set the shape of the array
         assert(meta_in0->dims == 3);
-        assert(meta_in0->dim[0] == 1);     // F
-        assert(meta_in0->dim[1] == 16384); // T
+        assert(meta_in0->get_dimension_name(0) == "F");
+        assert(meta_in0->dim[0] == 1);
+        assert(meta_in0->dim_scaling[0] == 1);
+        assert(meta_in0->get_dimension_name(1) == "T");
+        assert(meta_in0->dim[1] == 16384);
+        assert(meta_in0->dim_scaling[1] == 1);
+        assert(meta_in0->get_dimension_name(2) == "E");
+        // assert(meta_in0->dim[2] == ...);
+        assert(meta_in0->dim_scaling[2] == 1);
         meta_ring->dims = 4;
-        meta_ring->set_array_dimension(0, _gpu_buffer_depth, "Thi16384");
-        meta_ring->set_array_dimension(1, in_buffers.size(), "F");
-        meta_ring->set_array_dimension(2, meta_in0->dim[1], "Tlo16384");
-        meta_ring->set_array_dimension(3, meta_in0->dim[2], "E");
+        meta_ring->set_array_dimension(0, _gpu_buffer_depth, "Thi16384", 16384);
+        meta_ring->set_array_dimension(1, in_buffers.size(), "F", 1);
+        meta_ring->set_array_dimension(2, meta_in0->dim[1], "Tlo16384", 1);
+        meta_ring->set_array_dimension(3, meta_in0->dim[2], "E", 1);
         meta_ring->set_strides_simple();
 
         // Set the data type
@@ -187,7 +202,11 @@ cudaEvent_t cudaCopyNToRingbuffer::execute(cudaPipelineState& /*pipestate*/,
             freq_upchan_factor.at(i) = meta_in->get_freq_upchan_factor().at(0);
             freq_upchan_index.at(i) = meta_in->get_freq_upchan_index().at(0);
             // Check that the seq_num matches for all input buffers
-            assert(meta_ring->get_fpga_seq_num() == meta_in->get_fpga_seq_num());
+            if (meta_ring->get_fpga_seq_num() != meta_in->get_fpga_seq_num())
+                FATAL_ERROR("Sequence numbers do not match for all input buffers: {:d} ({:s} ) != "
+                            "{:d} ({:s})",
+                            meta_in0->get_fpga_seq_num(), in_buffers.at(0)->buffer_name,
+                            meta_in->get_fpga_seq_num(), in_buffers.at(i)->buffer_name);
         }
         meta_ring->set_coarse_freq(coarse_freq);
         meta_ring->set_freq_upchan_factor(freq_upchan_factor);

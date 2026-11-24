@@ -1,25 +1,26 @@
 #include "basebandApiManager.hpp"
 
-#include <json.hpp>                    // for json_ref, json, basic_json
-#include <chrono>                      // for duration_cast, system_clock, duration, milliseconds
-#include <ctime>                       // for localtime_r, time_t, tm, timespec
-#include <exception>                   // for exception
-#include <functional>                  // for bind, _1, function, _2
-#include <iomanip>                     // for operator<<, put_time
-#include <memory>                      // for shared_ptr, unique_ptr, __shared_ptr_access
-#include <sstream>                     // for basic_ostream, basic_ostringstream, ostringstream
-#include <string>                      // for basic_string, char_traits, operator<, to_string
-#include <type_traits> // for enable_if<>::type  // IWYU pragma: keep
-#include <utility>                     // for pair
-#include <vector>                      // for vector
+#include "Telescope.hpp"              // for Telescope
+#include "basebandReadoutManager.hpp" // for basebandDumpStatus, basebandReadoutManager, baseba...
+#include "kotekanLogging.hpp"         // for DEBUG_NON_OO, INFO_NON_OO, WARN_NON_OO
+#include "prometheusMetrics.hpp"      // for Metrics, Counter
+#include "restServer.hpp"             // for connectionInstance, HTTP_RESPONSE, restServer
+#include "visUtil.hpp"                // for ts_to_double
 
-#include "Telescope.hpp"               // for Telescope
-#include "basebandReadoutManager.hpp"  // for basebandDumpStatus, basebandReadoutManager, baseba...
-#include "kotekanLogging.hpp"          // for DEBUG_NON_OO, INFO_NON_OO, WARN_NON_OO
-#include "prometheusMetrics.hpp"       // for Metrics, Counter
-#include "restServer.hpp"              // for connectionInstance, HTTP_RESPONSE, restServer
-#include "visUtil.hpp"                 // for ts_to_double
-#include "fmt.hpp"                     // for compile_string_to_view, format, fmt
+#include "fmt.hpp" // for compile_string_to_view, format, fmt
+
+#include <chrono>      // for duration_cast, system_clock, duration, milliseconds
+#include <ctime>       // for localtime_r, time_t, tm, timespec
+#include <exception>   // for exception
+#include <functional>  // for bind, _1, function, _2
+#include <iomanip>     // for operator<<, put_time
+#include <json.hpp>    // for json_ref, json, basic_json
+#include <memory>      // for shared_ptr, unique_ptr, __shared_ptr_access
+#include <sstream>     // for basic_ostream, basic_ostringstream, ostringstream
+#include <string>      // for basic_string, char_traits, operator<, to_string
+#include <type_traits> // for enable_if<>::type  // IWYU pragma: keep
+#include <utility>     // for pair
+#include <vector>      // for vector
 
 using nlohmann::json;
 
@@ -50,15 +51,17 @@ basebandApiManager::basebandReadoutRegistry::operator[](const uint32_t& key) { /
     return readout_map[key];
 }
 
+std::unique_lock<std::mutex> basebandApiManager::basebandReadoutRegistry::lock() {
+    return std::unique_lock<std::mutex>(map_lock);
+}
+
 basebandApiManager::basebandReadoutRegistry::iterator
 basebandApiManager::basebandReadoutRegistry::begin() noexcept {
-    std::lock_guard<std::mutex> lock(map_lock);
     return readout_map.begin();
 }
 
 basebandApiManager::basebandReadoutRegistry::iterator
 basebandApiManager::basebandReadoutRegistry::end() noexcept {
-    std::lock_guard<std::mutex> lock(map_lock);
     return readout_map.end();
 }
 
@@ -137,6 +140,7 @@ void basebandApiManager::status_callback_all(connectionInstance& conn) {
     }
 
     // If there isn't an event_id given, then return all the events
+    auto registry_lock = readout_registry.lock();
     for (auto& element : readout_registry) {
         uint32_t freq_id = element.first;
         auto& readout_manager = element.second;
@@ -155,6 +159,7 @@ void basebandApiManager::status_callback_single_event(const uint64_t event_id,
                                                       connectionInstance& conn) {
     std::vector<json> event_status;
 
+    auto registry_lock = readout_registry.lock();
     for (auto& element : readout_registry) {
         uint32_t freq_id = element.first;
         auto& readout_manager = element.second;
@@ -224,6 +229,7 @@ void basebandApiManager::handle_request_callback(connectionInstance& conn, json&
         const double dm_error = request["dm_error"];
 
         json response = json::object({});
+        auto registry_lock = readout_registry.lock();
         for (auto& element : readout_registry) {
             const uint32_t freq_id = element.first;
             auto& readout_entry = element.second;

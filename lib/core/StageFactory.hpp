@@ -46,6 +46,9 @@ private:
     Config& config;
     bufferContainer& buffer_container;
 
+    // Constructs the stage registered as `name`, with this thread's memory
+    // allocation bound to the NUMA node of the stage's cpu_affinity while the
+    // constructor runs (see numaPolicy.hpp).
     Stage* create(const std::string& name, Config& config, const std::string& unique_name,
                   bufferContainer& host_buffers) const;
 };

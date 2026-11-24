@@ -1,19 +1,20 @@
 #include "cudaDeviceInterface.hpp"
 
-#include <assert.h>            // for assert
-#include <cuda.h>              // for cuGetErrorString, cuModuleGetFunction, cuModuleLoadDataEx
-#include <nvPTXCompiler.h>     // for NVPTXCOMPILE_SUCCESS, nvPTXCompilerCompile, nvPTXCompilerC...
-#include <nvrtc.h>             // for nvrtcGetErrorString, NVRTC_SUCCESS, nvrtcCompileProgram
-#include <stdio.h>             // for fclose, fopen, fread, fseek, ftell, rewind, FILE, SEEK_END
-#include <stdlib.h>            // for free, malloc
-#include <mutex>               // for mutex, lock_guard
-#include <stdexcept>           // for runtime_error
-#include <utility>             // for pair
+#include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
+#include "cuda_runtime_api.h" // for cudaEventCreate, cudaEventRecord, cudaMemcpyAsync, cudaStr...
+#include "kotekanLogging.hpp" // for FATAL_ERROR, INFO, DEBUG2
 
-#include "cudaUtils.hpp"       // for CHECK_CUDA_ERROR
-#include "cuda_runtime_api.h"  // for cudaEventCreate, cudaEventRecord, cudaMemcpyAsync, cudaStr...
-#include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO, DEBUG2
-#include "fmt.hpp"             // for compile_string_to_view
+#include "fmt.hpp" // for compile_string_to_view
+
+#include <assert.h>        // for assert
+#include <cuda.h>          // for cuGetErrorString, cuModuleGetFunction, cuModuleLoadDataEx
+#include <mutex>           // for mutex, lock_guard
+#include <nvPTXCompiler.h> // for NVPTXCOMPILE_SUCCESS, nvPTXCompilerCompile, nvPTXCompilerC...
+#include <nvrtc.h>         // for nvrtcGetErrorString, NVRTC_SUCCESS, nvrtcCompileProgram
+#include <stdexcept>       // for runtime_error
+#include <stdio.h>         // for fclose, fopen, fread, fseek, ftell, rewind, FILE, SEEK_END
+#include <stdlib.h>        // for free, malloc
+#include <utility>         // for pair
 
 using kotekan::Config;
 
@@ -54,6 +55,13 @@ cudaDeviceInterface::cudaDeviceInterface(Config& config, const std::string& uniq
     }
 
     set_thread_device();
+
+    // Copy engines, once per device: see async_engine_count() and cudaProcess's
+    // `require_async_engines`.
+    cudaDeviceProp prop;
+    CHECK_CUDA_ERROR(cudaGetDeviceProperties(&prop, gpu_id));
+    _async_engine_count = prop.asyncEngineCount;
+    INFO("GPU[{:d}] {:s}: {:d} async copy engine(s)", gpu_id, prop.name, _async_engine_count);
 }
 
 cudaDeviceInterface::~cudaDeviceInterface() {
@@ -77,6 +85,12 @@ void cudaDeviceInterface::free_gpu_memory(void* ptr) {
 }
 
 cudaStream_t cudaDeviceInterface::getStream(int32_t cuda_stream_id) {
+    // The per-stage bound (cudaProcess::collect_stream_ids) runs after the commands are built,
+    // and a command may fetch its stream in its constructor; refuse here too rather than read
+    // past the vector first.
+    if (cuda_stream_id < 0 || cuda_stream_id >= (int32_t)streams.size())
+        throw std::runtime_error(fmt::format("getStream: stream {:d} outside [0, {:d})",
+                                             cuda_stream_id, (int32_t)streams.size()));
     return streams[cuda_stream_id];
 }
 
@@ -84,9 +98,18 @@ int32_t cudaDeviceInterface::get_num_streams() {
     return streams.size();
 }
 
+std::recursive_mutex& cudaDeviceInterface::stream_mutex(int32_t stream_id) {
+    if (stream_id < 0 || stream_id >= (int32_t)stream_mutexes.size())
+        throw std::runtime_error(fmt::format("stream_mutex: stream {:d} outside [0, {:d})",
+                                             stream_id, (int32_t)stream_mutexes.size()));
+    return stream_mutexes[stream_id];
+}
+
 void cudaDeviceInterface::prepareStreams(uint32_t num_streams) {
-    // Create GPU command queues
+    // Create GPU command queues, each with its queuing mutex; the mutex first, so no stream
+    // ever exists without one.
     for (uint32_t i = streams.size(); i < num_streams; ++i) {
+        stream_mutexes.emplace_back();
         cudaStream_t stream = nullptr;
         CHECK_CUDA_ERROR(cudaStreamCreate(&stream));
         streams.push_back(stream);
@@ -238,12 +261,6 @@ void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
     size_t program_size;
     FILE* fp;
     char* program_buffer;
-    nvPTXCompileResult nv_res;
-    CUresult cu_res;
-    nvPTXCompilerHandle compiler = nullptr;
-    size_t elf_size;
-    char* elf;
-    CUmodule module;
 
     for (auto& kernel_name : kernel_names)
         if (runtime_kernels.count(kernel_name_prefix + kernel_name))
@@ -267,18 +284,56 @@ void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
         FATAL_ERROR("Error reading the file: {:s}", kernel_filename);
     fclose(fp);
 
+    build_ptx(std::string(program_buffer, program_size), kernel_filename, kernel_names, opts,
+              kernel_name_prefix);
+}
+
+void cudaDeviceInterface::build_ptx(const std::string& kernel_code,
+                                    const std::string& kernel_filename,
+                                    const std::vector<std::string>& kernel_names,
+                                    const std::vector<std::string>& opts,
+                                    const std::string& kernel_name_prefix) {
+    nvPTXCompileResult nv_res;
+    CUresult cu_res;
+    nvPTXCompilerHandle compiler = nullptr;
+    size_t elf_size;
+    char* elf;
+    CUmodule module;
+
     // Create the compiler
-    nv_res = nvPTXCompilerCreate(&compiler, program_size, program_buffer);
+    nv_res = nvPTXCompilerCreate(&compiler, kernel_code.size(), kernel_code.data());
     if (nv_res != NVPTXCOMPILE_SUCCESS) {
         // TODO Report ENUM names.
         FATAL_ERROR("Could not create PTX compiler, error code: {:d}", (int)nv_res);
         return;
     }
 
+    // Compile for the compute capability of the GPU that is actually present. Callers
+    // pass the --gpu-name their kernel was generated for, but SASS is only compatible
+    // within a major architecture (an sm_89 cubin fails to load on an sm_86 device with
+    // "no kernel image is available for execution on the device"), so kernels would
+    // otherwise only run on the specific GPU model they were generated for.
+    cudaDeviceProp prop;
+    CHECK_CUDA_ERROR(cudaGetDeviceProperties(&prop, gpu_id));
+    const std::string gpu_name = fmt::format("--gpu-name=sm_{:d}{:d}", prop.major, prop.minor);
+    std::vector<std::string> compile_opts;
+    compile_opts.reserve(opts.size() + 1);
+    for (const std::string& opt : opts) {
+        if (opt.rfind("--gpu-name", 0) == 0) {
+            if (opt != gpu_name)
+                INFO("Kernel file {:s} was generated for {:s}; compiling for the local GPU with "
+                     "{:s} instead",
+                     kernel_filename, opt, gpu_name);
+        } else {
+            compile_opts.push_back(opt);
+        }
+    }
+    compile_opts.push_back(gpu_name);
+
     // Convert compiler options to a c-style array.
     std::vector<const char*> cstring_opts;
-    cstring_opts.reserve(opts.size());
-    for (auto& s : opts)
+    cstring_opts.reserve(compile_opts.size());
+    for (auto& s : compile_opts)
         cstring_opts.push_back(s.c_str());
 
     // Compile the code
@@ -351,7 +406,10 @@ void cudaDeviceInterface::build_ptx(const std::string& kernel_filename,
     // Extract kernels
     cu_res = cuModuleLoadDataEx(&module, elf, 0, nullptr, nullptr);
     if (cu_res != CUDA_SUCCESS) {
-        FATAL_ERROR("Could not load module data from elf");
+        const char* errStr = nullptr;
+        cuGetErrorString(cu_res, &errStr);
+        FATAL_ERROR("Could not load module data from elf for kernel file {:s}: {:s}",
+                    kernel_filename, errStr);
         return;
     }
 

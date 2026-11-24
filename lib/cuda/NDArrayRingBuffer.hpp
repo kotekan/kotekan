@@ -1,40 +1,51 @@
 #ifndef NDARRAYRINGBUFFER_HPP
 #define NDARRAYRINGBUFFER_HPP
 
-#include <cuda_runtime_api.h>       // for cudaMemcpy2D, cudaMemset2DAsync
-#include <driver_types.h>           // for CUstream_st, cudaMemcpyKind
-#include <algorithm>                // for find_if, fill_n
-#include <array>                    // for array
-#include <cassert>                  // for assert
-#include <cmath>                    // for isfinite
-#include <cstddef>                  // for ptrdiff_t, size_t
-#include <cstdint>                  // for uint8_t
-#include <cstring>                  // for memcmp, memcpy, memset
-#include <functional>               // for function
-#include <iomanip>                  // for setfill, operator<<, setw
-#include <iostream>                 // for basic_ostream, operator<<, ostream, ostringstream
-#include <memory>                   // for shared_ptr, __shared_ptr_access, allocator
-#include <optional>                 // for optional
-#include <sstream>                  // for basic_ostringstream
-#include <string>                   // for basic_string, char_traits, string, operator+, operator<<
-#include <type_traits>              // for is_floating_point_v, is_same_v
-#include <utility>                  // for pair
-#include <vector>                   // for vector
+#include "DataType.hpp"            // for uint_from_element_bits, operator<<, GetType_t, isfinite
+#include "NDArray.hpp"             // for NDArray
+#include "Symbol.hpp"              // for Symbol, operator==, strings_to_symbols, operator<<
+#include "buffer.hpp"              // for GenericBuffer
+#include "bufferContainer.hpp"     // for bufferContainer
+#include "chordMetadata.hpp"       // for chordMetadata, get_chord_metadata
+#include "cudaCommand.hpp"         // for cudaCommand
+#include "cudaDeviceInterface.hpp" // for cudaDeviceInterface
+#include "cudaUtils.hpp"           // for CHECK_CUDA_ERROR
+#include "div.hpp"                 // for mod, div_noremainder
+#include "kotekanLogging.hpp"      // for FATAL_ERROR, ERROR, kotekanLogging
+#include "metadata.hpp"            // for metadataObject
+#include "ringbuffer.hpp"          // for RingBuffer
 
-#include "DataType.hpp"             // for uint_from_element_bits, operator<<, GetType_t, isfinite
-#include "NDArray.hpp"              // for NDArray
-#include "Symbol.hpp"               // for Symbol, operator==, strings_to_symbols, operator<<
-#include "buffer.hpp"               // for GenericBuffer
-#include "bufferContainer.hpp"      // for bufferContainer
-#include "chordMetadata.hpp"        // for chordMetadata, get_chord_metadata
-#include "cudaCommand.hpp"          // for cudaCommand
-#include "cudaDeviceInterface.hpp"  // for cudaDeviceInterface
-#include "cudaUtils.hpp"            // for CHECK_CUDA_ERROR
-#include "div.hpp"                  // for mod, div_noremainder
-#include "kotekanLogging.hpp"       // for FATAL_ERROR, ERROR, kotekanLogging
-#include "metadata.hpp"             // for metadataObject
-#include "ringbuffer.hpp"           // for RingBuffer
-#include "fmt.hpp"                  // for compile_string_to_view, formatter
+#include "fmt.hpp" // for compile_string_to_view, formatter
+
+#include <algorithm>          // for find_if, fill_n, min
+#include <array>              // for array
+#include <cmath>              // for isfinite
+#include <cstddef>            // for ptrdiff_t, size_t
+#include <cstdint>            // for uint8_t
+#include <cstring>            // for memcmp, memcpy, memset
+#include <cuda_runtime_api.h> // for cudaMemcpy2D, cudaMemset2DAsync
+#include <driver_types.h>     // for CUstream_st, cudaMemcpyKind
+#include <functional>         // for function
+#include <iomanip>            // for setfill, operator<<, setw
+#include <iostream>           // for basic_ostream, operator<<, ostream, ostringstream
+#include <memory>             // for shared_ptr, __shared_ptr_access, allocator
+#include <optional>           // for optional
+#include <sstream>            // for basic_ostringstream
+#include <string>             // for basic_string, char_traits, string, operator+, operator<<
+#include <type_traits>        // for is_floating_point_v, is_same_v
+#include <utility>            // for pair
+#include <vector>             // for vector
+
+// An `assert` that stays enabled in release builds. Most conditions in this file are not
+// internal invariants: they bound ring buffer offsets that become kernel arguments, or
+// describe metadata another stage published. A violation therefore corrupts data silently
+// rather than crashing, which is exactly the case a disabled `assert` cannot catch.
+// Requires `buffer_name` to be in scope. Undefined at the end of this header.
+#define RINGBUF_CHECK(cond)                                                                        \
+    do {                                                                                           \
+        if (!(cond))                                                                               \
+            FATAL_ERROR("ring buffer {:s}: failed check `{:s}`", buffer_name, #cond);              \
+    } while (0)
 
 using kotekan::div_noremainder;
 using kotekan::mod;
@@ -47,6 +58,23 @@ using kotekan::mod;
 // which will have to be seen again during the next iteration. It is
 //
 //     overlap = read - claimed
+//
+// There are thus four cases:
+// - `read == 0`: There are not enough data yet; wait for more.
+// - `claimed == read`: The ordinary case; all data that are read are
+//   also consumed.
+// - `0 < claimed < read`: The last `overlap` elements are read again
+//   during the next iteration.
+// - `claimed == 0 && read > 0`: Nothing is consumed at all; the same
+//   data will be read again during the next iteration. This is useful
+//   for slowly varying inputs (e.g. a bad feed mask) that are read on
+//   every iteration but advance only rarely.
+//
+// CAUTION: Since `wait_and_claim_readable` only waits while `read` is
+// zero, a caller that keeps returning `claimed == 0` will never make
+// progress, and will spin instead of blocking. A caller using this
+// case must ensure progress by other means, e.g. by claiming data
+// from another ringbuffer during the same iteration.
 struct read_descriptor_t {
     std::ptrdiff_t claimed, read;
 
@@ -78,7 +106,10 @@ public:
 
     extent_t() : extent_t(0, 0) {}
     extent_t(std::ptrdiff_t begin, std::ptrdiff_t end) : m_begin(begin), m_end(end) {
-        assert(size() >= 0);
+        // An inverted extent has a negative size, which would propagate into kernel
+        // arguments, so reject it here rather than only in a debug build.
+        if (size() < 0)
+            FATAL_ERROR_NON_OO("extent_t: begin={:d} lies past end={:d}", begin, end);
     }
     std::ptrdiff_t begin() const noexcept {
         return m_begin;
@@ -180,7 +211,19 @@ private:
         for (std::size_t d = 0; d < D; ++d)
             size *= extents[d];
         const std::ptrdiff_t size_in_bytes = size * sizeof(T);
-        assert(ringbuffer->size == size_in_bytes);
+        // This runs from the member initializer list, so it is the first place that can
+        // report a missing ring buffer -- the constructor body would be too late.
+        if (!ringbuffer)
+            FATAL_ERROR("buffer {:s}: there is no ring buffer named {:s}", buffer_name,
+                        signal_buffer_name);
+        if (ringbuffer->size != size_in_bytes)
+            FATAL_ERROR("buffer {:s}: ring buffer {:s} holds {:d} bytes, but the array needs {:d}",
+                        buffer_name, signal_buffer_name, ringbuffer->size, size_in_bytes);
+        // The producing and the consuming stage both build an NDArrayRingBuffer over the same
+        // host ring and so name the same device store; that ring's handshake is what orders
+        // them, so declare the share through it (see gpuMemoryClaims.hpp).
+        cuda_command.get_device().declare_shared_gpu_memory(buffer_name_device,
+                                                            ringbuffer->buffer_name);
         void* const ptr =
             cuda_command.get_device().get_gpu_memory(buffer_name_device, size_in_bytes);
         return static_cast<T*>(ptr);
@@ -189,7 +232,8 @@ private:
 public:
     NDArrayRingBuffer(const std::string& buffer_name, const std::string& quantity_name,
                       const std::array<std::ptrdiff_t, D>& extents,
-                      const std::array<kotekan::Symbol, D>& dimnames, cudaCommand& cuda_command) :
+                      const std::array<kotekan::Symbol, D>& dimnames,
+                      const std::array<std::ptrdiff_t, D>& dimscalings, cudaCommand& cuda_command) :
         // metadata
         buffer_name(buffer_name),                            // e.g. "bb_beams"
         buffer_name_host("host_" + buffer_name + "_buffer"), // e.g. "host_bb_beams_buffer"
@@ -200,27 +244,29 @@ public:
         ringbuffer(dynamic_cast<RingBuffer*>(
             cuda_command.get_host_buffers().get_generic_buffer(signal_buffer_name))),
         // NDArray
-        ndarray(quantity_name, extents, dimnames, get_buffer_pointer(extents)),
+        ndarray(quantity_name, extents, dimnames, dimscalings, get_buffer_pointer(extents)),
         // State
         write_valid(0, 0), read_valid(0, 0), read_claimed(0, 0)
     //
     {
         set_log_level(cuda_command.get_log_level());
-
-        assert(ringbuffer);
+        // Every command on the ring must agree on its layout
+        ringbuffer->ensure_frame_desc(frame_desc());
     }
 
     NDArrayRingBuffer(const std::string& buffer_name, const std::string& quantity_name,
                       const std::array<std::ptrdiff_t, D>& extents,
-                      const std::array<std::string, D>& dimnames, cudaCommand& cuda_command) :
+                      const std::array<std::string, D>& dimnames,
+                      const std::array<std::ptrdiff_t, D>& dimscalings, cudaCommand& cuda_command) :
         NDArrayRingBuffer(buffer_name, quantity_name, extents,
-                          kotekan::strings_to_symbols(dimnames), cuda_command) {}
+                          kotekan::strings_to_symbols(dimnames), dimscalings, cuda_command) {}
 
     NDArrayRingBuffer(const std::string& buffer_name, const std::string& quantity_name,
                       const std::array<std::ptrdiff_t, D>& extents,
-                      const std::array<const char*, D>& dimnames, cudaCommand& cuda_command) :
+                      const std::array<const char*, D>& dimnames,
+                      const std::array<std::ptrdiff_t, D>& dimscalings, cudaCommand& cuda_command) :
         NDArrayRingBuffer(buffer_name, quantity_name, extents,
-                          kotekan::strings_to_symbols(dimnames), cuda_command) {}
+                          kotekan::strings_to_symbols(dimnames), dimscalings, cuda_command) {}
 
     virtual ~NDArrayRingBuffer() {}
 
@@ -236,20 +282,35 @@ public:
         return buffer_name_device;
     }
 
+    /// The array layout as a descriptor, for the pipeline graph.
+    std::shared_ptr<const kotekan::FrameDesc> frame_desc() const {
+        return kotekan::GenericNDArray::describe(ndarray.get_value_datatype(),
+                                                 ndarray.get_quantity_name(), ndarray.get_extents(),
+                                                 ndarray.get_dimnames(), ndarray.get_dimscalings());
+    }
+
     // TODO: Distinguish between input and output buffers, then register automatically
-    void register_consumer() {
+    void register_consumer() const {
         if (get_instance_num() == 0) {
             ringbuffer->register_consumer(cuda_command.get_unique_name());
-            cuda_command.register_gpu_buffer_user(
-                {.name = buffer_name, .is_array = true, .does_read = true, .does_write = false});
+            cuda_command.register_gpu_buffer_user({.name = buffer_name_device,
+                                                   .is_array = false,
+                                                   .does_read = true,
+                                                   .does_write = false,
+                                                   .frame_desc = frame_desc(),
+                                                   .signal_buffer = ringbuffer->buffer_name});
         }
     }
 
-    void register_producer() {
+    void register_producer() const {
         if (get_instance_num() == 0) {
             ringbuffer->register_producer(cuda_command.get_unique_name());
-            cuda_command.register_gpu_buffer_user(
-                {.name = buffer_name, .is_array = true, .does_read = false, .does_write = true});
+            cuda_command.register_gpu_buffer_user({.name = buffer_name_device,
+                                                   .is_array = false,
+                                                   .does_read = false,
+                                                   .does_write = true,
+                                                   .frame_desc = frame_desc(),
+                                                   .signal_buffer = ringbuffer->buffer_name});
         }
     }
 
@@ -258,9 +319,9 @@ public:
     // terms of the slowest varying dimension of the `NDArray`.
     // Returns 0 if all is good, -1 if we should terminate.
     int wait_for_writable(const std::ptrdiff_t produced_elements) {
-        assert(write_valid.size() == 0);
-        assert(read_valid.size() == 0);
-        assert(read_claimed.size() == 0);
+        RINGBUF_CHECK(write_valid.size() == 0);
+        RINGBUF_CHECK(read_valid.size() == 0);
+        RINGBUF_CHECK(read_claimed.size() == 0);
 
         const std::ptrdiff_t produced_bytes = produced_elements * granularity_in_bytes();
         const std::optional<std::ptrdiff_t> waited = ringbuffer->wait_for_writable(
@@ -270,19 +331,44 @@ public:
 
         const std::ptrdiff_t write_begin = div_noremainder(waited.value(), granularity_in_bytes());
         write_valid = extent_t(write_begin, write_begin + produced_elements);
-        assert(write_valid.size() > 0);
+        RINGBUF_CHECK(write_valid.size() > 0);
 
         return 0;
     }
 
     void finish_write() {
-        assert(write_valid.size() > 0);
+        RINGBUF_CHECK(write_valid.size() > 0);
         const std::ptrdiff_t written_elements = write_valid.size();
         ringbuffer->finish_write(cuda_command.get_unique_name(), get_instance_num(),
                                  written_elements * granularity_in_bytes());
 
         write_valid = extent_t(write_valid.end(), write_valid.end());
-        assert(write_valid.size() == 0);
+        RINGBUF_CHECK(write_valid.size() == 0);
+    }
+
+    // Where the next read will begin, in elements.
+    //
+    // This is the read head of the underlying ringbuffer, which is
+    // shared by all instances of this command: `register_consumer` only
+    // registers instance 0, and `RingBuffer` keys its cursors on the
+    // consumer name alone. `get_maybe_empty_read_valid().begin()` is
+    // *not* a substitute -- that is this instance's own position, which
+    // lags the shared head by whatever the other instances claimed in
+    // the meantime.
+    //
+    // Only the thread that claims from this ringbuffer (that is, the
+    // stage's `gpuProcess::main_thread`) advances the read head, and it
+    // is the same thread that calls this function, so the value stays
+    // valid until this instance claims.
+    //
+    // Returns -1 if the pipeline is shutting down. (A read head is never negative, and the
+    // other functions here that can observe a shutdown report it the same way.)
+    std::ptrdiff_t peek_read_head() const {
+        const std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>> peeked =
+            ringbuffer->peek_readable(cuda_command.get_unique_name(), get_instance_num());
+        if (!peeked.has_value())
+            return -1;
+        return div_noremainder(peeked.value().first, granularity_in_bytes());
     }
 
     // `wait_and_claim_readable` is the main function to claim data
@@ -290,37 +376,52 @@ public:
     // currently available number of elements as input, and then
     // returns how many elements will be read and claimed (see above).
     // `wait_and_claim_readable` waits for data in the ringbuffer
-    // until a strictly positive number of elements will be claimed.
+    // until a strictly positive number of elements will be read.
+    //
+    // Claiming zero elements while reading some is allowed: the same
+    // data will then be read again during the next iteration. This
+    // means that `wait_and_claim_readable` no longer guarantees that
+    // the caller makes progress -- see the comment for
+    // `read_descriptor_t` above.
+    //
     // Returns 0 if all is good, -1 if we should terminate.
     int wait_and_claim_readable(
         const std::function<read_descriptor_t(std::ptrdiff_t)>& calc_read_descriptor) {
-        assert(write_valid.size() == 0);
+        RINGBUF_CHECK(write_valid.size() == 0);
         if (!(read_valid.size() == 0)) {
             FATAL_ERROR("buffer {:s}, wait_and_claim_readable({:s}[{:d}]): valid read region is "
                         "not empty (begin={:d}, end={:d}, size={:d})",
                         buffer_name, cuda_command.get_unique_name(), get_instance_num(),
                         read_valid.begin(), read_valid.end(), read_valid.size());
         }
-        assert(read_valid.size() == 0);
-        assert(read_claimed.size() == 0);
+        RINGBUF_CHECK(read_claimed.size() == 0);
 
         // Check available samples
         const std::optional<std::pair<std::ptrdiff_t, std::ptrdiff_t>> peeked =
             ringbuffer->peek_readable(cuda_command.get_unique_name(), get_instance_num());
         if (!peeked.has_value())
             return -1;
+        // Where we will begin reading. Only claiming data moves the
+        // read head, and we have not claimed anything yet, so this
+        // stays valid while we wait below.
+        const std::ptrdiff_t read_head_bytes = peeked.value().first;
         std::ptrdiff_t available_bytes = peeked.value().second;
 
     wait_for_data:
         const std::ptrdiff_t available_elements =
             div_noremainder(available_bytes, granularity_in_bytes());
         const read_descriptor_t read_descriptor = calc_read_descriptor(available_elements);
-        assert(read_descriptor.claimed >= 0);
-        assert(read_descriptor.claimed <= read_descriptor.read);
-        assert(read_descriptor.read <= available_elements);
+        // `calc_read_descriptor` is supplied by the caller. A descriptor outside these
+        // bounds would move the read head past data that is not there.
+        if (!(read_descriptor.claimed >= 0 && read_descriptor.claimed <= read_descriptor.read
+              && read_descriptor.read <= available_elements))
+            FATAL_ERROR("ring buffer {:s}, {:s}[{:d}]: invalid read descriptor {:s} for {:d} "
+                        "available elements (require 0 <= claimed <= read <= available)",
+                        buffer_name, cuda_command.get_unique_name(), get_instance_num(),
+                        read_descriptor, available_elements);
 
         // Can we make progress?
-        if (read_descriptor.claimed <= 0) {
+        if (read_descriptor.read <= 0) {
             // We cannot make progress, we need to wait
             const std::optional<std::ptrdiff_t> waited = ringbuffer->wait_without_claiming(
                 cuda_command.get_unique_name(), get_instance_num(), available_bytes + 1);
@@ -331,62 +432,105 @@ public:
         }
 
         // Claim inputs
-        assert(read_descriptor.claimed > 0);
-        const std::optional<std::ptrdiff_t> claimed =
-            ringbuffer->wait_and_claim_readable(cuda_command.get_unique_name(), get_instance_num(),
-                                                read_descriptor.claimed * granularity_in_bytes());
-        if (!claimed.has_value())
-            return -1;
+        std::ptrdiff_t read_begin;
+        if (read_descriptor.claimed > 0) {
+            const std::optional<std::ptrdiff_t> claimed = ringbuffer->wait_and_claim_readable(
+                cuda_command.get_unique_name(), get_instance_num(),
+                read_descriptor.claimed * granularity_in_bytes());
+            if (!claimed.has_value())
+                return -1;
+            read_begin = div_noremainder(claimed.value(), granularity_in_bytes());
+        } else {
+            // We read data without claiming them. The read head does
+            // not move, so we begin reading where we left off. The
+            // data are protected from being overwritten because our
+            // read tail does not move either.
+            read_begin = div_noremainder(read_head_bytes, granularity_in_bytes());
+        }
 
-        const std::ptrdiff_t read_begin = div_noremainder(claimed.value(), granularity_in_bytes());
         read_valid = extent_t(read_begin, read_begin + read_descriptor.read);
         read_claimed = extent_t(read_begin, read_begin + read_descriptor.claimed);
-        assert(read_valid.size() > 0);
-        assert(read_claimed.size() > 0);
+        RINGBUF_CHECK(read_valid.size() > 0);
+        RINGBUF_CHECK(read_claimed.size() >= 0);
 
         return 0;
     }
 
+    // Skip the first `skipped_elements` elements of the ringbuffer, once, before the first
+    // read: claim and release them without reading them. This does nothing once the read head
+    // has moved, so it can be called before every read. (Only the thread that claims from this
+    // ringbuffer moves the read head, so it is 0 exactly until the first claim.)
+    //
+    // Returns 0 if all is good, -1 if we should terminate.
+    int skip_at_start(const std::ptrdiff_t skipped_elements) {
+        RINGBUF_CHECK(skipped_elements >= 0);
+        if (skipped_elements == 0)
+            return 0;
+        const std::ptrdiff_t read_head = peek_read_head();
+        if (read_head < 0)
+            return -1;
+        if (read_head > 0)
+            return 0;
+        // Like our callers, claim at most a quarter of the ringbuffer at a time
+        const std::ptrdiff_t chunk_max = ndarray.extent(0) / 4;
+        RINGBUF_CHECK(chunk_max > 0);
+        for (std::ptrdiff_t skipped = 0; skipped < skipped_elements;) {
+            const std::ptrdiff_t chunk = std::min(skipped_elements - skipped, chunk_max);
+            const int errcode = wait_and_claim_readable([&](const std::ptrdiff_t available) {
+                return available >= chunk ? read_descriptor_t{.claimed = chunk, .read = chunk}
+                                          : read_descriptor_t{.claimed = 0, .read = 0};
+            });
+            if (errcode < 0)
+                return errcode;
+            finish_read();
+            skipped += chunk;
+        }
+        return 0;
+    }
+
     void finish_read() {
-        assert(read_valid.size() > 0);
-        assert(read_claimed.size() > 0);
+        RINGBUF_CHECK(read_valid.size() > 0);
+        RINGBUF_CHECK(read_claimed.size() >= 0);
         const std::ptrdiff_t claimed_elements = read_claimed.size();
-        ringbuffer->finish_read(cuda_command.get_unique_name(), get_instance_num(),
-                                claimed_elements * granularity_in_bytes());
+        // We might not have claimed anything, and thus have nothing to release
+        if (claimed_elements > 0)
+            ringbuffer->finish_read(cuda_command.get_unique_name(), get_instance_num(),
+                                    claimed_elements * granularity_in_bytes());
 
         read_valid = extent_t(read_claimed.end(), read_claimed.end());
         read_claimed = extent_t(read_claimed.end(), read_claimed.end());
-        assert(read_valid.size() == 0);
-        assert(read_claimed.size() == 0);
+        RINGBUF_CHECK(read_valid.size() == 0);
+        RINGBUF_CHECK(read_claimed.size() == 0);
     }
 
     // State
 
+    extent_t get_maybe_empty_write_valid() const {
+        return write_valid;
+    }
+    extent_t get_maybe_empty_read_valid() const {
+        return read_valid;
+    }
+    extent_t get_maybe_empty_read_claimed() const {
+        return read_claimed;
+    }
+
     extent_t get_write_valid() const {
-#ifdef DEBUGGING
         if (!(write_valid.size() > 0))
             FATAL_ERROR("kernel {:s}, buffer {:s}, get_write_valid: valid write region is empty",
                         cuda_command.get_unique_name(), buffer_name);
-        assert(write_valid.size() > 0);
-#endif
         return write_valid;
     }
     extent_t get_read_valid() const {
-#ifdef DEBUGGING
         if (!(read_valid.size() > 0))
             FATAL_ERROR("kernel {:s}, buffer {:s}, get_read_valid: valid read region is empty",
                         cuda_command.get_unique_name(), buffer_name);
-        assert(read_valid.size() > 0);
-#endif
         return read_valid;
     }
     extent_t get_read_claimed() const {
-#ifdef DEBUGGING
         if (!(read_claimed.size() > 0))
             FATAL_ERROR("kernel {:s}, buffer {:s}, get_read_claimed: claimed read region is empty",
                         cuda_command.get_unique_name(), buffer_name);
-        assert(read_claimed.size() > 0);
-#endif
         return read_claimed;
     }
 
@@ -398,6 +542,16 @@ public:
     kotekan::NDArray<T, D>& get_ndarray() {
         return ndarray;
     }
+
+    // static const std::shared_ptr<const kotekan::GenericNDArray>
+    // get_ndarray_frame_desc(cudaCommand& cuda_command, const std::string& buffer_name) {
+    //     const std::string signal_buffer_name("host_" + buffer_name + "_ringbuffer");
+    //     const RingBuffer* const ringbuffer(dynamic_cast<RingBuffer*>(
+    //         cuda_command.get_host_buffers().get_generic_buffer(signal_buffer_name)));
+    //     const std::shared_ptr<const kotekan::GenericNDArray> ndarray =
+    //         ringbuffer->get_ndarray_frame_desc();
+    //     return ndarray;
+    // }
 
 private:
     std::ptrdiff_t granularity_in_bytes() const {
@@ -436,42 +590,77 @@ public:
 
     std::shared_ptr<const chordMetadata> get_metadata() const {
         const std::shared_ptr<const metadataObject> mc = ringbuffer->get_metadata(0);
-        assert(mc);
+        if (!mc)
+            FATAL_ERROR("ring buffer {:s} has no metadata object", buffer_name);
         const std::shared_ptr<const chordMetadata> metadata = get_chord_metadata(mc);
-        assert(metadata);
+        if (!metadata)
+            FATAL_ERROR("ring buffer {:s} has metadata that is not CHORD metadata", buffer_name);
         return metadata;
     }
     std::shared_ptr<chordMetadata> get_metadata() {
         const std::shared_ptr<metadataObject> mc = ringbuffer->get_metadata(0);
-        assert(mc);
+        if (!mc)
+            FATAL_ERROR("ring buffer {:s} has no metadata object", buffer_name);
         const std::shared_ptr<chordMetadata> metadata = get_chord_metadata(mc);
-        assert(metadata);
+        if (!metadata)
+            FATAL_ERROR("ring buffer {:s} has metadata that is not CHORD metadata", buffer_name);
         return metadata;
     }
 
+    // Check that the metadata published for this ring buffer describes the array we are
+    // about to index. A mismatch is a disagreement between two stages, not an internal
+    // invariant; in a release build it would silently make the kernel read the buffer with
+    // the wrong layout. The generated kernels open-code this same check when they have to
+    // substitute a quantity name, and both paths must fail the same way.
     void check_metadata() const {
         const std::shared_ptr<const chordMetadata> metadata = get_metadata();
         if (!(metadata->get_name() == ndarray.quantity_name()))
-            ERROR("buffer name: {:s}, metadata name: {:s}, quantity_name: {:s}", buffer_name,
-                  metadata->get_name(), ndarray.quantity_name());
-        assert(metadata->get_name() == ndarray.quantity_name());
-        assert(metadata->type == ndarray.value_datatype);
-        assert(metadata->dims == ndarray.rank);
+            FATAL_ERROR("buffer name: {:s}, metadata name: {:s}, quantity_name: {:s}", buffer_name,
+                        metadata->get_name(), ndarray.quantity_name());
+        if (!(metadata->type == ndarray.value_datatype))
+            FATAL_ERROR("buffer name: {:s}, metadata type: {:s}, ndarray type: {:s}", buffer_name,
+                        kotekan::type_to_string(metadata->type),
+                        kotekan::type_to_string(ndarray.value_datatype));
+        if (!(metadata->dims == int(ndarray.rank)))
+            FATAL_ERROR("buffer name: {:s}, metadata rank: {:d}, ndarray rank: {:d}", buffer_name,
+                        metadata->dims, int(ndarray.rank));
         for (std::size_t d = 0; d < ndarray.rank; ++d) {
             if (!(metadata->get_dimension_name(d) == ndarray.dimname(d)))
-                ERROR("buffer name: {:s}, dimension: {:d}, metadata dimension name: {:s}, ndarray "
-                      "dimname: {:s}",
-                      buffer_name, d, metadata->get_dimension_name(d),
-                      std::string(ndarray.dimname(d)));
-            assert(metadata->get_dimension_name(d) == ndarray.dimname(d));
+                FATAL_ERROR("buffer name: {:s}, dimension: {:d}, metadata dimension name: {:s}, "
+                            "ndarray dimname: {:s}",
+                            buffer_name, d, metadata->get_dimension_name(d),
+                            std::string(ndarray.dimname(d)));
+            if (!(metadata->dim_scaling[d] == ndarray.dimscaling(d)))
+                FATAL_ERROR("buffer name: {:s}, dimension: {:d}, metadata dim_scaling: {:d}, "
+                            "ndarray dimscaling: {:d}",
+                            buffer_name, d, metadata->dim_scaling[d], ndarray.dimscaling(d));
             // The ring buffer direction is special
-            if (d > 0)
-                assert(metadata->dim[d] == int(ndarray.extent(d)));
-            assert(metadata->stride[d] == ndarray.stride(d));
+            if (d > 0 && !(metadata->dim[d] == int(ndarray.extent(d))))
+                FATAL_ERROR("buffer name: {:s}, dimension: {:d}, metadata extent: {:d}, ndarray "
+                            "extent: {:d}",
+                            buffer_name, d, metadata->dim[d], int(ndarray.extent(d)));
+            if (!(metadata->stride[d] == ndarray.stride(d)))
+                FATAL_ERROR("buffer name: {:s}, dimension: {:d}, metadata stride: {:d}, ndarray "
+                            "stride: {:d}",
+                            buffer_name, d, metadata->stride[d], ndarray.stride(d));
         }
     }
 
+    // Set the ring buffer metadata. A ring buffer has a single metadata object for its whole
+    // lifetime: it describes the ring buffer as a whole, not any particular frame, and does not
+    // change over time. This function fills that object in place, so the producer must call it
+    // exactly once, on its first frame, before the first `finish_write` publishes data. From then
+    // on consumers -- which may run in other threads -- read the object without synchronization,
+    // and rewriting it, even with unchanged values, would race with them. A second call is
+    // therefore a fatal error.
+    //
+    // A cudaCommand has `buffer_depth` instances sharing the ring buffer, and frame 0 is always
+    // handled by instance 0, so guard the call with `instance_num == 0` and a flag.
     void set_metadata(const std::shared_ptr<const chordMetadata>& other_metadata) {
+        if (ringbuffer->get_metadata(0))
+            FATAL_ERROR("ring buffer {:s} already has a metadata object; set it only once, on the "
+                        "first frame",
+                        buffer_name);
         // const std::shared_ptr<metadataObject> mc =
         //     cuda_command.get_device().create_gpu_memory_array_metadata(buffer_name_device, 0,
         //                                                                other_metadata->parent_pool);
@@ -486,12 +675,116 @@ public:
             // The ring buffer direction is special
             if (d == 0)
                 metadata->set_array_dimension(d, other_metadata->dim[d],
-                                              std::string(ndarray.dimname(d)));
+                                              std::string(ndarray.dimname(d)),
+                                              ndarray.dimscaling(d));
             else
-                metadata->set_array_dimension(d, ndarray.extent(d),
-                                              std::string(ndarray.dimname(d)));
+                metadata->set_array_dimension(d, ndarray.extent(d), std::string(ndarray.dimname(d)),
+                                              ndarray.dimscaling(d));
             metadata->stride[d] = ndarray.stride(d);
         }
+    }
+
+private:
+    // Helper function for accessing contiguous regions in a ring buffer
+    //
+    // A time span `[T_min, T_max)` can wrap around the end of the
+    // ring buffer's memory. A time span thus covers either one or two
+    // contiguous runs of memory. `for_each_time_chunk` calls the
+    // function `body(T_offset, T_offset_local, T_length)` once for
+    // each such run. `T_offset` indexes into the ring buffer's memory
+    // (`0 <= T_offset < T_ringbuf`), and `T_offset_local` indexes
+    // into the time span (`0 <= T_offset_local < T_max - T_min`).
+    template<typename F>
+    void for_each_time_chunk(const std::ptrdiff_t T_min, const std::ptrdiff_t T_max,
+                             F&& body) const {
+        const std::ptrdiff_t T_ringbuf = get_ndarray().extent(0);
+        RINGBUF_CHECK(T_ringbuf > 0);
+        RINGBUF_CHECK(T_min >= 0);
+        RINGBUF_CHECK(T_max > T_min);
+
+        const std::ptrdiff_t T_min_arg = mod(T_min, T_ringbuf);
+        RINGBUF_CHECK(T_min_arg >= 0);
+        RINGBUF_CHECK(T_min_arg < T_ringbuf);
+        const std::ptrdiff_t T_max_arg = T_min_arg + (T_max - T_min);
+        RINGBUF_CHECK(T_max_arg >= T_min_arg);
+        RINGBUF_CHECK(T_max_arg < 2 * T_ringbuf);
+
+        const int num_chunks = T_max_arg <= T_ringbuf ? 1 : 2;
+        for (int chunk = 0; chunk < num_chunks; ++chunk) {
+            const std::ptrdiff_t T_offset = chunk == 0 ? T_min_arg : 0;
+            RINGBUF_CHECK(T_offset >= 0);
+            RINGBUF_CHECK(T_offset < T_ringbuf);
+            const std::ptrdiff_t T_length = num_chunks == 1 ? T_max_arg - T_min_arg
+                                            : chunk == 0    ? T_ringbuf - T_min_arg
+                                                            : T_max_arg - T_ringbuf;
+            RINGBUF_CHECK(T_length > 0);
+            RINGBUF_CHECK(T_offset + T_length <= T_ringbuf);
+            const std::ptrdiff_t T_offset_local = chunk == 0 ? 0 : T_ringbuf - T_min_arg;
+            body(T_offset, T_offset_local, T_length);
+        }
+    }
+
+    // Number of values per time sample in the packed host-side copy of frequencies
+    // [F_min, F_max).
+    std::ptrdiff_t host_time_stride(const std::ptrdiff_t F_min, const std::ptrdiff_t F_max) const {
+        const std::ptrdiff_t F_stride = get_ndarray().get_stride(1);
+        RINGBUF_CHECK(F_stride > 0);
+        RINGBUF_CHECK(F_min >= 0);
+        RINGBUF_CHECK(F_max > F_min);
+        return (F_max - F_min) * F_stride;
+    }
+
+public:
+    // Host <-> device transfers
+    // These functions are slow. They are intended for debugging or testing.
+
+    // Copy frequencies [F_min, F_max) of times [T_min, T_max) out of the ring buffer. The
+    // result is packed: `(F_max - F_min) * stride(1)` values per time sample, time slowest.
+    //
+    // These copies are synchronous, so the caller is responsible for ordering them against
+    // work queued on the CUDA stream -- typically a `cudaStreamSynchronize` before reading.
+    std::vector<T> copy_to_host(const std::ptrdiff_t F_min, const std::ptrdiff_t F_max,
+                                const std::ptrdiff_t T_min, const std::ptrdiff_t T_max) const {
+        const std::ptrdiff_t F_stride = get_ndarray().get_stride(1);
+        const std::ptrdiff_t T_stride = get_ndarray().get_stride(0);
+        RINGBUF_CHECK(T_stride > 0);
+        const std::ptrdiff_t T_stride_local = host_time_stride(F_min, F_max);
+
+        std::vector<T> local_data((T_max - T_min) * T_stride_local);
+        for_each_time_chunk(T_min, T_max,
+                            [&](const std::ptrdiff_t T_offset, const std::ptrdiff_t T_offset_local,
+                                const std::ptrdiff_t T_length) {
+                                CHECK_CUDA_ERROR(cudaMemcpy2D(
+                                    local_data.data() + T_offset_local * T_stride_local,
+                                    T_stride_local * sizeof(T),
+                                    get_ndarray().data() + T_offset * T_stride + F_min * F_stride,
+                                    T_stride * sizeof(T), T_stride_local * sizeof(T), T_length,
+                                    cudaMemcpyDeviceToHost));
+                            });
+        return local_data;
+    }
+
+    // The inverse of `copy_to_host`: write a packed host-side block into frequencies
+    // [F_min, F_max) of times [T_min, T_max).
+    void copy_from_host(const std::vector<T>& local_data, const std::ptrdiff_t F_min,
+                        const std::ptrdiff_t F_max, const std::ptrdiff_t T_min,
+                        const std::ptrdiff_t T_max) {
+        const std::ptrdiff_t F_stride = get_ndarray().get_stride(1);
+        const std::ptrdiff_t T_stride = get_ndarray().get_stride(0);
+        RINGBUF_CHECK(T_stride > 0);
+        const std::ptrdiff_t T_stride_local = host_time_stride(F_min, F_max);
+        RINGBUF_CHECK(std::ptrdiff_t(local_data.size()) == (T_max - T_min) * T_stride_local);
+
+        for_each_time_chunk(T_min, T_max,
+                            [&](const std::ptrdiff_t T_offset, const std::ptrdiff_t T_offset_local,
+                                const std::ptrdiff_t T_length) {
+                                CHECK_CUDA_ERROR(cudaMemcpy2D(
+                                    get_ndarray().data() + T_offset * T_stride + F_min * F_stride,
+                                    T_stride * sizeof(T),
+                                    local_data.data() + T_offset_local * T_stride_local,
+                                    T_stride_local * sizeof(T), T_stride_local * sizeof(T),
+                                    T_length, cudaMemcpyHostToDevice));
+                            });
     }
 
     // Poison
@@ -499,50 +792,22 @@ public:
     // Poison an NDArray ring buffer
     void set_to_poison(const std::uint8_t poison_value, const std::ptrdiff_t F_min,
                        const std::ptrdiff_t F_max) {
-        assert(get_write_valid().size() > 0);
+        RINGBUF_CHECK(get_write_valid().size() > 0);
 
         const std::ptrdiff_t F_stride = get_ndarray().get_stride(1);
-        assert(F_stride > 0);
-        const std::ptrdiff_t F_offset = F_min;
-        assert(F_offset >= 0);
-        const std::ptrdiff_t F_length = F_max - F_min;
-        assert(F_length > 0);
-
-        const std::ptrdiff_t T_ringbuf = get_ndarray().extent(0);
-        assert(T_ringbuf > 0);
         const std::ptrdiff_t T_stride = get_ndarray().get_stride(0);
-        assert(T_stride > 0);
-        const std::ptrdiff_t T_min = get_write_valid().begin();
-        assert(T_min >= 0);
-        const std::ptrdiff_t T_max = get_write_valid().end();
-        assert(T_max > T_min);
-        const std::ptrdiff_t T_length = T_max - T_min;
-        assert(T_length > 0);
+        RINGBUF_CHECK(T_stride > 0);
+        const std::ptrdiff_t T_stride_local = host_time_stride(F_min, F_max);
 
-        const std::ptrdiff_t T_min_arg = mod(T_min, T_ringbuf);
-        assert(T_min_arg >= 0);
-        assert(T_min_arg < T_ringbuf);
-        const std::ptrdiff_t T_max_arg = T_min_arg + T_length;
-        assert(T_max_arg >= T_min_arg);
-        assert(T_max_arg < 2 * T_ringbuf);
-        const int num_chunks = T_max_arg <= T_ringbuf ? 1 : 2;
-        for (int chunk = 0; chunk < num_chunks; ++chunk) {
-            const std::ptrdiff_t T_offset = chunk == 0 ? T_min_arg : 0;
-            assert(T_offset >= 0);
-            assert(T_offset < T_ringbuf);
-            const std::ptrdiff_t T_length = num_chunks == 1 ? T_max_arg - T_min_arg
-                                            : chunk == 0    ? T_ringbuf - T_min_arg
-                                                            : T_max_arg - T_ringbuf;
-            assert(T_length > 0);
-            assert(T_offset + T_length <= T_ringbuf);
-
-            const auto stream =
-                cuda_command.get_device().getStream(cuda_command.get_cuda_stream_id());
-            CHECK_CUDA_ERROR(
-                cudaMemset2DAsync(get_ndarray().data() + T_offset * T_stride + F_offset * F_stride,
-                                  T_stride * sizeof(T), poison_value,
-                                  F_length * F_stride * sizeof(T), T_length, stream));
-        } // for chunk
+        const auto stream = cuda_command.get_device().getStream(cuda_command.get_cuda_stream_id());
+        for_each_time_chunk(get_write_valid().begin(), get_write_valid().end(),
+                            [&](const std::ptrdiff_t T_offset, const std::ptrdiff_t /*unused*/,
+                                const std::ptrdiff_t T_length) {
+                                CHECK_CUDA_ERROR(cudaMemset2DAsync(
+                                    get_ndarray().data() + T_offset * T_stride + F_min * F_stride,
+                                    T_stride * sizeof(T), poison_value, T_stride_local * sizeof(T),
+                                    T_length, stream));
+                            });
     }
 
     void set_to_poison(const std::uint8_t poison_value) {
@@ -565,55 +830,18 @@ public:
         };
 
         const std::ptrdiff_t F_stride = get_ndarray().get_stride(1);
-        assert(F_stride > 0);
-        const std::ptrdiff_t F_offset = F_min;
-        assert(F_offset >= 0);
         const std::ptrdiff_t F_length = F_max - F_min;
-        assert(F_length > 0);
-
-        const std::ptrdiff_t T_ringbuf = get_ndarray().extent(0);
-        assert(T_ringbuf > 0);
-        const std::ptrdiff_t T_stride = get_ndarray().get_stride(0);
-        assert(T_stride > 0);
-        assert(T_min >= 0);
-        assert(T_max > T_min);
         const std::ptrdiff_t T_length = T_max - T_min;
-        assert(T_length > 0);
+        const std::ptrdiff_t T_stride_local = host_time_stride(F_min, F_max);
 
-        const std::ptrdiff_t T_stride_local = F_length * F_stride;
-        std::vector<T> local_data(T_length * T_stride_local, poison);
-
-        const std::ptrdiff_t T_min_arg = mod(T_min, T_ringbuf);
-        assert(T_min_arg >= 0);
-        assert(T_min_arg < T_ringbuf);
-        const std::ptrdiff_t T_max_arg = T_min_arg + T_length;
-        assert(T_max_arg >= T_min_arg);
-        assert(T_max_arg < 2 * T_ringbuf);
-        const int num_chunks = T_max_arg <= T_ringbuf ? 1 : 2;
-        for (int chunk = 0; chunk < num_chunks; ++chunk) {
-            const std::ptrdiff_t T_offset = chunk == 0 ? T_min_arg : 0;
-            assert(T_offset >= 0);
-            assert(T_offset < T_ringbuf);
-            const std::ptrdiff_t T_length = num_chunks == 1 ? T_max_arg - T_min_arg
-                                            : chunk == 0    ? T_ringbuf - T_min_arg
-                                                            : T_max_arg - T_ringbuf;
-            assert(T_length > 0);
-            assert(T_offset + T_length <= T_ringbuf);
-
-            const std::ptrdiff_t T_offset_local = chunk == 0 ? 0 : T_ringbuf - T_min_arg;
-
-            CHECK_CUDA_ERROR(cudaMemcpy2D(
-                local_data.data() + T_offset_local * T_stride_local, T_stride_local * sizeof(T),
-                get_ndarray().data() + T_offset * T_stride + F_offset * F_stride,
-                T_stride * sizeof(T), T_stride_local * sizeof(T), T_length,
-                cudaMemcpyDeviceToHost));
-        } // for chunk
+        const std::vector<T> local_data = copy_to_host(F_min, F_max, T_min, T_max);
 
         const auto first_poison_location =
             std::find_if(local_data.begin(), local_data.end(), check);
         const bool found_error = first_poison_location != local_data.end();
         if (found_error)
-            ERROR("NDArray ring buffer {:s} contains poison or a non-finite number at index={:d}",
+            ERROR("NDArray ring buffer {:s} contains poison or a non-finite number at index={:d} "
+                  "of {:d}",
                   buffer_name, first_poison_location - local_data.begin(), local_data.size());
         if (found_error) {
             for (std::ptrdiff_t t = 0; t < T_length; ++t) {
@@ -644,12 +872,11 @@ public:
         }
         if (found_error)
             FATAL_ERROR("NDArray ring buffer {:s} contains poison", buffer_name);
-        assert(!found_error);
     }
 
     void check_input_for_poison(const std::uint8_t poison_value, const std::ptrdiff_t F_min,
                                 const std::ptrdiff_t F_max) const {
-        assert(get_read_valid().size() > 0);
+        RINGBUF_CHECK(get_read_valid().size() > 0);
         const std::ptrdiff_t T_min = get_read_valid().begin();
         const std::ptrdiff_t T_max = get_read_valid().end();
         check_for_poison(poison_value, F_min, F_max, T_min, T_max);
@@ -657,7 +884,7 @@ public:
 
     void check_for_poison(const std::uint8_t poison_value, const std::ptrdiff_t F_min,
                           const std::ptrdiff_t F_max) const {
-        assert(get_write_valid().size() > 0);
+        RINGBUF_CHECK(get_write_valid().size() > 0);
         const std::ptrdiff_t T_min = get_write_valid().begin();
         const std::ptrdiff_t T_max = get_write_valid().end();
         check_for_poison(poison_value, F_min, F_max, T_min, T_max);
@@ -687,5 +914,10 @@ public:
         return buf.str();
     }
 };
+
+const std::shared_ptr<const chordMetadata> get_ringbuffer_metadata(cudaCommand& cuda_command,
+                                                                   const std::string& buffer_name);
+
+#undef RINGBUF_CHECK
 
 #endif // #ifndef NDARRAYRINGBUFFER_HPP

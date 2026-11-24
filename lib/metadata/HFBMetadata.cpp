@@ -1,11 +1,12 @@
 #include "HFBMetadata.hpp"
 
-#include <assert.h>     // for assert
-#include <json.hpp>     // for json
-#include <string>       // for basic_string
-
-#include "factory.hpp"  // for REGISTER_TYPE_WITH_FACTORY
+#include "factory.hpp" // for REGISTER_TYPE_WITH_FACTORY
 #include "visUtil.hpp" // Needed for timespec conversion  // IWYU pragma: keep
+
+#include <assert.h> // for assert
+#include <cstring>  // for memset
+#include <json.hpp> // for json
+#include <string>   // for basic_string
 
 REGISTER_TYPE_WITH_FACTORY(metadataObject, HFBMetadata);
 
@@ -48,6 +49,8 @@ size_t HFBMetadata::set_from_bytes(const char* bytes, [[maybe_unused]] size_t le
 size_t HFBMetadata::serialize(char* bytes) {
     size_t sz = get_serialized_size();
     HFBMetadataFormat* fmt = reinterpret_cast<HFBMetadataFormat*>(bytes);
+    // Zero first so struct padding is not written out uninitialized
+    memset(bytes, 0, sz);
     fmt->fpga_seq_start = fpga_seq_start;
     fmt->ctime = ctime;
     fmt->freq_id = freq_id;

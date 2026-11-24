@@ -1,22 +1,23 @@
 #ifndef TELESCOPE_HPP
 #define TELESCOPE_HPP
 
-#include <time.h>              // for timespec, size_t
-#include <json.hpp>            // for json
-#include <exception>           // for exception
-#include <memory>              // for unique_ptr
-#include <shared_mutex>        // for shared_mutex
-#include <string>              // for string, basic_string
-#include <cstdint>             // for uint64_t, int64_t, uint32_t, uint8_t, UINT32_MAX
-#include <vector>              // for vector
+#include "Config.hpp"         // for Config
+#include "factory.hpp"        // for FACTORY, CREATE_FACTORY, REGISTER_NAMED_TYPE_WITH_FACTORY
+#include "geoUtil.hpp"        // for GeoFrame
+#include "kotekanLogging.hpp" // for ERROR, kotekanLogging
+#include "restServer.hpp"     // for connectionInstance
+#include "timeUtil.hpp"       // for EOP
 
-#include "Config.hpp"          // for Config
-#include "factory.hpp"         // for FACTORY, CREATE_FACTORY, REGISTER_NAMED_TYPE_WITH_FACTORY
-#include "geoUtil.hpp"         // for GeoFrame
-#include "kotekanLogging.hpp"  // for ERROR, kotekanLogging
-#include "restServer.hpp"      // for connectionInstance
-#include "timeUtil.hpp"        // for EOP
-#include "fmt.hpp"             // for compile_string_to_view, format
+#include "fmt.hpp" // for compile_string_to_view, format
+
+#include <cstdint>      // for uint64_t, int64_t, uint32_t, uint8_t, UINT32_MAX
+#include <exception>    // for exception
+#include <json.hpp>     // for json
+#include <memory>       // for unique_ptr
+#include <shared_mutex> // for shared_mutex
+#include <string>       // for string, basic_string
+#include <time.h>       // for timespec, size_t
+#include <vector>       // for vector
 
 // Create the abstract factory for generating patterns
 class Telescope;
@@ -30,8 +31,8 @@ using nyquist_zone_t = std::uint8_t;
 using freq_id_t = std::uint32_t; // logical ID, not necessarily an index
 #define FREQ_ID_NOT_SET UINT32_MAX
 using station_id_t = std::uint32_t;
-using grid_idx_2d_t = std::array<int64_t, 2>;  // signed, use -1 as a sentinel for an unfilled
-                                               // location.
+using grid_idx_2d_t = std::array<int64_t, 2>; // signed, use -1 as a sentinel for an unfilled
+                                              // location.
 
 /**
  * @brief Enum labelling the ordering of feed elements in memory.
@@ -39,25 +40,26 @@ using grid_idx_2d_t = std::array<int64_t, 2>;  // signed, use -1 as a sentinel f
 enum class ElementOrder : int32_t {
     // Order as received by the CHIME X-engine. Slightly scrambled, defined via table.
     CHIMECorrelator = 0,
-    
-    // Arrays are [C][P][CF] where C counts cylinders west to east, P counts polarizations,
-    // CF counts feeds in a cylinder south to north.
+
+    // Arrays are [Cylinder][P][Feed] where Cylinder counts cylinders west to east, P counts
+    // polarizations,
+    // Feed counts feeds in a cylinder south to north.
     CHIMECylinder = 1,
 
     // Arrays are [P][D], P = polarizations, D = feed, ordered as in Cylinder
-    CHIMEBeamformer = 2,        
+    CHIMEBeamformer = 2,
 
     // Ordering for pre-pathfinder CHORD. Arrays are [D][P], D-ordering is defined via table.
-    CHORDEarly = 3,   
-    
+    CHORDEarly = 3,
+
     // Ordering for production CHORD. Arrays are [P][D], D-ordering is defined via table
-    CHORDBeamformer = 4,  
+    CHORDBeamformer = 4,
 };
 
 
 std::string ElementOrder_to_string(const ElementOrder& o);   /// Convert an ElementOrder to a string
 ElementOrder ElementOrder_from_string(const std::string& s); /// Convert a string to an ElementOrder
-std::ostream& operator<<(std::ostream& os, const ElementOrder& o); 
+std::ostream& operator<<(std::ostream& os, const ElementOrder& o);
 std::string format_as(const ElementOrder& o);
 void to_json(nlohmann::json& j, const ElementOrder& o);
 void from_json(const nlohmann::json& j, ElementOrder& o);
@@ -83,82 +85,86 @@ struct stream_t {
  * frequency, etc), and for associating feed elements in memory with physical locations.
  * It contains the Earth Orientation Parameter (EOP) table,
  * which holds data to compute UT1 time and CIRS coordinate transformations from
- * instrument time. It facilitates transformations between feed baselines to CIRS coordinates and back.
+ * instrument time. It facilitates transformations between feed baselines to CIRS coordinates and
+ *back.
  *
  * Coordinate frames used by the Telescope
  * ---------------------------------------
  *
  * ## GRID ##
  *  The GRID frame is an orthonormal Cartesian coordinate system whose:
- *      - x-axis is parallel to fiducial East/West feed separation vector (pointing ~East).  
- *      - y-axis is parallel to fiducial North/South feed separation vector (pointing ~North).  
+ *      - x-axis is parallel to fiducial East/West feed separation vector (pointing ~East).
+ *      - y-axis is parallel to fiducial North/South feed separation vector (pointing ~North).
  *      - z-axis is normal to the fiducial feed plane (pointing ~Up).
  *
- *  The actual telescope feed grid on the ground is not perfectly square.  The GRID frame is an orthonormal
- *  frame which fits the physical feed locations as well as possible, as determined by the telescope
- *  developers.
+ *  The actual telescope feed grid on the ground is not perfectly square.  The GRID frame is an
+ *orthonormal frame which fits the physical feed locations as well as possible, as determined by the
+ *telescope developers.
  *
  *  Feed Positions are returned in the GRID frame.
  *
  *  The GRID origin is an optional `offset` from the TOPO origin
  *
  * ## TOPO ##
- *  The Topocentric (TOPO) frame is an orthonormal Cartesian coordinate system located at a position on the
- *  Earth.
+ *  The Topocentric (TOPO) frame is an orthonormal Cartesian coordinate system located at a position
+ *on the Earth.
  *      - x-axis is parallel to local geodetic East (increasing longitude)
  *      - y-axis is parallel to local geodecic North (increasing latitude)
  *      - z-axis is parallel to local geodetic Up (increasing altitude)
  *  The TOPO origin is at a given Latitude and Longitude in ITRS coordinates.
  *
  * ## ITRS ##
- *  The International Terrestrial Reference System (ITRS) is the internationally agreed upon coordinate
- *  system for the planet Earth. This is the coordinate system where geodetic latitude and longitude live.
- *  The IAU and IERS define the transformations between ITRS and astronomical coordinates.
- *  ITRS also has a Cartesian representation with:
+ *  The International Terrestrial Reference System (ITRS) is the internationally agreed upon
+ *coordinate system for the planet Earth. This is the coordinate system where geodetic latitude and
+ *longitude live. The IAU and IERS define the transformations between ITRS and astronomical
+ *coordinates. ITRS also has a Cartesian representation with:
  *      - x-axis directed through latitude = 0 (the Equator), longitude = 0
  *      - y-axis directed through latitude = 0 (the Equator), longitude = 90 degrees East
  *      - z-axis directed through latitude = 90 (the North Pole)
  *  The ITRS origin is located at Earth Barycenter.
  *
  * ## CIRS ##
- *  The Celestial Intermediate Reference System (CIRS) is a set of celestial coordinates defined by the IAU
- *  and IERS. This system is non-rotating with respect to the distant stars, and is aligned with the Earth's
- *  instantaneous axis of rotation. It is an intermediate step between ITRS (Earth-based) and ICRS (the fixed
- *  stars). In Kotekan we do not need realtime knowledge of the ICRS so we only go as far as the CIRS, which
- *  encodes the full rotational state of the Earth but not the precession/nutation of its axis.
+ *  The Celestial Intermediate Reference System (CIRS) is a set of celestial coordinates defined by
+ *the IAU and IERS. This system is non-rotating with respect to the distant stars, and is aligned
+ *with the Earth's instantaneous axis of rotation. It is an intermediate step between ITRS
+ *(Earth-based) and ICRS (the fixed stars). In Kotekan we do not need realtime knowledge of the ICRS
+ *so we only go as far as the CIRS, which encodes the full rotational state of the Earth but not the
+ *precession/nutation of its axis.
  *
  *  We track targets in the sky by following their fixed CIRS coordinates.
  *
- *  The ITRS <-> CIRS transformation is time dependent, and encoded by the time-dependent Earth Orientation
- *  Parameters (EOP). 
+ *  The ITRS <-> CIRS transformation is time dependent, and encoded by the time-dependent Earth
+ *Orientation Parameters (EOP).
  *
  * The Main Array Grid
  * -------------------
  *
- *  Kotekan Telescopes are formed of a "main array" of feeds in a rectilinear grid on the Earth. This grid
- *  must be planar (flat) to a good approximation, but otherwise may have arbitrary orientation on the ground.
+ *  Kotekan Telescopes are formed of a "main array" of feeds in a rectilinear grid on the Earth.
+ *This grid must be planar (flat) to a good approximation, but otherwise may have arbitrary
+ *orientation on the ground.
  *
- *  We assume (for now) the grid is near-perfect rectilinear, with feeds evenly spaced along orthogonal axes
- *  X and Y. X is the easterly-directed separation spacing, and Y is the northerly-directed spacing. Feeds
- *  in this grid have a 2D `grid_index`: (`grid_idx_x`, `grid_idx_y`).  These count from 0 beginning in the
- *  southwest corner of the main array, so any feed in the main array has NON-NEGATIVE grid indices.
+ *  We assume (for now) the grid is near-perfect rectilinear, with feeds evenly spaced along
+ *orthogonal axes X and Y. X is the easterly-directed separation spacing, and Y is the
+ *northerly-directed spacing. Feeds in this grid have a 2D `grid_index`: (`grid_idx_x`,
+ *`grid_idx_y`).  These count from 0 beginning in the southwest corner of the main array, so any
+ *feed in the main array has NON-NEGATIVE grid indices.
  *
- *  Some feeds may not be in the main array (RFI Antennae, external telescopes, maser feeds, etc). These feeds
- *  have `grid_index` = (-1, -1).
+ *  Some feeds may not be in the main array (RFI Antennae, external telescopes, maser feeds, etc).
+ *These feeds have `grid_index` = (-1, -1).
  *
- *  Feeds may not be exactly on station. Their 3D position returned by `get_feed_positions_m()` may include
- *  per-feed displacements from the fiducial station position.  Non-main-array feeds may also have a feed
- *  position. Feed positions are given in the GRID frame.
+ *  Feeds may not be exactly on station. Their 3D position returned by `get_feed_positions_m()` may
+ *include per-feed displacements from the fiducial station position.  Non-main-array feeds may also
+ *have a feed position. Feed positions are given in the GRID frame.
  *
  * ElementOrder
  * ------------
  *
- *  Different telescopes (and different parts of the pipeline for the same telescope) may place their feeds
- *  in memory via different arrangements. To return the feed position corresponding to a particular element
- *  in a data array, you must provide the element index AND an ElementOrder variable specifying the ordering
- *  of this array. Different orders may, for instance, transpose polarization and dish, or may simply permute
- *  ordering of dishes within the dish axis.
- *  
+ *  Different telescopes (and different parts of the pipeline for the same telescope) may place
+ *their feeds in memory via different arrangements. To return the feed position corresponding to a
+ *particular element in a data array, you must provide the element index AND an ElementOrder
+ *variable specifying the ordering of this array. Different orders may, for instance, transpose
+ *polarization and dish, or may simply permute ordering of dishes within the dish axis.
+ *
  *
  * REST Endpoints
  *
@@ -178,6 +184,13 @@ struct stream_t {
  *                                  - ERA_deg           double  Earth Rotation Angle in degrees.
  *                                  - xp_as             double  Polar Motion x', arcseconds.
  *                                  - yp_as             double  Polar Motion y', arcseconds.
+ *
+ * Config
+ *
+ * @conf    fatal_eop_out_of_range  Optional. Bool, default false. If true, requesting an EOP for a
+ *                                  time outside the range covered by the EOP table is a fatal
+ *                                  error. If false, the first or last table entry is used and a
+ *                                  warning is logged.
  *
  * Updatable Config
  *
@@ -220,7 +233,7 @@ public:
      *
      * @returns        A reference to the singleton instance.
      **/
-    static const Telescope& instance(const kotekan::Config&);
+    static const Telescope& instance(const kotekan::Config& config);
 
     /**
      * @brief Get a reference to the singleton Telescope instance.
@@ -407,7 +420,15 @@ public:
     virtual uint64_t seq_length_nsec() const = 0;
 
     /**
-     * @brief Convert an element array index in a particular ordering into the corresponding station_id
+     * @brief Return the fiducial element order for this telescope
+     *
+     * @return Fiducial element order
+     **/
+    virtual ElementOrder fiducial_element_order() const = 0;
+
+    /**
+     * @brief Convert an element array index in a particular ordering into the corresponding
+     *station_id
      *
      * @param el_idx    Index into the element axis of an array
      * @param ord       The ordering of the array
@@ -427,7 +448,7 @@ public:
     virtual uint64_t station_id_to_element_index(station_id_t st_id, ElementOrder ord) const = 0;
 
     /**
-     * @brief Return the integral grid location for this station ID if it is an input in the 
+     * @brief Return the integral grid location for this station ID if it is an input in the
      * main array, otherwise return (-1, -1).
      *
      * @param st_id Station ID of an input element.
@@ -439,7 +460,7 @@ public:
 
     /**
      * @brief Return the 3D position in the GRID frame of this station ID.
-     
+
      * @param st_id Station ID of an input element.
      *
      * @return 3D coordinates in meters for this station ID in the GRID frame.
@@ -471,10 +492,9 @@ public:
     virtual uint64_t get_grid_size_y() const = 0;
 
     /**
-     * @brief   Return the outward-directed 3D pointing vector for the telescope phase center in the GRID
-     *          frame: n[3] = {nx, ny, nz},  |n| = 1.0.
-     * For CHIME this should be simply the zenith (n ~ {0, 0, 1}),
-     * for CHORD this is the boresight of the dishes, and depends on their co-elevation.
+     * @brief   Return the outward-directed 3D pointing vector for the telescope phase center in the
+     *GRID frame: n[3] = {nx, ny, nz},  |n| = 1.0. For CHIME this should be simply the zenith (n ~
+     *{0, 0, 1}), for CHORD this is the boresight of the dishes, and depends on their co-elevation.
      **/
     virtual vec3d_t get_phase_center_in_grid_frame() const = 0;
 
@@ -486,7 +506,7 @@ public:
     /**
      * @brief   Return the EOP at the desired instrument time. Will interpolate
      *          over table, use first or last entry if target time is out of
-     *          table range.
+     *          table range, or fail fatally if `fatal_eop_out_of_range` is set.
      *
      * @param   ts  Target instrument time, as a timespec.
      **/
@@ -495,7 +515,7 @@ public:
     /**
      * @brief   Return the EOP at the desired instrument time. Will interpolate
      *          over table, use first or last entry if target time is out of
-     *          table range.
+     *          table range, or fail fatally if `fatal_eop_out_of_range` is set.
      *
      * @param   t_ns  Target instrument time in nanoseconds.
      **/
@@ -504,9 +524,10 @@ public:
     /**
      * @brief   Return the EOP at the desired UT1 time. Will interpolate
      *          over table, using the first or last entry if target time is
-     *          out of table range.
+     *          out of table range, or fail fatally if `fatal_eop_out_of_range`
+     *          is set.
      *
-     * @param   ts  Target UT1 time, in nanoseconds since J2000(UT1) int64_t
+     * @param   ut1 Target UT1 time, in nanoseconds since J2000(UT1) int64_t
      **/
     EOP get_EOP_at_UT1(int64_t ut1) const;
 
@@ -566,7 +587,7 @@ public:
     /**
      * @brief   Transform the given vector from ITRS to topocentric coords.
      *
-     * @param   v_topo  Vector in ITRS coordinates.
+     * @param   v_itrs  Vector in ITRS coordinates.
      **/
     vec3d_t vec_itrs_to_topo(const vec3d_t& v_itrs) const;
 
@@ -580,7 +601,7 @@ public:
     /**
      * @brief   Transform the given vector from CIRS to ITRS coords.
      *
-     * @param   v_topo  Vector in CIRS coordinates.
+     * @param   v_cirs  Vector in CIRS coordinates.
      * @param   eop     EOP for time of transformation.
      **/
     vec3d_t vec_cirs_to_itrs(const vec3d_t& v_cirs, const EOP& eop) const;
@@ -588,7 +609,7 @@ public:
     /**
      * @brief   Transform the given vector from ITRS to CIRS coords.
      *
-     * @param   v_topo  Vector in ITRS coordinates.
+     * @param   v_itrs  Vector in ITRS coordinates.
      * @param   eop     EOP for time of transformation.
      **/
     vec3d_t vec_itrs_to_cirs(const vec3d_t& v_itrs, const EOP& eop) const;
@@ -609,7 +630,7 @@ public:
      * @param   dec_cirs_deg    Reference to return target Declination in CIRS frame in degrees
      **/
     void vec_cirs_to_ra_dec(const vec3d_t& v_cirs, double& ra_cirs_deg, double& dec_cirs_deg) const;
-    
+
     /**
      * @brief   Transform the given vector from GRID to CIRS coords.
      *
@@ -625,12 +646,12 @@ public:
      * @param   eop     EOP for time of transformation.
      **/
     vec3d_t vec_cirs_to_grid(const vec3d_t& v_cirs, const EOP& eop) const;
-    
+
     /**
      * @brief   Return an observing vector (normalized vec3) in GRID
      *          coordinates, corresponding to the given CIRS RA and DEC.
-     * @param   ra  Target Right Ascension in CIRS frame.
-     * @param   dec Target Declination in CIRS frame.
+     * @param   ra_cirs_deg  Target Right Ascension in CIRS frame in degrees.
+     * @param   dec_cirs_deg Target Declination in CIRS frame in degrees.
      * @param   eop EOP for the time of observation.
      **/
     vec3d_t vec_cirs_ra_dec_to_grid(double ra_cirs_deg, double dec_cirs_deg, const EOP& eop) const;
@@ -638,7 +659,8 @@ public:
     grid_idx_2d_t element_index_to_main_array_grid_indices(uint64_t el_idx, ElementOrder ord) const;
     vec3d_t element_index_to_feed_position_m(uint64_t el_idx, ElementOrder ord) const;
 
-    std::vector<grid_idx_2d_t> get_main_array_grid_indices(uint64_t num_elements, ElementOrder ord) const;
+    std::vector<grid_idx_2d_t> get_main_array_grid_indices(uint64_t num_elements,
+                                                           ElementOrder ord) const;
     std::vector<vec3d_t> get_feed_positions_m(uint64_t num_elements, ElementOrder ord) const;
 
     /**
@@ -648,14 +670,14 @@ public:
      * @param   eop     Current EOP.
      * @param   eop0    EOP of phase reference time. if eop=eop0 all phases are
      *                  1.0
-     * @param   feed_posisions_m    The 3D feed positions in the telescope grid frame in meters. The
+     * @param   feed_positions_m    The 3D feed positions in the telescope grid frame in meters. The
      *                  positions returned from `station_id_to_feed_position_m`.
-     * @param   phases  Vector of std::complex<double>, with size equal to feed_positions_m. The
+     * @param   phases  Vector of std::complex<float>, with size equal to feed_positions_m. The
      *                  phase for each position will be written to this vector.
      **/
     void fill_fringestop_phases_1d(double freq_MHz, const EOP& eop, const EOP& eop0,
-                                              const std::vector<vec3d_t> feed_positions_m,
-                                              std::vector<std::complex<float>>& phases) const;
+                                   const std::vector<vec3d_t> feed_positions_m,
+                                   std::vector<std::complex<float>>& phases) const;
 
 
 private:
@@ -674,6 +696,8 @@ protected:
      * @param   tel_path    Path to the telescope in the Config (e.g. /telescope)
      * @param   log_level   The level to set logging at.
      * @param   require_eop Whether to require a valid EOP table.
+     * @param   fatal_eop_out_of_range  Whether requesting an EOP outside the range
+     *          covered by the EOP table is a fatal error.
      * @param   eop_updatable_config_path   The value of "eop_updatable_config" in
      *          the telescope Config, pointing to the updatable field which
      *          contains "earth_orientation_parameter_table"
@@ -681,7 +705,15 @@ protected:
      *                      and the orientation of the feed grid axes.
      **/
     Telescope(const std::string& tel_path, const std::string& log_level, bool require_eop,
-              const std::string& eop_updatable_config_path, const GeoFrame& frame);
+              bool fatal_eop_out_of_range, const std::string& eop_updatable_config_path,
+              const GeoFrame& frame);
+
+    /**
+     * @brief   Report an EOP request the table cannot cover, fatally if configured to.
+     *
+     * @param   msg     Description of the request and the table range.
+     */
+    void report_eop_out_of_range(const std::string& msg) const;
 
     /**
      * @brief Callback to update EOP data
@@ -720,6 +752,12 @@ protected:
      * is provided, the telescope will return a 0 EOP when queried.
      */
     const bool _require_eop;
+
+    /**
+     * Whether to treat a request for an EOP outside the range of the EOP table
+     * as a fatal error, rather than clamping to the first or last table entry.
+     */
+    const bool _fatal_eop_out_of_range;
 
     /**
      * This is the Earth Orientation Parameter (EOP) table used to determine

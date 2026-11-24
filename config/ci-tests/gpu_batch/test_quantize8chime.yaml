@@ -11,3 +11,4 @@ num_dishes: 512
 
 test_quantize_kernel_8_chime:
     kotekan_stage: testQuantizeKernel8Chime
+log_config_usage: fatal_error

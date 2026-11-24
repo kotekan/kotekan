@@ -7,16 +7,20 @@
 #ifndef BUFFER_BAD_INPUT_DATA
 #define BUFFER_BAD_INPUT_DATA
 
-#include <stddef.h>             // for size_t
-#include <string>               // for string
-#include <vector>               // for vector
+#include "Config.hpp"            // for Config
+#include "Stage.hpp"             // for Stage
+#include "buffer.hpp"            // for Buffer
+#include "bufferContainer.hpp"   // for bufferContainer
+#include "prometheusMetrics.hpp" // for Counter
+#include "updateQueue.hpp"       // for updateQueue
 
-#include "Config.hpp"           // for Config
-#include "N2Util.hpp"           // for frameID
-#include "Stage.hpp"            // for Stage
-#include "buffer.hpp"           // for Buffer
-#include "bufferContainer.hpp"  // for bufferContainer
-#include "json.hpp"             // for json
+#include "json.hpp" // for json
+
+#include <atomic>   // for atomic
+#include <stddef.h> // for size_t
+#include <stdint.h> // for int64_t, uint8_t
+#include <string>   // for string
+#include <vector>   // for vector
 
 /**
  * @class bufferBadInputs
@@ -25,17 +29,100 @@
  * Copies a list of bad inputs into a mask buffer, which is 0 if
  * an element is bad and 1 if it is good.
  *
- * This stage expects the input buffer to be recieved in CHIME cylinder order,
- * and automatically remaps into beamformer order.
+ * The posted indices are in @c input_order and the produced mask is in
+ * @c output_order, remapped through the telescope.  The defaults are the
+ * CHIME orders; when the two are equal -- CHORD flags and masks in the same
+ * [P][D] order -- the telescope is not consulted.
+ *
+ * Elements the telescope places outside the main array (CHORD's Missing dishes
+ * and RFI antennas) are never valid inputs; they stay masked whatever the
+ * posted list says.
+ *
+ * Updates queue by @c start_time and apply by FPGA time, so that where one
+ * lands does not depend on how far the stage runs ahead of its consumers.
+ * They take effect only at boundaries every
+ * @c bf_mask_update_alignment_in_samples FPGA samples from the first frame: a
+ * frame uses the newest update whose start time is at or before the time
+ * (through the telescope) of the last boundary at or before the frame.
+ * Instances with the same alignment switch at the same sample if the
+ * alignment is a multiple of each of their lifetimes and their first frames
+ * are a multiple of the alignment apart.  An update without a start time,
+ * or with one at or before FPGA sample 0, applies at the next boundary not
+ * yet produced.
+ *
+ * Mask frames are produced whenever the output buffer has room, so the stage
+ * is paced by its consumers and runs ahead of them by its buffer depth.  An
+ * update whose start time precedes a frame already produced is late: it is
+ * counted, logged and applied from the next frame produced, which differs
+ * between instances.
+ *
+ * Without GPS time the frames have no known UNIX time; updates then apply by
+ * the wall clock when a frame is produced, and where they land depends on how
+ * far the stage runs ahead.
+ *
+ * Each frame is one bad feed mask sample, valid
+ * for @c bf_mask_lifetime_in_samples FPGA samples, and its FPGA sequence
+ * number is that sample's seq -- so it grows by the lifetime from frame to
+ * frame, which is what the bad feed mask ring buffer requires.  The
+ * sequence numbers start at the seq of the first frame of @c metadata_source
+ * (normally the voltage buffer, whose first frame also defines the logical
+ * beginning of the voltage ring buffer), or at zero if no clock buffer is
+ * configured.
+ *
+ * Out-of-order and malformed updates are counted and ignored while running
+ * -- a bad POST must not stop the correlator -- but a malformed *initial*
+ * config block is still fatal.
+ *
+ * The mask is a rank-3 array with a leading (length one) time axis, which is
+ * what the consumers of the bad feed mask ring buffer expect.  Element
+ * @c output_idx of the flat mask is @c polarization * num_dishes + dish in
+ * both of the pol-major output orders the stage is used with (see
+ * @c ICETelescope::station_id_to_element_index), so the rank-3 shape is a
+ * reinterpretation of the mask rather than a reordering of it.
  *
  * @par Buffers
- * @buffer out_buf Kotekan buffer of bad inputs.
- *     @buffer_shape [num_element]
- *     @buffer_format uint8_t
+ * @buffer metadata_source Optional.  Any buffer with an @c fpga_seq_num; only its
+ *     first frame is read, then the stage unregisters as a consumer.  The
+ *     voltage buffer is recommended.  Its coarse frequencies, when present,
+ *     are copied onto every mask frame, so a consumer fed by several
+ *     instances (one per GPU) can tell the streams apart.
+ *     @buffer_format Any
+ *     @buffer_metadata chordMetadata
+ * @buffer out_buf Kotekan buffer of bad inputs (1 == good).
+ *     @buffer_shape [1, num_polarizations, num_dishes]
+ *     @buffer_format int8
  *
+ * @par Metrics
+ * @metric kotekan_bufferbadinputs_late_update_count  Updates that missed their
+ *     start time: ignored because it preceded an already-queued update, or
+ *     applied late because it preceded a frame already produced.
+ * @metric kotekan_bufferbadinputs_invalid_update_count  Updates ignored
+ *     because they could not be parsed or held an out-of-range index.
+ *
+ * @conf   num_elements                 Int.  The size of the bad input mask. Must equal
+ *                                      num_polarizations * num_dishes.
+ * @conf   num_polarizations            Int.  Number of polarizations.
+ * @conf   num_dishes                   Int.  Number of dishes.
+ * @conf   bf_mask_lifetime_in_samples  Int.  Number of FPGA samples that one bad feed mask
+ *                                      is valid for.
+ * @conf   bf_mask_update_alignment_in_samples  Int. Default bf_mask_lifetime_in_samples.
+ *                                      Updates take effect only every this many FPGA
+ *                                      samples from the first frame. A multiple of
+ *                                      bf_mask_lifetime_in_samples; give all instances fed by
+ *                                      the same updates a common multiple of their lifetimes.
  * @conf   updatable_config/bad_inputs  String.  String pointing to the location of the
  *                                      config block containing the following properties:
  *                                      "bad_inputs"  An array of bad inputs in cylinder order.
+ *                                      "start_time"  Optional UNIX time the update takes
+ *                                                    effect (default, or 0: at the next
+ *                                                    boundary).
+ *                                      "update_id"   Optional string identifying the update,
+ *                                                    used in this stage's log messages.
+ * @conf   num_kept_updates  Int. Default 5.  Number of updates kept in the queue.
+ * @conf   input_order   ElementOrder. Default CHIMECylinder.  Order of the posted
+ *                       "bad_inputs" indices.
+ * @conf   output_order  ElementOrder. Default CHIMEBeamformer.  Order of the mask
+ *                       written to @c out_buf.
  *
  * @author James Willis & Liam Gray
  */
@@ -55,17 +142,54 @@ public:
     bool update_bad_inputs_callback(nlohmann::json& json);
 
 private:
+    /// A posted update, ready to be written into a mask frame.
+    struct badInputUpdate {
+        /// The mask in output_order, 1 == good.
+        std::vector<uint8_t> mask;
+        /// For log messages.
+        std::string update_id;
+        /// False if the update was posted without a start time, or with one at or before FPGA
+        /// sample 0; it is then never late.
+        bool has_start_time;
+    };
+
     Buffer* out_buf;
-    /// List of current bad inputs in received order, which
-    // is expected to be cylinder order
-    std::vector<int> bad_inputs;
+    /// Optional; see the class comment. Null when not configured.
+    Buffer* metadata_source;
     /// The size of the bad input mask.
     size_t num_elements;
-    // Need to use the frame_id outside of the main thread
-    N2::frameID frame_id;
+    /// The shape of the bad input mask, num_elements == num_polarizations * num_dishes
+    int num_polarizations;
+    int num_dishes;
+    /// Number of FPGA samples that one bad feed mask is valid for
+    int64_t bf_mask_lifetime_in_samples;
+    /// Updates take effect only every this many FPGA samples from the first frame
+    int64_t bf_mask_update_alignment_in_samples;
 
-    // The table to reorder from beamformer to cylinder order.
-    // reorder[beamformer_idx] = cylinder_idx;
+    /// Apply updates by FPGA time; false without GPS time, see the class comment.
+    bool use_fpga_time;
+
+    /// Mask before any posted flags: 0 for elements outside the telescope's
+    /// main array (CHORD's Missing dishes and RFI antennas).
+    std::vector<uint8_t> baseline_mask;
+
+    /// Posted updates, keyed by their start time.
+    updateQueue<badInputUpdate> updates;
+
+    /// False until the constructor's subscribe() has returned, i.e. while the
+    /// initial config block is being applied. A bad update is fatal then and
+    /// merely counted afterwards.
+    std::atomic<bool> initialised = false;
+
+    /// The time, in ns, at which the last produced frame looked up its update; an update
+    /// without a start time is queued just after it.
+    std::atomic<int64_t> last_ref_time_ns = 0;
+
+    kotekan::prometheus::Counter& late_updates_counter;
+    kotekan::prometheus::Counter& invalid_updates_counter;
+
+    /// The table to reorder from input_order to output_order.
+    /// reorder[input_idx] = output_idx;
     std::vector<size_t> reorder;
 };
 

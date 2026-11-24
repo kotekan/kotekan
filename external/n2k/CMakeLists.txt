@@ -32,6 +32,10 @@ set(KERNELFILES
     kernel_128_256.cu
     kernel_128_336.cu
     kernel_128_384.cu
+    kernel_128_416.cu
+    kernel_128_448.cu
+    kernel_128_464.cu
+    kernel_128_480.cu
     kernel_128_512.cu
     kernel_128_1024.cu
     kernel_128_2048.cu
@@ -77,18 +81,12 @@ foreach(file ${KERNELFILES})
 endforeach()
 
 # Add library targets
-add_library(n2k SHARED ${CUFILES} ${HFILES})
+add_library(n2k ${CUFILES} ${HFILES})
 target_link_libraries(n2k ksgpu)
 
 # Include directories
 target_include_directories(n2k PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_include_directories(n2k PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
-
-# Install the shared library so installed kotekan can find libn2k at runtime.
-install(TARGETS n2k LIBRARY DESTINATION lib)
-
-# Set architecture flags
-set_target_properties(n2k PROPERTIES CUDA_ARCHITECTURES "86;89")
 
 # Set language for CUDA files
 set_target_properties(n2k PROPERTIES LANGUAGE CUDA)

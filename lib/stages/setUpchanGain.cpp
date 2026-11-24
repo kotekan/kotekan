@@ -1,22 +1,24 @@
-#include <unistd.h>                      // for sleep
-#include <cassert>                       // for assert
-#include <string>                        // for basic_string, string
-#include <vector>                        // for vector
-#include <cstddef>                       // for ptrdiff_t
-#include <functional>                    // for function
-#include <memory>                        // for allocator, __shared_ptr_access, shared_ptr
-#include <set>                           // for operator!=, set
+#include "Config.hpp"   // for Config
+#include "DataType.hpp" // for float16_t
+#include "NDArray.hpp"
+#include "Stage.hpp"                    // for Stage
+#include "StageFactory.hpp"             // for REGISTER_KOTEKAN_STAGE
+#include "UpchannelizationSchedule.hpp" // for UpchannelizationSchedule
+#include "buffer.hpp"                   // for Buffer
+#include "bufferContainer.hpp"          // for bufferContainer
+#include "chordMetadata.hpp"            // for chordMetadata, get_chord_metadata
+#include "kotekanLogging.hpp"           // for DEBUG, FATAL_ERROR
 
-#include "Config.hpp"                    // for Config
-#include "Stage.hpp"                     // for Stage
-#include "StageFactory.hpp"              // for REGISTER_KOTEKAN_STAGE
-#include "UpchannelizationSchedule.hpp"  // for UpchannelizationSchedule
-#include "buffer.hpp"                    // for Buffer
-#include "bufferContainer.hpp"           // for bufferContainer
-#include "chordMetadata.hpp"             // for chordMetadata, get_chord_metadata
-#include "kotekanLogging.hpp"            // for DEBUG
-#include "DataType.hpp"                  // for float16_t
-#include "fmt.hpp"                       // for compile_string_to_view, format
+#include "fmt.hpp" // for compile_string_to_view, format
+
+#include <cassert>    // for assert
+#include <cstddef>    // for ptrdiff_t
+#include <functional> // for function
+#include <memory>     // for allocator, __shared_ptr_access, shared_ptr
+#include <set>        // for operator!=, set
+#include <string>     // for basic_string, string
+#include <unistd.h>   // for sleep
+#include <vector>     // for vector
 
 class setUpchanGain : public kotekan::Stage {
     const std::string upchannelization_schedule_name =
@@ -27,6 +29,7 @@ class setUpchanGain : public kotekan::Stage {
         config.get<std::vector<double>>(unique_name, "upchan_gain");
 
     Buffer* const upchan_gain_buffer;
+    const std::vector<Buffer*> metadata_sources;
 
 public:
     setUpchanGain(kotekan::Config& config, const std::string& unique_name,
@@ -35,18 +38,29 @@ public:
               [](const kotekan::Stage& stage) {
                   return const_cast<kotekan::Stage&>(stage).main_thread();
               }),
-        upchan_gain_buffer(get_buffer("upchan_gain_buffer"))
+        upchan_gain_buffer(get_buffer("upchan_gain_buffer")),
+        metadata_sources(get_buffer_or_array("metadata_source"))
     //
     {
-        // We use the same gain for all channels
-        assert(std::ptrdiff_t(upchan_gain.size()) == upchan_factor);
+        // One gain per fine channel, shared by all coarse channels
+        if (std::ptrdiff_t(upchan_gain.size()) != upchan_factor)
+            FATAL_ERROR("upchan_gain has {:d} entries, but needs one per fine channel "
+                        "(upchan_factor = {:d})",
+                        upchan_gain.size(), upchan_factor);
         assert(upchan_gain_buffer);
 
         // Check buffer size
-        assert(upchan_gain_buffer->frame_size
-               == sizeof(float16_t) * upchan_max_num_channels * upchan_factor);
+        if (upchan_gain_buffer->frame_size
+            != sizeof(float16_t) * upchan_max_num_channels * upchan_factor)
+            FATAL_ERROR("upchan_gain_buffer {:s} has frame_size {:d}, but needs sizeof(float16_t) "
+                        "* upchan_max_num_channels * upchan_factor = {:d} * {:d} * {:d} = {:d}",
+                        upchan_gain_buffer->buffer_name, upchan_gain_buffer->frame_size,
+                        sizeof(float16_t), upchan_max_num_channels, upchan_factor,
+                        sizeof(float16_t) * upchan_max_num_channels * upchan_factor);
 
         upchan_gain_buffer->register_producer(unique_name);
+        for (Buffer* const metadata_source : metadata_sources)
+            metadata_source->register_consumer(unique_name);
     }
 
     virtual ~setUpchanGain() {}
@@ -60,8 +74,15 @@ public:
             return;
 
         // Upchannelization schedule
-        const auto& upchan_schedule =
-            UpchannelizationSchedule::instance(config, upchannelization_schedule_name);
+        // The coarse frequency channels handled by this GPU. These are local to
+        // a GPU and thus cannot come from the configuration, which is the same
+        // for every GPU.
+        const auto local_coarse_freq = wait_for_coarse_freq(metadata_sources, unique_name);
+        if (!local_coarse_freq)
+            return;
+
+        const UpchannelizationSchedule upchan_schedule(config, upchannelization_schedule_name,
+                                                       *local_coarse_freq, unique_name);
 
         // Wait for buffer
         DEBUG("[{:s}/{:d}] Waiting for buffer...", upchan_gain_buffer->buffer_name, frame_index);
@@ -71,12 +92,13 @@ public:
             return;
 
         // Set metadata
-        upchan_gain_buffer->allocate_ndarray_frame_desc<float16_t, 1>(
-            "G", {upchan_max_num_channels * upchan_factor}, {"Fbar"});
+        upchan_gain_buffer->require_frame_desc(kotekan::NDArray<float16_t, 1>::describe(
+            "G", {upchan_max_num_channels * upchan_factor}, {"Fbar"}, {1}));
         upchan_gain_buffer->allocate_new_metadata_object(frame_id);
         const auto& upchan_gain_meta =
             get_chord_metadata(upchan_gain_buffer->get_metadata(frame_id));
-        upchan_gain_meta->set_from_frame_desc(upchan_gain_buffer->get_ndarray_frame_desc());
+        upchan_gain_meta->set_from_frame_desc(
+            upchan_gain_buffer->get_frame_desc<kotekan::GenericNDArray>());
         upchan_gain_meta->set_fpga_seq_num(0);           // ???
         upchan_gain_meta->set_time_downsampling_fpga(1); // ???
         const auto& upchan_channels_set = upchan_schedule.get_upchan_channels(upchan_factor);

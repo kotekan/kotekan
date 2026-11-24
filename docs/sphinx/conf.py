@@ -45,7 +45,6 @@ else:
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
-import sphinx_rtd_theme
 extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.intersphinx',
@@ -55,16 +54,12 @@ extensions = [
     'sphinx.ext.ifconfig',
     'sphinx.ext.viewcode',
     'sphinx.ext.inheritance_diagram',
-    'breathe',
-    'sphinxcontrib.plantuml'
+    'breathe'
 ]
 
 
-# this is to make plantuml extension find stuff
-
 if not read_the_docs_build:
     # Paths (@...@) will be modified by cmake
-    plantuml = 'java -jar @PLANTUML_DIR@/plantuml.jar'
     breathe_projects = { "kotekan": "@BINARY_BUILD_DIR@/../doxygen/build/xml/" }
 else:
     breathe_projects = { "kotekan": "../../build-docs/docs/doxygen/build/xml/" }
@@ -123,7 +118,6 @@ todo_include_todos = True
 # a list of builtin themes.
 #
 html_theme = "sphinx_rtd_theme"
-html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the

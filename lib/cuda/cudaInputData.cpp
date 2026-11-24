@@ -1,15 +1,16 @@
 #include "cudaInputData.hpp"
 
-#include <stdint.h>            // for uint8_t
-#include <sys/types.h>         // for uint, size_t
-#include <memory>              // for shared_ptr
-#include <tuple>               // for tuple, make_tuple
+#include "cudaUtils.hpp"      // for CHECK_CUDA_ERROR
+#include "cuda_runtime_api.h" // for cudaHostGetFlags, cudaHostRegister, cudaHostUnregister
+#include "gpuCommand.hpp"     // for gpuCommandType
+#include "metadata.hpp"       // for metadataObject
 
-#include "cudaUtils.hpp"       // for CHECK_CUDA_ERROR
-#include "cuda_runtime_api.h"  // for cudaHostGetFlags, cudaHostRegister, cudaHostUnregister
-#include "gpuCommand.hpp"      // for gpuCommandType
-#include "metadata.hpp"        // for metadataObject
-#include "fmt.hpp"             // for format, format_string
+#include "fmt.hpp" // for format, format_string
+
+#include <memory>      // for shared_ptr
+#include <stdint.h>    // for uint8_t
+#include <sys/types.h> // for uint, size_t
+#include <tuple>       // for tuple, make_tuple
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -29,13 +30,12 @@ cudaInputData::cudaInputData(Config& config, const std::string& unique_name,
         in_buf->register_consumer(unique_name);
 
     if (in_buf->frame_size) {
-        uint flags;
-        // only register the memory if it isn't already...
-        if (cudaErrorInvalidValue == cudaHostGetFlags(&flags, in_buf->frames[instance_num])) {
-            CHECK_CUDA_ERROR(cudaHostRegister(in_buf->frames[instance_num], in_buf->frame_size, 0));
-        }
+        register_host_buffer(in_buf);
         _gpu_mem = config.get<std::string>(unique_name, "gpu_mem");
         gpu_buffers_used.push_back(std::make_tuple(_gpu_mem, true, false, true));
+        // Taken in execute(); attribute it to this stage now so a conflict is refused at
+        // construction, where --dry-run can see it (see gpuMemoryClaims.hpp).
+        device.register_gpu_memory_name(_gpu_mem);
     } else {
         _gpu_mem = "";
     }
@@ -48,13 +48,7 @@ cudaInputData::~cudaInputData() {
     if (do_once && instance_num > 0)
         return;
 
-    if (in_buf->frame_size) {
-        uint flags;
-        // only unregister if it's actually been registered
-        if (cudaSuccess == cudaHostGetFlags(&flags, in_buf->frames[instance_num])) {
-            CHECK_CUDA_ERROR(cudaHostUnregister(in_buf->frames[instance_num]));
-        }
-    }
+    unregister_host_buffer(in_buf);
 }
 
 int cudaInputData::wait_on_precondition() {

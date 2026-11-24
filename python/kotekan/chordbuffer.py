@@ -1,5 +1,6 @@
 """Read a ChordBuffer dump into python.
 """
+
 from pathlib import Path
 import numpy as np
 import h5py as h5
@@ -110,11 +111,12 @@ class ChordBuffer(object):
                     dset.attrs[key] = val
 
 
-def get_metadata(name, type_name, dim_names):
+def get_metadata(name, type_name, dim_names, dim_scalings):
     metadata = dict(
-        chord_metadata_version=np.array([1, 0], dtype=np.int32),
+        chord_metadata_version=np.array([2, 0], dtype=np.int32),
         name=name,
         type=type_name,
         dim_names=dim_names,
+        dim_scalings=dim_scalings,
     )
     return metadata

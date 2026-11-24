@@ -1,0 +1,139 @@
+/**
+ * @file
+ * @brief merge, upchannelize, and apply weights to gain files
+ *  - processFeedGains : public kotekan::Stage
+ */
+
+#ifndef PROCESS_FEED_GAINS_HPP
+#define PROCESS_FEED_GAINS_HPP
+
+#include "Config.hpp"          // for Config
+#include "DataType.hpp"        // for float16_t
+#include "Stage.hpp"           // for Stage
+#include "buffer.hpp"          // for Buffer
+#include "bufferContainer.hpp" // for bufferContainer
+
+#include <cstdint>  // for int64_t
+#include <queue>    // for queue
+#include <stdint.h> // for int32_t, uint8_t, int16_t, uint32_t
+#include <string>   // for string
+#include <vector>   // for vector
+
+using std::queue;
+using std::vector;
+
+/**
+ * @class processFeedGains
+ * @brief Merge, upchannelize, and apply weights to gain files.
+ *
+ * Gains are upchannelized by a factor of `upchan_factor` in frequency. The
+ * current implementation does nothing more than copy each coarse frequency gain
+ * `upchan_factor` times.
+ *
+ * For beamformers which support multiple beams, this stage expects to receive a
+ * separate buffer for each beam, as implemented in `loadFeedGains`.
+ *
+ * The output is a stream clocked by the input mask: for every mask frame this stage emits one
+ * output frame, containing the current gains with the masked elements zeroed, and stamped with
+ * the mask frame's `fpga_seq_num` and `time_downsampling_fpga`. With a `fpga_seq_num_offset`
+ * (see there), output frame `k` begins that offset after the first mask frame plus `k`
+ * lifetimes, and is made from the mask frame valid at its first sample. The output frame
+ * description must
+ * have a leading time axis whose `dimscaling` equals the mask's `time_downsampling_fpga`, i.e.
+ * the number of FPGA samples one frame covers. The gain buffers are polled without blocking
+ * (except for the first frame), since gains are updated rarely.
+ *
+ * @par Buffers
+ * @buffer gain_buf_<n> Each buffer is an array of arbitrary gains for a given beam
+ *     @buffer_format float32
+ *     @buffer_shape [freq][element][real/imag]
+ *     @buffer_metadata chordMetadata
+ * @buffer in_mask_buf The element (feed) mask, one frame per mask lifetime
+ *     @buffer_format uint8
+ *     @buffer_shape [element]
+ *     @buffer_metadata chordMetadata
+ * @buffer out_buf Array of processed gains
+ *     @buffer_format float16
+ *     @buffer_shape [time=1][beams][freq][upchan_factor][element][real/imag]
+ *     @buffer_metadata chordMetadata
+ *
+ * @conf   num_elements                          Int. Number of elements
+ * @conf   num_beams                             Int. Number of beams with unique gain files
+ * @conf   num_local_freq                        Int. Number of frequencies per node
+ * @conf   upchan_factor                         Int. Frequency upchannelization factor.
+ * @conf   num_components                        Int. Number of gain components. Should be either
+ *                                                   1 (real) or 2 (real/imag).
+ * @conf conjugate_gains                         Bool. If true, save the conjugate of the input
+ *                                                   gains.
+ *
+ * @author Liam Gray
+ *
+ */
+class processFeedGains : public kotekan::Stage {
+public:
+    /// Constructor.
+    processFeedGains(kotekan::Config& config_, const std::string& unique_name,
+                     kotekan::bufferContainer& buffer_container);
+
+    /// Destructor.
+    virtual ~processFeedGains() = default;
+
+    void main_thread() override;
+
+protected:
+    /// Number of elements, should be 2048
+    uint32_t num_elements;
+    /// Number of pulsar beams, should be 10
+    uint32_t num_beams;
+    /// Number of frequencies per node
+    uint32_t num_local_freq;
+    /// Frequency upchannelization factor
+    uint32_t upchan_factor;
+    /// Number of components
+    uint32_t num_components;
+
+    /// fixed scaling factor
+    float scaling_factor;
+
+    /// Where the output stream begins, in FPGA samples after the first mask frame, for consumers
+    /// whose data begin later than the voltages. Whole lifetimes of it skip mask frames. 0 by
+    /// default.
+    std::int64_t fpga_seq_num_offset = 0;
+
+    /// Store gain upchannelization factors
+    std::vector<int> freq_upchan_factor;
+    std::vector<int> freq_upchan_index;
+    std::vector<int> coarse_freq;
+
+private:
+    /// Copy gain from a buffer and apply an upchannelization algorithm to gains for a single
+    /// beam. Default duplicates the gain for each subfrequency.
+    void copy_upchannelize(float* frame, size_t beam_id);
+
+    /// Implement logic to upchannelize a single fine frequency, given a coarse frequency.
+    virtual void copy_upchannelize_f(const float* src_f, float16_t* dst_f, size_t fid) = 0;
+
+    /// Create a frame desc for the output buffer.
+    virtual void set_frame_desc(Buffer* buf) = 0;
+
+    /// Check the processed and masked gains of an output frame. Called whenever the gains or
+    /// the mask changed. The default does nothing.
+    virtual void check_gains(const float16_t* /*frame*/) {}
+
+    std::vector<Buffer*> gain_buffers;
+    Buffer* in_mask_buf;
+    Buffer* out_buf;
+
+    /// Number of elements in the output buffer
+    uint32_t out_num_values;
+
+    /// Whether or not to conjugate the gains
+    bool conjugate_gains;
+
+    /// Fixed buffers used to hold gains separately from the kotekan buffers
+    std::vector<float16_t> gain_store_buf;
+    std::vector<uint8_t> mask_store_buf;
+};
+
+
+#endif

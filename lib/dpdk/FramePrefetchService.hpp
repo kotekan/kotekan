@@ -10,6 +10,7 @@
 #include <atomic>
 #include <cmath>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -178,9 +179,9 @@ void FramePrefetchService::prefetcher_loop() {
             continue;
         }
 
-        // Wait for all workers to register their stream IDs before proceeding
-        // This avoids a race condition where we try to use global_expected_stream_ids
-        // before all workers have added their entries
+        // Wait for this port's workers to register their stream IDs before proceeding. This
+        // says nothing about the other ports, which may still be registering; see the copy
+        // below for why every access to global_expected_stream_ids holds the mutex.
         {
             std::lock_guard<std::mutex> lock(global_stream_id_mutex);
             if (global_expected_stream_ids.size() <= port
@@ -253,10 +254,18 @@ void FramePrefetchService::prefetcher_loop() {
             if (allocate_metadata) {
                 buf->allocate_new_metadata_object(frame_id);
 
-                // Get reference to stream IDs for this port (safe to access without lock
-                // since we waited for all workers to register before reaching here)
-                const std::vector<uint32_t>& stream_ids_vec = global_expected_stream_ids.at(port);
+                // Copy this port's stream IDs under the lock; never hold a reference into
+                // global_expected_stream_ids. Every access to it holds global_stream_id_mutex,
+                // because another port's worker can still be registering, and its resize()
+                // in add_expected_stream_ids() reallocates the outer vector and frees the array
+                // a reference would point into.
+                std::vector<uint32_t> stream_ids_vec;
+                {
+                    std::lock_guard<std::mutex> lock(global_stream_id_mutex);
+                    stream_ids_vec = global_expected_stream_ids.at(port);
+                }
 
+#ifdef DEBUGGING
                 // Print the list of expected stream IDs for this port
                 std::string stream_id_list;
                 for (size_t i = 0; i < stream_ids_vec.size(); ++i) {
@@ -267,13 +276,14 @@ void FramePrefetchService::prefetcher_loop() {
                 }
                 DEBUG("FramePrefetchService {}: Setting expected stream IDs for port {}: {}",
                       unique_name, port, stream_id_list);
+#endif
 
                 // Add the list of stream IDs to the metadata
                 auto metadata = get_chord_metadata(buf, frame_id);
                 metadata->set_stream_ids(stream_ids_vec);
 
 
-#ifdef DEBUG
+#ifdef DEBUGGING
                 // Print a list of the frequency IDs corresponding to the expected stream IDs
                 std::string freq_id_list;
                 for (size_t index = 0; index < CHORDTelescope::instance().num_freq_per_stream();
@@ -313,11 +323,11 @@ void FramePrefetchService::prefetcher_loop() {
                 // Set the array shape
                 metadata->dims = 5;
                 // TODO Get these values via config
-                metadata->set_array_dimension(0, 512, "Thi16");
-                metadata->set_array_dimension(1, 384, "F");
-                metadata->set_array_dimension(2, 16, "Ehi8");
-                metadata->set_array_dimension(3, 16, "Tlo16");
-                metadata->set_array_dimension(4, 8, "Elo8");
+                metadata->set_array_dimension(0, 512, "Thi16", 16);
+                metadata->set_array_dimension(1, coarse_freq.size(), "F", 1);
+                metadata->set_array_dimension(2, 16, "Ehi8", 8);
+                metadata->set_array_dimension(3, 16, "Tlo16", 1);
+                metadata->set_array_dimension(4, 8, "Elo8", 1);
             }
 
             // The receipt bitmap metadata is always set.  One bitmap per worker.

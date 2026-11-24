@@ -2,7 +2,9 @@
 
 #include "N2FrameDesc.hpp"
 #include "N2Layout.hpp"
+#include "N2Metadata.hpp"
 #include "N2Util.hpp"
+#include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 
 #include <boost/test/included/unit_test.hpp>
 #include <iostream>
@@ -11,6 +13,9 @@
 #include <vector>
 
 using namespace kotekan;
+
+
+BOOST_GLOBAL_FIXTURE(kotekan_logging_fixture);
 
 BOOST_AUTO_TEST_CASE(test_layout_requires_product_list) {
     std::cout << "Testing layout_requires_product_list()...\n";
@@ -25,6 +30,9 @@ BOOST_AUTO_TEST_CASE(test_layout_requires_product_list) {
     BOOST_CHECK_EQUAL(N2FrameDesc::layout_requires_product_list(N2Layout::GeneralSubset), true);
     BOOST_CHECK_EQUAL(N2FrameDesc::layout_requires_product_list(N2Layout::RedundantBaselineAvg),
                       true);
+    // DishInputs frames are compact: the product list is the dense triangle over their
+    // own element axis, derivable from num_elements.
+    BOOST_CHECK_EQUAL(N2FrameDesc::layout_requires_product_list(N2Layout::DishInputs), false);
 
     std::cout << "Success.\n";
 }
@@ -93,6 +101,28 @@ BOOST_AUTO_TEST_CASE(test_get_num_prod_throws_for_subset_layouts) {
     BOOST_CHECK_THROW(N2FrameDesc::get_num_prod(8, N2Layout::InputORMasked), std::runtime_error);
     BOOST_CHECK_THROW(N2FrameDesc::get_num_prod(8, N2Layout::RedundantBaselineAvg),
                       std::runtime_error);
+
+    std::cout << "Success.\n";
+}
+
+BOOST_AUTO_TEST_CASE(test_dish_inputs_compact) {
+    std::cout << "Testing the DishInputs compact layout...\n";
+
+    // DishInputs frames are compact: the dense triangle over their own element axis.
+    BOOST_CHECK_EQUAL(N2FrameDesc::get_num_prod(4, N2Layout::DishInputs), 10);
+
+    auto products = N2FrameDesc::generate_product_list(4, N2Layout::DishInputs);
+    BOOST_REQUIRE_EQUAL(products.size(), 10u);
+    for (const auto& p : products) {
+        BOOST_CHECK(p.input_a <= p.input_b);
+        BOOST_CHECK(p.input_b < 4);
+    }
+
+    // The descriptor generates the product list and round-trips through the wire form.
+    N2FrameDesc desc(4, 0, 10, N2Layout::DishInputs);
+    BOOST_CHECK_EQUAL(desc.get_product_list().size(), 10u);
+    auto wire = N2FrameDesc::from_json(desc.to_json());
+    BOOST_CHECK(*wire == desc);
 
     std::cout << "Success.\n";
 }
@@ -456,4 +486,37 @@ BOOST_AUTO_TEST_CASE(test_generate_product_list_throws_for_unsupported_layout) {
                       std::runtime_error);
 
     std::cout << "Success.\n";
+}
+
+BOOST_AUTO_TEST_CASE(test_metadata_dataset_identity_roundtrip) {
+    const dset_id_t id{0x0123456789abcdefULL, 0xfedcba9876543210ULL};
+    N2Metadata source;
+    source.dataset_id = id;
+    source.freq_id = 614;
+    source.n_usable_variance_pairs = 7;
+
+    N2MetadataFormat wire;
+    auto* bytes = reinterpret_cast<char*>(&wire);
+    BOOST_CHECK_EQUAL(source.get_serialized_size(), sizeof(wire));
+    BOOST_CHECK_EQUAL(source.serialize(bytes), sizeof(wire));
+    BOOST_CHECK(wire.dataset_id == id);
+    N2Metadata binary_copy;
+    BOOST_CHECK_EQUAL(binary_copy.set_from_bytes(bytes, sizeof(wire)), sizeof(wire));
+    BOOST_CHECK(binary_copy.dataset_id == id);
+    BOOST_CHECK_EQUAL(binary_copy.freq_id, source.freq_id);
+    BOOST_CHECK_EQUAL(binary_copy.n_usable_variance_pairs, 7);
+
+    auto encoded = source.to_json();
+    BOOST_REQUIRE(encoded.contains("dataset_id"));
+    N2Metadata json_copy;
+    from_json(encoded, json_copy);
+    BOOST_CHECK(json_copy.dataset_id == id);
+    BOOST_CHECK_EQUAL(json_copy.freq_id, source.freq_id);
+    BOOST_CHECK_EQUAL(json_copy.n_usable_variance_pairs, 7);
+
+    encoded.erase("dataset_id");
+    encoded.erase("n_usable_variance_pairs");
+    from_json(encoded, json_copy);
+    BOOST_CHECK(json_copy.dataset_id == dset_id_t::null);
+    BOOST_CHECK_EQUAL(json_copy.n_usable_variance_pairs, 0);
 }

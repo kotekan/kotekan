@@ -1,74 +1,79 @@
 #include "hdf5N2Write.hpp"
 
-#include <N2FrameView.hpp>                        // for N2FrameView
-#include <Stage.hpp>                              // for Stage
-#include <StageFactory.hpp>                       // for REGISTER_KOTEKAN_STAGE
-#include <configTracker.hpp>                      // for ConfigTracker
-#include <errno.h>                                // for errno
-#include <errors.h>                               // for exit_kotekan, ReturnCode
-#include <highfive/H5DataSet.hpp>                 // for DataSet, AnnotateTraits::createAttribute
-#include <highfive/H5DataSpace.hpp>               // for DataSpace, DataSpace::DataSpace, DataSp...
-#include <highfive/H5DataType.hpp>                // for create_datatype, DataType
-#include <highfive/H5Exception.hpp>               // for Exception
-#include <highfive/H5File.hpp>                    // for File, NodeTraits::getDataSet, File::File
-#include <highfive/H5Object.hpp>                  // for hsize_t, Object::getId, herr_t, H5Z_FLA...
-#include <highfive/H5PropertyList.hpp>            // for DataSetCreateProps, Chunking, Deflate
-#include <highfive/bits/H5PropertyList_misc.hpp>  // for PropertyList::_initializeIfNeeded, Prop...
-#include <prometheusMetrics.hpp>                  // for Gauge, Counter, Metrics, MetricFamily
-#include <waitingForMaxFrames.hpp>                // for waiting_for_max_frames
-#include <H5Opublic.h>                            // for H5Ocopy
-#include <fmt/ranges.h> // IWYU pragma: keep      // needed to fmt::format std::vector in log macros
-#include <gsl-lite.hpp>                           // for span
-#include <highfive/H5Group.hpp>                   // for Group
-#include <highfive/H5Selection.hpp>               // for Selection, SliceTraits::write, SliceTra...
-#include <highfive/bits/H5Attribute_misc.hpp>     // for Attribute::read, Attribute::write
-#include <highfive/bits/H5Selection_misc.hpp>     // for Selection::getSpace, Selection::getData...
-#include <algorithm>                              // for equal, min, copy, max
-#include <cassert>                                // for assert
-#include <cfloat>                                 // for DBL_MAX
-#include <chrono>                                 // for duration, duration_cast, operator-, sys...
-#include <complex>                                // for complex
-#include <cstdint>                                // for uint64_t, int64_t, int32_t, uint16_t
-#include <cstdio>                                 // for size_t, rename
-#include <cstdlib>                                // for llabs
-#include <cstring>                                // for strerror
-#include <ctime>                                  // for timespec, gmtime, gmtime_r, time_t, tm
-#include <filesystem>                             // for path, exists, directory_iterator, begin
-#include <fstream>                                // for basic_ostream, operator<<, basic_ios
-#include <iomanip>                                // for operator<<, put_time, setfill, setw
-#include <map>                                    // for map, _Rb_tree_iterator, operator!=
-#include <memory>                                 // for allocator, unique_ptr, make_unique, __s...
-#include <optional>                               // for optional, nullopt, operator!=
-#include <sstream>                                // for basic_ostringstream
-#include <stdexcept>                              // for runtime_error
-#include <string>                                 // for basic_string, operator+, char_traits
-#include <type_traits>                            // for false_type, true_type, void_t
-#include <utility>                                // for pair, move
-#include <vector>                                 // for vector, operator!=
-#include <array>                                  // for array, operator!=
-#include <atomic>                                 // for __atomic_base, atomic
-#include <cmath>                                  // for fabs
-#include <exception>                              // for exception
-#include <functional>                             // for function
-#include <iterator>                               // for istreambuf_iterator, operator!=
-#include <limits>                                 // for numeric_limits
-#include <system_error>                           // for error_code
+#include "CHORDTelescope.hpp" // for CHORDTelescope, dishInputFields
+#include "H5Support.hpp"      // for create_datatype
+#include "N2FrameDesc.hpp"    // for N2FrameDesc
+#include "N2Util.hpp"         // for freq_ctype, frameID, modulo, cfloat
+#include "Telescope.hpp"      // for Telescope, freq_id_t
+#include "chordMetadata.hpp"  // for chordMetadata, get_chord_metadata
+#include "geoUtil.hpp"        // for mat3x3d_t
+#include "hdf5Files.hpp"      // for BITSHUFFLE_BLOCKSIZE_AUTO, BITSHUFFLE_C...
+#include "kotekanLogging.hpp" // for FATAL_ERROR_NON_OO, FATAL_ERROR, WARN
+#include "restClient.hpp"     // for restClient
+#include "timeUtil.hpp"       // for EOP
+#include "util.h"             // for mkdir_p
+#include "visUtil.hpp"        // for cfloat
 
-#include "H5Support.hpp"                          // for create_datatype
-#include "Telescope.hpp"                          // for Telescope, freq_id_t
-#include "restClient.hpp"                         // for restClient
-#include "util.h"                                 // for mkdir_p
-#include "json.hpp"                               // for basic_json, json, iter_impl
-#include "CHORDTelescope.hpp"                     // for CHORDTelescope, dishInputFields
-#include "N2FrameDesc.hpp"                        // for N2FrameDesc
-#include "N2Util.hpp"                             // for freq_ctype, frameID, modulo, cfloat
-#include "fmt.hpp"                                // for compile_string_to_view, format, format_...
-#include "geoUtil.hpp"                            // for mat3x3d_t
-#include "hdf5Files.hpp"                          // for BITSHUFFLE_BLOCKSIZE_AUTO, BITSHUFFLE_C...
-#include "jsonMetadata.hpp"                       // for MAX_NUM_RFI_THRESHOLDS
-#include "kotekanLogging.hpp"                     // for FATAL_ERROR_NON_OO, FATAL_ERROR, WARN
-#include "timeUtil.hpp"                           // for EOP
-#include "visUtil.hpp"                            // for cfloat
+#include "fmt.hpp"          // for compile_string_to_view, format, format_...
+#include "json.hpp"         // for basic_json, json, iter_impl
+#include "jsonMetadata.hpp" // for MAX_NUM_RFI_THRESHOLDS
+
+#include <H5Opublic.h>       // for H5Ocopy
+#include <N2FrameView.hpp>   // for N2FrameView
+#include <Stage.hpp>         // for Stage
+#include <StageFactory.hpp>  // for REGISTER_KOTEKAN_STAGE
+#include <algorithm>         // for equal, min, copy, max
+#include <array>             // for array, operator!=
+#include <atomic>            // for __atomic_base, atomic
+#include <cassert>           // for assert
+#include <cfloat>            // for DBL_MAX
+#include <chrono>            // for duration, duration_cast, operator-, sys...
+#include <cmath>             // for fabs
+#include <complex>           // for complex
+#include <configTracker.hpp> // for ConfigTracker
+#include <cstdint>           // for uint64_t, int64_t, int32_t, uint16_t
+#include <cstdio>            // for size_t, rename
+#include <cstdlib>           // for llabs
+#include <cstring>           // for strerror
+#include <ctime>             // for timespec, gmtime, gmtime_r, time_t, tm
+#include <errno.h>           // for errno
+#include <errors.h>          // for exit_kotekan, ReturnCode
+#include <exception>         // for exception
+#include <filesystem>        // for path, exists, directory_iterator, begin
+#include <fmt/ranges.h> // IWYU pragma: keep      // needed to fmt::format std::vector in log macros
+#include <fstream>      // for basic_ostream, operator<<, basic_ios
+#include <functional>   // for function
+#include <gsl-lite.hpp> // for span
+#include <highfive/H5DataSet.hpp>                // for DataSet, AnnotateTraits::createAttribute
+#include <highfive/H5DataSpace.hpp>              // for DataSpace, DataSpace::DataSpace, DataSp...
+#include <highfive/H5DataType.hpp>               // for create_datatype, DataType
+#include <highfive/H5Exception.hpp>              // for Exception
+#include <highfive/H5File.hpp>                   // for File, NodeTraits::getDataSet, File::File
+#include <highfive/H5Group.hpp>                  // for Group
+#include <highfive/H5Object.hpp>                 // for hsize_t, Object::getId, herr_t, H5Z_FLA...
+#include <highfive/H5PropertyList.hpp>           // for DataSetCreateProps, Chunking, Deflate
+#include <highfive/H5Selection.hpp>              // for Selection, SliceTraits::write, SliceTra...
+#include <highfive/bits/H5Attribute_misc.hpp>    // for Attribute::read, Attribute::write
+#include <highfive/bits/H5PropertyList_misc.hpp> // for PropertyList::_initializeIfNeeded, Prop...
+#include <highfive/bits/H5Selection_misc.hpp>    // for Selection::getSpace, Selection::getData...
+#include <iomanip>                               // for operator<<, put_time, setfill, setw
+#include <iterator>                              // for istreambuf_iterator, operator!=
+#include <limits>                                // for numeric_limits
+#include <map>                                   // for map, _Rb_tree_iterator, operator!=
+#include <memory>                                // for allocator, unique_ptr, make_unique, __s...
+#include <mutex>                                 // for mutex, lock_guard
+#include <optional>                              // for optional, nullopt, operator!=
+#include <prometheusMetrics.hpp>                 // for Gauge, Counter, Metrics, MetricFamily
+#include <sstream>                               // for basic_ostringstream
+#include <stdexcept>                             // for runtime_error
+#include <string>                                // for basic_string, operator+, char_traits
+#include <system_error>                          // for error_code
+#include <thread>                                // for thread
+#include <time.h>                                // for clock_gettime, timespec
+#include <type_traits>                           // for false_type, true_type, void_t
+#include <utility>                               // for pair, move
+#include <vector>                                // for vector, operator!=
+#include <waitingForMaxFrames.hpp>               // for waiting_for_max_frames
 
 using namespace HighFive;
 
@@ -149,27 +154,6 @@ std::string normalize_base_dir(const std::string& dir) {
 }
 } // namespace
 
-/// Generate an acquisition base directory path: base_dir/acq_YYYYMMDD_HHMMSS_NNNNNNNNN
-static std::string get_acq_base_dir_path(const std::string& base_dir) {
-    // Strip trailing slashes
-    std::string dir = base_dir;
-    while (dir.size() > 1 && dir.back() == '/')
-        dir.pop_back();
-
-    auto now = std::chrono::system_clock::now();
-    auto time_t_now = std::chrono::system_clock::to_time_t(now);
-    auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count()
-              % 1'000'000'000LL;
-
-    std::tm tm_buf{};
-    gmtime_r(&time_t_now, &tm_buf);
-
-    std::ostringstream oss;
-    oss << dir << "/acq_" << std::put_time(&tm_buf, "%Y%m%d_%H%M%S") << "_" << std::setfill('0')
-        << std::setw(9) << ns;
-    return oss.str();
-}
-
 // Monotonic time in seconds
 inline double mono_time_s() {
     using clock = std::chrono::steady_clock;
@@ -200,7 +184,7 @@ void N2FileData::_check_create_attribute(HighFive::File& file, const std::string
         }
         return;
     }
-    
+
     // Attribute doesn't exist. Create & write it, let HighFive infer the data space.
     file.createAttribute(name, value);
 }
@@ -256,6 +240,31 @@ void N2FileData::_check_create_dataset(HighFive::File& file, const std::string& 
 // NOTE: The datasets and attributes created below define the on-disk file format,
 // which is documented in docs/sphinx/user/file_formats/n2_vis_hdf5.rst. If you add,
 // remove, or change any dataset or attribute, update that page to match.
+HighFive::DataSetCreateProps N2FileData::_compressed_props() const {
+    HighFive::DataSetCreateProps props = HighFive::DataSetCreateProps::Empty();
+    if (use_bitshuffle) {
+        // bitshuffle + optional compression backend
+        auto level = static_cast<unsigned int>(compression_level > 0 ? compression_level : 9);
+        unsigned int comp = hdf5::BITSHUFFLE_COMPRESS_NONE;
+        if (compression == "zstd") {
+            comp = hdf5::BITSHUFFLE_COMPRESS_ZSTD;
+        } else if (compression == "lz4") {
+            comp = hdf5::BITSHUFFLE_COMPRESS_LZ4;
+        }
+        std::vector<unsigned int> bshuf_flags{hdf5::BITSHUFFLE_BLOCKSIZE_AUTO, comp, level};
+        herr_t status =
+            H5Pset_filter(props.getId(), hdf5::H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY,
+                          static_cast<unsigned>(bshuf_flags.size()), bshuf_flags.data());
+        if (status < 0) {
+            throw std::runtime_error("H5Pset_filter(BITSHUFFLE) failed");
+        }
+    } else if (compression == "deflate") {
+        auto level = static_cast<unsigned int>(compression_level > 0 ? compression_level : 4);
+        props.add(HighFive::Deflate(level));
+    }
+    return props;
+}
+
 std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::string& filepath,
                                                                  const uint64_t num_file_t_,
                                                                  const N2FrameView& fv,
@@ -276,37 +285,8 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         }
 
         // 2) Describe compression/filters
-        HighFive::DataSetCreateProps props_compressed = HighFive::DataSetCreateProps::Empty();
+        HighFive::DataSetCreateProps props_compressed = _compressed_props();
         HighFive::DataSetCreateProps props_empty = HighFive::DataSetCreateProps::Empty();
-
-        if (use_bitshuffle) {
-            // bitshuffle + optional compression backend
-
-            auto level = static_cast<unsigned int>(compression_level > 0 ? compression_level : 9);
-            unsigned int comp = hdf5::BITSHUFFLE_COMPRESS_NONE;
-
-            if (compression == "zstd") {
-                comp = hdf5::BITSHUFFLE_COMPRESS_ZSTD;
-            } else if (compression == "lz4") {
-                comp = hdf5::BITSHUFFLE_COMPRESS_LZ4;
-            }
-
-            std::vector<unsigned int> bshuf_flags{hdf5::BITSHUFFLE_BLOCKSIZE_AUTO, comp, level};
-
-            // props_compressed.add(H5Pset_filter, hdf5::H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY,
-            //                      bshuf_flags.size(), bshuf_flags.data());
-            hid_t dcpl = props_compressed.getId();
-            herr_t status =
-                H5Pset_filter(dcpl, hdf5::H5Z_BITSHUFFLE, H5Z_FLAG_MANDATORY,
-                              static_cast<unsigned>(bshuf_flags.size()), bshuf_flags.data());
-            if (status < 0) {
-                throw std::runtime_error("H5Pset_filter(BITSHUFFLE) failed");
-            }
-
-        } else if (compression == "deflate") {
-            auto level = static_cast<unsigned int>(compression_level > 0 ? compression_level : 4);
-            props_compressed.add(HighFive::Deflate(level));
-        }
 
         std::string flags_group_prefix = file_mode_ == CHIME ? "/flags" : "";
         if (file_mode_ == CHIME && !file->exist(flags_group_prefix)) {
@@ -345,8 +325,31 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_attribute(*file, "grid_size_y", telescope.get_grid_size_y());
         _check_create_attribute(*file, "feed_separation_x_m", telescope.get_feed_separation_x_m());
         _check_create_attribute(*file, "feed_separation_y_m", telescope.get_feed_separation_y_m());
-        _check_create_attribute(*file, "main_array_grid_indices", telescope.get_main_array_grid_indices(num_elements, input_order));
-        _check_create_attribute(*file, "feed_positions_m", telescope.get_feed_positions_m(num_elements, input_order));
+        // Frame element i is array element rows[i] in the file's input_order: the
+        // telescope's connected elements for the compact DishInputs layout, recorded in
+        // the input_list attribute, and the array itself otherwise.
+        std::vector<uint64_t> rows;
+        if (fv._desc->get_n2_layout() == N2Layout::DishInputs) {
+            rows = telescope.get_connected_elements(input_order);
+            if (rows.size() != num_elements)
+                FATAL_ERROR_NON_OO("N2FileData: DishInputs frame has {:d} elements but the "
+                                   "telescope has {:d} connected",
+                                   num_elements, rows.size());
+            _check_create_attribute(*file, "input_list",
+                                    std::vector<int32_t>(rows.begin(), rows.end()));
+        } else {
+            for (uint64_t el = 0; el < num_elements; el++)
+                rows.push_back(el);
+        }
+        std::vector<grid_idx_2d_t> grid_indices;
+        std::vector<vec3d_t> feed_positions;
+        for (const uint64_t el : rows) {
+            grid_indices.push_back(
+                telescope.element_index_to_main_array_grid_indices(el, input_order));
+            feed_positions.push_back(telescope.element_index_to_feed_position_m(el, input_order));
+        }
+        _check_create_attribute(*file, "main_array_grid_indices", grid_indices);
+        _check_create_attribute(*file, "feed_positions_m", feed_positions);
         _check_create_attribute(*file, "dish_coelev_deg", telescope.get_dish_coelev_deg());
         _check_create_attribute(*file, "num_dishes", telescope.get_num_dishes());
         _check_create_attribute(*file, "num_file_f",
@@ -383,50 +386,78 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
             }
         }
 
-        // Store dish input info
+        // Per-element input info: one row per element of the frame, indexed like the
+        // element axis of /evec, /gain and /flags and the entries of /index_map/prod.
+        // Each row names the dish and polarization the element decodes to and copies
+        // that dish's entry; the label is the dish label with the polarization name
+        // appended (A01X, A01Y).
         {
-            // Set up an object to receive the dish input info.
-            dishInputFields dish_inputs;
-            // Fill the object with the info.
-            telescope.fill_input_maps(dish_inputs);
+            // Polarization index 0 is X, 1 is Y.
+            static constexpr std::array<char, 2> pol_name = {'X', 'Y'};
 
-            _check_create_dataset(*file, "/index_map/grid_x_idx", {dish_inputs.grid_x_idx.size()},
-                                  {"dish"}, HighFive::create_datatype<int64_t>(), props_empty);
-            auto dataset_x = file->getDataSet("/index_map/grid_x_idx");
-            dataset_x.write(dish_inputs.grid_x_idx);
+            dishInputFields dishes;
+            telescope.fill_input_maps(dishes);
 
-            _check_create_dataset(*file, "/index_map/grid_y_idx", {dish_inputs.grid_y_idx.size()},
-                                  {"dish"}, HighFive::create_datatype<int64_t>(), props_empty);
-            auto dataset_y = file->getDataSet("/index_map/grid_y_idx");
-            dataset_y.write(dish_inputs.grid_y_idx);
-
-            _check_create_dataset(*file, "/index_map/feed_pos_disp_m",
-                                  {dish_inputs.feed_pos_disp_m.size(), 3}, {"element", "xyz"},
-                                  HighFive::create_datatype<double>(), props_empty);
-            auto dataset_pos = file->getDataSet("/index_map/feed_pos_disp_m");
-            dataset_pos.write(dish_inputs.feed_pos_disp_m);
-
-            _check_create_dataset(*file, "/index_map/coelev_disp_deg",
-                                  {dish_inputs.coelev_disp_deg.size()}, {"element"},
-                                  HighFive::create_datatype<double>(), props_empty);
-            auto dataset_coelev = file->getDataSet("/index_map/coelev_disp_deg");
-            dataset_coelev.write(dish_inputs.coelev_disp_deg);
-
-            _check_create_dataset(*file, "/index_map/type", {dish_inputs.type.size()}, {"dish"},
-                                  HighFive::create_datatype<int32_t>(), props_empty);
-            auto dataset_type = file->getDataSet("/index_map/type");
-            // Cast DishType enum to int32_t for storage
-            std::vector<int32_t> type_int(dish_inputs.type.size());
-            for (size_t i = 0; i < dish_inputs.type.size(); i++) {
-                type_int[i] = static_cast<int32_t>(dish_inputs.type[i]);
+            std::vector<int64_t> dish_idx;
+            std::vector<int32_t> pol;
+            std::vector<dish_index_t> grid_x_idx;
+            std::vector<dish_index_t> grid_y_idx;
+            std::vector<vec3d_t> feed_pos_disp_m;
+            std::vector<double> coelev_disp_deg;
+            std::vector<int32_t> type; // DishType enum stored as int32_t
+            std::vector<std::string> label;
+            for (const uint64_t el : rows) {
+                uint64_t dish;
+                uint64_t p;
+                telescope.decode_station_id(telescope.element_index_to_station_id(el, input_order),
+                                            dish, p);
+                if (p >= pol_name.size())
+                    FATAL_ERROR_NON_OO("hdf5N2Write: element {:d} has polarization {:d}, but only "
+                                       "{:d} polarizations can be named",
+                                       el, p, pol_name.size());
+                dish_idx.push_back(dish);
+                pol.push_back(p);
+                grid_x_idx.push_back(dishes.grid_x_idx.at(dish));
+                grid_y_idx.push_back(dishes.grid_y_idx.at(dish));
+                feed_pos_disp_m.push_back(dishes.feed_pos_disp_m.at(dish));
+                coelev_disp_deg.push_back(dishes.coelev_disp_deg.at(dish));
+                type.push_back(static_cast<int32_t>(dishes.type.at(dish)));
+                label.push_back(fmt::format(fmt("{:s}{:c}"), dishes.label.at(dish), pol_name[p]));
             }
-            dataset_type.write(type_int);
+            const hsize_t num_el = rows.size();
 
-            _check_create_dataset(*file, "/index_map/label", {dish_inputs.label.size()},
-                                  {"element"}, HighFive::create_datatype<std::string>(),
+            _check_create_dataset(*file, "/index_map/dish_idx", {num_el}, {"element"},
+                                  HighFive::create_datatype<int64_t>(), props_empty);
+            file->getDataSet("/index_map/dish_idx").write(dish_idx);
+
+            _check_create_dataset(*file, "/index_map/pol", {num_el}, {"element"},
+                                  HighFive::create_datatype<int32_t>(), props_empty);
+            file->getDataSet("/index_map/pol").write(pol);
+
+            _check_create_dataset(*file, "/index_map/grid_x_idx", {num_el}, {"element"},
+                                  HighFive::create_datatype<int64_t>(), props_empty);
+            file->getDataSet("/index_map/grid_x_idx").write(grid_x_idx);
+
+            _check_create_dataset(*file, "/index_map/grid_y_idx", {num_el}, {"element"},
+                                  HighFive::create_datatype<int64_t>(), props_empty);
+            file->getDataSet("/index_map/grid_y_idx").write(grid_y_idx);
+
+            _check_create_dataset(*file, "/index_map/feed_pos_disp_m", {num_el, 3},
+                                  {"element", "xyz"}, HighFive::create_datatype<double>(),
                                   props_empty);
-            auto dataset_label = file->getDataSet("/index_map/label");
-            dataset_label.write(dish_inputs.label);
+            file->getDataSet("/index_map/feed_pos_disp_m").write(feed_pos_disp_m);
+
+            _check_create_dataset(*file, "/index_map/coelev_disp_deg", {num_el}, {"element"},
+                                  HighFive::create_datatype<double>(), props_empty);
+            file->getDataSet("/index_map/coelev_disp_deg").write(coelev_disp_deg);
+
+            _check_create_dataset(*file, "/index_map/type", {num_el}, {"element"},
+                                  HighFive::create_datatype<int32_t>(), props_empty);
+            file->getDataSet("/index_map/type").write(type);
+
+            _check_create_dataset(*file, "/index_map/label", {num_el}, {"element"},
+                                  HighFive::create_datatype<std::string>(), props_empty);
+            file->getDataSet("/index_map/label").write(label);
         }
 
         // Store full dish positions
@@ -520,6 +551,9 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_dataset(*file, flags_group_prefix + "/pl_fpga_count",
                               {num_file_f, num_file_t_}, {"frequency", "time"},
                               HighFive::create_datatype<uint64_t>(), props_empty);
+        _check_create_dataset(*file, flags_group_prefix + "/variance_pair_count",
+                              {num_file_f, num_file_t_}, {"frequency", "time"},
+                              HighFive::create_datatype<uint64_t>(), props_empty);
         _check_create_dataset(*file, flags_group_prefix + "/frac_lost", {num_file_f, num_file_t_},
                               {"frequency", "time"}, HighFive::create_datatype<float>(),
                               props_empty);
@@ -566,6 +600,8 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
                               HighFive::create_datatype<double>(), props_empty);
         _check_create_dataset(*file, "/rfi_frame_excision_enabled", {num_file_t_}, {"time"},
                               HighFive::create_datatype<bool>(), props_empty);
+        _check_create_dataset(*file, "/fringestop_enabled", {num_file_t_}, {"time"},
+                              HighFive::create_datatype<bool>(), props_empty);
         _check_create_dataset(*file, "/rfi_frame_excision_num", {num_file_t_}, {"time"},
                               HighFive::create_datatype<int32_t>(), props_empty);
         _check_create_dataset(*file, "/rfi_frame_excision_threshold",
@@ -574,6 +610,12 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_dataset(*file, "/rfi_frame_excision_fraction",
                               {num_file_t_, MAX_NUM_RFI_THRESHOLDS}, {"time", "threshold"},
                               HighFive::create_datatype<float>(), props_empty);
+        _check_create_dataset(*file, "/frac_rfi_first_stage_enabled", {num_file_f, num_file_t_},
+                              {"frequency", "time"}, HighFive::create_datatype<float>(),
+                              props_empty);
+        _check_create_dataset(*file, "/frac_dtv_mask_enabled", {num_file_f, num_file_t_},
+                              {"frequency", "time"}, HighFive::create_datatype<float>(),
+                              props_empty);
 
         // Digital gains: copy entire gains file verbatim into /digital_gains/ group
         if (!baseband_gain_file.empty() && !file->exist("/digital_gains")) {
@@ -628,13 +670,14 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
 }
 
 N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameView& fv,
-                       const double open_wall_s_, const uint64_t abs_file_idx_, const ElementOrder input_order_,
-                       const size_t blocksize_f_, const size_t blocksize_p_,
-                       const size_t blocksize_t_, const std::string compression_,
-                       const size_t compression_level_, const bool use_bitshuffle_,
-                       const std::string base_dir_, const std::string baseband_gain_file_,
-                       const int baseband_gain_update_idx_) :
-    num_elements(fv.num_elements), num_prod(fv.num_prod), num_ev(fv.num_ev), input_order(input_order_),
+                       const double open_wall_s_, const uint64_t abs_file_idx_,
+                       const ElementOrder input_order_, const size_t blocksize_f_,
+                       const size_t blocksize_p_, const size_t blocksize_t_,
+                       const std::string compression_, const size_t compression_level_,
+                       const bool use_bitshuffle_, const std::string base_dir_,
+                       const std::string baseband_gain_file_, const int baseband_gain_update_idx_) :
+    num_elements(fv.num_elements), num_prod(fv.num_prod), num_ev(fv.num_ev),
+    input_order(input_order_),
     num_file_f(Telescope::instance().cast<CHORDTelescope>().num_science_freqs()),
     num_file_t(num_file_t_), file_mode(file_mode_), blocksize_f(blocksize_f_),
     blocksize_p(blocksize_p_), blocksize_t(blocksize_t_), compression(compression_),
@@ -666,6 +709,7 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
     rfi_fpga_count.assign(num_file_f * num_file_t, 0);
     rfi_only_fpga_count.assign(num_file_f * num_file_t, 0);
     pl_fpga_count.assign(num_file_f * num_file_t, 0);
+    variance_pair_count.assign(num_file_f * num_file_t, 0);
     frac_lost.assign(num_file_f * num_file_t, 1.0f); // match empty frames by default
     frac_rfi.assign(num_file_f * num_file_t, 0.0f);
     frac_rfi_only.assign(num_file_f * num_file_t, 0.0f);
@@ -690,9 +734,12 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
     bin_start_ERAL_deg.assign(num_file_t, 0.0);
     bin_end_ERAL_deg.assign(num_file_t, 0.0);
     rfi_frame_excision_enabled.assign(num_file_t, false);
+    fringestop_enabled.assign(num_file_t, false);
     rfi_frame_excision_num.assign(num_file_t, 0);
     rfi_frame_excision_threshold.assign(num_file_t * MAX_NUM_RFI_THRESHOLDS, 0.0f);
     rfi_frame_excision_fraction.assign(num_file_t * MAX_NUM_RFI_THRESHOLDS, 0.0f);
+    frac_rfi_first_stage_enabled.assign(num_file_f * num_file_t, 0.0f);
+    frac_dtv_mask_enabled.assign(num_file_f * num_file_t, 0.0f);
 
 
     added_ft.assign(num_file_f * num_file_t, 0);
@@ -859,6 +906,7 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     rfi_fpga_count[idx_ft(f_index, t_index)] = n_rfi;
     rfi_only_fpga_count[idx_ft(f_index, t_index)] = n_rfi_only;
     pl_fpga_count[idx_ft(f_index, t_index)] = n_pl;
+    variance_pair_count[idx_ft(f_index, t_index)] = fv.n_usable_variance_pairs;
     frac_lost[idx_ft(f_index, t_index)] =
         (frame_len_ticks > 0) ? (1.0f - float(n_valid) / float(frame_len_ticks)) : 0.0f;
     frac_rfi[idx_ft(f_index, t_index)] =
@@ -884,11 +932,19 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     bin_start_ERAL_deg[t_index] = fv.bin_start_ERAL_deg;
     bin_end_ERAL_deg[t_index] = fv.bin_end_ERAL_deg;
     rfi_frame_excision_enabled[t_index] = fv.rfi_frame_excision_enabled;
+    fringestop_enabled[t_index] = fv.fringestop_enabled;
     rfi_frame_excision_num[t_index] = fv.rfi_frame_excision_num;
     std::copy(fv.rfi_frame_excision_threshold.begin(), fv.rfi_frame_excision_threshold.end(),
               rfi_frame_excision_threshold.begin() + t_index * MAX_NUM_RFI_THRESHOLDS);
     std::copy(fv.rfi_frame_excision_fraction.begin(), fv.rfi_frame_excision_fraction.end(),
               rfi_frame_excision_fraction.begin() + t_index * MAX_NUM_RFI_THRESHOLDS);
+    frac_rfi_first_stage_enabled[idx_ft(f_index, t_index)] =
+        (frame_len_ticks > 0)
+            ? (float(fv.n_rfi_first_stage_enabled_fpga_ticks) / float(frame_len_ticks))
+            : 0.0f;
+    frac_dtv_mask_enabled[idx_ft(f_index, t_index)] =
+        (frame_len_ticks > 0) ? (float(fv.n_dtv_mask_enabled_fpga_ticks) / float(frame_len_ticks))
+                              : 0.0f;
 
     // Mark (f, t) as added
     size_t si = idx_ft(f_index, t_index);
@@ -945,6 +1001,83 @@ std::optional<std::string> N2FileData::_get_final_filename() {
     const std::string basename = buf.str();
     std::filesystem::path final_path = std::filesystem::path(base_dir) / basename;
     return final_path.string();
+}
+
+std::pair<std::uint64_t, std::uint64_t> N2FileData::fpga_tick_span() const {
+    std::uint64_t span_start = std::numeric_limits<std::uint64_t>::max();
+    std::uint64_t span_end = 0;
+    for (std::size_t t = 0; t < frame_length_fpga_ticks.size(); ++t) {
+        if (frame_length_fpga_ticks[t] == 0)
+            continue; // no frame in this slot
+        span_start = std::min(span_start, fpga_start_tick[t]);
+        span_end = std::max(span_end, fpga_start_tick[t] + frame_length_fpga_ticks[t]);
+    }
+    if (span_end == 0)
+        return {0, 0};
+    return {span_start, span_end};
+}
+
+namespace {
+// Rows per HDF5 chunk of the /bad_feed_mask time axis: about ten seconds of 21 ms mask frames.
+constexpr std::size_t bad_feed_mask_chunk_rows = 512;
+} // namespace
+
+std::vector<std::int32_t> N2FileData::freq_ids_with_frames() const {
+    const auto min_freq_id = Telescope::instance().cast<CHORDTelescope>().min_science_freq_id();
+    std::vector<std::int32_t> freq_ids;
+    for (std::size_t f = 0; f < num_file_f; ++f)
+        for (std::size_t t = 0; t < num_file_t; ++t)
+            if (added_ft[f * num_file_t + t]) {
+                freq_ids.push_back(static_cast<std::int32_t>(min_freq_id + f));
+                break;
+            }
+    return freq_ids;
+}
+
+void N2FileData::create_bad_feed_mask(std::size_t num_stream, std::size_t num_freq,
+                                      std::size_t num_pol, std::size_t num_dish) {
+    h5_file->createGroup("/bad_feed_mask");
+
+    // Filled in when the file closes, with the streams registered by then.
+    _check_create_dataset(*h5_file, "/bad_feed_mask/stream_freq_id", {num_stream, num_freq},
+                          {"stream", "freq_in_stream"}, HighFive::create_datatype<std::int32_t>(),
+                          HighFive::DataSetCreateProps::Empty());
+
+    // Rows are appended as the file's time bins arrive, so the time axis is unlimited.
+    HighFive::DataSetCreateProps mask_props = _compressed_props();
+    mask_props.add(HighFive::Chunking({bad_feed_mask_chunk_rows, num_stream, num_pol, num_dish}));
+    HighFive::DataSpace mask_space({0, num_stream, num_pol, num_dish},
+                                   {HighFive::DataSpace::UNLIMITED, num_stream, num_pol, num_dish});
+    h5_file->createDataSet<std::int8_t>("/bad_feed_mask/mask", mask_space, mask_props)
+        .createAttribute("axis", std::vector<std::string>{"time", "stream", "pol", "dish"});
+    HighFive::DataSetCreateProps seq_props = HighFive::DataSetCreateProps::Empty();
+    seq_props.add(HighFive::Chunking({bad_feed_mask_chunk_rows}));
+    h5_file
+        ->createDataSet<std::uint64_t>("/bad_feed_mask/fpga_seq_num",
+                                       HighFive::DataSpace({0}, {HighFive::DataSpace::UNLIMITED}),
+                                       seq_props)
+        .createAttribute("axis", std::vector<std::string>{"time"});
+    bad_feed_mask_started = true;
+}
+
+void N2FileData::write_bad_feed_mask_freqs(const std::vector<std::int32_t>& table) {
+    h5_file->getDataSet("/bad_feed_mask/stream_freq_id").write_raw(table.data());
+}
+
+void N2FileData::append_bad_feed_mask(const std::vector<std::uint64_t>& seqs,
+                                      const std::vector<std::int8_t>& masks) {
+    const std::size_t n = seqs.size();
+    if (n == 0)
+        return;
+    HighFive::DataSet mask_ds = h5_file->getDataSet("/bad_feed_mask/mask");
+    std::vector<std::size_t> dims = mask_ds.getDimensions();
+    const std::size_t rows = dims[0];
+    dims[0] = rows + n;
+    mask_ds.resize(dims);
+    mask_ds.select({rows, 0, 0, 0}, {n, dims[1], dims[2], dims[3]}).write_raw(masks.data());
+    HighFive::DataSet seq_ds = h5_file->getDataSet("/bad_feed_mask/fpga_seq_num");
+    seq_ds.resize({rows + n});
+    seq_ds.select({rows}, {n}).write_raw(seqs.data());
 }
 
 bool N2FileData::flush_to_disk() {
@@ -1014,6 +1147,9 @@ bool N2FileData::flush_to_disk() {
         h5_file->getDataSet(flags_group_prefix + "/pl_fpga_count")
             .select({0, 0}, {num_file_f, num_file_t})
             .write_raw(pl_fpga_count.data());
+        h5_file->getDataSet(flags_group_prefix + "/variance_pair_count")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(variance_pair_count.data());
         h5_file->getDataSet(flags_group_prefix + "/frac_lost")
             .select({0, 0}, {num_file_f, num_file_t})
             .write_raw(frac_lost.data());
@@ -1052,6 +1188,7 @@ bool N2FileData::flush_to_disk() {
         h5_file->getDataSet("/bin_start_ERAL_deg").write(bin_start_ERAL_deg);
         h5_file->getDataSet("/bin_end_ERAL_deg").write(bin_end_ERAL_deg);
         h5_file->getDataSet("/rfi_frame_excision_enabled").write(rfi_frame_excision_enabled);
+        h5_file->getDataSet("/fringestop_enabled").write(fringestop_enabled);
         h5_file->getDataSet("/rfi_frame_excision_num").write(rfi_frame_excision_num);
         h5_file->getDataSet("/rfi_frame_excision_threshold")
             .select({0, 0}, {num_file_t, MAX_NUM_RFI_THRESHOLDS})
@@ -1059,6 +1196,12 @@ bool N2FileData::flush_to_disk() {
         h5_file->getDataSet("/rfi_frame_excision_fraction")
             .select({0, 0}, {num_file_t, MAX_NUM_RFI_THRESHOLDS})
             .write_raw(rfi_frame_excision_fraction.data());
+        h5_file->getDataSet("/frac_rfi_first_stage_enabled")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(frac_rfi_first_stage_enabled.data());
+        h5_file->getDataSet("/frac_dtv_mask_enabled")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(frac_dtv_mask_enabled.data());
     } catch (const HighFive::Exception& e) {
         FATAL_ERROR_NON_OO("Failed to write data to HDF5 file {}: {}", partial_filepath, e.what());
         has_error = true;
@@ -1096,7 +1239,8 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
           [](const kotekan::Stage& stage) {
               return const_cast<kotekan::Stage&>(stage).main_thread();
           }),
-    _base_dir(get_acq_base_dir_path(config.get<std::string>(unique_name, "base_dir"))),
+    _base_dir(hdf5::acq_dir_path(config.get<std::string>(unique_name, "base_dir"),
+                                 std::chrono::system_clock::now())),
     _baseband_gain_file(config.get_default<std::string>(unique_name, "baseband_gain_file", "")),
     _baseband_gain_update_idx(config.get_default<int>(unique_name, "baseband_gain_update_idx", -1)),
     _num_file_t(config.get<std::uint64_t>(unique_name, "num_file_t")),
@@ -1111,6 +1255,9 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
     _max_frames(config.get_default<int>(unique_name, "max_frames", -1)),
     _input_order(config.get<ElementOrder>(unique_name, "input_order")),
     _buffer(get_buffer("in_buf")),
+    _bad_feed_mask_buf(config.exists(unique_name, "in_bad_feed_mask_buf")
+                           ? get_buffer("in_bad_feed_mask_buf")
+                           : nullptr),
     _write_time_metric(kotekan::prometheus::Metrics::instance().add_gauge(
         "kotekan_hdf5N2Write_write_time_seconds", unique_name)),
     _n_datasets_metric(kotekan::prometheus::Metrics::instance().add_gauge(
@@ -1130,9 +1277,41 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
     _finalize_failures_metric(kotekan::prometheus::Metrics::instance().add_counter(
         "kotekan_hdf5N2Write_finalize_failures_total", unique_name, {"reason"})),
     _unfinalized_file_metric(kotekan::prometheus::Metrics::instance().add_gauge(
-        "kotekan_hdf5N2Write_unfinalized_file", unique_name, {"abs_file_idx", "partial_path"})) {
+        "kotekan_hdf5N2Write_unfinalized_file", unique_name, {"abs_file_idx", "partial_path"})),
+    _bad_feed_mask_frames_metric(kotekan::prometheus::Metrics::instance().add_counter(
+        "kotekan_hdf5N2Write_bad_feed_mask_frames_total", unique_name, {"stream"})),
+    _bad_feed_mask_missing_metric(kotekan::prometheus::Metrics::instance().add_counter(
+        "kotekan_hdf5N2Write_bad_feed_mask_missing_frames_total", unique_name, {"stream"})),
+    _bad_feed_mask_late_metric(kotekan::prometheus::Metrics::instance().add_counter(
+        "kotekan_hdf5N2Write_bad_feed_mask_late_frames_total", unique_name, {"stream"})),
+    _bad_feed_mask_unmasked_metric(kotekan::prometheus::Metrics::instance().add_counter(
+        "kotekan_hdf5N2Write_bad_feed_mask_unmasked_freqs_total", unique_name, {"stream"})) {
 
     _buffer->register_consumer(unique_name);
+
+    if (_bad_feed_mask_buf != nullptr) {
+        _bad_feed_mask_buf->register_consumer(unique_name);
+        const std::shared_ptr<const kotekan::GenericNDArray> mask_desc =
+            _bad_feed_mask_buf->require_frame_desc<kotekan::GenericNDArray>();
+        if (mask_desc->get_value_datatype() != kotekan::int8 || mask_desc->get_rank() != 3
+            || mask_desc->get_extent(0) != 1)
+            FATAL_ERROR("in_bad_feed_mask_buf {:s} must be int8 [1, P, D]",
+                        _bad_feed_mask_buf->buffer_name);
+        _bad_feed_mask_num_pol = mask_desc->get_extent(1);
+        _bad_feed_mask_num_dish = mask_desc->get_extent(2);
+        _bad_feed_mask_row_len = _bad_feed_mask_num_pol * _bad_feed_mask_num_dish;
+
+        const std::size_t num_science_freqs =
+            Telescope::instance().cast<CHORDTelescope>().num_science_freqs();
+        _bad_feed_mask_num_stream =
+            config.get<std::uint32_t>(unique_name, "num_bad_feed_mask_streams");
+        if (_bad_feed_mask_num_stream == 0 || _bad_feed_mask_num_stream > num_science_freqs)
+            FATAL_ERROR("num_bad_feed_mask_streams must be in [1, {:d}], got {:d}",
+                        num_science_freqs, _bad_feed_mask_num_stream);
+        _bad_feed_mask_num_freq =
+            (num_science_freqs + _bad_feed_mask_num_stream - 1) / _bad_feed_mask_num_stream;
+        _bad_feed_mask_streams.resize(_bad_feed_mask_num_stream);
+    }
 
     // Resolve baseband_gain_host_info once: it names a config path (e.g.
     // /fpga_controller) to a block exposing host, port, and an optional
@@ -1219,9 +1398,14 @@ hdf5N2Write::hdf5N2Write(kotekan::Config& config, const std::string& unique_name
     }
 }
 
-hdf5N2Write::~hdf5N2Write() {}
+hdf5N2Write::~hdf5N2Write() {
+    // main_thread joins it unless a FatalError cut it short.
+    _bad_feed_mask_stop = true;
+    if (_bad_feed_mask_thread.joinable())
+        _bad_feed_mask_thread.join();
+}
 
-std::uint64_t hdf5N2Write::_get_abs_file_idx(const N2FrameView& fv) const {
+size_t hdf5N2Write::_get_abs_file_idx(const N2FrameView& fv) const {
     // Get the absolute file index based on the absolute frame index and
     // configured number of time frames per file.
 
@@ -1229,9 +1413,242 @@ std::uint64_t hdf5N2Write::_get_abs_file_idx(const N2FrameView& fv) const {
     return fv.abs_time_idx / _num_file_t;
 }
 
+void hdf5N2Write::_bad_feed_mask_ingest() {
+    // The same catch Stage::start gives main_thread: FATAL_ERROR has already called
+    // exit_kotekan, so the main thread stops the stage.
+    try {
+        _bad_feed_mask_ingest_loop();
+    } catch (const FatalError& e) {
+        ERROR("Bad feed mask ingest thread caught FatalError: {:s}", e.what());
+    }
+}
+
+void hdf5N2Write::_bad_feed_mask_ingest_loop() {
+    int frame_id = 0;
+    while (!stop_thread && !_bad_feed_mask_stop) {
+        // A bounded wait, so a stop request is noticed without a buffer shutdown.
+        timespec deadline;
+        clock_gettime(CLOCK_REALTIME, &deadline);
+        deadline.tv_nsec += 100'000'000;
+        if (deadline.tv_nsec >= 1'000'000'000) {
+            deadline.tv_sec += 1;
+            deadline.tv_nsec -= 1'000'000'000;
+        }
+        const int status =
+            _bad_feed_mask_buf->wait_for_full_frame_timeout(unique_name, frame_id, deadline);
+        if (status < 0)
+            break;
+        if (status > 0)
+            continue;
+        const std::int8_t* frame = (const std::int8_t*)_bad_feed_mask_buf->frames[frame_id];
+        const std::shared_ptr<chordMetadata> meta =
+            get_chord_metadata(_bad_feed_mask_buf, frame_id);
+
+        if (!meta->has_coarse_freq() || meta->get_coarse_freq().empty()) {
+            FATAL_ERROR("Bad feed mask frame on {:s} carries no coarse frequencies, so the stream "
+                        "that applied it cannot be identified.",
+                        _bad_feed_mask_buf->buffer_name);
+        }
+        const std::vector<int> coarse_freq = meta->get_coarse_freq();
+        const std::size_t stream_id = _bad_feed_mask_stream(coarse_freq.front());
+        const std::int64_t step = meta->get_time_downsampling_fpga();
+        const std::uint64_t seq = meta->get_fpga_seq_num();
+        if (step <= 0) {
+            FATAL_ERROR("Bad feed mask frame on {:s} has no time_downsampling_fpga, the samples "
+                        "per mask frame.",
+                        _bad_feed_mask_buf->buffer_name);
+        }
+
+        std::uint64_t missing = 0;
+        bool late = false;
+        {
+            std::lock_guard<std::mutex> lock(_bad_feed_mask_lock);
+            if (_bad_feed_mask_step == 0)
+                _bad_feed_mask_step = step;
+            if (step != _bad_feed_mask_step) {
+                FATAL_ERROR("Bad feed mask stream {:d} has {:d} samples per frame, the others "
+                            "{:d}.",
+                            stream_id, step, _bad_feed_mask_step);
+            }
+            BfMaskStream& stream = _bad_feed_mask_streams[stream_id];
+            if (stream.coarse_freq.empty()) {
+                for (const int freq_id : coarse_freq)
+                    if (_bad_feed_mask_stream(freq_id) != stream_id)
+                        FATAL_ERROR("Bad feed mask frame on {:s} has frequencies {:d} and {:d}, "
+                                    "which belong to different streams of {:d}.",
+                                    _bad_feed_mask_buf->buffer_name, coarse_freq.front(), freq_id,
+                                    _bad_feed_mask_num_stream);
+                if (coarse_freq.size() > _bad_feed_mask_num_freq)
+                    FATAL_ERROR("Bad feed mask stream {:d} has {:d} frequencies, more than the "
+                                "{:d} it can own.",
+                                stream_id, coarse_freq.size(), _bad_feed_mask_num_freq);
+                stream.coarse_freq.assign(coarse_freq.begin(), coarse_freq.end());
+                INFO("Bad feed mask stream {:d}: {:d} coarse frequencies, first frame at seq {:d}",
+                     stream_id, coarse_freq.size(), seq);
+            } else if (!std::equal(stream.coarse_freq.begin(), stream.coarse_freq.end(),
+                                   coarse_freq.begin(), coarse_freq.end())) {
+                FATAL_ERROR("Bad feed mask stream {:d}: coarse frequencies changed ({:d} -> {:d} "
+                            "of them), so two senders share the stream or one was reconfigured.",
+                            stream_id, stream.coarse_freq.size(), coarse_freq.size());
+            }
+            if (stream.has_last && seq > stream.last_seq)
+                missing = (seq - stream.last_seq) / step - 1;
+            else if (stream.has_last)
+                WARN("Bad feed mask stream {:d}: seq {:d} arrived after {:d}", stream_id, seq,
+                     stream.last_seq);
+            stream.last_seq = seq;
+            stream.has_last = true;
+            // A frame whose row a file has already written stays recorded as not received.
+            late = seq < stream.written_upto;
+            if (!late
+                && !stream.samples
+                        .emplace(seq,
+                                 std::vector<std::int8_t>(frame, frame + _bad_feed_mask_row_len))
+                        .second)
+                FATAL_ERROR("Bad feed mask stream {:d}: a second frame for seq {:d}", stream_id,
+                            seq);
+            // Bound what is held while no file takes it.
+            while (stream.samples.size() > bad_feed_mask_max_samples)
+                stream.samples.erase(stream.samples.begin());
+        }
+        _bad_feed_mask_frames_metric.labels({std::to_string(stream_id)}).inc();
+        if (late) {
+            _bad_feed_mask_late_metric.labels({std::to_string(stream_id)}).inc();
+            WARN("Bad feed mask stream {:d}: seq {:d} arrived after its row was written", stream_id,
+                 seq);
+        }
+        if (missing > 0) {
+            _bad_feed_mask_missing_metric.labels({std::to_string(stream_id)}).inc(missing);
+            WARN("Bad feed mask stream {:d}: {:d} frames missing before seq {:d}", stream_id,
+                 missing, seq);
+        }
+
+        _bad_feed_mask_buf->mark_frame_empty(unique_name, frame_id);
+        frame_id = (frame_id + 1) % _bad_feed_mask_buf->num_frames;
+    }
+}
+
+void hdf5N2Write::_bad_feed_mask_append(N2FileData& filedata, std::uint64_t upto_seq) {
+    if (_bad_feed_mask_buf == nullptr)
+        return;
+    std::lock_guard<std::mutex> lock(_bad_feed_mask_lock);
+    const std::uint64_t step = _bad_feed_mask_step;
+    if (step == 0)
+        return; // no stream has delivered a frame yet
+    try {
+        if (!filedata.bad_feed_mask_started) {
+            const auto [span_start, span_end] = filedata.fpga_tick_span();
+            if (span_end == 0)
+                return;
+            filedata.create_bad_feed_mask(_bad_feed_mask_num_stream, _bad_feed_mask_num_freq,
+                                          _bad_feed_mask_num_pol, _bad_feed_mask_num_dish);
+            // The first grid sample overlapping the file's span.
+            filedata.bad_feed_mask_next_seq = span_start - span_start % step;
+        }
+        std::vector<std::uint64_t> seqs;
+        std::vector<std::int8_t> masks;
+        std::uint64_t seq = filedata.bad_feed_mask_next_seq;
+        for (; seq < upto_seq; seq += step) {
+            seqs.push_back(seq);
+            for (const BfMaskStream& stream : _bad_feed_mask_streams) {
+                const auto sample = stream.samples.find(seq);
+                if (sample == stream.samples.end())
+                    masks.insert(masks.end(), _bad_feed_mask_row_len, static_cast<std::int8_t>(-1));
+                else
+                    masks.insert(masks.end(), sample->second.begin(), sample->second.end());
+            }
+        }
+        filedata.bad_feed_mask_next_seq = seq;
+        for (BfMaskStream& stream : _bad_feed_mask_streams)
+            stream.written_upto = std::max(stream.written_upto, seq);
+        filedata.append_bad_feed_mask(seqs, masks);
+    } catch (const std::exception& e) {
+        FATAL_ERROR("Failed to write /bad_feed_mask to {}: {}", filedata.partial_filepath,
+                    e.what());
+    }
+}
+
+void hdf5N2Write::_bad_feed_mask_prune(const std::map<size_t, std::unique_ptr<N2FileData>>& files) {
+    if (_bad_feed_mask_buf == nullptr)
+        return;
+    // Samples before every open file's cursor have been written wherever they belong.
+    std::uint64_t keep_from = std::numeric_limits<std::uint64_t>::max();
+    for (const auto& [idx, file] : files)
+        if (file->bad_feed_mask_started)
+            keep_from = std::min(keep_from, file->bad_feed_mask_next_seq);
+    if (keep_from == std::numeric_limits<std::uint64_t>::max())
+        return;
+    std::lock_guard<std::mutex> lock(_bad_feed_mask_lock);
+    for (BfMaskStream& stream : _bad_feed_mask_streams)
+        stream.samples.erase(stream.samples.begin(), stream.samples.lower_bound(keep_from));
+}
+
+std::size_t hdf5N2Write::_bad_feed_mask_stream(std::int32_t freq_id) const {
+    const CHORDTelescope& telescope = Telescope::instance().cast<CHORDTelescope>();
+    const std::int64_t min_freq_id = telescope.min_science_freq_id();
+    const std::int64_t max_freq_id = telescope.max_science_freq_id();
+    if (freq_id < min_freq_id || freq_id > max_freq_id)
+        FATAL_ERROR("Bad feed mask frequency {:d} is outside the science band [{:d}, {:d}].",
+                    freq_id, min_freq_id, max_freq_id);
+    return (freq_id - min_freq_id) % _bad_feed_mask_num_stream;
+}
+
+void hdf5N2Write::_bad_feed_mask_finish(N2FileData& filedata) {
+    if (_bad_feed_mask_buf == nullptr)
+        return;
+    const auto [span_start, span_end] = filedata.fpga_tick_span();
+    if (span_end == 0)
+        return;
+    _bad_feed_mask_append(filedata, span_end);
+
+    std::lock_guard<std::mutex> lock(_bad_feed_mask_lock);
+    if (!filedata.bad_feed_mask_started)
+        WARN("File {:d} has data but no bad feed mask frame has arrived; /bad_feed_mask has no "
+             "rows.",
+             filedata.abs_file_idx);
+    // A frequency's data and mask come from the same X-engine process, so data its registered
+    // stream does not list is from a miswired sender. A stream yet to register (a late start, a
+    // dead node) has its rows recorded as not received.
+    std::vector<std::uint64_t> unmasked(_bad_feed_mask_num_stream, 0);
+    for (const std::int32_t freq_id : filedata.freq_ids_with_frames()) {
+        const std::size_t stream_id = _bad_feed_mask_stream(freq_id);
+        const std::vector<std::int32_t>& freqs = _bad_feed_mask_streams[stream_id].coarse_freq;
+        if (freqs.empty())
+            ++unmasked[stream_id];
+        else if (std::find(freqs.begin(), freqs.end(), freq_id) == freqs.end())
+            FATAL_ERROR("File {:d} has data at frequency {:d}, which its bad feed mask stream "
+                        "{:d} does not list.",
+                        filedata.abs_file_idx, freq_id, stream_id);
+    }
+    for (std::size_t i = 0; i < _bad_feed_mask_num_stream; ++i) {
+        if (unmasked[i] == 0)
+            continue;
+        _bad_feed_mask_unmasked_metric.labels({std::to_string(i)}).inc(unmasked[i]);
+        WARN("File {:d} has data at {:d} frequencies of bad feed mask stream {:d}, which has not "
+             "registered; their mask rows are -1.",
+             filedata.abs_file_idx, unmasked[i], i);
+    }
+
+    std::vector<std::int32_t> table(_bad_feed_mask_num_stream * _bad_feed_mask_num_freq, -1);
+    for (std::size_t i = 0; i < _bad_feed_mask_num_stream; ++i) {
+        const std::vector<std::int32_t>& freqs = _bad_feed_mask_streams[i].coarse_freq;
+        std::copy(freqs.begin(), freqs.end(), table.begin() + i * _bad_feed_mask_num_freq);
+    }
+    try {
+        if (!filedata.bad_feed_mask_started)
+            filedata.create_bad_feed_mask(_bad_feed_mask_num_stream, _bad_feed_mask_num_freq,
+                                          _bad_feed_mask_num_pol, _bad_feed_mask_num_dish);
+        filedata.write_bad_feed_mask_freqs(table);
+    } catch (const std::exception& e) {
+        FATAL_ERROR("Failed to write /bad_feed_mask to {}: {}", filedata.partial_filepath,
+                    e.what());
+    }
+}
+
 bool hdf5N2Write::_finalize_file(N2FileData& filedata) {
     const std::string abs_idx = std::to_string(filedata.abs_file_idx);
     DEBUG_NON_OO("hdf5N2Write: Flushing and closing file {}...", abs_idx);
+    _bad_feed_mask_finish(filedata);
     try {
         filedata.flush_to_disk();
     } catch (const HighFive::Exception& e) {
@@ -1419,6 +1836,11 @@ void hdf5N2Write::main_thread() {
         }
     }
 
+    // Mask frames arrive at line rate from every X-engine half; take them in on their own
+    // thread so that the buffer drains however long a file write takes.
+    if (_bad_feed_mask_buf != nullptr)
+        _bad_feed_mask_thread = std::thread(&hdf5N2Write::_bad_feed_mask_ingest, this);
+
     // Main stage thread
     while (!stop_thread) {
 
@@ -1461,9 +1883,9 @@ void hdf5N2Write::main_thread() {
         } else {
             // Create N2FileData for file (also looks for .partial)
             auto N2FileData_obj = std::make_unique<N2FileData>(
-                N2FileData::CHORD, _num_file_t, fv, frame_recv_time, abs_file_idx, _input_order, _blocksize_f,
-                _blocksize_p, _blocksize_t, _compression, _compression_level, _use_bitshuffle,
-                _base_dir, _baseband_gain_file, _baseband_gain_update_idx);
+                N2FileData::CHORD, _num_file_t, fv, frame_recv_time, abs_file_idx, _input_order,
+                _blocksize_f, _blocksize_p, _blocksize_t, _compression, _compression_level,
+                _use_bitshuffle, _base_dir, _baseband_gain_file, _baseband_gain_update_idx);
 
             filedata.emplace(abs_file_idx, std::move(N2FileData_obj));
             N2FileData_ptr = filedata.find(abs_file_idx)->second.get();
@@ -1519,6 +1941,10 @@ void hdf5N2Write::main_thread() {
         N2FileData_ptr->last_update_wall_s = frame_recv_time;
         _update_file_metrics(*N2FileData_ptr);
 
+        // Mask rows up to this bin's start; the bin's own rows follow with the next bin.
+        _bad_feed_mask_append(*N2FileData_ptr, fv.fpga_start_tick);
+        _bad_feed_mask_prune(filedata);
+
         // If buffer full, flush
         double elapsed_writing_frame = 0.0;
         if (N2FileData_ptr->full()) {
@@ -1556,6 +1982,11 @@ void hdf5N2Write::main_thread() {
         _grace_finalize_files(filedata, &abs_file_idx);
 
     } // while !stop_thread
+
+    if (_bad_feed_mask_thread.joinable()) {
+        _bad_feed_mask_stop = true;
+        _bad_feed_mask_thread.join();
+    }
 
     // Finalize any partially-filled datasets on exit
     for (auto& file : filedata) {
