@@ -152,6 +152,13 @@ FNAV_EPH_FIELDS = {
 }
 
 
+# GST on pages 1-4: page type -> (WN start or None, TOW start) in the 238-bit content, a 12-bit
+# week from GST's origin (GPS week 1024) and a 20-bit second of week. The rest of each page's
+# layout puts them here: page 1 after its E5a health, pages 2 and 3 after the orbit, page 4 (no
+# WN) after the GST-GPS offset.
+FNAV_TIME = {1: (155, 167), 2: (182, 194), 3: (174, 186), 4: (None, 189)}
+
+
 def parse_fnav_ephemeris(pages_by_type):
     """pages_by_type: {page_type: 238-bit content}. The orbit lives on types 2,3,4 (required,
     and enough for the BRDC position cross-check); type 1 (clock t0c/af*) is folded in when

@@ -16,6 +16,7 @@ nav_obs: {utc_ref, rec_dt, br, phase, bits=[[idx,+-1],...]}. For B2a-data the co
 symbol per 5 ms (navwipe_bit_records 5 over 1 ms records -> br=5, rec_dt=0.001, br*rec_dt=0.005).
 """
 
+import math
 import time
 
 import numpy as np
@@ -34,7 +35,9 @@ class _PrnState:
     def __init__(self):
         self.emits = {}  # slot0 -> np.array(+-1) one per distinct nav_obs emit
         self.last_obs = None
-        self.frames = {}  # mestype -> (frame_bits[288], sow, t_decoded, start slot)
+        # mestype -> (frame_bits[288], sow, t_decoded, start slot, host-labelled UTC of the
+        # frame's first preamble symbol edge)
+        self.frames = {}
         self.n_frames = 0  # frames decoded (decode_frame returns only CRC-OK frames)
         self.n_crc = 0  # frames with valid CRC
         # frame candidate slots already tried: the stitched run does not change under a covered
@@ -44,6 +47,8 @@ class _PrnState:
         # earlier in the stream may belong to the old issue
         self.issue_at = None
         self.last_decode = 0.0
+        self.sym_s = SYM_S
+        self.edge_s = 0.0  # slot * sym_s + edge_s is a symbol edge's host-labelled UTC
 
 
 class Bcnav2Predictor:
@@ -70,11 +75,15 @@ class Bcnav2Predictor:
         st.last_obs = key
         sym_s = br * rec_dt
         m = {}
+        frac = None
         for bi, sg in pairs:
             bi, sg = int(bi), int(sg)
             if sg not in (1, -1):
                 continue
-            slot = int(round((utc_ref + (bi * br - phase) * rec_dt) / sym_s))
+            t_edge = utc_ref + (bi * br - phase) * rec_dt
+            slot = int(round(t_edge / sym_s))
+            if frac is None:
+                frac = t_edge - slot * sym_s
             m[slot] = sg
         if len(m) < 2:
             return
@@ -86,7 +95,9 @@ class Bcnav2Predictor:
             return
         # a symbol edge near half a slot can round this emit one slot off the history it
         # overlaps; line it up with that history
-        slot0 += emit_offset(slot0, arr, st.emits.items())
+        d = emit_offset(slot0, arr, st.emits.items())
+        slot0 += d
+        st.sym_s, st.edge_s = sym_s, frac - d * sym_s
         st.emits[slot0] = arr
         if len(st.emits) > EMIT_MAX:
             for s in sorted(st.emits)[:-EMIT_MAX]:
@@ -158,11 +169,14 @@ class Bcnav2Predictor:
                     st.issue_at = at
                 if mt == 11 and st.issue_at is not None and at < st.issue_at:
                     continue
-                st.frames[mt] = (bits, sow, time.time(), at)
+                # placed now, from the newest emit's edge, as fnav_predictor places its pages
+                st.frames[mt] = (bits, sow, time.time(), at, at * st.sym_s + st.edge_s)
 
     # ----------------------------------------------------------------- serve
     def ephemeris(self, prn):
-        """SI ephemeris from message types 10 & 11 (the orbit) cached within FRAME_TTL_S."""
+        """SI ephemeris from message types 10 & 11 (the orbit) cached within FRAME_TTL_S, with
+        the clock of the newest type 30-34 when it is the same upload (t_oc = t_oe), with the
+        Kepler names decoded_eph's relativistic term reads (M0, dn, sqrtA)."""
         st = self._p.get(prn)
         if st is None:
             return None
@@ -171,6 +185,15 @@ class Bcnav2Predictor:
         if not all(t in fresh for t in (10, 11)):
             return None
         eph = B.parse_bcnav2_ephemeris({mt: fresh[mt][0] for mt in fresh})
+        clocks = [(v[3], mt) for mt, v in fresh.items() if mt in B.BCNV2_CLK_AT]
+        if eph is not None and clocks:
+            mt = max(clocks)[1]
+            clk = B.parse_bcnav2_clock(fresh[mt][0], mt)
+            if clk["t_oc"] == eph["t_oe"]:
+                eph.update(clk)
+                eph["M0"] = eph["M_0"]
+                eph["dn"] = eph["dn_0"]
+                eph["sqrtA"] = math.sqrt(eph["A_ref"] + eph["dA"])
         return eph
 
     def health(self, prn):

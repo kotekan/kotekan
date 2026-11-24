@@ -34,13 +34,17 @@ class _PrnState:
     def __init__(self):
         self.emits = {}  # slot0 -> np.array(+-1) one per distinct nav_obs emit
         self.last_obs = None  # (utc_ref, phase, br) dedup
-        self.pages = {}  # page_type -> (iodnav, content_bits[238], t_decoded)
+        # page_type -> (iodnav, content_bits[238], t_decoded, host-labelled UTC of the page's
+        # first sync symbol edge)
+        self.pages = {}
         self.n_pages = 0  # pages decoded (sync-valid)
         self.n_crc = 0  # pages assembled with valid CRC
         # page candidate slots already tried: the stitched run does not change under a covered
         # slot, so each sync match is decoded once
         self.tried = set()
         self.last_decode = 0.0
+        self.sym_s = SYM_S
+        self.edge_s = 0.0  # slot * sym_s + edge_s is a symbol edge's host-labelled UTC
 
 
 class FnavPredictor:
@@ -67,11 +71,15 @@ class FnavPredictor:
         st.last_obs = key
         sym_s = br * rec_dt
         m = {}
+        frac = None
         for bi, sg in pairs:
             bi, sg = int(bi), int(sg)
             if sg not in (1, -1):
                 continue
-            slot = int(round((utc_ref + (bi * br - phase) * rec_dt) / sym_s))
+            t_edge = utc_ref + (bi * br - phase) * rec_dt
+            slot = int(round(t_edge / sym_s))
+            if frac is None:
+                frac = t_edge - slot * sym_s
             m[slot] = sg
         if len(m) < 2:
             return
@@ -83,7 +91,9 @@ class FnavPredictor:
             return
         # a symbol edge near half a slot can round this emit one slot off the history it
         # overlaps; line it up with that history
-        slot0 += emit_offset(slot0, arr, st.emits.items())
+        d = emit_offset(slot0, arr, st.emits.items())
+        slot0 += d
+        st.sym_s, st.edge_s = sym_s, frac - d * sym_s
         st.emits[slot0] = arr
         if len(st.emits) > EMIT_MAX:
             for s in sorted(st.emits)[:-EMIT_MAX]:
@@ -148,7 +158,9 @@ class FnavPredictor:
                 crc_ok, pt = G.check_page(bits)
                 if crc_ok and pt is not None:
                     iod = G._uint(bits[6:16])
-                    st.pages[pt] = (iod, bits, time.time())
+                    # The page's edge is placed now, from the newest emit's: symbol edges move
+                    # ~3 us/s against the slot grid, and a page is kept up to PAGE_TTL_S.
+                    st.pages[pt] = (iod, bits, time.time(), at * st.sym_s + st.edge_s)
                     st.n_crc += 1
 
     # ----------------------------------------------------------------- serve

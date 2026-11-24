@@ -135,6 +135,10 @@ class _PrnState:
         )
         self.pol = {}  # slot0 -> resolved island sign (+-1) in one consistent frame
         self.decoded = {}  # start_slot -> data bits[300] (0/1), CRC-verified
+        # start_slot -> host-labelled UTC of the message's first symbol edge, placed when it
+        # first decodes: symbol edges move ~3 us/s against the slot grid, and a message is
+        # kept ~16 min
+        self.t_host = {}
         self.sym_s = None  # slot period, s
         self.edge_s = 0.0  # slot * sym_s + edge_s is a symbol edge's host-labelled UTC
         self.eph10 = None
@@ -464,6 +468,7 @@ class CnavPredictor:
                     for m in msgs:
                         ss = lo + ph + 2 * m["index"]
                         st.decoded[ss] = np.array(m["bits"], dtype=np.int8)
+                        st.t_host.setdefault(ss, ss * st.sym_s + st.edge_s)
                         if m["type"] == 10:
                             st.eph10 = st.decoded[ss]
                         elif m["type"] == 11:
@@ -483,6 +488,7 @@ class CnavPredictor:
                     if len(st.decoded) > DECODED_MAX:
                         for s in sorted(st.decoded)[:-DECODED_MAX]:
                             st.decoded.pop(s, None)
+                            st.t_host.pop(s, None)
                     for s in list(st.pol):  # bound pol to live emits
                         if s not in st.emits:
                             st.pol.pop(s, None)

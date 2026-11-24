@@ -239,6 +239,25 @@ BCNV2_EPH_FIELDS = {
     "C_UC": (11, 243, 21, True, _P(30)),
 }
 _IODE_10 = (53, 8)  # (start, len) -- IODE in type 10 (type 11 has none)
+WN_10 = (30, 13)  # (start, len) -- BDT week number in type 10, after SOW
+# The clock block, t_oc(11, x300 s) a0(25, 2^-34 s) a1(22, 2^-50) a2(11, 2^-66), IODC(10) after
+# it, by message type: after the status flags in types 30-33, after SISAI_oc in type 34. Found
+# on live frames (11-24): the clock matches the BRDC's to 0.3 ns, with t_oc = t_oe.
+BCNV2_CLK_AT = {30: 42, 31: 42, 32: 42, 33: 42, 34: 64}
+
+
+def parse_bcnav2_clock(frame, mestype):
+    """{t_oc, a0, a1, a2} (s, s/s, s/s^2; t_oc in BDT seconds of week) from a type 30-34
+    frame, or None for another type."""
+    at = BCNV2_CLK_AT.get(mestype)
+    if at is None:
+        return None
+    return {
+        "t_oc": _field(frame, at, 11, False, 300.0),
+        "a0": _field(frame, at + 11, 25, True, _P(34)),
+        "a1": _field(frame, at + 36, 22, True, _P(50)),
+        "a2": _field(frame, at + 58, 11, True, _P(66)),
+    }
 
 
 def parse_bcnav2_ephemeris(frames_by_type):

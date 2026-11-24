@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """The capture's time anchor measured from the sky: how far the host-labelled time of the samples
-is from GPS time, from the CNAV messages the nav decoders read.
+is from GPS time, from the GPS CNAV, Galileo F/NAV and BeiDou B-CNAV2 messages the nav decoders
+read.
 
     python3 gnss_skytime.py MARKS.json ... [--yaml chains_l5.yaml | --site-json FIX.json]
                             [--decoded-eph FILE,...] [--json OUT]
 
 Each mark (nav_decode.py --timemarks-file) is a CRC-checked message: the host-labelled UTC of its
-first symbol's edge, and the TOW count it carries, which is the satellite time at which the next
-message starts. That message started TOW * 6 s - its length (6 s on L5, 12 s on L2C) of satellite
-time; less the satellite clock and plus the range over c, it arrived at that GPS time. The
-anchor error is the host label minus that, to the 1 ms of the records that place the edges. The
-week is a type 10 message's week number, so it holds whatever date the host clock reads; with no
-type 10 yet, the host's own week, to half a week.
+first symbol's edge, and the time count it carries (tx_sow). The message started at that time of
+the satellite's clock; less the satellite clock and plus the range over c, it arrived at that
+GPS time. The anchor error is the host label minus that, to the 1 ms of the records that place
+the edges. The week is a broadcast week number (a CNAV or B-CNAV2 type 10, F/NAV pages 1-3), so
+it holds whatever date the host clock reads; with none yet, the host's own week, to half a
+week.
 
 Positive means the labels are late. bladeRFInput fixes the anchor once, from the system clock at
 the first sample, so a host clock that was wrong when kotekan started shows here for the whole
@@ -35,7 +36,15 @@ from gnss_broker.sky import HINT_MAX_AGE_S
 
 GPS0_UNIX = 315964800.0
 LEAP_S = 18.0
-MSG_S = {"GPS_L5_CNAV": 6.0, "GPS_L2C_CNAV": 12.0}
+# Marked signal -> (constellation, its week number's offset from GPS's): GST counts from GPS
+# week 1024, BDT from week 1356.
+SIGNALS = {
+    "GPS_L5_CNAV": ("G", 0),
+    "GPS_L2C_CNAV": ("G", 0),
+    "GAL_E5AI_FNAV": ("E", 1024),
+    "BDS_B2A_BCNAV2": ("C", 1356),
+}
+R_EARTH = 6371e3
 _KEY = r"\n    %s: ([-0-9.eE+]+)"
 # A GPS satellite at 45 deg elevation, no clock: the first pass's range.
 NOMINAL_ROW = {"range_m": 2.2e7, "sat_clk_s": 0.0}
@@ -46,50 +55,68 @@ def site_of(yaml_path):
     return tuple(float(re.search(_KEY % k, s).group(1)) for k in ("lat", "lon", "alt"))
 
 
+def tx_sow(mark):
+    """GPS seconds of week, before wrapping, at which the marked message started by its
+    satellite's clock. A CNAV TOW counts 6 s to the start of the next message, so the marked one
+    started a message (6 s on L5, 12 s on L2C) earlier. An F/NAV TOW is the GST second at the
+    start of its page, and GST is GPS time to tens of ns. A B-CNAV2 SOW counts 3 s to the start
+    of its frame, in BDT (GPST - 14 s)."""
+    sig, n = mark["signal"], mark["tow"]
+    if sig == "GPS_L5_CNAV":
+        return n * 6.0 - 6.0
+    if sig == "GPS_L2C_CNAV":
+        return n * 6.0 - 12.0
+    if sig == "GAL_E5AI_FNAV":
+        return float(n)
+    return n * 3.0 - ge.BDT_GPST
+
+
 def anchor_error_s(mark, row, g_ref=None):
     """The host label minus the GPS time the message start arrived, s; row is the satellite's
-    predict_all row at about that time (range_m, sat_clk_s). The TOW is placed in the week
-    nearest g_ref (GPS seconds), by default the host label's own."""
+    predict_all row at about that time (range_m, sat_clk_s). The time count is placed in the
+    week nearest g_ref (GPS seconds), by default the host label's own."""
     g_host = mark["t_host"] - GPS0_UNIX + LEAP_S
     g_ref = g_host if g_ref is None else g_ref
-    t_tx = mark["tow"] * 6.0 - MSG_S[mark["signal"]]
+    t_tx = tx_sow(mark)
     t_tx += 604800.0 * round((g_ref - t_tx) / 604800.0)
     return g_host - (t_tx - row["sat_clk_s"] + row["range_m"] / ge.C_LIGHT)
 
 
 def week_ref(marks):
-    """GPS seconds of the newest type 10 message, from its own week number: the week every mark
+    """GPS seconds of the newest mark with a week number, from that number: the week every mark
     is placed in, so a host date off by more than half a week reads right. None without one.
     """
-    tens = [m for m in marks if m.get("wn") is not None and m.get("signal") in MSG_S]
-    if not tens:
+    wns = [m for m in marks if m.get("wn") is not None and m.get("signal") in SIGNALS]
+    if not wns:
         return None
-    m = max(tens, key=lambda m: m["t_host"])
-    return m["wn"] * 604800.0 + m["tow"] * 6.0 - MSG_S[m["signal"]]
+    m = max(wns, key=lambda m: m["t_host"])
+    return (m["wn"] + SIGNALS[m["signal"]][1]) * 604800.0 + tx_sow(m)
 
 
 def measure(marks, orbits, site=None):
     """[(signal, prn, error s)] for the marks whose satellite the orbits know. A first pass on
-    a nominal range (good to ~10 ms) finds the time to evaluate the satellite at, so a host clock
-    hours off still finds it. With the site (ECEF) the light time is the range, to 1 ms;
-    without one it stays nominal, ~10 ms, still enough for the date and the 20 ms epoch. An
-    orbit with no clock (BeiDou's) leaves af0 out, under 1 ms."""
+    a nominal range (good to ~50 ms) finds the time to evaluate the satellite at, so a host clock
+    hours off still finds it. With the site (ECEF) the light time is the range, to 1 ms; without
+    one it is the mean of the zenith and horizon ranges at the satellite's own radius, within
+    ~10 ms for MEO and IGSO alike, still enough for the date and the 20 ms epoch. An orbit with
+    no clock leaves its offset out, under 1 ms."""
     out = []
     g_ref = week_ref(marks)
     for m in marks:
-        if m.get("signal") not in MSG_S:
+        if m.get("signal") not in SIGNALS:
             continue
         t0 = m["t_host"] - anchor_error_s(m, NOMINAL_ROW, g_ref)
         t = ge.gpst_of_utc(datetime.fromtimestamp(t0, tz=timezone.utc))
-        e = orbits.record("G", m["prn"], t)
+        e = orbits.record(SIGNALS[m["signal"]][0], m["prn"], t)
         if e is None:
             continue
-        rng = gnss_fix.geometry(e, site, t)[0] if site is not None else None
-        clk = gnss_fix.sat_state(e, t - (rng or NOMINAL_ROW["range_m"]) / ge.C_LIGHT)[2]
-        row = {
-            "range_m": rng if rng is not None else NOMINAL_ROW["range_m"],
-            "sat_clk_s": clk or 0.0,
-        }
+        if site is not None:
+            rng = gnss_fix.geometry(e, site, t)[0]
+        else:
+            r = float(np.linalg.norm(gnss_fix.sat_state(e, t)[0]))
+            rng = 0.5 * (np.sqrt(r * r - R_EARTH * R_EARTH) + r - R_EARTH)
+        clk = gnss_fix.sat_state(e, t - rng / ge.C_LIGHT)[2]
+        row = {"range_m": rng, "sat_clk_s": clk or 0.0}
         out.append((m["signal"], m["prn"], anchor_error_s(m, row, g_ref)))
     return out
 

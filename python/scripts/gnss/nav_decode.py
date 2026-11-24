@@ -44,8 +44,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import bds_d1_predictor  # noqa: E402
+import beidou_bcnav2  # noqa: E402
 import decode_health  # noqa: E402
 import decoded_eph  # noqa: E402
+import galileo_fnav  # noqa: E402
 import gnss_ephemeris as ge  # noqa: E402
 import glonass_nav_predictor  # noqa: E402
 import nav_fields  # noqa: E402
@@ -222,28 +224,55 @@ def message_types(signal, st):
 
 
 def write_timemarks(srcs, path, now):
-    """Each CRC-checked CNAV message as a time mark: the host-labelled UTC of its first
-    symbol's edge and the TOW count it carries (and a type 10's week number), to measure the
-    capture's time anchor against. The edge is the satellite's newest, to a record (1 ms), and
-    moves ~3 us/s."""
+    """Each CRC-checked message as a time mark, to measure the capture's time anchor against
+    (gnss_skytime.py): the host-labelled UTC of its first symbol's edge, to a record (1 ms), and
+    the time count it carries, as broadcast: a CNAV TOW count (6 s), an F/NAV page's TOW (s), a
+    B-CNAV2 frame's SOW count (3 s). With it the week number where the message has one (a CNAV
+    type 10, F/NAV pages 1-3, a B-CNAV2 type 10). Each message's edge is placed when it decodes:
+    edges move ~3 us/s against the slot grid, and decoders keep messages for minutes."""
     marks = []
     for s in srcs:
-        if s["signal"] not in ("GPS_L5_CNAV", "GPS_L2C_CNAV"):
-            continue
+        sig = s["signal"]
         for prn, st in sorted(s["dec"]._p.items()):
-            if not st.sym_s:
-                continue
-            for slot, bits in sorted(st.decoded.items()):
-                mark = {
-                    "signal": s["signal"],
-                    "prn": prn,
-                    "t_host": round(slot * st.sym_s + st.edge_s, 5),
-                    "tow": nav_fields._read(bits, 20, 17, "u"),
-                    "type": nav_fields._read(bits, 14, 6, "u"),
-                }
-                if mark["type"] == 10:
-                    mark["wn"] = nav_fields._read(bits, 38, 13, "u")
-                marks.append(mark)
+            if sig in ("GPS_L5_CNAV", "GPS_L2C_CNAV") and st.sym_s:
+                for slot, bits in sorted(st.decoded.items()):
+                    mark = {
+                        "signal": sig,
+                        "prn": prn,
+                        "t_host": round(st.t_host[slot], 5),
+                        "tow": nav_fields._read(bits, 20, 17, "u"),
+                        "type": nav_fields._read(bits, 14, 6, "u"),
+                    }
+                    if mark["type"] == 10:
+                        mark["wn"] = nav_fields._read(bits, 38, 13, "u")
+                    marks.append(mark)
+            elif sig == "GAL_E5AI_FNAV":
+                for pt, (_, bits, _, t_host) in sorted(st.pages.items()):
+                    if pt not in galileo_fnav.FNAV_TIME:
+                        continue
+                    wn_at, tow_at = galileo_fnav.FNAV_TIME[pt]
+                    mark = {
+                        "signal": sig,
+                        "prn": prn,
+                        "t_host": round(t_host, 5),
+                        "tow": nav_fields._read(bits, tow_at, 20, "u"),
+                        "type": pt,
+                    }
+                    if wn_at is not None:
+                        mark["wn"] = nav_fields._read(bits, wn_at, 12, "u")
+                    marks.append(mark)
+            elif sig == "BDS_B2A_BCNAV2":
+                for mt, (bits, sow, _, _, t_host) in sorted(st.frames.items()):
+                    mark = {
+                        "signal": sig,
+                        "prn": prn,
+                        "t_host": round(t_host, 5),
+                        "tow": sow,
+                        "type": mt,
+                    }
+                    if mt == 10:
+                        mark["wn"] = nav_fields._read(bits, *beidou_bcnav2.WN_10, "u")
+                    marks.append(mark)
     write_atomic({"schema": 1, "t": round(now, 2), "marks": marks}, path)
 
 
@@ -444,7 +473,8 @@ def main():
     )
     ap.add_argument(
         "--timemarks-file",
-        help="each decoded CNAV message's host-labelled start and TOW (rewritten every 2 s)",
+        help="each decoded CNAV, F/NAV or B-CNAV2 message's host-labelled start and time "
+        "count (rewritten every 2 s)",
     )
     ap.add_argument("--every", type=float, default=1.0, help="shortest poll period, s")
     ap.add_argument(

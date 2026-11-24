@@ -58,6 +58,8 @@ CLOCK_FIELDS = {
     # CNAV's clock is its type 30-37 block, merged by cnav_predictor when it is the same upload.
     "GPS_L5_CNAV": ("af0", "af1", "af2", "toc", "toe"),
     "GPS_L2C_CNAV": ("af0", "af1", "af2", "toc", "toe"),
+    # B-CNAV2's clock is its type 30-34 block, merged by bcnav2_predictor for the same upload.
+    "BDS_B2A_BCNAV2": ("a0", "a1", "a2", "t_oc", "t_oe"),
     # GuoWang's relay (guowang_csk.py): its clocks with the relay's time-scale offset added back
     "GW_CSK_RELAY": ("af0", "af1", "af2", "toc", "toe"),
 }

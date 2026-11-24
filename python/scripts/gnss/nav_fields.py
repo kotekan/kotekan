@@ -392,9 +392,9 @@ BCNAV2 = {
     30: (
         "clock, group delays, BDGIM ionosphere",
         BC2_HDR
-        + [("IODC", 42, 10, "u", 1, "")]
-        + BC2_CLK(52)
+        + BC2_CLK(42)
         + [
+            ("IODC", 111, 10, "u", 1, ""),
             ("T_GD B2ap", 121, 12, "s", P(-34), "s"),
             ("ISC B2ad", 133, 12, "s", P(-34), "s"),
         ]
@@ -404,9 +404,10 @@ BCNAV2 = {
     34: (
         "SISAI, clock, BDT-UTC",
         BC2_HDR
-        + [("t_op", 42, 11, "u", 300, "s of week"), ("IODC", 64, 10, "u", 1, "")]
-        + BC2_CLK(74)
+        + [("t_op", 42, 11, "u", 300, "s of week")]
+        + BC2_CLK(64)
         + [
+            ("IODC", 133, 10, "u", 1, ""),
             ("A0_UTC", 143, 16, "s", P(-35), "s"),
             ("A1_UTC", 159, 13, "s", P(-51), "s/s"),
             ("A2_UTC", 172, 7, "s", P(-68), "s/s²"),
@@ -421,16 +422,19 @@ BCNAV2 = {
     31: (
         "clock, reduced almanac",
         BC2_HDR
-        + [("IODC", 42, 10, "u", 1, "")]
-        + BC2_CLK(52)
-        + [("WN_a", 121, 13, "u", 1, ""), ("t_oa", 134, 8, "u", P(12), "s")],
+        + BC2_CLK(42)
+        + [
+            ("IODC", 111, 10, "u", 1, ""),
+            ("WN_a", 121, 13, "u", 1, ""),
+            ("t_oa", 134, 8, "u", P(12), "s"),
+        ],
     ),
     32: (
         "clock, Earth orientation",
         BC2_HDR
-        + [("IODC", 42, 10, "u", 1, "")]
-        + BC2_CLK(52)
+        + BC2_CLK(42)
         + [
+            ("IODC", 111, 10, "u", 1, ""),
             ("t_EOP", 121, 16, "u", 16, "s of week"),
             ("PM_X", 137, 21, "s", P(-20), "arcsec"),
             ("dPM_X/dt", 158, 15, "s", P(-21), "arcsec/day"),
@@ -442,7 +446,7 @@ BCNAV2 = {
     ),
     33: (
         "clock, BDT-GNSS time offset, reduced almanac",
-        BC2_HDR + [("IODC", 42, 10, "u", 1, "")] + BC2_CLK(52),
+        BC2_HDR + BC2_CLK(42) + [("IODC", 111, 10, "u", 1, "")],
     ),
     40: (
         "SISAI, midi almanac",
