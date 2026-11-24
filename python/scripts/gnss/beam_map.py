@@ -18,7 +18,8 @@ The plot is orthographic: zenith at the centre, north up, east to the right.
     beam_map.py beam.jsonl [...] [--const GW] [--nside 64] [--el-min 5] [--cn0] [--png beam.png]
                 [--since 2026-11-22T18:00 --until 2026-11-23T06:00] [--dpi 120]
 
---since/--until take ISO times, local unless they carry an offset, or unix seconds.
+--since/--until take ISO times, local unless they carry an offset, or unix seconds. They may
+repeat, pairing in order, to map several windows together (such as nights).
 """
 
 import argparse
@@ -42,8 +43,9 @@ def when(s):
 _T = re.compile(r'"t": ?([0-9.]+)')
 
 
-def load(paths, el_min, t0=None, t1=None):
-    """The present samples at or above el_min, between unix times t0 and t1 when given, as
+def load(paths, el_min, windows=()):
+    """The present samples at or above el_min, inside one of the (t0, t1) unix-time windows when
+    given, as
     (satellite, az, el, snr_db, cn0_coh_db), the satellite being (const, name) where the log names
     it (GuoWang) and (const, prn) where not.
     """
@@ -51,15 +53,11 @@ def load(paths, el_min, t0=None, t1=None):
     for path in paths:
         with open(path) as fh:
             for line in fh:
-                if t0 is not None or t1 is not None:
-                    # rows open with "t": a row outside the window is never parsed
+                if windows:
+                    # rows open with "t": a row outside the windows is never parsed
                     m = _T.search(line, 0, 32)
                     t = float(m.group(1)) if m else None
-                    if (
-                        t is None
-                        or (t0 is not None and t < t0)
-                        or (t1 is not None and t >= t1)
-                    ):
+                    if t is None or not any(t0 <= t < t1 for t0, t1 in windows):
                         continue
                 r = json.loads(line)
                 if not r.get("present") or r["el"] < el_min or not r.get("p_med"):
@@ -181,8 +179,10 @@ def main():
     ap.add_argument("--cn0", action="store_true", help="map C/N0, not the fitted gain")
     ap.add_argument("--png", help="write a plot here")
     ap.add_argument("--dpi", type=int, default=120)
-    ap.add_argument("--since", help="first sample time (ISO, local, or unix s)")
-    ap.add_argument("--until", help="end of the window (exclusive)")
+    ap.add_argument(
+        "--since", action="append", help="first sample time (ISO, local, or unix s)"
+    )
+    ap.add_argument("--until", action="append", help="end of the window (exclusive)")
     ap.add_argument(
         "--smooth-deg",
         type=float,
@@ -190,9 +190,16 @@ def main():
     )
     ap.add_argument("--vrange", nargs=2, type=float, help="colour scale limits (dB)")
     a = ap.parse_args()
-    t0 = when(a.since) if a.since else None
-    t1 = when(a.until) if a.until else None
-    rows = load(a.logs, a.el_min, t0, t1)
+    since, until = a.since or [None], a.until or [None]
+    if len(since) != len(until):
+        raise SystemExit(
+            "--since and --until pair up: give them the same number of times"
+        )
+    windows = []
+    if a.since or a.until:
+        for s, u in zip(since, until):
+            windows.append((when(s) if s else -np.inf, when(u) if u else np.inf))
+    rows = load(a.logs, a.el_min, windows)
     cal = [r[4] - r[3] for r in rows if r[0][0] in "GEC" and r[4] is not None]
     if a.const:
         rows = [r for r in rows if r[0][0] in a.const]
@@ -229,8 +236,10 @@ def main():
             )
     if a.png:
         title = "%s: %d satellites, nside %d" % (a.const or "all", n_sat, a.nside)
-        if a.since or a.until:
-            title += "\n%s to %s" % (a.since or "start", a.until or "end")
+        if windows:
+            title += "\n" + "; ".join(
+                "%s to %s" % (s or "start", u or "end") for s, u in zip(since, until)
+            )
         if a.smooth_deg:
             m = smooth(m, a.smooth_deg)
             title += ", smoothed %.1f deg" % a.smooth_deg
