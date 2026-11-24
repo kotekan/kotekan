@@ -1266,6 +1266,15 @@ b2b_combine:
     bit_export: true
     bit_export_track: 100
 
+# B2b-I has no pilot: its symbols are decided as GuoWang's are, against the squared periods, for
+# the nav-symbol feed (the combiner's bit_export above feeds the B-CNAV3 decoder).
+b2bi_symbols:
+    kotekan_stage: GnssNavSymbols
+    data_buf: b2b_rec_buf
+    n_prn: 31
+    symbol_records: 1
+    out_buf: b2bi_navsym_buf
+
 # ---- Telemetry ----
 # Every chain's records as a CHORD node ships them (GnssTelemPack), gathered in this instance
 # (GnssTelemGather) and served to the broker (telem-gather 127.0.0.1:11061): its tracker code
@@ -1282,14 +1291,20 @@ l5i_navsym_buf: &navsym_buf
 e5ai_navsym_buf: *navsym_buf
 b2ad_navsym_buf: *navsym_buf
 l2cm_navsym_buf: *navsym_buf
+b2bi_navsym_buf: *navsym_buf
 navsym_send:
     kotekan_stage: GnssNavSymbolSend
-    in_bufs: [l2cm_navsym_buf, l5i_navsym_buf, e5ai_navsym_buf, b2ad_navsym_buf]
-    sys: [G, G, E, C]
-    # NSYM signal codes: 1 L2C_CM, 3 L5_I, 4 E5A_I, 6 B2A_D
-    sig: [1, 3, 4, 6]
+    in_bufs: [l2cm_navsym_buf, b2bi_navsym_buf, l5i_navsym_buf, e5ai_navsym_buf, b2ad_navsym_buf]
+    sys: [G, C, G, E, C]
+    # NSYM signal codes: 1 L2C_CM, 2 B2B_I, 3 L5_I, 4 E5A_I, 6 B2A_D
+    sig: [1, 2, 3, 4, 6]
     server_ip: 127.0.0.1
     server_port: 12080
+    # A stall on the path (~1 s seen 11-24) holds the send; keep the connection through it, the
+    # records queued (B2b alone is 1000 a second per satellite) and the oldest dropped past the
+    # cap, rather than close and lose what is in flight.
+    send_timeout_s: 10
+    queue_max: 200000
 
 telem_buf:
     kotekan_buffer: standard

@@ -8,9 +8,10 @@ GnssNavSymbols decides each symbol up to one sign per stream and counts it in it
 receive-time grid (symbol k starts at t0 + k * sym_dt). The decoders' time marks
 (nav_decode --timemarks-file) give the receive time of a message's first symbol and the time
 count it carries, so a mark falls on one symbol of a stream and gives that symbol's satellite
-time. There the stream holds the message's sync pattern (F/NAV), its preamble (B-CNAV2) or, for
-CNAV, which has neither, the message re-encoded; the correlation gives the stream's sign and
-confirms the alignment. Every --every-s this posts each stream's anchor {sig, prn, stream_id,
+time. There the stream holds the message's sync pattern (F/NAV), its preamble (B-CNAV2), its
+preamble and PRN (B-CNAV3) or, for CNAV, which has none, the message re-encoded; the correlation
+gives the stream's sign and confirms the alignment. B-CNAV3's marks come from the combiner's
+emits rather than the stream's own grid, so its frame start is looked for within SLACK symbols. Every --every-s this posts each stream's anchor {sig, prn, stream_id,
 k, sv, sign} to the feed's set_anchors, where it turns the stream's symbols into satellite-time
 indices with their true signs; every later mark is checked against it, and one that disagrees
 replaces it (logged).
@@ -33,6 +34,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import beidou_bcnav2  # noqa: E402
+import beidou_bcnav3  # noqa: E402
 import galileo_fnav  # noqa: E402
 import galileo_inav  # noqa: E402
 import gnss_ephemeris as ge  # noqa: E402
@@ -45,7 +47,13 @@ SOURCES = {
     "l5i_symbols": ("G", 3, 0.01, "timemarks_misc.json", "GPS_L5_CNAV"),
     "e5ai_symbols": ("E", 4, 0.02, "timemarks_fnav.json", "GAL_E5AI_FNAV"),
     "b2ad_symbols": ("C", 6, 0.005, "timemarks_bcnav2.json", "BDS_B2A_BCNAV2"),
+    "b2bi_symbols": ("C", 2, 0.001, "timemarks_bcnav3.json", "BDS_B2B_BCNAV3"),
 }
+# symbols either side of a mark searched for its message start, for marks not on the stream's grid
+SLACK = {"BDS_B2B_BCNAV3": 3}
+# symbols from one sync pattern to the next: a mark older than the status window is carried
+# forward by whole frames (pages) into it, its satellite-time index with it
+PERIOD = {"GAL_E5AI_FNAV": 500, "BDS_B2A_BCNAV2": 600, "BDS_B2B_BCNAV3": 1000}
 MIN_CORR = 0.8  # correlation per symbol a mark's symbols must reach
 REPOST_S = 60.0  # every anchor is posted again this often
 FORGET_S = 600.0  # an anchor whose stream has not been seen this long is forgotten
@@ -79,6 +87,8 @@ def expected(mark, signal):
         return 0, 1 - 2 * np.array(galileo_fnav.SYNC)
     if signal == "BDS_B2A_BCNAV2":
         return 0, 1 - 2 * np.array(beidou_bcnav2.PREAMBLE)
+    if signal == "BDS_B2B_BCNAV3":
+        return 0, 1 - 2 * beidou_bcnav3.preamble_for(int(mark["prn"])).astype(int)
     if "bits" not in mark:
         return None
     v = int(mark["bits"], 16)
@@ -89,19 +99,30 @@ def expected(mark, signal):
 
 
 def mark_sign(mark, signal, buf, k_first, t0, sym_dt):
-    """(k, sign) of a mark on a stream whose symbols buf start at stream index k_first, or None:
-    the stream symbol its message starts at, and the stream's sign from the correlation there
-    with what the message holds (MIN_CORR)."""
-    k = int(round((mark["t_host"] - t0) / sym_dt))
+    """(k, sign, shift) of a mark on a stream whose symbols buf start at stream index k_first, or
+    None: the stream symbol its message starts at, within SLACK of where the mark falls and, for
+    a mark older than buf, carried forward by shift (whole PERIODs) to the first sync in buf; and
+    the stream's sign from the correlation there with what the message holds (MIN_CORR).
+    """
+    k_mark = int(round((mark["t_host"] - t0) / sym_dt))
     exp = expected(mark, signal)
-    if exp is None or k < k_first:
+    if exp is None:
         return None
     off, pat = exp
-    i = k - k_first + off
-    if i + len(pat) > len(buf):
-        return None
-    c = float(np.dot(buf[i : i + len(pat)], pat)) / len(pat)
-    return (k, 1 if c > 0 else -1) if abs(c) >= MIN_CORR else None
+    slack = SLACK.get(signal, 0)
+    shift = 0
+    if signal in PERIOD and k_mark - slack < k_first:
+        p = PERIOD[signal]
+        shift = -((k_mark - slack - k_first) // p) * p
+    best = None
+    for k in range(k_mark + shift - slack, k_mark + shift + slack + 1):
+        i = k - k_first + off
+        if k < k_first or i + len(pat) > len(buf):
+            continue
+        c = float(np.dot(buf[i : i + len(pat)], pat)) / len(pat)
+        if abs(c) >= MIN_CORR and (best is None or abs(c) > abs(best[1])):
+            best = (k, c)
+    return (best[0], 1 if best[1] > 0 else -1, shift) if best else None
 
 
 def anchor_of(row, marks, signal, sysc, t_sym):
@@ -120,7 +141,7 @@ def anchor_of(row, marks, signal, sysc, t_sym):
             continue
         sv = sv_index(m, sysc, t_sym)
         if sv is not None:
-            return got[0], sv, got[1]
+            return got[0], sv + got[2], got[1]
     return None
 
 

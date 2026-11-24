@@ -26,11 +26,15 @@ FRAME = B.FRAME_SYMS  # 1000 symbols per frame (1 s)
 EMIT_MAX = 16  # emits held for the next decode while the per-PRN throttle defers it
 FRAME_TTL_S = 3600.0  # a cached frame older than this is stale (ephemeris ~ hourly)
 SOW_KEEP_S = 3600.0  # counted frames remembered, by SOW, for this long
+MARKS_KEEP = 120  # frames' time marks kept per PRN (nav_decode --timemarks-file)
 
 
 class _PrnState:
     def __init__(self):
-        self.pending = []  # contiguous symbol runs (np.array) of emits not yet decoded
+        # (host-labelled UTC of its first symbol, symbol period s, a contiguous run)
+        self.pending = []
+        # sow -> (host-labelled UTC of the frame's first symbol, mestype)
+        self.marks = {}
         self.last_obs = None
         self.frames = {}  # mestype -> (frame_bits[486], sow, t_decoded)
         self.n_frames = 0  # distinct frames decoded (preamble + LDPC + CRC ok)
@@ -51,6 +55,7 @@ class Bcnav3Predictor:
             utc_ref = float(obs["utc_ref"])
             phase = int(obs["phase"])
             br = int(obs["br"])
+            rec_dt = float(obs.get("rec_dt", 0.001))
             pairs = obs["bits"]
             soft = obs.get("soft")
         except (KeyError, TypeError, ValueError, AttributeError):
@@ -77,7 +82,13 @@ class Bcnav3Predictor:
             if i + 1 == len(slots) or slots[i + 1] != slots[i] + 1:
                 s0, s1 = slots[seg], slots[i]
                 if s1 - s0 + 1 >= FRAME:
-                    st.pending.append(np.array([m[s] for s in range(s0, s1 + 1)]))
+                    st.pending.append(
+                        (
+                            utc_ref + (s0 * br - phase) * rec_dt,
+                            br * rec_dt,
+                            np.array([m[s] for s in range(s0, s1 + 1)]),
+                        )
+                    )
                 seg = i + 1
         del st.pending[:-EMIT_MAX]
         # Per-PRN decode throttle: one weak satellite must not starve the rest.
@@ -90,15 +101,19 @@ class Bcnav3Predictor:
     # ----------------------------------------------------------------- decode
     def _decode(self, prn, st):
         runs, st.pending = st.pending, []
-        for signs in runs:
-            for _i, _pol, bits, mt, sow in B.find_frames(signs, prn):
+        for t_first, sym_s, signs in runs:
+            for i, _pol, bits, mt, sow in B.find_frames(signs, prn):
                 st.last_sow = sow
                 st.frames[mt] = (bits, sow, time.time())
+                st.marks[sow] = (t_first + i * sym_s, mt)
                 if sow not in st.seen:
                     st.seen.add(sow)
                     st.n_frames += 1
         if len(st.seen) > 2 * SOW_KEEP_S and st.last_sow is not None:
             st.seen = {x for x in st.seen if abs(x - st.last_sow) < SOW_KEEP_S}
+        if len(st.marks) > MARKS_KEEP:
+            for sow in sorted(st.marks)[:-MARKS_KEEP]:
+                del st.marks[sow]
 
     # ----------------------------------------------------------------- serve
     def ephemeris(self, prn):

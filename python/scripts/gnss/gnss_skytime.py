@@ -61,7 +61,8 @@ def tx_sow(mark):
     satellite's clock. A CNAV TOW counts 6 s to the start of the next message, so the marked one
     started a message (6 s on L5, 12 s on L2C) earlier. An F/NAV TOW is the GST second at the
     start of its page, and GST is GPS time to tens of ns. A B-CNAV2 SOW counts 3 s to the start
-    of its frame, in BDT (GPST - 14 s); a GuoWang subframe's SOW is the BDT second of its start.
+    of its frame, in BDT (GPST - 14 s); a B-CNAV3 frame's SOW and a GuoWang subframe's are the
+    BDT second of its start.
     """
     sig, n = mark["signal"], mark["tow"]
     if sig == "GPS_L5_CNAV":
@@ -70,7 +71,7 @@ def tx_sow(mark):
         return n * 6.0 - 12.0
     if sig == "GAL_E5AI_FNAV":
         return float(n)
-    if sig == "GW_1202_NAV":
+    if sig in ("GW_1202_NAV", "BDS_B2B_BCNAV3"):
         return n - ge.BDT_GPST
     return n * 3.0 - ge.BDT_GPST
 

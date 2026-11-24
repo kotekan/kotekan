@@ -66,7 +66,7 @@ class TestSign(unittest.TestCase):
         buf = self.stream(1500, 700, sync, -1)
         mark = {"t_host": T0 + (1000 + 700) * 0.02}
         self.assertEqual(
-            na.mark_sign(mark, "GAL_E5AI_FNAV", buf, 1000, T0, 0.02), (1700, -1)
+            na.mark_sign(mark, "GAL_E5AI_FNAV", buf, 1000, T0, 0.02), (1700, -1, 0)
         )
         mark["t_host"] += 0.02  # one symbol late: no sync there
         self.assertIsNone(na.mark_sign(mark, "GAL_E5AI_FNAV", buf, 1000, T0, 0.02))
@@ -85,13 +85,39 @@ class TestSign(unittest.TestCase):
         bits = "%075x" % int("".join(str(b) for b in msg), 2)
         mark = {"t_host": T0 + k * 0.02, "bits": bits}
         self.assertEqual(
-            na.mark_sign(mark, "GPS_L2C_CNAV", buf, 1000, T0, 0.02), (k, 1)
+            na.mark_sign(mark, "GPS_L2C_CNAV", buf, 1000, T0, 0.02), (k, 1, 0)
         )
         self.assertEqual(
-            na.mark_sign(mark, "GPS_L2C_CNAV", -buf, 1000, T0, 0.02), (k, -1)
+            na.mark_sign(mark, "GPS_L2C_CNAV", -buf, 1000, T0, 0.02), (k, -1, 0)
         )
         mark["t_host"] -= 2 * 0.02  # a bit early
         self.assertIsNone(na.mark_sign(mark, "GPS_L2C_CNAV", buf, 1000, T0, 0.02))
+
+    def test_bcnav3_preamble_within_slack(self):
+        # B-CNAV3's marks are on the combiner's grid: the frame start is found up to 3 symbols off.
+        pat = 1 - 2 * na.beidou_bcnav3.preamble_for(25).astype(int)
+        buf = self.stream(3000, 1200, pat, -1)
+        mark = {"prn": 25, "t_host": T0 + (1000 + 1202) * 0.001}  # 2 symbols late
+        self.assertEqual(
+            na.mark_sign(mark, "BDS_B2B_BCNAV3", buf, 1000, T0, 0.001), (2200, -1, 0)
+        )
+        mark["t_host"] += 0.002  # 4 symbols late: beyond the slack
+        self.assertIsNone(na.mark_sign(mark, "BDS_B2B_BCNAV3", buf, 1000, T0, 0.001))
+
+    def test_old_mark_carried_by_whole_frames(self):
+        # A B-CNAV3 mark 5 frames before the window: its frame start carried 5000 symbols into
+        # it, the satellite-time index with it.
+        pat = 1 - 2 * na.beidou_bcnav3.preamble_for(23).astype(int)
+        buf = self.stream(1500, 300, pat, 1)  # frame starts at stream 10300 and 11300
+        buf[1300 : 1300 + len(pat)] = pat
+        mark = {
+            "prn": 23,
+            "t_host": T0 + 5301 * 0.001,
+        }  # one symbol off, 5 frames early
+        self.assertEqual(
+            na.mark_sign(mark, "BDS_B2B_BCNAV3", buf, 10000, T0, 0.001),
+            (10300, 1, 5000),
+        )
 
     def test_anchor_of_a_status_row(self):
         pre = 1 - 2 * np.array(na.beidou_bcnav2.PREAMBLE)

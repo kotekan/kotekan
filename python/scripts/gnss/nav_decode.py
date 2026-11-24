@@ -232,7 +232,8 @@ def timemarks(srcs):
     """Each CRC-checked message as a time mark, to measure the capture's time anchor against
     (gnss_skytime.py): the host-labelled UTC of its first symbol's edge, to a record (1 ms), and
     the time count it carries, as broadcast: a CNAV TOW count (6 s), an F/NAV page's TOW (s), a
-    B-CNAV2 frame's SOW count (3 s), a GuoWang subframe's BDT SOW (s). With it the week number
+    B-CNAV2 frame's SOW count (3 s), a B-CNAV3 frame's BDT SOW (s), a GuoWang subframe's BDT SOW
+    (s). With it the week number
     where the message has one (a CNAV type 10, F/NAV pages 1-3, a B-CNAV2 type 10, GuoWang page
     1). Each message's edge is placed when it decodes:
     edges move ~3 us/s against the slot grid, and decoders keep messages for minutes. A CNAV
@@ -282,6 +283,17 @@ def timemarks(srcs):
                     if mt == 10:
                         mark["wn"] = nav_fields._read(bits, *beidou_bcnav2.WN_10, "u")
                     marks.append(mark)
+            elif sig == "BDS_B2B_BCNAV3":
+                for sow, (t_host, mt) in sorted(st.marks.items()):
+                    marks.append(
+                        {
+                            "signal": sig,
+                            "prn": prn,
+                            "t_host": round(t_host, 5),
+                            "tow": sow,
+                            "type": mt,
+                        }
+                    )
             elif sig == "GW_1202_NAV":
                 for sow, (page, t_host, wn) in sorted(st.marks.items()):
                     mark = {
