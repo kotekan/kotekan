@@ -2235,6 +2235,15 @@ def build_parser(description):
         "chips per second; until the bias is solved, as solve.",
     )
     ap.add_argument(
+        "--dr-nav-symbols",
+        action="store_true",
+        help="post nav_frame_at_ref with every dead-reckoned seed: the absolute symbol index "
+        "(satellite-clock transmit time over the code period, from the GPS epoch; BDT for "
+        "BeiDou) of the code period at ref_hop, the key of the data symbols another receiver "
+        "streams to the node's set_nav_symbols. For a chain with one data symbol per code "
+        "period (L2C CM, B2b-I). Default off.",
+    )
+    ap.add_argument(
         "--dr-constellation",
         default="G",
         choices=("G", "E", "C", "R", "W"),

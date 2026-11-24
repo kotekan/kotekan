@@ -1723,6 +1723,10 @@ def gw_nav_frame(
     off_chips,
     chip_rate_hz,
     shipped_phase_chips=None,
+    frame_s=GW_NAV_FRAME_S,
+    frame_chips=GW_NAV_FRAME_CHIPS,
+    scale_s=GW_NAV_BDT_MINUS_GPST_S,
+    modulus_s=GW_NAV_WEEK_S,
 ):
     """(frame, phase_chips): the GuoWang satellite's absolute 2 ms frame index, counted from the
     BDT week start, of the transmit time the model puts at receiver time t_ref_s, and the code
@@ -1730,7 +1734,8 @@ def gw_nav_frame(
     t_mod_code; the remainder is what cp_predicted reduces mod the frame, so the frame and the
     shipped phase describe one instant. With `shipped_phase_chips` (the at-ref phase actually
     sent, a few chips from the model under a slew) the frame follows that phase across a
-    wrap."""
+    wrap. The frame length, its chips, the time scale's offset from GPST and the wrap (None:
+    counted from the GPS epoch) default to GuoWang's; nav_symbol_fields passes a chain's own."""
     from fractions import Fraction
 
     t_tx = (
@@ -1739,13 +1744,15 @@ def gw_nav_frame(
         - Fraction(range_m) / Fraction(299792458)
         + Fraction(sat_clk_s)
         + Fraction(off_chips) / Fraction(int(round(chip_rate_hz)))
-        + GW_NAV_BDT_MINUS_GPST_S
-    ) % GW_NAV_WEEK_S
-    f = t_tx / Fraction(GW_NAV_FRAME_S)
+        + scale_s
+    )
+    if modulus_s is not None:
+        t_tx %= modulus_s
+    f = t_tx / Fraction(frame_s)
     frame = int(f // 1)
-    phase = float((f - frame) * GW_NAV_FRAME_CHIPS)
+    phase = float((f - frame) * frame_chips)
     if shipped_phase_chips is not None:
-        L = GW_NAV_FRAME_CHIPS
+        L = frame_chips
         delta = ((shipped_phase_chips - phase + L / 2) % L) - L / 2
         frame += int(math.floor((phase + delta) / L))
         phase = (phase + delta) % L
@@ -1931,6 +1938,48 @@ def gw_nav_fields(ctx, v, prn, ref_hop, off_chips, shipped_phase_chips=None):
         out["nav_pages"] = pages[0]
     out["nav_phase_at_ref"] = phase
     return out
+
+
+def nav_symbol_fields(ctx, v, ref_hop, off_chips, shipped_phase_chips=None):
+    """--dr-nav-symbols: the seed's absolute symbol index for the code period at ref_hop, the
+    key under which the node holds data symbols streamed from another receiver
+    (gnssNavSymbolRing.hpp): the satellite-clock transmit time over the code period, counted
+    from the GPS epoch in GPST, or in BDT (GPST - 14 s) for BeiDou. One symbol per code period
+    (GPS L2C CM, BeiDou B2b-I). None without the flag or before the sample clock is labelled.
+    nav_phase_at_ref and nav_frame_chips are for stage_push_seeds, which moves the index with
+    the trim; they are not posted."""
+    from fractions import Fraction
+
+    if not getattr(ctx.args, "dr_nav_symbols", False) or not getattr(
+        ctx, "utc0_sample0", None
+    ):
+        return None
+    t_ref = ref_hop / ctx.args.hops_per_sec
+    g0 = ctx.dr_eph_mod.gpst_of_utc(ctx.utc0_sample0)
+    dt = t_ref - ctx.drp.t_eph_age
+    range_m = (
+        v["range_m"]
+        + v.get("tropo_m", 0.0)
+        + v.get("iono_m", 0.0)
+        + v.get("gdv_m", 0.0)
+        + v["range_rate_mps"] * dt
+        + 0.5 * v.get("range_acc_mps2", 0.0) * dt * dt
+    )
+    chips = int(ctx.code_len)
+    frame, phase = gw_nav_frame(
+        g0,
+        t_ref,
+        range_m,
+        v["sat_clk_s"],
+        off_chips,
+        ctx.args.chip_rate_hz,
+        shipped_phase_chips,
+        frame_s=Fraction(chips, int(round(ctx.args.chip_rate_hz))),
+        frame_chips=chips,
+        scale_s=GW_NAV_BDT_MINUS_GPST_S if ctx.args.dr_constellation == "C" else 0,
+        modulus_s=None,
+    )
+    return dict(nav_frame_at_ref=frame, nav_phase_at_ref=phase, nav_frame_chips=chips)
 
 
 def dr_clock_long_chips(ctx):
@@ -2336,7 +2385,7 @@ def dr_seed(ctx):
                     )
                 _nav = gw_nav_fields(
                     ctx, v, prn, h1, _off, (_held + _step) % ctx.drp.mod
-                )
+                ) or nav_symbol_fields(ctx, v, h1, _off, (_held + _step) % ctx.drp.mod)
                 if _nav:
                     ctx.seeds[prn].put("gw_nav", epoch=h1, **_nav)
                 ctx.dr_state["pin"][prn] = ctx.drp.now_w
@@ -2377,7 +2426,9 @@ def dr_seed(ctx):
                 ref_hop=_rh_birth,
                 doppler_rate_hz_s=drate,
             )
-            _nav = gw_nav_fields(ctx, v, prn, _rh_birth, _off)
+            _nav = gw_nav_fields(ctx, v, prn, _rh_birth, _off) or nav_symbol_fields(
+                ctx, v, _rh_birth, _off
+            )
             if _nav:
                 ctx.seeds[prn].put("gw_nav", epoch=_rh_birth, **_nav)
             # Birth and re-pin arm: the shipped phase is the model's at the labelled hop
