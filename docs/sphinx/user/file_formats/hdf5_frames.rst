@@ -39,9 +39,10 @@ Files are written to ``base_dir`` (created if missing) as::
 
 The counter starts at 0 in each run, so a restart overwrites the previous
 files. With ``acq_dir: true`` the files go to
-``<base_dir>/acq_YYYYMMDD_HHMMSS_NNNNNNNNN`` instead, named for the time Kotekan
-started (UTC), as ``hdf5N2Write`` does. Writers with the same ``base_dir`` in one
-instance share the directory.
+``<base_dir>/acq_YYYYMMDD_HHMMSS_NNNNNNNNN`` instead, named for the time the
+pipeline started (UTC), so a restart or a REST ``/stop`` and ``/start`` writes a
+new directory. Writers with the same ``base_dir`` in one pipeline share the
+directory.
 
 Files are created in HDF5 v1.10 format with **SWMR** (single-writer
 multiple-reader) write mode: they remain readable while being written, and
@@ -167,6 +168,56 @@ values of ``fpga_seq_num``; however, a new file is created whenever a non-contig
 sample is received, which can result in significantly more files than expected
 being created.
 
+Per-frame metadata
+------------------
+
+With ``record_per_frame_metadata: true`` the file also holds the metadata of
+every frame, and the constraints above do not apply: the frames of a file need
+not be contiguous or in time order, for example when several senders share the
+buffer. The dataset attributes still describe the first frame only.
+
+The metadata is in the group ``frame_metadata``, as one dataset per metadata
+value with one row per frame, in the order the frames were appended. The
+datasets are named for the keys of the metadata's json form: the metadata
+fields in upper case (``FPGA_SEQ_NUM``, ``COARSE_FREQ``,
+``TIME_DOWNSAMPLING_FPGA``, ...) and the array description in lower case
+(``name``, ``type``, ``dims``, ``dim``, ``dim_name``, ``dim_scaling``,
+``stride``, ``offset``). A nested value is a subgroup, such as
+``FIRST_PACKET_RECV_TIME/TV_SEC``. A field that the frames do not carry has no
+dataset.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 66
+
+   * - Metadata value
+     - Dataset
+   * - integer
+     - int64, or uint64 for an unsigned value
+   * - float
+     - float64
+   * - boolean
+     - HDF5 enum ``FALSE``/``TRUE``, which h5py reads as ``bool``
+   * - string
+     - fixed-length string, at least 32 characters
+   * - array of one of these
+     - the same type, with the array's shape after the frame axis
+
+Frame *n* covers ``dim[n, 0]`` rows of the main dataset, starting after the
+rows of the frames before it. For example, to order the frames of two senders::
+
+    with h5py.File(path) as f:
+        seq = f["frame_metadata/FPGA_SEQ_NUM"][:]        # [frame]
+        freq = f["frame_metadata/COARSE_FREQ"][:]        # [frame, F]
+        rows = f["frame_metadata/dim"][:, 0]             # [frame]
+        mask = f["dtv_mask"][:].reshape(len(seq), rows[0], -1)
+
+A frame whose metadata does not fit the datasets of the current file starts a
+new file: one with other keys, another array shape, or a longer string than
+the dataset holds. With ``create_single_file`` that is fatal. A value that
+cannot be a dataset is fatal as well: null, an empty array or object, and an
+array that is ragged or of mixed types.
+
 N2-metadata layout
 ==================
 
@@ -234,7 +285,8 @@ as dotted scalar attributes (``time_center_eop.t_inst_ns``,
 ``bin_end_ERAL_deg``; ``fpga_start_tick``, ``frame_start_time_ns``,
 ``frame_length_fpga_ticks``, ``n_valid_fpga_ticks``, ``n_rfi_fpga_ticks``,
 ``n_rfi_only_fpga_ticks``, ``n_pl_fpga_ticks``,
-``n_rfi_first_stage_enabled_fpga_ticks``, ``n_dtv_mask_enabled_fpga_ticks``;
+``n_rfi_first_stage_enabled_fpga_ticks``, ``n_dtv_mask_enabled_fpga_ticks``,
+``n_usable_variance_pairs``;
 ``rfi_frame_excision_enabled``, ``rfi_frame_excision_num``,
 ``rfi_frame_excision_threshold``, ``rfi_frame_excision_fraction``,
 ``fringestop_enabled``; and the
@@ -284,6 +336,15 @@ Configuration
        `Single-file constraints`_ (time axis first, ``dim_scaling[0] ==
        time_downsampling_fpga``, contiguous ``fpga_seq_num``, no
        decimation); every other writer has to keep the default.
+   * - ``frames_per_file``
+     - 1
+     - The number of frames in each file. More than one is subject to the
+       `Multi-frame constraints`_, unless ``record_per_frame_metadata`` is
+       set. A file is named for its first frame.
+   * - ``record_per_frame_metadata``
+     - false
+     - Store the metadata of every frame in the group ``frame_metadata``; see
+       `Per-frame metadata`_.
    * - ``use_compression``
      - true
      - Compress the data with bitshuffle+zstd (filter 32008).
@@ -329,6 +390,14 @@ ndarray``; the reader validates the declared frame descriptor against the file.
   reconstruction below would otherwise silently mislabel the frames.
 * **Multi-frame files**: the read does _not_ currently handle multi-frame files
   as a single batch --- they must be read as individual files in single file mode.
+* **Files with per-frame metadata**: a file that has the group
+  ``frame_metadata`` is replayed frame by frame in either mode, with the
+  metadata of each frame taken from its row and none of the reconstruction
+  below. Among numbered files the reader goes from a file to the one named for
+  the frame after its last, so files of several frames each are read as one
+  stream. If the metadata datasets differ in length, as after the writer was
+  killed while it appended a frame, the reader replays the frames that every
+  dataset has and warns about the samples left over.
 
 In both modes the attributes ``chord_metadata_version``, ``name``, ``type``,
 ``dim_names`` and ``dim_scalings`` are mandatory and the HDF5 storage type of

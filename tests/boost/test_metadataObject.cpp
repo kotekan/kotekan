@@ -285,6 +285,19 @@ BOOST_AUTO_TEST_CASE(test_chordMetadata_per_frequency_arrays_are_never_empty) {
     BOOST_CHECK(restored.get_freq_upchan_index() == std::vector<int>({0}));
 }
 
+BOOST_AUTO_TEST_CASE(test_chordMetadata_unused_coarse_freq_stays_set) {
+    // An array of entries that name no frequency must not read as unset.
+    chordMetadata meta;
+    meta.set_coarse_freq(std::vector<int>(2, CHORD_META_COARSE_FREQ_UNUSED));
+
+    std::vector<char> bytes(meta.get_serialized_size());
+    meta.serialize(bytes.data());
+    chordMetadata restored;
+    restored.set_from_bytes(bytes.data(), bytes.size());
+    BOOST_REQUIRE(restored.has_coarse_freq());
+    BOOST_CHECK(restored.get_coarse_freq() == std::vector<int>(2, CHORD_META_COARSE_FREQ_UNUSED));
+}
+
 BOOST_AUTO_TEST_CASE(test_chordMetadata_unset_array_description) {
     // A default-constructed object has dims == -1; to_json used to build vectors
     // from an inverted iterator range.

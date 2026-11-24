@@ -16,6 +16,7 @@
 #include "bufferContainer.hpp" // for bufferContainer
 #include "chordMetadata.hpp"   // for chordMetadata, get_chord_metadata
 #include "configUpdater.hpp"
+#include "hdf5Files.hpp"             // for acq_run_time
 #include "hdf5N2Write.hpp"           // for hdf5N2Write
 #include "kotekanLoggingFixture.hpp" // for kotekan_logging_fixture
 #include "restServer.hpp"
@@ -102,6 +103,7 @@ static void fill_n2_frame_with_abs_freq(Buffer* buf, int frame_id, size_t num_in
         meta->rfi_frame_excision_threshold[k] = float(100 * f_index + 10 * t_index + k);
         meta->rfi_frame_excision_fraction[k] = float(100 * f_index + 10 * t_index + k) / 1000.0f;
     }
+    meta->n_usable_variance_pairs = 30 * f_index + t_index;
 }
 
 
@@ -353,6 +355,16 @@ static void validate_dataset_content(File& file, size_t num_input, size_t num_ev
         for (size_t fi = 0; fi < nfreq; ++fi)
             for (size_t t = 0; t < file_nt; ++t)
                 BOOST_CHECK_CLOSE_FRACTION(out[fi][t], float(20 * fi + t) / 100.0f, 1e-6f);
+    }
+
+    // variance pair count, every (freq, time)
+    {
+        std::vector<std::vector<uint64_t>> out;
+        file.getDataSet("/variance_pair_count").read(out);
+        BOOST_REQUIRE_GE(out.size(), nfreq);
+        for (size_t fi = 0; fi < nfreq; ++fi)
+            for (size_t t = 0; t < file_nt; ++t)
+                BOOST_CHECK_EQUAL(out[fi][t], 30 * fi + t);
     }
 
     // per-time arrays shape exists
@@ -1495,4 +1507,17 @@ BOOST_AUTO_TEST_CASE(test_writer_geometry_basic) {
     }
     rm_tree_if_exists(ds_path);
     rm_tree_if_exists(base_dir);
+}
+
+// The writers of one pipeline share the acq_dir time, and a pipeline started after the
+// last one is gone gets a new time.
+BOOST_AUTO_TEST_CASE(acq_run_time_is_per_pipeline) {
+    auto first = hdf5::acq_run_time();
+    auto second = hdf5::acq_run_time();
+    BOOST_CHECK(first == second);
+    const auto run_time = *first;
+    first.reset();
+    second.reset();
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    BOOST_CHECK(*hdf5::acq_run_time() > run_time);
 }

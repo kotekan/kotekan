@@ -555,6 +555,9 @@ std::unique_ptr<HighFive::File> N2FileData::_open_or_create_file(const std::stri
         _check_create_dataset(*file, flags_group_prefix + "/pl_fpga_count",
                               {num_file_f, num_file_t_}, {"frequency", "time"},
                               HighFive::create_datatype<uint64_t>(), props_empty);
+        _check_create_dataset(*file, flags_group_prefix + "/variance_pair_count",
+                              {num_file_f, num_file_t_}, {"frequency", "time"},
+                              HighFive::create_datatype<uint64_t>(), props_empty);
         _check_create_dataset(*file, flags_group_prefix + "/frac_lost", {num_file_f, num_file_t_},
                               {"frequency", "time"}, HighFive::create_datatype<float>(),
                               props_empty);
@@ -717,6 +720,7 @@ N2FileData::N2FileData(FileMode file_mode_, uint64_t num_file_t_, const N2FrameV
     rfi_fpga_count.assign(num_file_f * num_file_t, 0);
     rfi_only_fpga_count.assign(num_file_f * num_file_t, 0);
     pl_fpga_count.assign(num_file_f * num_file_t, 0);
+    variance_pair_count.assign(num_file_f * num_file_t, 0);
     frac_lost.assign(num_file_f * num_file_t, 1.0f); // match empty frames by default
     frac_rfi.assign(num_file_f * num_file_t, 0.0f);
     frac_rfi_only.assign(num_file_f * num_file_t, 0.0f);
@@ -924,6 +928,7 @@ N2FileData::AddFrameStatus N2FileData::add_frame(const N2FrameView& fv, size_t t
     rfi_fpga_count[idx_ft(f_index, t_index)] = n_rfi;
     rfi_only_fpga_count[idx_ft(f_index, t_index)] = n_rfi_only;
     pl_fpga_count[idx_ft(f_index, t_index)] = n_pl;
+    variance_pair_count[idx_ft(f_index, t_index)] = fv.n_usable_variance_pairs;
     frac_lost[idx_ft(f_index, t_index)] =
         (frame_len_ticks > 0) ? (1.0f - float(n_valid) / float(frame_len_ticks)) : 0.0f;
     frac_rfi[idx_ft(f_index, t_index)] =
@@ -1166,6 +1171,9 @@ bool N2FileData::flush_to_disk() {
         h5_file->getDataSet(flags_group_prefix + "/pl_fpga_count")
             .select({0, 0}, {num_file_f, num_file_t})
             .write_raw(pl_fpga_count.data());
+        h5_file->getDataSet(flags_group_prefix + "/variance_pair_count")
+            .select({0, 0}, {num_file_f, num_file_t})
+            .write_raw(variance_pair_count.data());
         h5_file->getDataSet(flags_group_prefix + "/frac_lost")
             .select({0, 0}, {num_file_f, num_file_t})
             .write_raw(frac_lost.data());

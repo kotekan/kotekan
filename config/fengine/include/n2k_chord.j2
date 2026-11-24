@@ -186,3 +186,6 @@ run_N2_accumulate:
     in_rficounts_buf: host_n2k_rficounts_buffer
     in_rfiframemask_buf: host_n2k_rfiframemask_buffer
     out_buf: host_n2_vis_buffer
+{% if dtv_apply_mask|default(false) %}
+    dtv_mask_enabled_updatable_config: /dtv_mask_enabled
+{% endif %}

@@ -133,6 +133,7 @@ void FillIJMissingVisPattern::fill(N2FrameView& frame) {
     frame._metadata->n_valid_fpga_ticks = frame._metadata->frame_length_fpga_ticks - 2;
     frame._metadata->n_rfi_fpga_ticks = 1;
     frame._metadata->n_rfi_only_fpga_ticks = 1;
+    frame._metadata->n_usable_variance_pairs = 3;
 }
 
 PhaseIJVisPattern::PhaseIJVisPattern(kotekan::Config& config, const std::string& path) :

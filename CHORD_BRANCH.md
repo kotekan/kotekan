@@ -2,7 +2,7 @@
 
 This file exists only on the `chord` branch. It lists how `chord` differs from `develop`. See the "chord branch" section of AGENTS.md for the workflow.
 
-Base: `develop` at `751b544dd` (#1899).
+Base: `develop` at `015379c3d` (#1928).
 
 ## Open PRs carried in chord
 

@@ -10,6 +10,7 @@
 #include "chordMetadata.hpp"
 #include "configUpdater.hpp"
 #include "kotekanLogging.hpp"
+#include "pilotproxy_decision.h" // for pilotproxy_v3_keep
 
 #include <algorithm>
 #include <cstdint>
@@ -17,6 +18,7 @@
 #include <fstream>
 #include <functional>
 #include <limits>
+#include <map>
 #include <mutex>
 #include <set>
 #include <string>
@@ -26,7 +28,8 @@ namespace {
 
 /// Return why the runtime bundle may not mask, or an empty string when it may.
 /// Every channel with status "calibrated" must carry the mask_qualification record that
-/// pilotproxy's qualify-bundle writes. The control and pending channels never reach a mask.
+/// pilotproxy's qualify-bundle writes. Pending channels never reach a mask; the control does only
+/// with mask_control, which needs no qualification.
 std::string mask_unqualified_reason(const std::string& path) {
     std::ifstream stream(path);
     if (!stream)
@@ -59,6 +62,80 @@ std::string mask_unqualified_reason(const std::string& path) {
     return "";
 }
 
+/// Word and control flag of a fine_decision_v3 channel.
+struct V3Channel {
+    uint64_t word = 0;
+    bool control = false;
+};
+
+/// Return the fine_decision_v3 channels of a bundle by receiver_channel_id. N2 takes the
+/// power-limit word where calibration wrote one, and the default word otherwise.
+std::map<int, V3Channel> v3_channels(const std::string& path) {
+    std::map<int, V3Channel> result;
+    std::ifstream stream(path);
+    nlohmann::json bundle;
+    if (!stream)
+        return result; // mask_unqualified_reason reports it
+    try {
+        stream >> bundle;
+    } catch (const std::exception&) {
+        return result;
+    }
+    for (const auto& row : bundle.value("profiles", nlohmann::json::array())) {
+        if (!row.is_object()
+            || (row.contains("fine_calibration") && !row.at("fine_calibration").is_object()))
+            FATAL_ERROR_NON_OO("DtvRfiMask: a profile of {:s} has no fine_calibration object",
+                               path);
+        const auto calibration = row.value("fine_calibration", nlohmann::json::object());
+        const auto status = calibration.value("status", "");
+        if (calibration.value("decision_version", "") != "fine_decision_v3"
+            || (status != "calibrated" && status != "control"))
+            continue;
+        const char* key = calibration.contains("power_limit_multiplier_q16")
+                              ? "power_limit_multiplier_q16"
+                              : "cfar_multiplier_q16";
+        if (!row.contains("receiver_channel_id")
+            || !row.at("receiver_channel_id").is_number_integer() || !calibration.contains(key)
+            || !calibration.at(key).is_number_unsigned()
+            || calibration.at(key).get<uint64_t>() == 0)
+            FATAL_ERROR_NON_OO("DtvRfiMask: fine_decision_v3 channel {:d} needs a "
+                               "receiver_channel_id and a positive {:s}",
+                               row.value("physical_channel", -1), key);
+        result[row.at("receiver_channel_id").get<int>()] =
+            V3Channel{calibration.at(key).get<uint64_t>(), status == "control"};
+    }
+    return result;
+}
+
+/// Return the receiver ID of every calibrated channel and of the control of a bundle, with whether
+/// it is the control. A row without receiver_channel_id takes the legacy CHORD key
+/// chord_channel_id, and a row with neither is skipped.
+std::map<int, bool> calibrated_channels(const std::string& path) {
+    std::map<int, bool> result;
+    std::ifstream stream(path);
+    nlohmann::json bundle;
+    if (!stream)
+        return result; // mask_unqualified_reason reports it
+    try {
+        stream >> bundle;
+    } catch (const std::exception&) {
+        return result;
+    }
+    for (const auto& row : bundle.value("profiles", nlohmann::json::array())) {
+        if (!row.is_object() || !row.contains("fine_calibration")
+            || !row.at("fine_calibration").is_object())
+            continue;
+        const auto status = row.at("fine_calibration").value("status", "");
+        if (status != "calibrated" && status != "control")
+            continue;
+        const char* key =
+            row.contains("receiver_channel_id") ? "receiver_channel_id" : "chord_channel_id";
+        if (row.contains(key) && row.at(key).is_number_integer())
+            result[row.at(key).get<int>()] = status == "control";
+    }
+    return result;
+}
+
 } // namespace
 
 /**
@@ -87,6 +164,12 @@ std::string mask_unqualified_reason(const std::string& path) {
  * @buffer  fine_support_buf Optional int32 [1,F,2] or [F,2] rows [rank_valid,n_bulk].
  *         (-1,-1) means no fine test; 0/1 means invalid/valid rank support.
  *         A leading T axis must have length 1 and scaling time_downsampling_fpga.
+ * @buffer  stat_buf    uint64 [1,F,2] rows [n_peak, d_rho] from cudaPilotProxyDetector,
+ *         required when the bundle has fine_decision_v3 channels. Such a channel is
+ *         rejected unless pilotproxy_v3_keep keeps it at the channel's word: its
+ *         power_limit_multiplier_q16, or cfar_multiplier_q16 when there is none. A row with
+ *         d_rho = 0 has no decision and is rejected; [0, 2^64 - 1] was not evaluated and
+ *         is kept. Its dtv_buf byte and fine support are not read.
  *
  * @conf    num_local_freq  int  Frequencies per frame.
  * @conf    num_times       int  Samples per detector block (8192 or 16384).
@@ -95,16 +178,24 @@ std::string mask_unqualified_reason(const std::string& path) {
  * @conf    require_fine_freq_ids List of unique integer receiver coarse-frequency IDs
  *          in [0,CHORD_META_MAX_FREQ) that must have an evaluated fine decision (default []).
  *          Requires fine_support_buf when nonempty. Both lists must be disjoint and
- *          contain only IDs in the input frequency assignment.
+ *          contain only IDs in the input frequency assignment. While the mask is on, every
+ *          calibrated channel of the bundle in the frame, and the control with mask_control,
+ *          must also be evaluated unless it is permanently masked; under v1 and v2 this is
+ *          read from fine_support_buf.
  * @conf    pilot_profiles_path String. pilot_profiles.json of the detector's runtime bundle.
  *          The mask can be on only when every calibrated channel in it carries the
  *          mask_qualification record of pilotproxy's qualify-bundle. Otherwise the stage
  *          refuses to start with the mask on, and a POST that switches it on stops Kotekan.
+ * @conf    mask_control Bool. Reject the fine_decision_v3 control (channel 37) like a pilot,
+ *          so its false alarms show what the mask does without DTV (default false).
  * @conf    enabled_updatable_config Optional path to a block with `enabled` and
- *          `valid_at_time_ns` (0: from startup). While disabled, the RFImask is copied
- *          unchanged and require_fine_freq_ids is not checked. A change applies from the
- *          first frame starting at or after valid_at_time_ns. Without this key the mask is
- *          always applied.
+ *          `valid_at_time_ns`. While disabled, the RFImask is copied unchanged and
+ *          require_fine_freq_ids is not checked. The config value applies from startup,
+ *          whatever its valid_at_time_ns. A POST applies from the first frame starting at or
+ *          after valid_at_time_ns, in the node's system time. A POST of 0, or of a time
+ *          already passed, applies from the next whole 5 s at least 1 s ahead, as in
+ *          N2Accumulate, and the resolved time is stored in the block. Without this key the
+ *          mask is always applied.
  */
 class DtvRfiMask : public kotekan::Stage {
 public:
@@ -115,7 +206,9 @@ public:
         mask_rows(config.get<int>(unique_name, "num_times") / 1024), rfi(get_buffer("rfi_buf")),
         dtv(get_buffer("dtv_buf")), output(get_buffer("out_buf")),
         support(config.exists(unique_name, "fine_support_buf") ? get_buffer("fine_support_buf")
-                                                               : nullptr) {
+                                                               : nullptr),
+        stat(config.exists(unique_name, "stat_buf") ? get_buffer("stat_buf") : nullptr),
+        mask_control(config.get_default<bool>(unique_name, "mask_control", false)) {
         const int num_times = config.get<int>(unique_name, "num_times");
         if (frequencies <= 0 || (num_times != 8192 && num_times != 16384))
             FATAL_ERROR("DtvRfiMask requires positive num_local_freq and num_times=8192 or 16384");
@@ -142,8 +235,15 @@ public:
         for (const int id : required)
             if (std::find(permanent.begin(), permanent.end(), id) != permanent.end())
                 FATAL_ERROR("DtvRfiMask finite and permanent-mask thresholds overlap");
-        if (!required.empty() && !support)
-            FATAL_ERROR("DtvRfiMask required fine thresholds need fine_support_buf");
+        pilot_profiles_path = config.get<std::string>(unique_name, "pilot_profiles_path");
+        v3 = v3_channels(pilot_profiles_path);
+        calibrated = calibrated_channels(pilot_profiles_path);
+        if (!v3.empty() && !stat)
+            FATAL_ERROR(
+                "DtvRfiMask: the bundle has fine_decision_v3 channels, which need stat_buf");
+        for (const int id : required)
+            if (!v3.count(id) && !support)
+                FATAL_ERROR("DtvRfiMask required fine thresholds need fine_support_buf");
         if (rfi->frame_size != size_t(num_times / 8) * frequencies
             || dtv->frame_size != size_t(frequencies) || output->frame_size != rfi->frame_size)
             FATAL_ERROR("DtvRfiMask buffer sizes do not match one detector block");
@@ -154,16 +254,23 @@ public:
         output->require_frame_desc(desc);
         const auto dtv_desc = dtv->get_frame_desc<kotekan::GenericNDArray>();
         if (dtv_desc)
-            ensure_product_desc(dtv, false, dtv_desc->get_rank());
+            ensure_product_desc(dtv, Product::mask, dtv_desc->get_rank());
         if (support) {
             support->register_consumer(unique_name);
             if (support->frame_size != size_t(frequencies) * 2 * sizeof(int32_t))
                 FATAL_ERROR("DtvRfiMask fine support buffer size mismatch");
             const auto support_desc = support->get_frame_desc<kotekan::GenericNDArray>();
             if (support_desc)
-                ensure_product_desc(support, true, support_desc->get_rank());
+                ensure_product_desc(support, Product::support, support_desc->get_rank());
         }
-        pilot_profiles_path = config.get<std::string>(unique_name, "pilot_profiles_path");
+        if (stat) {
+            stat->register_consumer(unique_name);
+            if (stat->frame_size != size_t(frequencies) * 2 * sizeof(uint64_t))
+                FATAL_ERROR("DtvRfiMask statistic buffer size mismatch");
+            const auto stat_desc = stat->get_frame_desc<kotekan::GenericNDArray>();
+            if (stat_desc)
+                ensure_product_desc(stat, Product::stat, stat_desc->get_rank());
+        }
         unqualified_reason = mask_unqualified_reason(pilot_profiles_path);
         enabled_config_path =
             config.get_default<std::string>(unique_name, "enabled_updatable_config", "");
@@ -181,6 +288,7 @@ public:
     void main_thread() override {
         N2::frameID rfi_id(rfi), dtv_id(dtv), out_id(output);
         N2::frameID support_id(support ? support : dtv);
+        N2::frameID stat_id(stat ? stat : dtv);
         bool started = false;
         int64_t next_seq = 0;
         int64_t period = 0;
@@ -199,11 +307,18 @@ public:
                 if (!fine)
                     break;
             }
+            const uint64_t* pair = nullptr;
+            if (stat) {
+                pair = reinterpret_cast<const uint64_t*>(
+                    stat->wait_for_full_frame(unique_name, stat_id));
+                if (!pair)
+                    break;
+            }
             const auto rm = get_chord_metadata(rfi, rfi_id);
             const auto dm = get_chord_metadata(dtv, dtv_id);
             rm->check_frame_desc(rfi->get_frame_desc<kotekan::GenericNDArray>());
             if (!started)
-                ensure_product_desc(dtv, false, dm->dims, dm->get_time_downsampling_fpga());
+                ensure_product_desc(dtv, Product::mask, dm->dims, dm->get_time_downsampling_fpga());
             dm->check_frame_desc(dtv->get_frame_desc<kotekan::GenericNDArray>());
             const auto seq = rm->get_fpga_seq_num();
             const auto rp = rm->get_time_downsampling_fpga();
@@ -236,7 +351,8 @@ public:
             if (support) {
                 const auto sm = get_chord_metadata(support, support_id);
                 if (!started)
-                    ensure_product_desc(support, true, sm->dims, sm->get_time_downsampling_fpga());
+                    ensure_product_desc(support, Product::support, sm->dims,
+                                        sm->get_time_downsampling_fpga());
                 sm->check_frame_desc(support->get_frame_desc<kotekan::GenericNDArray>());
                 if (sm->get_fpga_seq_num() != seq || sm->get_time_downsampling_fpga() != dp
                     || (sm->dims == 3 && sm->dim_scaling[0] != dp) || !sm->has_coarse_freq()
@@ -245,6 +361,17 @@ public:
                     || (sm->has_freq_upchan_index()
                         && sm->get_freq_upchan_index() != std::vector<int>(frequencies, 0)))
                     FATAL_ERROR("DtvRfiMask fine support identity mismatch");
+            }
+            if (stat) {
+                const auto tm = get_chord_metadata(stat, stat_id);
+                if (!started)
+                    ensure_product_desc(stat, Product::stat, tm->dims,
+                                        tm->get_time_downsampling_fpga());
+                tm->check_frame_desc(stat->get_frame_desc<kotekan::GenericNDArray>());
+                if (tm->get_fpga_seq_num() != seq || tm->get_time_downsampling_fpga() != dp
+                    || (tm->dims == 3 && tm->dim_scaling[0] != dp) || !tm->has_coarse_freq()
+                    || tm->get_coarse_freq() != freq)
+                    FATAL_ERROR("DtvRfiMask statistic identity mismatch");
             }
             {
                 std::lock_guard<std::mutex> lock(enabled_mutex);
@@ -259,6 +386,33 @@ public:
             for (int f = 0; f < frequencies; ++f) {
                 if (reject[f] != 0 && reject[f] != 1)
                     FATAL_ERROR("DtvRfiMask detector decision must be zero or one");
+                const bool permanent_freq =
+                    std::find(permanent.begin(), permanent.end(), freq[f]) != permanent.end();
+                // a row this stage decides must have been tested while the mask is on: a required
+                // frequency, a calibrated channel, and the control with mask_control, unless the
+                // frequency is permanently masked
+                const auto bound = calibrated.find(freq[f]);
+                const bool must_test =
+                    std::find(required.begin(), required.end(), freq[f]) != required.end()
+                    || (bound != calibrated.end() && (!bound->second || mask_control)
+                        && !permanent_freq);
+                const auto channel = v3.find(freq[f]);
+                if (channel != v3.end()) {
+                    // fine decision v3, decided here with the channel's word
+                    const uint64_t n_peak = pair[2 * f], d_rho = pair[2 * f + 1];
+                    const bool evaluated = !(n_peak == 0 && d_rho == UINT64_MAX);
+                    if (enabled && !evaluated && must_test)
+                        FATAL_ERROR("DtvRfiMask required fine threshold was not evaluated for "
+                                    "frequency {:d}",
+                                    freq[f]);
+                    const bool decided = !channel->second.control || mask_control;
+                    excluded[f] =
+                        enabled
+                        && ((decided
+                             && pilotproxy_v3_keep(n_peak, d_rho, channel->second.word) != 1)
+                            || permanent_freq);
+                    continue;
+                }
                 bool invalid = false;
                 if (fine) {
                     const int32_t valid = fine[2 * f], count = fine[2 * f + 1];
@@ -266,15 +420,13 @@ public:
                           || ((valid == 0 || valid == 1) && count >= 0 && count <= 256
                               && (valid == 0 || count > 0))))
                         FATAL_ERROR("DtvRfiMask malformed fine support row");
-                    if (enabled && valid == -1
-                        && std::find(required.begin(), required.end(), freq[f]) != required.end())
-                        FATAL_ERROR("DtvRfiMask required fine threshold was not evaluated");
+                    if (enabled && valid == -1 && must_test)
+                        FATAL_ERROR("DtvRfiMask required fine threshold was not evaluated for "
+                                    "frequency {:d}",
+                                    freq[f]);
                     invalid = valid == 0;
                 }
-                excluded[f] = enabled
-                              && (reject[f] || invalid
-                                  || std::find(permanent.begin(), permanent.end(), freq[f])
-                                         != permanent.end());
+                excluded[f] = enabled && (reject[f] || invalid || permanent_freq);
             }
 
             auto* combined = output->wait_for_empty_frame(unique_name, out_id);
@@ -297,12 +449,17 @@ public:
             dtv->mark_frame_empty(unique_name, dtv_id++);
             if (support)
                 support->mark_frame_empty(unique_name, support_id++);
+            if (stat)
+                stat->mark_frame_empty(unique_name, stat_id++);
             output->mark_frame_full(unique_name, out_id++);
         }
     }
 
 private:
     bool receive_enabled(nlohmann::json& json) {
+        // configUpdater passes the config value first, then each POST
+        const bool posted = enabled_config_read;
+        enabled_config_read = true;
         bool new_enabled;
         int64_t time_ns;
         try {
@@ -312,15 +469,6 @@ private:
             WARN("Failed to read update to {:s}: {:s}", enabled_config_path, e.what());
             return false;
         }
-        // 0 means from startup. A time before the stream start would underflow in to_seq.
-        int64_t seq = 0;
-        if (time_ns != 0) {
-            if (time_ns < Telescope::instance().to_time_ns(0)) {
-                WARN("Got invalid start time: {:d} - keeping the current DTV mask state", time_ns);
-                return true;
-            }
-            seq = Telescope::instance().to_seq(time_ns);
-        }
         if (new_enabled && !unqualified_reason.empty()) {
             // a refused update stops Kotekan, so a detect-only bundle never masks data
             ERROR("DtvRfiMask: refusing to switch the DTV mask on: the bundle {:s} is "
@@ -328,18 +476,33 @@ private:
                   pilot_profiles_path, unqualified_reason);
             return false;
         }
-        INFO("{:s} the DTV mask from seq {:d}", new_enabled ? "Enabling" : "Disabling", seq);
         std::lock_guard<std::mutex> lock(enabled_mutex);
+        if (!posted) {
+            enabled = next_enabled = new_enabled;
+            return true;
+        }
+        // The resolved time goes back into the update, so N2Accumulate keeps it
+        time_ns = N2::switch_time_ns(time_ns, N2::current_system_time_ns());
+        json["valid_at_time_ns"] = time_ns;
+        const auto& tel = Telescope::instance();
+        // to_seq underflows before the stream start
+        const int64_t seq = time_ns < tel.to_time_ns(0) ? 0 : tel.to_seq(time_ns);
+        INFO("{:s} the DTV mask from time {:d} ns, seq {:d}",
+             new_enabled ? "Enabling" : "Disabling", time_ns, seq);
         next_enabled = new_enabled;
         next_enabled_valid_at_seq = seq;
         return true;
     }
 
-    void ensure_product_desc(Buffer* buffer, bool fine, size_t rank, int64_t period = 1) {
+    /// The detector products this stage reads: the mask byte, the fine support pair and the v3
+    /// statistic pair, each per frequency.
+    enum class Product { mask, support, stat };
+
+    void ensure_product_desc(Buffer* buffer, Product product, size_t rank, int64_t period = 1) {
         std::vector<std::ptrdiff_t> extents{frequencies};
         std::vector<kotekan::Symbol> names{"F"};
         std::vector<std::ptrdiff_t> scalings{1};
-        if (fine) {
+        if (product != Product::mask) {
             extents.push_back(2);
             names.push_back("S");
             scalings.push_back(1);
@@ -352,14 +515,23 @@ private:
             FATAL_ERROR("DtvRfiMask input {:s} has unsupported rank {:d}", buffer->buffer_name,
                         rank);
         }
-        buffer->ensure_frame_desc(kotekan::GenericNDArray::describe(
-            fine ? kotekan::int32 : kotekan::int8, fine ? "dtv_fine_support" : "dtv_mask", extents,
-            names, scalings));
+        if (product == Product::mask)
+            buffer->ensure_frame_desc(kotekan::GenericNDArray::describe(kotekan::int8, "dtv_mask",
+                                                                        extents, names, scalings));
+        else if (product == Product::support)
+            buffer->ensure_frame_desc(kotekan::GenericNDArray::describe(
+                kotekan::int32, "dtv_fine_support", extents, names, scalings));
+        else
+            buffer->ensure_frame_desc(kotekan::GenericNDArray::describe(kotekan::uint64, "dtv_stat",
+                                                                        extents, names, scalings));
     }
 
     const int frequencies;
     const int mask_rows;
-    Buffer *rfi, *dtv, *output, *support;
+    Buffer *rfi, *dtv, *output, *support, *stat;
+    const bool mask_control;
+    std::map<int, V3Channel> v3;
+    std::map<int, bool> calibrated;
     std::vector<int> permanent, required;
     std::string pilot_profiles_path;
     // empty when the bundle may mask
@@ -369,6 +541,8 @@ private:
     bool enabled = true;
     bool next_enabled = true;
     int64_t next_enabled_valid_at_seq = std::numeric_limits<int64_t>::max();
+    // whether receive_enabled has had the config value, so later calls are POSTs
+    bool enabled_config_read = false;
 };
 
 REGISTER_KOTEKAN_STAGE(DtvRfiMask);
