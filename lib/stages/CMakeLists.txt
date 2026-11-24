@@ -63,7 +63,7 @@ add_library(
     restInspectFrame.cpp
     frbNetworkSend.cpp
     pulsarNetworkProcess.cpp
-    pirateFrbSend.cpp
+    $<$<BOOL:${CUDAToolkit_FOUND}>:pirateFrbSend.cpp>
     bufferMerge.cpp
     bufferCopy.cpp
     bufferSwitch.cpp
