@@ -8,8 +8,9 @@ Each mark (nav_decode.py --timemarks-file) is a CRC-checked message: the host-la
 first symbol's edge, and the TOW count it carries, which is the satellite time at which the next
 message starts. That message started TOW * 6 s - its length (6 s on L5, 12 s on L2C) of satellite
 time; less the satellite clock and plus the range over c, it arrived at that GPS time. The
-anchor error is the host label minus that. It holds whatever the host clock reads, to half a week
-(the TOW does not carry the week), and to the 1 ms of the records that place the edges.
+anchor error is the host label minus that, to the 1 ms of the records that place the edges. The
+week is a type 10 message's week number, so it holds whatever date the host clock reads; with no
+type 10 yet, the host's own week, to half a week.
 
 Positive means the labels are late. bladeRFInput fixes the anchor once, from the system clock at
 the first sample, so a host clock that was wrong when kotekan started shows here for the whole
@@ -42,13 +43,26 @@ def site_of(yaml_path):
     return tuple(float(re.search(_KEY % k, s).group(1)) for k in ("lat", "lon", "alt"))
 
 
-def anchor_error_s(mark, row):
+def anchor_error_s(mark, row, g_ref=None):
     """The host label minus the GPS time the message start arrived, s; row is the satellite's
-    predict_all row at about that time (range_m, sat_clk_s)."""
+    predict_all row at about that time (range_m, sat_clk_s). The TOW is placed in the week
+    nearest g_ref (GPS seconds), by default the host label's own."""
     g_host = mark["t_host"] - GPS0_UNIX + LEAP_S
-    t_tx = (g_host // 604800.0) * 604800.0 + mark["tow"] * 6.0 - MSG_S[mark["signal"]]
-    t_tx += 604800.0 * round((g_host - t_tx) / 604800.0)
+    g_ref = g_host if g_ref is None else g_ref
+    t_tx = mark["tow"] * 6.0 - MSG_S[mark["signal"]]
+    t_tx += 604800.0 * round((g_ref - t_tx) / 604800.0)
     return g_host - (t_tx - row["sat_clk_s"] + row["range_m"] / ge.C_LIGHT)
+
+
+def week_ref(marks):
+    """GPS seconds of the newest type 10 message, from its own week number: the week every mark
+    is placed in, so a host date off by more than half a week reads right. None without one.
+    """
+    tens = [m for m in marks if m.get("wn") is not None and m.get("signal") in MSG_S]
+    if not tens:
+        return None
+    m = max(tens, key=lambda m: m["t_host"])
+    return m["wn"] * 604800.0 + m["tow"] * 6.0 - MSG_S[m["signal"]]
 
 
 def measure(marks, eph, site):
@@ -57,10 +71,11 @@ def measure(marks, eph, site):
     host clock hours off still finds its satellites; records up to sky.HINT_MAX_AGE_S old do,
     since 1 ms is 300 km of range."""
     out = []
+    g_ref = week_ref(marks)
     for m in marks:
         if m.get("signal") not in MSG_S:
             continue
-        t0 = m["t_host"] - anchor_error_s(m, NOMINAL_ROW)
+        t0 = m["t_host"] - anchor_error_s(m, NOMINAL_ROW, g_ref)
         row = ge.predict_all(
             eph,
             *site,
@@ -70,7 +85,7 @@ def measure(marks, eph, site):
             sysc="G",
         ).get(("G", m["prn"]))
         if row is not None:
-            out.append((m["signal"], m["prn"], anchor_error_s(m, row)))
+            out.append((m["signal"], m["prn"], anchor_error_s(m, row, g_ref)))
     return out
 
 

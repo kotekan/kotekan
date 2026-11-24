@@ -34,6 +34,16 @@ class TestSkyTime(unittest.TestCase):
             st.anchor_error_s(mark("GPS_L5_CNAV", 7.0, tow), ROW), 7.0, delta=1e-6
         )
 
+    def test_a_type_10_sets_the_week(self):
+        # host three years fast: alone the TOW lands in the host's week; with a type 10's week
+        # number every mark reads the true error
+        err = 3 * 365.25 * 86400.0
+        m = mark("GPS_L5_CNAV", err)
+        t10 = dict(mark("GPS_L5_CNAV", err, tow=50002), type=10, wn=2400)
+        self.assertNotAlmostEqual(st.anchor_error_s(m, ROW), err, delta=1.0)
+        g_ref = st.week_ref([m, t10])
+        self.assertAlmostEqual(st.anchor_error_s(m, ROW, g_ref), err, delta=1e-6)
+
 
 if __name__ == "__main__":
     unittest.main()

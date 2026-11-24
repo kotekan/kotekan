@@ -223,8 +223,9 @@ def message_types(signal, st):
 
 def write_timemarks(srcs, path, now):
     """Each CRC-checked CNAV message as a time mark: the host-labelled UTC of its first
-    symbol's edge and the TOW count it carries, to measure the capture's time anchor against.
-    The edge is the satellite's newest, to a record (1 ms), and moves ~3 us/s."""
+    symbol's edge and the TOW count it carries (and a type 10's week number), to measure the
+    capture's time anchor against. The edge is the satellite's newest, to a record (1 ms), and
+    moves ~3 us/s."""
     marks = []
     for s in srcs:
         if s["signal"] not in ("GPS_L5_CNAV", "GPS_L2C_CNAV"):
@@ -233,15 +234,16 @@ def write_timemarks(srcs, path, now):
             if not st.sym_s:
                 continue
             for slot, bits in sorted(st.decoded.items()):
-                marks.append(
-                    {
-                        "signal": s["signal"],
-                        "prn": prn,
-                        "t_host": round(slot * st.sym_s + st.edge_s, 5),
-                        "tow": nav_fields._read(bits, 20, 17, "u"),
-                        "type": nav_fields._read(bits, 14, 6, "u"),
-                    }
-                )
+                mark = {
+                    "signal": s["signal"],
+                    "prn": prn,
+                    "t_host": round(slot * st.sym_s + st.edge_s, 5),
+                    "tow": nav_fields._read(bits, 20, 17, "u"),
+                    "type": nav_fields._read(bits, 14, 6, "u"),
+                }
+                if mark["type"] == 10:
+                    mark["wn"] = nav_fields._read(bits, 38, 13, "u")
+                marks.append(mark)
     write_atomic({"schema": 1, "t": round(now, 2), "marks": marks}, path)
 
 
