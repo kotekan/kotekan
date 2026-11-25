@@ -10,6 +10,8 @@
 
 #include "fmt.hpp" // for compile_string_to_view
 
+#include <algorithm>  // for clamp
+#include <cstdint>    // for int64_t
 #include <functional> // for bind, function
 #include <stddef.h>   // for size_t
 #include <vector>     // for vector
@@ -30,10 +32,10 @@ gpuSimulateCudaBasebandBeamformer::gpuSimulateCudaBasebandBeamformer(
     bool zero_output = config.get_default<bool>(unique_name, "zero_output", false);
     voltage_buf = get_buffer("voltage_in_buf");
     phase_buf = get_buffer("phase_in_buf");
-    shift_buf = get_buffer("shift_in_buf");
+    scale_buf = get_buffer("scale_in_buf");
     voltage_buf->register_consumer(unique_name);
     phase_buf->register_consumer(unique_name);
-    shift_buf->register_consumer(unique_name);
+    scale_buf->register_consumer(unique_name);
     output_buf = get_buffer("beams_out_buf");
     output_buf->register_producer(unique_name);
     if (zero_output)
@@ -54,7 +56,7 @@ gpuSimulateCudaBasebandBeamformer::~gpuSimulateCudaBasebandBeamformer() {}
  */
 void gpuSimulateCudaBasebandBeamformer::bb_simple_sub(
     std::string id_tag, const int8_t* __restrict__ const A, const int4x2_t* __restrict__ const E,
-    const int32_t* __restrict__ const s, int4x2_t* __restrict__ const J,
+    const int32_t* __restrict__ const S, int4x2_t* __restrict__ const J,
     const int T, // 32768; // number of times
     const int B, // = 96;    // number of beams
     const int D, // = 512;   // number of dishes
@@ -76,7 +78,7 @@ void gpuSimulateCudaBasebandBeamformer::bb_simple_sub(
     int nprint_p = 0;
     const int nprint_max = 2;
 
-    // J[t,p,f,b] = Σ[d] A[d,b,p,f] E[d,p,f,t]
+    // J[t,p,f,b] = S[b,p,f] / 2^24 Σ[d] A[d,b,p,f] E[d,p,f,t]
     for (int f = f0; f < f1; ++f) {
         for (int p = p0; p < p1; ++p) {
             for (int t = t0; t < t1; ++t) {
@@ -111,29 +113,19 @@ void gpuSimulateCudaBasebandBeamformer::bb_simple_sub(
                     }
                     int oJre = Jre;
                     int oJim = Jim;
-                    int shift = s[(f * 2 + p) * B + b];
-                    // rounding
-                    Jre += 1 << (shift - 1);
-                    Jim += 1 << (shift - 1);
-                    Jre >>= shift;
-                    Jim >>= shift;
-                    if (Jre > 7)
-                        Jre = 7;
-                    if (Jre < -7)
-                        Jre = -7;
-                    if (Jim > 7)
-                        Jim = 7;
-                    if (Jim < -7)
-                        Jim = -7;
+                    const std::int64_t scale = S[(f * 2 + p) * B + b];
+                    // Scale, round, and clamp as the GPU kernel does
+                    Jre = int(std::clamp<std::int64_t>((Jre * scale + (1 << 23)) >> 24, -7, +7));
+                    Jim = int(std::clamp<std::int64_t>((Jim * scale + (1 << 23)) >> 24, -7, +7));
                     int jindx = ((b * F + f) * 2 + p) * T + t;
                     J[jindx] = set4(Jim, Jre);
                     if (Jre || Jim) {
                         if (nprint_b < nprint_max) {
                             DEBUG("bb_simple: setting b={:d}(0x{:x}), f={:d}(0x{:x}), "
-                                  "p={:d}(0x{:x}), t={:d}(0x{:x}) = index 0x{:x}; before shift by "
-                                  "{:d} (0x{:x}), re=0x{:x}, im=0x{:x}, after: re=0x{:x}, "
+                                  "p={:d}(0x{:x}), t={:d}(0x{:x}) = index 0x{:x}; before scaling "
+                                  "by {:d} (0x{:x}), re=0x{:x}, im=0x{:x}, after: re=0x{:x}, "
                                   "im=0x{:x}, packed: 0x{:x}",
-                                  b, b, f, f, p, p, t, t, jindx, shift, shift, oJre, oJim, Jre, Jim,
+                                  b, b, f, f, p, p, t, t, jindx, scale, scale, oJre, oJim, Jre, Jim,
                                   set4(Jim, Jre));
                             if (nprint_b == 0)
                                 INFO("PY bb[{:s}] = (({:d}, {:d}, {:d}, {:d}, {:d}), ({:d}, {:d}), "
@@ -151,13 +143,13 @@ void gpuSimulateCudaBasebandBeamformer::bb_simple_sub(
 
 void gpuSimulateCudaBasebandBeamformer::bb_simple(
     std::string id_tag, const int8_t* __restrict__ const A, const int4x2_t* __restrict__ const E,
-    const int32_t* __restrict__ const s, int4x2_t* __restrict__ const J,
+    const int32_t* __restrict__ const S, int4x2_t* __restrict__ const J,
     const int T, // = 32768; // 32768; // number of times
     const int B, // = 96;    // number of beams
     const int D, // = 512;   // number of dishes
     const int F  // = 16;    // frequency channels per GPU
 ) {
-    bb_simple_sub(id_tag, A, E, s, J, T, B, D, F, -1, -1, -1, -1, -1);
+    bb_simple_sub(id_tag, A, E, S, J, T, B, D, F, -1, -1, -1, -1, -1);
 }
 
 void gpuSimulateCudaBasebandBeamformer::main_thread() {
@@ -165,7 +157,7 @@ void gpuSimulateCudaBasebandBeamformer::main_thread() {
     int output_frame_id = 0;
 
     int phase_frame_id = 0;
-    int shift_frame_id = 0;
+    int scale_frame_id = 0;
 
     while (!stop_thread) {
         int4x2_t* voltage =
@@ -175,8 +167,8 @@ void gpuSimulateCudaBasebandBeamformer::main_thread() {
         int8_t* phase = (int8_t*)phase_buf->wait_for_full_frame(unique_name, phase_frame_id);
         if (phase == nullptr)
             break;
-        int32_t* shift = (int32_t*)shift_buf->wait_for_full_frame(unique_name, shift_frame_id);
-        if (shift == nullptr)
+        int32_t* scale = (int32_t*)scale_buf->wait_for_full_frame(unique_name, scale_frame_id);
+        if (scale == nullptr)
             break;
         int4x2_t* output =
             (int4x2_t*)output_buf->wait_for_empty_frame(unique_name, output_frame_id);
@@ -186,7 +178,7 @@ void gpuSimulateCudaBasebandBeamformer::main_thread() {
         INFO("Simulating GPU processing for {:s}[{:d}] {:s}[{:d}] {:s}[{:d}] putting result in "
              "{:s}[{:d}]",
              voltage_buf->buffer_name, voltage_frame_id, phase_buf->buffer_name, phase_frame_id,
-             shift_buf->buffer_name, shift_frame_id, output_buf->buffer_name, output_frame_id);
+             scale_buf->buffer_name, scale_frame_id, output_buf->buffer_name, output_frame_id);
 
         std::string id_tag = std::to_string(voltage_frame_id);
         if (metadata_is_onehot(voltage_buf, voltage_frame_id)) {
@@ -214,7 +206,7 @@ void gpuSimulateCudaBasebandBeamformer::main_thread() {
                 INFO("One-hot voltage buffer: time {:d} pol {:d}, freq {:d}, dish {:d}", t, p, f,
                      d);
                 int ndishes = _num_elements / 2;
-                bb_simple_sub(id_tag, phase, voltage, shift, output, _samples_per_data_set,
+                bb_simple_sub(id_tag, phase, voltage, scale, output, _samples_per_data_set,
                               _num_beams, ndishes, _num_local_freq, t, b, d, f, p);
                 done = true;
             }
@@ -234,7 +226,7 @@ void gpuSimulateCudaBasebandBeamformer::main_thread() {
                 int t = -1;
                 INFO("One-hot phase buffer: freq {:d} pol {:d}, beam {:d}, dish {:d}", f, p, b, d);
                 int ndishes = _num_elements / 2;
-                bb_simple_sub(id_tag, phase, voltage, shift, output, _samples_per_data_set,
+                bb_simple_sub(id_tag, phase, voltage, scale, output, _samples_per_data_set,
                               _num_beams, ndishes, _num_local_freq, t, b, d, f, p);
                 done = true;
             }
@@ -242,7 +234,7 @@ void gpuSimulateCudaBasebandBeamformer::main_thread() {
 
         if (!done) {
             int ndishes = _num_elements / 2;
-            bb_simple(id_tag, phase, voltage, shift, output, _samples_per_data_set, _num_beams,
+            bb_simple(id_tag, phase, voltage, scale, output, _samples_per_data_set, _num_beams,
                       ndishes, _num_local_freq);
         }
 
@@ -256,16 +248,16 @@ void gpuSimulateCudaBasebandBeamformer::main_thread() {
         voltage_frame_id = (voltage_frame_id + 1) % voltage_buf->num_frames;
         output_frame_id = (output_frame_id + 1) % output_buf->num_frames;
 
-        // Check for available phase & shift frames and advance if they're ready!
+        // Check for available phase & scale frames and advance if they're ready!
         int next_frame = (phase_frame_id + 1) % phase_buf->num_frames;
         if (phase_buf->is_frame_empty(next_frame) == 0) {
             phase_buf->mark_frame_empty(unique_name, phase_frame_id);
             phase_frame_id = next_frame;
         }
-        next_frame = (shift_frame_id + 1) % shift_buf->num_frames;
-        if (shift_buf->is_frame_empty(next_frame) == 0) {
-            shift_buf->mark_frame_empty(unique_name, shift_frame_id);
-            shift_frame_id = next_frame;
+        next_frame = (scale_frame_id + 1) % scale_buf->num_frames;
+        if (scale_buf->is_frame_empty(next_frame) == 0) {
+            scale_buf->mark_frame_empty(unique_name, scale_frame_id);
+            scale_frame_id = next_frame;
         }
     }
 }

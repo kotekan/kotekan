@@ -25,7 +25,7 @@
  * @buffer phase_in_buf   Beamformer phases
  *         @buffer_format Int8
  *         @buffer_metadata chimeMetadata or oneHotMetadata
- * @buffer shift_in_buf   Number of bits to shift result
+ * @buffer scale_in_buf   Output scale S; the beams are J = S / 2^24 Σ A E
  *         @buffer_format Int32
  * @buffer beams_out_buf  Output buffer for formed beams
  *         @buffer_format Int4+4
@@ -48,7 +48,7 @@ public:
 private:
     using int4x2_t = uint8_t;
     void bb_simple(std::string id_tag, const int8_t* __restrict__ const A,
-                   const int4x2_t* __restrict__ const E, const int32_t* __restrict__ const s,
+                   const int4x2_t* __restrict__ const E, const int32_t* __restrict__ const S,
                    int4x2_t* __restrict__ const J,
                    const int T, // 32768; // number of times
                    const int B, // = 96;    // number of beams
@@ -56,7 +56,7 @@ private:
                    const int F  // = 16;    // frequency channels per GPU
     );
     void bb_simple_sub(std::string id_tag, const int8_t* __restrict__ const A,
-                       const int4x2_t* __restrict__ const E, const int32_t* __restrict__ const s,
+                       const int4x2_t* __restrict__ const E, const int32_t* __restrict__ const S,
                        int4x2_t* __restrict__ const J,
                        const int T, // 32768; // number of times
                        const int B, // = 96;    // number of beams
@@ -66,7 +66,7 @@ private:
 
     Buffer* voltage_buf;
     Buffer* phase_buf;
-    Buffer* shift_buf;
+    Buffer* scale_buf;
     Buffer* output_buf;
 
     /// Number of elements on the telescope

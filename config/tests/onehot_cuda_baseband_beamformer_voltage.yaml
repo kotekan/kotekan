@@ -92,7 +92,7 @@ gen_phase:
 gen_shift:
     kotekan_stage: testDataGen
     type: const32
-    value: 0x4
+    value: 0x100000  # 2^20
     out_buf: host_shift_buffer
 
 gpu:
@@ -142,7 +142,7 @@ cpu_beamformer:
     zero_output: true
     voltage_in_buf: host_voltage_buffer
     phase_in_buf: host_phase_buffer
-    shift_in_buf: host_shift_buffer
+    scale_in_buf: host_shift_buffer
     beams_out_buf: simulated_formed_beams_buffer
 
 check_data:
