@@ -194,7 +194,7 @@ std::map<int, bool> calibrated_channels(const std::string& path) {
  *          whatever its valid_at_time_ns. A POST applies from the first frame starting at or
  *          after valid_at_time_ns, in the node's system time. A POST of 0, or of a time
  *          already passed, applies from the next whole 5 s at least 1 s ahead, as in
- *          N2Accumulate, and the resolved time is stored in the block. Without this key the
+ *          N2Accumulate, which gets the resolved time from this stage. Without this key the
  *          mask is always applied.
  */
 class DtvRfiMask : public kotekan::Stage {
