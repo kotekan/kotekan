@@ -159,7 +159,10 @@ void pirateFrbSend::main_thread() {
     uint8_t* beam_pos_ptr = nullptr;
     float* beam_pos = nullptr;
     int16_t* beam_ids = nullptr;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
     size_t expect_size;
+#pragma GCC diagnostic pop
 
     beam_pos_ptr = beam_position_buf->wait_for_full_frame(unique_name, frame_id);
     if (beam_pos_ptr == nullptr)
