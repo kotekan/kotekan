@@ -14,14 +14,13 @@ kernel-description:
     number-of-polarizations: 2
     number-of-timesamples: 65536
     sampling-time-μsec: 3.3333333333333335
-    shift-parameter-σ: 2
   compile-parameters:
     minthreads: [32, 4]
     blocks_per_sm: 8
   call-parameters:
     threads: [32, 4]
     blocks: [336]
-    shmem_bytes: 9472
+    shmem_bytes: 13568
   kernel-symbol: "_Z2bb5Int32S_13CuDeviceArrayI6Int8x4Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS_Li1ELi1EES4_S5_S5_"
   kernel-arguments:
     - name: "Tmin"
@@ -42,7 +41,7 @@ kernel-description:
       indices: [C, D, P, F, T]
       shape: [2, 64, 2, 336, 65536]
       strides: [1, 2, 128, 256, 86016]
-    - name: "s"
+    - name: "S"
       intent: in
       type: Int32
       indices: [B, P, F]
