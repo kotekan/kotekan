@@ -142,6 +142,18 @@ def cmd_window(a):
             check=True,
         )
         print("copied %d %s files to %s" % (len(new), s_, d))
+        # only the copy is read: free the node's /tmp (~23 GB per setup); beamdump is the scheduler's
+        if s_ == "dtv":
+            subprocess.run(
+                [
+                    "ssh",
+                    "-o",
+                    "BatchMode=yes",
+                    a.node,
+                    "cd /tmp/gnss/%s && rm -f %s" % (s_, " ".join(new)),
+                ],
+                check=False,
+            )
 
 
 def tag_files(a, tag, g, kind="dtv"):

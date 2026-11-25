@@ -272,7 +272,7 @@ def cmd_identify(a, fids, clock, sky, r):
         for node in a.nodes:
             for g in (0, 1):
                 st = get(node, g)
-                if "error" in st:
+                if "error" in st or st.get("seq", 0) < 0:
                     continue
                 status[(node, g)] = st
                 first.setdefault((node, g), st)
@@ -405,6 +405,9 @@ def cmd_run(a, fids, clock, sky, r):
                         % (node, g)
                     )
                 seq = st["seq"]
+                if seq < 0:
+                    print("%s %s g%d: no frames yet" % (stamp(), node, g), flush=True)
+                    continue
                 clock.check(seq)
                 t = clock.utc(seq)
                 by_src = {}
