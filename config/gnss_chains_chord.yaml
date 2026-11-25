@@ -576,6 +576,8 @@ chains:
         presence-admit-displaced: true
         seed-phase-transport: true
         signal: bds_b2b
+        # The streamed data symbols' index on every seed (the node's set_nav_symbols wipe).
+        dr-nav-symbols: true
         joint-trk-feed: true
         dr-clock-adopt: true
         joint-source: trk
@@ -778,6 +780,8 @@ chains:
   # is fleet-wide, and a PRN an instance never despreads is skipped by the combine.
     gps_l2c:
         signal: gps_l2c
+        # The streamed data symbols' index on every seed (the node's set_nav_symbols wipe).
+        dr-nav-symbols: true
     # As gps_l5's gate, cut for L2C (Block IIR-M and later): the PRNs it excludes are neither
     # predicted nor seeded, and the PRN map refuses them a slot from `signal` alone. The startup
     # line "signal-capability gps_l2c: N PRN(s) excluded by the IGS registry (...)" lists them.
