@@ -2,6 +2,10 @@
 
 # CHIME F-Engine setup
 
+# The pipeline follows config/chime_upgrade_frb.j2, the CHIME production X-engine, but reads its
+# input from files (include/input_chime.j2) or invents it (include/invent_voltage_chime.j2), and
+# writes its output to files.
+
 ################################################################################
 
 # CHIME:
@@ -20,9 +24,15 @@ num_dishes: 1024
 
 # Telescope
 
+# As in config/chime_upgrade_frb.j2, but with the static time origin /gps_time and the default
+# frequency map instead of asking the FPGA controller.
 telescope:
     name: CHIMETelescope
-    require_gps: false
+    require_gps: true
+    query_gps: false
+    query_frequency_map: false
+    require_frequency_map: false
+    allow_default_frequency_map: true
     origin_itrs_lat_deg: +49.32070922 # centre of the array
     origin_itrs_lon_deg: -119.62367743
     grid_x_axis: [1.0, 0.0, 0.0]
@@ -56,6 +66,11 @@ telescope:
     min_science_freq_MHz: (2048 - 1023) * adc_frequency / num_samples_per_frame / 1.0e+6
     max_science_freq_MHz: (2048 -    0) * adc_frequency / num_samples_per_frame / 1.0e+6
 
+gps_time:
+    frame0_nano: 1767225600000000000 # 2026-01-01T00:00:00Z
+
+{% include "include/input_reorder_chime.j2" %}
+
 ################################################################################
 
 # ADC
@@ -73,14 +88,12 @@ frequency_pool_rank: 0
 frequency_pool_size: 64
 
 num_frequencies: 16       # 2048 frequencies / 64 gpus * 50% coverage
-# The frequency channels we keep.
+# The frequency channels we keep (include/frequency_channels_chime.j2).
 #     A channel's frequency is   freq = (2048 - channel) * adc_frequency / num_samples_per_frame
 #     Channel 2048 has 400 MHz for CHIME, channel 1024 has 800 MHz.
 #     There are 2.56 channels per MHz, with a channel width of 390625 Hz.
-# (These particular channels were chosen with a fixed step size between these channel boundaries.)
-frequency_channels: [
-    63, 127, 191, 255, 319, 383, 447, 511, 575, 639, 703, 767, 831, 895, 959, 1023
-]
+{% from "include/frequency_channels_chime.j2" import frequency_channels %}
+frequency_channels: {{ frequency_channels }}
 
 ################################################################################
 
@@ -88,7 +101,50 @@ frequency_channels: [
 
 num_times: 16384                # frame length is 16384 * 2.56 us = 41.94304 ms
 
-bf_mask_lifetime_in_samples: 24 * num_times # about 1 second
+# The bad feed mask is valid for this many input samples, about one second. This must be a
+# multiple of num_times: rfi_downsampling_factor (and rfi_downsampling_factor *
+# rfi_second_downsampling_factor) has to divide it, and the quotient has to be a multiple of
+# rfi_num_times.
+bf_mask_lifetime_in_samples: 24 * num_times
+
+# The names config/chime_upgrade_frb.j2 uses, for the stages that read them
+samples_per_data_set: num_times
+num_local_freq: num_frequencies
+num_elements: num_polarizations * num_dishes
+
+################################################################################
+
+# Updatable config. The REST endpoints are those of config/chime_upgrade_frb.j2.
+
+updatable_config:
+    # Bad input mask, in cylinder order (bufferBadInputs `input_order`)
+    bad_inputs:
+        kotekan_update_endpoint: json
+        {% from "include/bad_inputs_chime.j2" import bad_inputs %}
+        bad_inputs: {{ bad_inputs }}
+        start_time: 1535048997.
+        update_id: "initial_flags"
+    # RFI excision (include/rfi_chime.j2, include/n2k_chime.j2). 0 is a special case which
+    # indicates that the `enabled` state is valid since startup (sequence number 0).
+    rfi_first_stage_enabled:
+        kotekan_update_endpoint: json
+        enabled: true
+        valid_at_time_ns: 0
+    rfi_second_stage_enabled:
+        kotekan_update_endpoint: json
+        enabled: true
+        valid_at_time_ns: 0
+    rfi_second_stage_thresholds:
+        kotekan_update_endpoint: json
+        thresholds: []
+        valid_at_time_ns: 0
+    # FRB beamforming gains (include/frb_chime.j2). By default there are no gain files and
+    # loadFeedGains uses its `default_gains`; the jinja variable `frb_gain_directory` sets the
+    # directory, which is /mnt/frb-archiver/daily_gain_solutions/Latest_FRB in production.
+    frb_gain:
+        0:
+            kotekan_update_endpoint: json
+            gain_directory: "{{ frb_gain_directory | default('') }}"
 
 ################################################################################
 
@@ -146,17 +202,56 @@ host_voltage_ringbuffer:
     ring_buffer_size: buffer_depth * num_dishes * num_polarizations * num_frequencies * num_times
     metadata_pool: main_pool
 
+# The lost samples, one byte (1 = lost) per sample, for all dishes and polarizations of a group of
+# 4 frequencies: lost_samples_buffer_<k> serves host_voltage_buffer_<4k> to <4k+3>.
+# zeroSamples, a second producer of the voltage buffers, zeroes the lost voltages; it relies on the
+# lost samples being marked full after the voltages are written, as dpdk does. The generator
+# (include/invent_voltage_chime.j2) writes both in that order and runs zeroSamples. The file input
+# (include/input_chime.j2) produces the two streams independently, so it has no zeroSamples and no
+# lost samples.
+{% for id in range(16 // 4) %}   # num_frequencies = 16
+lost_samples_buffer_{{ id }}:
+    kotekan_buffer: ndarray
+    num_frames: 6 * buffer_depth
+    value_type: uint8
+    extents: [num_times]
+    quantity_name: "lost_samples"
+    dimnames: ["T"]
+    dimscalings: [1]
+    metadata_pool: main_pool
+{% endfor %}
+
 ################################################################################
 
 # Stages
 
-run_invent_bf_mask:
-    kotekan_stage: inventBFMask
-    bf_mask: host_bf_mask_buffer
+# The packet loss mask: a lost sample is lost for all dishes, polarizations and the 4 frequencies
+# of its group
+run_lost_samples_to_pl_mask:
+    kotekan_stage: lostSamplesToPLMask
+    pl_mask_buf: host_pl_mask_buffer
+    lost_samples_buffers:
+{% for id in range(16 // 4) %}   # num_frequencies = 16
+    - lost_samples_buffer_{{ id }}
+{% endfor %}
 
-run_invent_pl_mask:
-    kotekan_stage: inventPLMask
-    pl_mask: host_pl_mask_buffer
+# The bad feed masks from /updatable_config/bad_inputs. N2Accumulate needs one mask frame per
+# correlation frame, BB and FRB1 need the mask lifetime to equal their phase lifetimes, so there
+# are two streams with the same content (include/n2k_chime.j2). Both apply an update at the same
+# beamformer lifetime boundary.
+set_bf_mask:
+    updatable_config:
+        bad_inputs: /updatable_config/bad_inputs
+    # The mask streams start at the sequence number of the first voltage frame
+    metadata_source: host_voltage_buffer_0
+    bf_mask_update_alignment_in_samples: bf_mask_lifetime_in_samples
+    for_beamformers:
+        kotekan_stage: bufferBadInputs
+        out_buf: host_bf_mask_buffer
+    for_n2:
+        kotekan_stage: bufferBadInputs
+        out_buf: host_n2_bf_mask_buffer
+        bf_mask_lifetime_in_samples: n2k_samples_per_data_set
 
 run_send_bf_mask:
     gpu_0:

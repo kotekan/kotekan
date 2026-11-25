@@ -1,0 +1,51 @@
+# -*-yaml-*-
+
+# Universal definitions
+
+################################################################################
+
+# Type sizes
+
+sizeof_uint8: 1
+sizeof_uint16: 2
+sizeof_uint32: 4
+sizeof_uint64: 8
+sizeof_int8: 1
+sizeof_int16: 2
+sizeof_int32: 4
+sizeof_int64: 8
+sizeof_float16: 2
+sizeof_float32: 4
+sizeof_float64: 8
+
+# Basic constants
+
+num_components: 2
+num_polarizations: 2
+
+# Kotekan
+
+type: config
+
+# # This is for cx67 with 16 cores per numa node and 1 PU per core
+# cpu_affinity: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
+cpu_affinity: []
+# numa_node: 0
+# use_hugepages: true
+
+kernel_path: "lib/cuda/kernels"
+
+# Metadata
+main_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: 10 * buffer_depth
+
+n2_pool:
+    kotekan_metadata_pool: N2Metadata
+    num_metadata_objects: 16 * buffer_depth
+
+# Buffers
+buffer_depth: 4
+
+# Other parts of Kotekan want this
+frame_arrival_period: num_samples_per_frame / adc_frequency

@@ -1,0 +1,128 @@
+# -*-yaml-*-
+
+# Copied from config/fengine/include/upchan_chime.j2 for the integration tests. Jinja variable:
+# upchan_gains ('16': the 16 fine-channel gains).
+
+# CHIME upchannelizer setup
+
+################################################################################
+
+# Upchannelizer setup
+
+# TODO: Remove this
+upchannelization_factor: 16
+
+
+
+# The largest upchannelization factor of the FRB chain. Its upchannelizers delay their
+# output so that it is aligned in time with that of the largest factor. The HFB chain does
+# not share an output buffer with the FRB chain and sets its own value, see
+# `upchan_hfb_chime.j2` and `hfb_chime.j2`.
+max_upchannelization_factor: 16
+# As config/chime_upgrade_frb.j2: the L1 receiver requires the FRB output to begin at a multiple
+# of 3 frames. The upchannelizers round their output delay up to a multiple of this, so the input
+# must begin at a multiple of it as well. The HFB chain's delay (U = 128) rounds to the same.
+upchan_output_alignment: 3 * num_times
+
+upchan_factors: [16]
+# ranges are [min, max)
+upchan_channel_ranges:
+    16: [0, 2048]
+
+# The GPU-local (not global) channel index range for each upchannelization factor
+
+# actual = 16, scaled = 256
+upchan_U16_max_num_channels: 16
+upchan_U16_min_channel: 0
+upchan_U16_max_channel: 16
+upchan_U16_min_output_channel: 0
+upchan_U16_max_output_channel: (upchan_U16_max_channel - upchan_U16_min_channel) * 16
+upchan_U16_max_num_output_channels: upchan_U16_max_output_channel - upchan_U16_min_output_channel
+
+################################################################################
+
+# Buffers
+
+# Gains
+
+host_upchan_U16_gain_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 1
+    value_type: float16
+    extents: [upchan_U16_max_num_channels * 16]
+    quantity_name: "G"
+    dimnames: ["Fbar"]
+    dimscalings: [1]
+    metadata_pool: main_pool
+
+# Packet loss masks
+
+host_upchan_U16_expanded_pl_mask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * (64 / 8) * (num_dishes / 8) * num_polarizations * upchan_U16_max_num_channels * (num_times / 64 / 16)
+    metadata_pool: main_pool
+
+# Voltages
+
+host_upchan_U16_voltage_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * num_dishes * num_polarizations * (upchan_U16_max_num_channels * 16) * (num_times / 16)
+    metadata_pool: main_pool
+
+################################################################################
+
+# Stages
+
+# upchan.jl scales its window by 1/U, so that a tone at a fine-channel centre keeps its
+# amplitude, while noise shrinks by 0.892/sqrt(U). A gain of 0.8 sqrt(U) takes F-engine noise
+# of 2.8 LSB to 2 LSB at the int4 output, leaving headroom for RFI. Such a tone is then
+# multiplied by 0.81 sqrt(U).
+run_set_upchan_U16_gain:
+    kotekan_stage: setUpchanGain
+    upchan_factor: 16
+    upchan_max_num_channels: upchan_U16_max_num_channels
+    upchan_gain: {{ (upchan_gains | default({})).get('16', [(0.8 * 16 ** 0.5) | round(4)] * 16) | tojson }}
+    upchan_gain_buffer: host_upchan_U16_gain_buffer
+    metadata_source:
+{% for id in range(16) %}   # num_frequencies = 16
+        - host_voltage_buffer_{{ id }}
+{% endfor %}
+
+run_upchan_pl_U16:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_pl_expanded_mask_ringbuffer: host_pl_expanded_mask_ringbuffer
+        out_buffers:
+            host_upchan_U16_expanded_pl_mask_ringbuffer: host_upchan_U16_expanded_pl_mask_ringbuffer
+        commands:
+        - name: cudaPLMaskUpchannelizer
+          expanded_pl_mask_name: pl_expanded_mask
+          upchannelized_expanded_pl_mask_name: upchan_U16_expanded_pl_mask
+          upchannelization_factor: 16
+          num_frequencies_out: upchan_U16_max_num_channels
+          Fmin: upchan_U16_min_channel
+          Fmax: upchan_U16_max_channel
+
+run_upchan_U16:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_xposed_voltage_ringbuffer: host_xposed_voltage_ringbuffer
+            host_upchan_U16_gain_buffer: host_upchan_U16_gain_buffer
+        out_buffers:
+            host_upchan_U16_voltage_ringbuffer: host_upchan_U16_voltage_ringbuffer
+        commands:
+        - name: cudaInputData
+          do_once: true
+          in_buf: host_upchan_U16_gain_buffer
+          gpu_mem: upchan_U16_gain_buffer
+        - name: cudaSyncInput
+        - name: cudaUpchannelizer_chime_U16_K4
+          voltage_name: xposed_voltage
+          upchan_U16_gain_name: upchan_U16_gain
+          upchan_U16_voltage_name: upchan_U16_voltage
+          Fmin: upchan_U16_min_channel
+          Fmax: upchan_U16_max_channel

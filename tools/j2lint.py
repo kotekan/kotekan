@@ -2,7 +2,9 @@
 """Render each .j2 with an empty context and require valid yaml output.
 
 Mirrors python/kotekan/config.py: FileSystemLoader rooted at the template's
-parent so `{% include %}` resolves, default Undefined behaviour. Also rejects
+parent so `{% include %}` resolves, default Undefined behaviour. An include file,
+which may itself include "include/...", also searches its parent's parent, the
+directory of the top-level config. Also rejects
 duplicate keys in the rendered output (via ruamel, matching yamlfix_kotekan.py;
 the runtime PyYAML loader silently keeps the last duplicate). Report-only.
 """
@@ -18,7 +20,7 @@ from ruamel.yaml.error import YAMLError as RuamelYAMLError
 
 def lint_file(path: Path) -> int:
     env = jinja2.Environment(
-        loader=jinja2.FileSystemLoader(str(path.parent)),
+        loader=jinja2.FileSystemLoader([str(path.parent), str(path.parent.parent)]),
         autoescape=jinja2.select_autoescape(),
     )
     try:

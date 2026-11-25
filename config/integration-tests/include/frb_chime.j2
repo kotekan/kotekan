@@ -1,0 +1,343 @@
+# -*-yaml-*-
+
+# Copied from config/fengine/include/frb_chime.j2 for the integration tests. Jinja variables:
+# frb2_weights_lifetime_in_samples, frb_default_gains (the feed gain [re, im] that loadFeedGains
+# uses without gain files), frb2_beam_layout (replaces `mode` and `beams` of setFRBBeams).
+
+# CHIME FRB beamformer setup, as config/chime_upgrade_frb.j2: FRB1 weights from the feed gains
+# (loadFeedGains, processFRBFeedGains), FRB2 on the CHIME/FRB beams
+
+################################################################################
+
+# cudaQuantize requires `frb_num_output_times` to be a multiple of 256
+frb_downsampling_factor: 384
+frb_num_output_times: 256
+frb1_swap_MN: true
+frb1_num_beams_P: 2 * num_dishes_y
+frb1_num_beams_Q: 2 * num_dishes_x
+
+frb2_num_beams_x: 4
+frb2_num_beams_y: 256
+frb2_num_beams: frb2_num_beams_x * frb2_num_beams_y
+
+# The FRB2 beamforming weights are valid for this many input samples. This must be a multiple of
+# frb_num_output_times * frb_downsampling_factor, the number of input samples the FRB2 beamformer
+# processes per kernel invocation. The weights matrices are large and are recalculated on the GPU, so
+# keep this long: about a minute here, and possibly much longer (e.g. 24 h) in production.
+frb2_weights_lifetime_in_samples: {{ frb2_weights_lifetime_in_samples | default('240 * frb_num_output_times * frb_downsampling_factor') }} # default: 60.3979776 s
+# Number of weights matrices in the GPU ring buffer. Each takes
+# 2 * upchan_U16_max_num_output_channels * frb2_num_beams * frb1_num_beams_Q * frb1_num_beams_P
+# bytes (2 GiB).
+frb2_weights_ring_depth: 2
+
+frb_chunk_size: 256
+
+# The FRB1 beamforming weights are valid for this many input samples (about one second). The
+# U = 16 FRB1 kernel processes multiples of 16 * (384 / 16) = 384 input samples, so this must be a
+# multiple of 384.
+# processFRBFeedGains emits one set of weights per bad feed mask frame, so this has to be the
+# mask's lifetime.
+frb1_phase_lifetime_in_samples: bf_mask_lifetime_in_samples
+
+################################################################################
+
+# Buffers
+
+# Phases
+
+# Beamforming gains at coarse frequency resolution, from loadFeedGains
+host_frb1_phase_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 1
+    value_type: float32
+    extents: [num_frequencies, num_elements, num_components]
+    quantity_name: "gain"
+    dimnames: ["F", "E", "C"]
+    dimscalings: [1, 1, 1]
+    metadata_pool: main_pool
+
+# Beamforming gains at upchannelized frequency resolution, from processFRBFeedGains. One frame is
+# one set of weights, covering frb1_phase_lifetime_in_samples input samples.
+host_frb1_U16_phase_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: float16
+    extents: [1, upchan_U16_max_num_channels * 16, num_polarizations, num_dishes_x, num_dishes_y, num_components]
+    quantity_name: "W"
+    dimnames: ["TW", "Fbar", "P", "dishN", "dishM", "C"]
+    dimscalings: [frb1_phase_lifetime_in_samples, 1, 1, 1, 1, 1]
+    metadata_pool: main_pool
+host_frb1_U16_phase_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * sizeof_float16 * upchan_U16_max_num_channels * 16 * num_polarizations * num_dishes_x * num_dishes_y * num_components
+    metadata_pool: main_pool
+
+# One frame of positions per frb2_weights_lifetime_in_samples input samples
+host_frb2_beam_positions_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: float32
+    extents: [frb2_num_beams, 2]
+    quantity_name: "frb2_beam_positions"
+    dimnames: ["R", "X/Y"]
+    dimscalings: [1, 1]
+    metadata_pool: main_pool
+
+host_frb2_beam_ids_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: uint64
+    extents: [frb2_num_beams]
+    quantity_name: "frb2_beam_ids"
+    dimnames: ["R"]
+    dimscalings: [1]
+    metadata_pool: main_pool
+
+# The weights are calculated on the GPU, directly into this ring buffer, one matrix
+# [Fbar, R, beamQ, beamP] per frb2_weights_lifetime_in_samples input samples. There is no host copy.
+host_frb2_weights_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: frb2_weights_ring_depth * sizeof_float16 * upchan_U16_max_num_output_channels * frb2_num_beams * frb1_num_beams_Q * frb1_num_beams_P
+    metadata_pool: main_pool
+
+# Beams
+
+host_frb1_beams_ringbuffer:
+    kotekan_buffer: ring
+    num_frames: buffer_depth
+    ring_buffer_size: buffer_depth * sizeof_float16 * frb1_num_beams_P * frb1_num_beams_Q * upchan_U16_max_num_output_channels * frb_num_output_times
+    metadata_pool: main_pool
+
+# The packet loss mask of the FRB1 beams, one byte (1 = valid) per sample and frequency
+host_frb1_pl_mask_ringbuffer:
+    kotekan_buffer: ring
+    num_frames: buffer_depth
+    ring_buffer_size: buffer_depth * upchan_U16_max_num_output_channels * frb_num_output_times
+    metadata_pool: main_pool
+
+host_frb3_beams_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    # frame_size: sizeof_uint8 * frb2_num_beams * upchan_U16_max_num_output_channels * frb_num_output_times
+    value_type: uint8
+    extents: [1, frb2_num_beams / 4, upchan_U16_max_num_output_channels / 64, 16, 4, 4, 16, 16]
+    quantity_name: "I3"
+    dimnames: ["Ttilde256", "R4", "Fbar64", "Ttilde16_lo16", "Rlo4", "Fbar16_lo4", "Fbarlo16", "Ttildelo16"]
+    dimscalings: [frb_downsampling_factor * 256, 4, 64, frb_downsampling_factor * 16, 1, 16, 1, frb_downsampling_factor]
+    metadata_pool: main_pool
+
+host_frb3_beams_offsetscale_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    # the output is quantized in chunks of `frb_chunk_size`
+    # frame_size: sizeof_float16 * 2 * frb2_num_beams * upchan_U16_max_num_output_channels * frb_num_output_times / frb_chunk_size
+    value_type: float16
+    extents: [1, frb2_num_beams / 4, upchan_U16_max_num_output_channels / 64, 16, 4, 4, 2]
+    quantity_name: "I3_offsetscale"
+    dimnames: ["Ttilde256", "R4", "Fbar64", "Ttilde16_lo16", "Rlo4", "Fbar16_lo4", "offset/scale"]
+    dimscalings: [frb_downsampling_factor * 256, 4, 64, frb_downsampling_factor * 16, 1, 16, 1]
+    metadata_pool: main_pool
+
+################################################################################
+
+# Stages
+
+# FRB 1
+
+# The feed gains from the files in /updatable_config/frb_gain/0 (include/fengine_chime.j2), or
+# `default_gains` without them
+run_load_frb1_phase:
+    kotekan_stage: loadFeedGains
+    beamformer_type: "frb"
+    filename_template: "quick_gains_%04d_reordered.bin"
+    default_gains: {{ frb_default_gains | default([1.0, 0.0]) | tojson }}
+    gain_buffers:
+      - host_frb1_phase_buffer
+    in_buf: host_rfi_RFImask_buffer
+    updatable_config:
+      frb_gain: /updatable_config/frb_gain
+
+# The FRB1 weights: the feed gains, copied to every fine channel, zero for bad feeds. This reads
+# the mask on the host side as a flat array of num_elements bytes, which the [1, P, D] mask is.
+run_process_frb1_U16_phase:
+    kotekan_stage: processFRBFeedGains
+    upchan_factor: 16
+    gain_buffers:
+      - host_frb1_phase_buffer
+    in_mask_buf: host_bf_mask_buffer
+    out_buf: host_frb1_U16_phase_buffer
+
+# Send the weights to their GPU ringbuffer. One set of weights covers
+# frb1_phase_lifetime_in_samples input samples, so this runs far less often than run_frb1_U16.
+run_send_frb1_U16_phase:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_frb1_U16_phase_buffer: host_frb1_U16_phase_buffer
+        out_buffers:
+            host_frb1_U16_phase_ringbuffer: host_frb1_U16_phase_ringbuffer
+        commands:
+        - name: cudaCopyToRingbuffer
+          input_size: sizeof_float16 * upchan_U16_max_num_channels * 16 * num_polarizations * num_dishes_x * num_dishes_y * num_components
+          ring_buffer_size: buffer_depth * input_size
+          in_buf: host_frb1_U16_phase_buffer
+          signal_buf: host_frb1_U16_phase_ringbuffer
+          gpu_mem_output: frb1_U16_phase_buffer
+
+run_frb1_U16:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_upchan_U16_voltage_ringbuffer: host_upchan_U16_voltage_ringbuffer
+            host_frb1_U16_phase_ringbuffer: host_frb1_U16_phase_ringbuffer
+        out_buffers:
+            host_frb1_beams_ringbuffer: host_frb1_beams_ringbuffer
+        commands:
+        - name: cudaCHIMEFRBBeamformer_chime_U16_K4
+          voltage_name: upchan_U16_voltage
+          frb_phase_name: frb1_U16_phase
+          frb_beamgrid_name: frb1_beams
+
+# The packet loss mask of the FRB1 beams. An FRB1 output sample is valid only if all input samples
+# it depends on are valid.
+run_frb1_pl_U16:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_upchan_U16_expanded_pl_mask_ringbuffer: host_upchan_U16_expanded_pl_mask_ringbuffer
+        out_buffers:
+            host_frb1_pl_mask_ringbuffer: host_frb1_pl_mask_ringbuffer
+        commands:
+        - name: cudaPLMaskFRB1
+          pl_mask_name: upchan_U16_expanded_pl_mask
+          frb1_pl_mask_name: frb1_pl_mask
+          num_frequencies: upchan_U16_max_num_channels
+          upchannelization_factor: 16
+          downsampling_factor: frb_downsampling_factor / 16
+          Fmin: 0
+          Fmax: upchan_U16_max_channel - upchan_U16_min_channel
+          Fbar_out_min: upchan_U16_min_output_channel
+          Fbar_out_max: upchan_U16_max_output_channel
+          num_output_frequencies: upchan_U16_max_num_output_channels
+          num_output_times: buffer_depth * frb_num_output_times
+
+# FRB 2 and 3
+
+run_set_frb2_beams:
+    kotekan_stage: setFRBBeams
+    metadata_source: host_voltage_buffer_0
+    out_pos_buf: host_frb2_beam_positions_buffer
+    out_id_buf: host_frb2_beam_ids_buffer
+    time_downsampling_fpga: frb2_weights_lifetime_in_samples
+    num_beams: frb2_num_beams
+{% if frb2_beam_layout is defined %}
+{% for key, val in frb2_beam_layout.items() %}
+    {{ key }}: {{ val | tojson }}
+{% endfor %}
+{% else %}
+    mode: manual
+    # The CHIME/FRB beams: the beam separation in EW is 0.4 deg, in NS such that sin(angle)
+    # changes by sqrt(3)/256 (from
+    # https://github.com/chime-frb-open-data/chime-frb-beam-model/blob/e65b070243056fe5d33a2b1f4ce52ce685b74fc5/cfbm/formed.py#L86
+    # via Paul Scholz). x_dir_grid and y_dir_grid are the direction sines,
+    # sin(angle from zenith towards x) and towards y.
+    # Beam R = ns * frb2_num_beams_x + ew, with the CHIME/FRB beam id 1000 * ew + ns.
+    {% set sin_achromatic_beam_angles_EW = [-0.00698126029796155, 0.0, 0.00698126029796155, 0.0139621803391453] %}
+    beams:
+{% for ns in range(256) %}   # frb2_num_beams_y = 256
+{%   for ew in range(4) %}   # frb2_num_beams_x = 4
+      - id: {{ 1000 * ew + ns }}
+        x_dir_grid: {{ sin_achromatic_beam_angles_EW[ew] }}
+        y_dir_grid: {{ (ns - 127) * 1.73205080756888 / 256 }}
+{%   endfor %}
+{% endfor %}
+{% endif %}
+
+# Calculate the weights on the GPU, one matrix per positions frame. This runs once per
+# frb2_weights_lifetime_in_samples, so a single command instance suffices. The frequencies come
+# from the voltage buffers' metadata.
+run_calc_frb2_weights:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        buffer_depth: 1
+        in_buffers:
+            host_frb2_beam_positions_buffer: host_frb2_beam_positions_buffer
+{% for id in range(16) %}   # num_frequencies = 16
+            host_voltage_buffer_{{ id }}: host_voltage_buffer_{{ id }}
+{% endfor %}
+        out_buffers:
+            host_frb2_weights_ringbuffer: host_frb2_weights_ringbuffer
+        commands:
+        - name: cudaInputData
+          in_buf: host_frb2_beam_positions_buffer
+          gpu_mem: frb2_beam_positions_buffer
+        - name: cudaSyncInput
+        - name: cudaCalcFRB2Weights
+          frb2_num_frequencies: upchan_U16_max_num_output_channels
+          frb2_beam_positions_name: frb2_beam_positions
+          frb2_weights_name: frb2_weights
+          metadata_source:
+{% for id in range(16) %}   # num_frequencies = 16
+            - host_voltage_buffer_{{ id }}
+{% endfor %}
+
+run_frb23:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_frb1_beams_ringbuffer: host_frb1_beams_ringbuffer
+            host_frb1_pl_mask_ringbuffer: host_frb1_pl_mask_ringbuffer
+            host_frb2_weights_ringbuffer: host_frb2_weights_ringbuffer
+        out_buffers:
+{%- if not benchmark %}
+            host_frb_pl_mask_buffer: host_frb_pl_mask_buffer
+            host_frb2_beams_buffer: host_frb2_beams_buffer
+{%- endif %}
+            host_frb3_beams_buffer: host_frb3_beams_buffer
+            host_frb3_beams_offsetscale_buffer: host_frb3_beams_offsetscale_buffer
+        commands:
+        - name: cudaFRBBeamReformer
+          # accumulate the 4096-term sums in float32; float16 loses precision
+          accumulate_float32: true
+          frb1_max_num_frequencies: upchan_U16_max_num_output_channels
+          frb1_max_num_times: buffer_depth * frb_num_output_times
+          frb2_num_frequencies: upchan_U16_max_num_output_channels
+          frb2_num_times: frb_num_output_times
+          in_signal: host_frb1_beams_ringbuffer
+          frb1_beams_name: frb1_beams
+          frb2_weights_name: frb2_weights
+          frb2_beams_name: frb2_beams
+        - name: cudaQuantize8
+          # the output is quantized in chunks of `frb_chunk_size`
+          num_beams: frb2_num_beams
+          num_frequencies: upchan_U16_max_num_output_channels
+          num_times: frb_num_output_times
+          gpu_mem_input: frb2_beams
+          gpu_mem_output: frb3_beams
+          gpu_mem_offsetscale: frb3_beams_offsetscale
+          frb1_max_num_frequencies: upchan_U16_max_num_output_channels
+          frb1_max_num_times: buffer_depth * frb_num_output_times
+          gpu_mem_pl_mask: frb1_pl_mask
+        - name: cudaSyncOutput
+{%- if not benchmark %}
+        - name: cudaCopyFromRingbuffer
+          host_signal: host_frb1_pl_mask_ringbuffer
+          gpu_mem_input: frb1_pl_mask_buffer
+          output_size: upchan_U16_max_num_output_channels * frb_num_output_times
+          ring_buffer_size: buffer_depth * output_size
+          out_buf: host_frb_pl_mask_buffer
+        - name: cudaOutputData
+          gpu_mem: frb2_beams_buffer
+          out_buf: host_frb2_beams_buffer
+{%- endif %}
+        - name: cudaOutputData
+          gpu_mem: frb3_beams_buffer
+          out_buf: host_frb3_beams_buffer
+        - name: cudaOutputData
+          gpu_mem: frb3_beams_offsetscale_buffer
+          out_buf: host_frb3_beams_offsetscale_buffer

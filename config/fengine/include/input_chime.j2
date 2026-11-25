@@ -6,7 +6,7 @@
 
 # Stages
 
-{% set frequency_channels = [63, 127, 191, 255, 319, 383, 447, 511, 575, 639, 703, 767, 831, 895, 959, 1023,] %}
+{% from "include/frequency_channels_chime.j2" import frequency_channels %}
 
 read_data:
 {% for id in range(16) %}   # num_frequencies = 16
@@ -18,3 +18,5 @@ read_data:
         transpose_frequency_and_time: true
         out_buf: host_voltage_buffer_{{ id }}
 {% endfor %}
+
+{% include "include/lost_samples_chime.j2" %}
