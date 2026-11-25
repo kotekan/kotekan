@@ -214,7 +214,7 @@ class TestBcnav3Sow(unittest.TestCase):
             lambda s, prn: iter([(0, 1, frame[0], frame[2], frame[1])]),
         ):
             for _ in range(2):
-                st.pending = [np.ones(1000)]
+                st.pending = [(0.0, 0.001, np.ones(1000))]
                 pred._decode(7, st)
         self.assertEqual(st.n_frames, 1)
         st.seen.update(range(-10000, -10000 + 7300))
@@ -282,6 +282,7 @@ class TestCnavGlobalSign(unittest.TestCase):
         pred._g2 = False
         st = pred._p.setdefault(prn, cnav_predictor._PrnState())
         st.phase = 0
+        st.sym_s, st.edge_s = 0.01, 0.0
         starts = [200 * k for k in range(10)]
         for s0 in starts:
             st.emits[s0] = (pm[s0 : s0 + 201] * sign).astype(np.int8)
