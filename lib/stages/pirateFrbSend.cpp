@@ -70,8 +70,13 @@ pirateFrbSend::pirateFrbSend(Config& config, const std::string& unique_name,
                     frb_num_output_times / frb_chunk_size, expect_size, intensity_buf->frame_size);
     assert(intensity_buf->frame_size == expect_size);
 
+    // ughh duplicated from bufferSend.cpp ...
+    uint32_t send_timeout = config.get_default<uint32_t>(unique_name, "send_timeout", 20);
+    uint32_t reconnect_time = config.get_default<uint32_t>(unique_name, "reconnect_time", 5);
 
-    /**
+    /** Parse the yaml config file and create pirateDestination objects for them -- config file
+        format looks like this:
+
 beams: [
 {beam_id: 0, x: 0.0, y: 0.0, type: Real},
 {beam_id: 1, x: 0.1, y: -1.2, type: Real},
@@ -95,10 +100,6 @@ frb_search_nodes: [
   }
 ]
     */
-    // ughh duplicated from bufferSend.cpp ...
-    uint32_t send_timeout = config.get_default<uint32_t>(unique_name, "send_timeout", 20);
-    uint32_t reconnect_time = config.get_default<uint32_t>(unique_name, "reconnect_time", 5);
-
     json frb_targets = config.get<std::vector<json>>(unique_name, "frb_search_nodes");
     for (json target : frb_targets) {
         if (!target.is_object()) {
@@ -107,7 +108,7 @@ frb_search_nodes: [
         }
         std::string ip = target["ip"].get<std::string>();
         int port = target["port"].get<int>();
-        int beamset = target["beamset"].get<int>();
+        //int beamset = target["beamset"].get<int>();
         // std::vector<int> beam_ids = target["beams"].get<std::vector<int> >();
         int beam_index_min = target["beam_index_min"].get<int>();
         int beam_index_max = target["beam_index_max"].get<int>();
@@ -120,25 +121,11 @@ frb_search_nodes: [
             FATAL_ERROR("beam_index_min ({:d}) and beam_index_max ({:d}) must be non-negative",
                         beam_index_min, beam_index_max);
 
-        std::shared_ptr<struct pirateDestination> dest = std::make_shared<pirateDestination>();
-        dest->connected = false;
-        dest->sent_header = false;
-        dest->socket_fd = -1;
-        dest->server_ip = ip;
-        dest->server_port = port;
-
-        bzero(&dest->server_addr, sizeof(dest->server_addr));
-        dest->server_addr.sin_family = AF_INET;
-        dest->server_addr.sin_addr.s_addr = inet_addr(dest->server_ip.c_str());
-        dest->server_addr.sin_port = htons(dest->server_port);
-
-        dest->reconnect_time = reconnect_time;
-        dest->send_timeout = send_timeout;
-
+        std::shared_ptr<struct pirateDestination> dest = std::make_shared<pirateDestination>
+            (ip, port, reconnect_time, send_timeout);
         dest->beam_index_min = beam_index_min;
         dest->beam_index_max = beam_index_max;
-        dest->beamset = beamset;
-
+        //dest->beamset = beamset;
         dests.push_back(dest);
     }
 }
@@ -164,8 +151,7 @@ void pirateFrbSend::main_thread() {
     // Fire up all the connect threads...
     for (auto dest : dests) {
         std::string name = "pirateFrbSend";
-        dest->connect_thread = std::thread(&networkDestination::connect_to_server, std::ref(*dest),
-                                           name, std::ref(stop_thread));
+        dest->start_connect_thread(name, stop_thread);
     }
 
     INFO("Waiting for data in beam_positions buffer...");
@@ -294,9 +280,6 @@ cleanup:
 bool pirateFrbSend::send_frame(int frame_id, int64_t fpga_seq, int time_downsampling_fpga,
                                uint8_t* intensity_frame, uint8_t* offset_scale_frame,
                                std::shared_ptr<pirateDestination> dest) {
-    int32_t n = 0;
-    int32_t n_sent = 0;
-
     if (!dest->sent_header) {
         INFO("Sending header");
 
@@ -400,14 +383,11 @@ bool pirateFrbSend::send_frame(int frame_id, int64_t fpga_seq, int time_downsamp
         }
 
         // meta.nbeams = dest->beam_ids.size();
-        meta.beamset = dest->beamset;
+        //meta.beamset = dest->beamset;
 
         INFO("XEngineMetadata validate:");
         meta.validate();
-
-        // std::string config = "yaml";
         std::string config = meta.to_yaml_string(true);
-
         INFO("Formatted X-engine metadata for Pirate: {:s}", config);
 
         struct pirateNetworkHeader header;
@@ -417,19 +397,18 @@ bool pirateFrbSend::send_frame(int frame_id, int64_t fpga_seq, int time_downsamp
         size_t header_len = sizeof(struct pirateNetworkHeader);
 
         DEBUG2("Sending header");
-        while ((n = send(dest->socket_fd, &((uint8_t*)&header)[n_sent], header_len - n_sent,
-                         MSG_NOSIGNAL))
-               > 0) {
-            n_sent += n;
+        if (!dest->send_data((uint8_t*)&header, header_len)) {
+            ERROR("Error {:s}, failed to send header to {:s}:{:d}", strerror(errno), dest->server_ip,
+                  dest->server_port);
+            return false;
         }
 
         size_t config_len = header.config_length;
-        n_sent = 0;
         DEBUG2("Sending config yaml");
-        while ((n = send(dest->socket_fd, &((uint8_t*)config.c_str())[n_sent], config_len - n_sent,
-                         MSG_NOSIGNAL))
-               > 0) {
-            n_sent += n;
+        if (!dest->send_data((uint8_t*)config.c_str(), config_len)) {
+            ERROR("Error {:s}, failed to send yaml config to {:s}:{:d}", strerror(errno), dest->server_ip,
+                  dest->server_port);
+            return false;
         }
         dest->sent_header = true;
         INFO("Sent header + yaml (size {:d}) to dest {:s}:{:d}", config.size(), dest->server_ip,
@@ -437,31 +416,6 @@ bool pirateFrbSend::send_frame(int frame_id, int64_t fpga_seq, int time_downsamp
     }
 
     // Send 256-time-sample mini-chunks.
-
-    /*
-    // First the offset & scale:
-    size_t chunksize = sizeof(float16_t) * 2 * frb_chunk_size * n_beams * upchan_total_channels;
-    n_sent = 0;
-    while ((n = send(dest->socket_fd,
-    offset_scale_frame + (chunk * chunksize) + n_sent,
-    chunksize - n_sent,
-    MSG_NOSIGNAL))
-    > 0) {
-    n_sent += n;
-    }
-    // Then the intensities:
-    chunksize = (n_beams * upchan_total_channels * frb_chunk_size) / 2;
-    n_sent = 0;
-    while ((n = send(dest->socket_fd,
-    intensity_frame + (chunk * chunksize) + n_sent,
-    chunksize - n_sent,
-    MSG_NOSIGNAL))
-    > 0) {
-    n_sent += n;
-    }
-    */
-    //}
-
     for (int chunk = 0; chunk < (int)(frb_num_output_times / frb_chunk_size); chunk++) {
         struct pirateMinichunkHeader chunk_header;
 
@@ -472,10 +426,10 @@ bool pirateFrbSend::send_frame(int frame_id, int64_t fpga_seq, int time_downsamp
             (uint64_t)(fpga_seq + time_downsampling_fpga * chunk * frb_chunk_size);
         uint8_t* header_ptr = (uint8_t*)(&chunk_header);
 
-        n_sent = 0;
-        while ((n = send(dest->socket_fd, header_ptr + n_sent, header_size - n_sent, MSG_NOSIGNAL))
-               > 0) {
-            n_sent += n;
+        if (!dest->send_data(header_ptr, header_size)) {
+            ERROR("Error {:s}, failed to send minichunk header to {:s}:{:d}", strerror(errno), dest->server_ip,
+                  dest->server_port);
+            return false;
         }
 
         // Next is the offset & scale array.
@@ -489,11 +443,10 @@ bool pirateFrbSend::send_frame(int frame_id, int64_t fpga_seq, int time_downsamp
         // HACK -- we're assuming contiguous data packing...
         size_t offset = total_chunk_size * chunk + dest->beam_index_min * size_per_beam;
 
-        n_sent = 0;
-        while ((n = send(dest->socket_fd, offset_scale_frame + offset + n_sent,
-                         total_chunk_size - n_sent, MSG_NOSIGNAL))
-               > 0) {
-            n_sent += n;
+        if (!dest->send_data(offset_scale_frame + offset, total_chunk_size)) {
+            ERROR("Error {:s}, failed to send offset&scale to {:s}:{:d}", strerror(errno), dest->server_ip,
+                  dest->server_port);
+            return false;
         }
 
         // Then the intensities:
@@ -501,11 +454,10 @@ bool pirateFrbSend::send_frame(int frame_id, int64_t fpga_seq, int time_downsamp
         total_chunk_size = dest_nbeams * size_per_beam;
         offset = total_chunk_size * chunk + dest->beam_index_min * size_per_beam;
 
-        n_sent = 0;
-        while ((n = send(dest->socket_fd, intensity_frame + offset + n_sent,
-                         total_chunk_size - n_sent, MSG_NOSIGNAL))
-               > 0) {
-            n_sent += n;
+        if (!dest->send_data(intensity_frame + offset, total_chunk_size)) {
+            ERROR("Error {:s}, failed to send intensities to {:s}:{:d}", strerror(errno), dest->server_ip,
+                  dest->server_port);
+            return false;
         }
         INFO("Sent frame {:d} chunk {:d}: {:d} beams to {:s}:{:d}", frame_id, chunk, dest_nbeams,
              dest->server_ip, dest->server_port);
@@ -515,4 +467,13 @@ bool pirateFrbSend::send_frame(int frame_id, int64_t fpga_seq, int time_downsamp
     std::this_thread::sleep_for(10000ms);
 
     return true;
+}
+
+pirateDestination::pirateDestination(const std::string& server_ip, uint16_t server_port,
+                                     uint32_t reconnect_timeout, uint32_t send_timeout) :
+    networkDestination(server_ip, server_port, reconnect_timeout, send_timeout),
+    sent_header(false),
+    beam_index_min(-1),
+    beam_index_max(-1)
+{
 }
