@@ -59,12 +59,12 @@ host_bb_phase_ringbuffer:
     ring_buffer_size: buffer_depth * num_frequencies * num_polarizations * bb_num_beams * num_dishes * num_components
     metadata_pool: main_pool
 
-host_bb_shift_buffer:
+host_bb_scale_buffer:
     kotekan_buffer: ndarray
     num_frames: 1
     value_type: int32
     extents: [num_frequencies, num_polarizations, bb_num_beams]
-    quantity_name: "s"
+    quantity_name: "S"
     dimnames: ["F", "P", "B"]
     dimscalings: [1, 1, 1]
     metadata_pool: main_pool
@@ -110,7 +110,7 @@ run_calc_bb_phase:
     bb_beam_positions: host_bb_beam_positions_buffer
     bf_mask: host_bf_mask_buffer
     bb_phase: host_bb_phase_buffer
-    bb_shift: host_bb_shift_buffer
+    bb_scale: host_bb_scale_buffer
 
 # Send the phase matrix to its GPU ringbuffer. One matrix covers
 # bb_phase_lifetime_in_samples input samples, so this runs far less often than run_bb.
@@ -137,19 +137,19 @@ run_bb:
         in_buffers:
             host_voltage_ringbuffer: host_voltage_ringbuffer
             host_bb_phase_ringbuffer: host_bb_phase_ringbuffer
-            host_bb_shift_buffer: host_bb_shift_buffer
+            host_bb_scale_buffer: host_bb_scale_buffer
         out_buffers:
             host_bb_beams_buffer: host_bb_beams_buffer
         commands:
         - name: cudaInputData
           do_once: true
-          in_buf: host_bb_shift_buffer
-          gpu_mem: bb_shift_buffer
+          in_buf: host_bb_scale_buffer
+          gpu_mem: bb_scale_buffer
         - name: cudaSyncInput
         - name: cudaBasebandBeamformer_chord
           voltage_name: voltage
           bb_phase_name: bb_phase
-          bb_shift_name: bb_shift
+          bb_scale_name: bb_scale
           bb_beams_name: bb_beams
         - name: cudaSyncOutput
         - name: cudaOutputData

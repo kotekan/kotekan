@@ -10,9 +10,9 @@ using Random
 const Memory = IndexSpaces.Memory
 
 idiv(i::Integer, j::Integer) = (@assert iszero(i % j); i ÷ j)
-# shift(x::Number, s) = (@assert s ≥ 0; s == 0 ? x : (x + (1 << (s - 1))) >> s)
-shift(x::Number, s) = (@assert s ≥ 1; (x + (1 << (s - 1))) >> s)
-shift(x::Complex, s) = Complex(shift(x.re, s), shift(x.im, s))
+# Output scaling: round(x S / 2^24), rounding ties up
+scale(x::Integer, S::Integer) = (Int64(x) * Int64(S) + (Int64(1) << 23)) >> 24
+scale(x::Complex, S::Integer) = Complex(scale(x.re, S), scale(x.im, S))
 Base.clamp(x::Complex, a, b) = Complex(clamp(x.re, a, b), clamp(x.im, a, b))
 Base.clamp(x::Complex, ab::UnitRange) = clamp(x, ab.start, ab.stop)
 
@@ -59,8 +59,8 @@ T::Integer
     const T1_stride = 128
     const T2_stride = 32
 
-    const Wb = idiv(B, 16)
-    const Wd = 4
+    const Wb = idiv(B, 8)
+    const Wd = 2
     const Wp = 1
 
 elseif setup ≡ :hirax
@@ -166,9 +166,12 @@ const E_shared_type = Int4x8    # TODO: determine automatically
 const E_shared_offset = 0
 const E_shared_length = (idiv(D, 4) + 1) * 32 * Wp # TODO: calculate automatically
 
-const Ju_shared_type = Int16x2  # TODO: determine automatically
+# `Ju` is stored as complex Int32 pairs, accessed with 64-bit loads and stores. A row stride of
+# `B + 2` complex values (≡ 2 mod 16) makes these accesses bank-conflict free.
+@assert B % 16 == 0
+const Ju_shared_type = Int32
 const Ju_shared_offset = (E_shared_offset + E_shared_length + cacheline_length - 1) & -cacheline_length
-const Ju_shared_length = (B + 4) * 32 * Wd * Wp # TODO: calculate automatically
+const Ju_shared_length = C * (B + 2) * 32 * Wd * Wp
 
 const total_shared_length = (Ju_shared_offset + Ju_shared_length + cacheline_length - 1) & -cacheline_length
 const shmem_bytes = sizeof(UInt32) * total_shared_length
@@ -261,11 +264,6 @@ const kernel_setup = KernelSetup(num_threads, num_warps, num_blocks, num_blocks_
 #     dataframe-length: 55705.6
 #     dataframe-percent: 2.9
 
-# We need to shift the intermediate `Ju` results by `σ` bits to ensure
-# they fit into 16 bits
-const σ = trailing_zeros(idiv(D, Wd)) - 4
-@assert σ ≥ 0
-
 function make_bb_kernel()
     # Machine indices
     simd = SIMD(:simd, 1, num_simd_bits)
@@ -287,7 +285,6 @@ function make_bb_kernel()
     # Physics indices
     int4value = IntValue(:intvalue, 1, 4)
     int8value = IntValue(:intvalue, 1, 8)
-    int16value = IntValue(:intvalue, 1, 16)
     int32value = IntValue(:intvalue, 1, 32)
     cplx = Cplx(:cplx, 1, C)
     beam = Beam(:beam, 1, B)
@@ -316,6 +313,7 @@ function make_bb_kernel()
     dish7 = Dish(:dish, 128, 2)
     dish78 = Dish(:dish, 128, 4)
     dish789 = Dish(:dish, 128, 8)
+    dish8 = Dish(:dish, 256, 2)
     dish89 = Dish(:dish, 256, 4)
     dish9 = Dish(:dish, 512, 2)
 
@@ -376,9 +374,9 @@ function make_bb_kernel()
         freq => Memory(:memory, idiv(D, 2) * B * P, F),
     ])
 
-    # s layout
+    # S layout
 
-    layout_s_global = Layout([
+    layout_S_global = Layout([
         int32value => SIMD(:simd, 1, 32),
         beam => Memory(:memory, 1, B),
         polr => Memory(:memory, B, P),
@@ -447,16 +445,16 @@ function make_bb_kernel()
     # Ju layout
 
     layout_Ju_shared = Layout([
-        int16value => SIMD(:simd, 1, 16),
-        cplx => SIMD(:simd, 16, 2),
-        beam => Shared(:shared, 1, B),
-        time01234 => Shared(:shared, B + 4, 32),
+        int32value => SIMD(:simd, 1, 32),
+        cplx => Shared(:shared, 1, C),
+        beam => Shared(:shared, C, B),
+        time01234 => Shared(:shared, C * (B + 2), 32),
         time56 => loopT2,
         time7etc => loopT1,
         Time(:time, idiv(T, Bt), Bt) => Block(:block, 1, Bt),
-        Dish(:dish, idiv(D, Wd), Wd) => Shared(:shared, (B + 4) * 32, Wd),
+        Dish(:dish, idiv(D, Wd), Wd) => Shared(:shared, C * (B + 2) * 32, Wd),
         Polr(:polr, 1, Bp) => Block(:block, Bt, Bp),
-        Polr(:polr, Bp, Wp) => Shared(:shared, (B + 4) * 32 * Wd, Wp),
+        Polr(:polr, Bp, Wp) => Shared(:shared, C * (B + 2) * 32 * Wd, Wp),
         freq => Block(:block, Bt * Bp, F),
     ])
 
@@ -490,6 +488,7 @@ function make_bb_kernel()
             freq => Block(:block, Bt * Bp, F),
         ])
     elseif D == 512
+        @assert Wd == 2
         num_time_warps_for_Ecopy = prevpow(2, Wb)
         num_time_registers_for_Ecopy = idiv(8, num_time_warps_for_Ecopy)
         num_warps_for_Ecopy = Wd * num_time_warps_for_Ecopy
@@ -501,7 +500,8 @@ function make_bb_kernel()
             dish01 => SIMD(:simd, 4 * C, 4),
             dish23 => Register(:dish, 4, 4),
             dish456 => Thread(:thread, 1, 8),
-            dish78 => Warp(:warp, 1, Wd),
+            dish7 => Warp(:warp, 1, Wd),
+            dish8 => Register(:dish, 256, 2),
             time01 => Thread(:thread, 8, 4),
             Time(:time, 4, num_time_warps_for_Ecopy) => Warp(:warp, Wd, num_time_warps_for_Ecopy),
             Time(:time, 4 * num_time_warps_for_Ecopy, num_time_registers_for_Ecopy) =>
@@ -641,9 +641,9 @@ function make_bb_kernel()
         freq => Block(:block, Bt * Bp, F),
     ])
 
-    # s layout
+    # S layout
 
-    layout_s_registers = Layout([
+    layout_S_registers = Layout([
         int32value => SIMD(:simd, 1, 32),
         beam01 => Thread(:thread, 8, 4),
         beam2etc => Warp(:warp, 1, idiv(B, 4)),
@@ -684,18 +684,17 @@ function make_bb_kernel()
         return nothing
     end
 
-    load!(emitter, :s => layout_s_registers, :s_memory => layout_s_global)
-    apply!(emitter, :s, [:s], (s,) -> :($s - $σ))
+    load!(emitter, :S => layout_S_registers, :S_memory => layout_S_global)
 
     if Wp == 1
-        if!(emitter, :(!(0i32 < s < 32i32))) do emitter
+        if!(emitter, :(!(0i32 ≤ S))) do emitter
             apply!(emitter, :info => layout_info_registers, 3i32)
             store!(emitter, :info_memory => layout_info_memory, :info)
             trap!(emitter)
             return nothing
         end
     elseif Wp == 2
-        if!(emitter, :(!(0i32 < s_polr0 < 32i32 && 0i32 < s_polr1 < 32i32))) do emitter
+        if!(emitter, :(!(0i32 ≤ S_polr0 && 0i32 ≤ S_polr1))) do emitter
             apply!(emitter, :info => layout_info_registers, 3i32)
             store!(emitter, :info_memory => layout_info_memory, :info)
             trap!(emitter)
@@ -743,30 +742,25 @@ function make_bb_kernel()
         permute!(emitter, :A, :A, Register(:cplx, 1, C), SIMD(:simd, 16, 2))
         permute!(emitter, :A, :A, Register(:cplx, 1, C), SIMD(:simd, 8, 2))
     elseif D == 512
+        @assert Wd == 2
         layout_A0_registers = Layout([
             int8value => SIMD(:simd, 1, 8),
-            cplx => SIMD(:simd, 8, 2),       # want register
-            dish0 => SIMD(:simd, 16, 2),     # want simd3
-            dish1 => Register(:cplx, 1, C),  # want simd4
-            dish2 => Register(:dish, 4, 2),  # final
-            dish34 => Thread(:thread, 2, 4), # want register
-            dish5 => Thread(:thread, 1, 2),  # final
-            dish6 => Register(:dish, 8, 2),  # want thread2
-            dish78 => Warp(:warp, 1, Wd),    # final
-            beam0 => Register(:dish, 16, 2), # want thread4
-            beam12 => Thread(:thread, 8, 4), # final
-            beam3 => Register(:beam, 8, 2),  # final
-            beam4etc => Warp(:warp, Wd, Wb),
+            cplx => SIMD(:simd, 8, 2),          # want register
+            dish0 => SIMD(:simd, 16, 2),        # want simd3
+            dish1 => Register(:cplx, 1, C),     # want simd4
+            dish2345 => Register(:dish, 4, 16), # final
+            dish67 => Thread(:thread, 1, 4),    # final
+            dish8 => Warp(:warp, 1, Wd),        # final
+            beam012 => Thread(:thread, 4, 8),   # final
+            beam3etc => Warp(:warp, Wd, Wb),    # final
             Polr(:polr, 1, Bp) => Block(:block, Bt, Bp),
-            Polr(:polr, Bp, Wp) => Warp(:warp, Wd, Wp),
+            Polr(:polr, Bp, Wp) => Warp(:warp, Wd * Wb, Wp),
             freq => Block(:block, Bt * P, F),
         ])
 
         load!(emitter, :A => layout_A0_registers, :A_memory => layout_A_memory; align=16)
         permute!(emitter, :A, :A, Register(:cplx, 1, C), SIMD(:simd, 16, 2))
         permute!(emitter, :A, :A, Register(:cplx, 1, C), SIMD(:simd, 8, 2))
-        permute!(emitter, :A, :A, Register(:dish, 8, 2), Thread(:thread, 2, 2))
-        permute!(emitter, :A, :A, Register(:dish, 16, 2), Thread(:thread, 4, 2))
     elseif D == 256
         layout_A0_registers = Layout([
             int8value => SIMD(:simd, 1, 8),
@@ -946,20 +940,7 @@ function make_bb_kernel()
                     apply!(emitter, :Jure, [:Jurepos, :Jureneg], (Jurepos, Jureneg) -> :($Jurepos - $Jureneg))
                     merge!(emitter, :Ju, [:Jure, :Juim], cplx => Register(:cplx, 1, C))
 
-                    # TODO: Break ties to even?
-                    @assert σ ≥ 0
-                    if σ == 0
-                        # do nothing
-                    else
-                        apply!(emitter, :Ju, [:Ju], (Ju,) -> :(($Ju + $(Int32(1 << (σ - 1)))) >> $(UInt32(σ))))
-                    end
-
-                    # Note: `cvs_pack_s16` saturates, so we don't need to clamp
-                    # Note: We wouldn't need to clamp anyway since the shift above prevents overflow
-                    # apply!(emitter, :Ju, :Ju, Ju -> :(clamp($Ju, $(-Int32(0x7fff)):$(+Int32(0x7fff)))))
-                    narrow!(emitter, :Ju, :Ju, Register(:cplx, 1, C) => SIMD(:simd, 16, 2))
-
-                    store!(emitter, :Ju_shared => layout_Ju_shared, :Ju)
+                    store!(emitter, :Ju_shared => layout_Ju_shared, :Ju; align=8)
 
                     return nothing
                 end
@@ -971,8 +952,8 @@ function make_bb_kernel()
             # Step 3: reduce and quantize
 
             layout_Ju_registers = Layout([
-                int16value => SIMD(:simd, 1, 16),
-                cplx => SIMD(:simd, 16, C),
+                int32value => SIMD(:simd, 1, 32),
+                cplx => Register(:cplx, 1, C),
                 Dish(:dish, 4 * loopD.length * 4, Wd) => Register(:dish, 4 * loopD.length * 4, Wd),
                 beam01 => Thread(:thread, 8, 4),
                 beam2etc => Warp(:warp, 1, Wd * Wb * Wp),
@@ -986,45 +967,24 @@ function make_bb_kernel()
                 freq => Block(:block, Bt * Bp, F),
             ])
 
-            load!(emitter, :Ju => layout_Ju_registers, :Ju_shared => layout_Ju_shared)
-            widen!(emitter, :Ju, :Ju, SIMD(:simd, 16, 2) => Register(:cplx, 1, C))
+            load!(emitter, :Ju => layout_Ju_registers, :Ju_shared => layout_Ju_shared; align=8)
 
-            if D == 1024
-                split!(emitter, [:Julo, :Juhi], :Ju, Dish(:dish, 256, 2))
-                # TODO use add_sat
+            # Sum the partial results of the dish warps. |J| < 2^21, so this cannot overflow.
+            for k in 0:(trailing_zeros(Wd) - 1)
+                split!(emitter, [:Julo, :Juhi], :Ju, Dish(:dish, idiv(D, Wd) << k, 2))
                 apply!(emitter, :Ju, [:Julo, :Juhi], (Julo, Juhi) -> :($Julo + $Juhi))
-                split!(emitter, [:Julo, :Juhi], :Ju, Dish(:dish, 512, 2))
-                # TODO use add_sat
-                apply!(emitter, :J, [:Julo, :Juhi], (Julo, Juhi) -> :($Julo + $Juhi))
-            elseif D == 512
-                split!(emitter, [:Julo, :Juhi], :Ju, Dish(:dish, 128, 2))
-                # TODO use add_sat
-                apply!(emitter, :Ju, [:Julo, :Juhi], (Julo, Juhi) -> :($Julo + $Juhi))
-                split!(emitter, [:Julo, :Juhi], :Ju, Dish(:dish, 256, 2))
-                # TODO use add_sat
-                apply!(emitter, :J, [:Julo, :Juhi], (Julo, Juhi) -> :($Julo + $Juhi))
-            elseif D == 256
-                split!(emitter, [:Julo, :Juhi], :Ju, Dish(:dish, 128, 2))
-                # TODO use add_sat
-                apply!(emitter, :J, [:Julo, :Juhi], (Julo, Juhi) -> :($Julo + $Juhi))
-            elseif D == 128 || D == 64
-                apply!(emitter, :J, [:Ju], (Ju,) -> :($Ju))
-            else
-                @assert false
             end
+            apply!(emitter, :J, [:Ju], (Ju,) -> :($Ju))
 
             @assert emitter.environment[:J] == layout_J_registers
 
-            apply!(emitter, :J, [:J, :s], (J, s) -> :(($J + ($(Int32(1)) << ($s % UInt32 - 0x1))) >> ($s % UInt32)))
-
-            # TODO: Try this: Shift values left by 4, rely on saturation when converting, then shift right and mask (doesn't work)
-            # TODO: Try this: Pack to Int16, the clamp, then pack to Int8 (doesn't work, no efficient 16-bit clamp)
-            # apply!(emitter, :J, [:J], J -> :(clamp($J, ($(-Int32(0x7))):($(+Int32(0x7))))))
-            apply!(emitter, :J, [:J], J -> quote
+            # Scale and quantize: J = clamp(round(J S / 2^24), -7, +7)
+            apply!(emitter, :J, [:J, :S], (J, S) -> quote
                 let
-                    Jnew = clamp($J, ($(-Int32(0x7))):($(+Int32(0x7))))
-                    hasoverflow |= Jnew != $J
-                    Jnew
+                    Jscaled = (Int64($J) * Int64($S) + $(Int64(1) << 23)) >> 0x18
+                    Jnew = clamp(Jscaled, $(-Int64(7)):$(+Int64(7)))
+                    hasoverflow |= Jnew != Jscaled
+                    Jnew % Int32
                 end
             end)
             narrow3!(
@@ -1088,7 +1048,7 @@ println("[Creating bb kernel...]")
 const bb_kernel = make_bb_kernel()
 println("[Done creating bb kernel]")
 
-@eval function bb(Tmin::Int32, Tmax::Int32, A_memory, E_memory, s_memory, J_memory, info_memory, log_memory)
+@eval function bb(Tmin::Int32, Tmax::Int32, A_memory, E_memory, S_memory, J_memory, info_memory, log_memory)
     E_shared = @cuDynamicSharedMem($E_shared_type, $E_shared_length, $(sizeof(UInt32) * E_shared_offset))
     Ju_shared = @cuDynamicSharedMem($Ju_shared_type, $Ju_shared_length, $(sizeof(UInt32) * Ju_shared_offset))
     $bb_kernel
@@ -1098,7 +1058,7 @@ end
 function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftest::Bool=false, nruns::Int=0)
     if !compile_only
         println("CHORD 8-bit baseband beamformer")
-        println("J[t,p,f,b] = s[b,p,f] Σ[d] A[d,b,p,f] E[d,p,f,t]")
+        println("J[t,p,f,b] = S[b,p,f] / 2^24 Σ[d] A[d,b,p,f] E[d,p,f,t]")
     end
 
     if output_kernel
@@ -1188,7 +1148,6 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             number-of-polarizations: $P
             number-of-timesamples: $T
             sampling-time-μsec: $sampling_time_μsec
-            shift-parameter-σ: $σ
           compile-parameters:
             minthreads: [$num_threads, $num_warps]
             blocks_per_sm: $num_blocks_per_sm
@@ -1216,7 +1175,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
               indices: [C, D, P, F, T]
               shape: [$C, $D, $P, $F, $T]
               strides: [1, $C, $(C*D), $(C*D*P), $(C*D*P*F)]
-            - name: "s"
+            - name: "S"
               intent: in
               type: Int32
               indices: [B, P, F]
@@ -1260,7 +1219,6 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                     Dict("type" => "int", "name" => "cuda_number_of_timesamples", "value" => "$T"),
                     # Dict("type" => "int", "name" => "cuda_granularity_number_of_timesamples", "value" => "$T1_stride"),
                     Dict("type" => "int", "name" => "cuda_granularity_number_of_timesamples", "value" => "$Tout"),
-                    Dict("type" => "int", "name" => "cuda_shift_parameter_sigma", "value" => "$σ"),
                 ],
                 "minthreads" => num_threads * num_warps,
                 "num_blocks_per_sm" => num_blocks_per_sm,
@@ -1335,8 +1293,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                         "haslifetime" => false,
                     ),
                     Dict(
-                        "name" => "s",
-                        "kotekan_name" => "bb_shift_name",
+                        "name" => "S",
+                        "kotekan_name" => "bb_scale_name",
                         "type" => "int32",
                         "axes" => [
                             Dict("label" => "B", "length" => B, "dimscaling" => 1),
@@ -1409,7 +1367,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     # TODO: determine types and sizes automatically
     A_memory = Array{Int8x4}(undef, idiv(D, 2) * B * P * F)
     E_memory = Array{Int4x8}(undef, idiv(D, 4) * P * F * T)
-    s_memory = Array{Int32}(undef, B * P * F)
+    S_memory = Array{Int32}(undef, B * P * F)
     J_wanted = Array{Int4x8}(undef, idiv(Tout, 4) * P * F * B)
     info_wanted = Array{Int32}(undef, num_threads * num_warps * num_blocks)
     log_wanted = Array{Int32}(undef, num_blocks)
@@ -1417,13 +1375,12 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     println("Setting up input data...")
     map!(i -> zero(Int8x4), A_memory, A_memory)
     map!(i -> zero(Int4x8), E_memory, E_memory)
-    map!(i -> Int32(σ + 1), s_memory, s_memory)
+    map!(i -> Int32(1) << 20, S_memory, S_memory)
     map!(i -> zero(Int4x8), J_wanted, J_wanted)
     map!(i -> zero(Int32), info_wanted, info_wanted)
     map!(i -> zero(Int32), log_wanted, log_wanted)
     # map!(i -> rand(Int8x4), A_memory, A_memory)
     # map!(i -> rand(Int4x8), E_memory, E_memory)
-    # map!(i -> rand(Int32(1):Int32(10)), s_memory, s_memory)
 
     Tmin = Int32(0)
     Tmax = Int32(Tout)
@@ -1434,8 +1391,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     elseif input ≡ :random
         Random.seed!(0)
 
-        # Choose all s
-        s_memory .= rand((σ + 1):(σ + 10), F * P * B)
+        # Choose all S
+        S_memory .= rand(Int32(2^13):Int32(2^23), F * P * B)
 
         # Choose A and E
         for iter in 1:1000
@@ -1446,7 +1403,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             beam = 0
             Eval = 0
             Aval = 0
-            sval = 0
+            Sval = 0
             Jval = 0
             while true
                 freq = rand(0:(F - 1))
@@ -1456,15 +1413,13 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                 beam = rand(0:(B - 1))
                 Eval = rand(-7:7) + im * rand(-7:7)
                 Aval = rand(-127:127) + im * rand(-127:127)
-                sval = s_memory[(freq * P + polr) * B + beam + 1]
-                Juval = Aval * Eval
-                Juval = shift(Juval, σ)
-                @assert max(abs(Juval.re), abs(Juval.im)) ≤ 32767
-                Jval = Juval
-                Jval = shift(Jval, sval - σ)
-                0 < max(abs(Jval.re), abs(Jval.im)) ≤ 7 && break
+                Sval = S_memory[(freq * P + polr) * B + beam + 1]
+                Jval = scale(Aval * Eval, Sval)
+                # Let some values saturate to test clamping
+                Jmax = iter % 8 == 0 ? typemax(Int) : 7
+                0 < max(abs(Jval.re), abs(Jval.im)) ≤ Jmax && break
             end
-            println("    freq=$freq polr=$polr time=$time dish=$dish beam=$beam Eval=$Eval Aval=$Aval sval=$sval Jval=$Jval")
+            println("    freq=$freq polr=$polr time=$time dish=$dish beam=$beam Eval=$Eval Aval=$Aval Sval=$Sval Jval=$Jval")
             A_memory[(((freq * P + polr) * B + beam) * D + dish) ÷ 2 + 1] += if dish % 2 == 0
                 Int8x4(Aval.re, Aval.im, 0, 0)
             elseif dish % 2 == 1
@@ -1487,8 +1442,8 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     elseif input ≡ :random2
         Random.seed!(0)
 
-        # Choose all s
-        s_memory .= rand((σ + 1):(σ + 10), P * F * B)
+        # Choose all S
+        S_memory .= rand(Int32(2^13):Int32(2^23), P * F * B)
 
         # Choose A and E
         A_memory .= rand(Int8x4, length(A_memory))
@@ -1502,17 +1457,14 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         println("Evaluating kernel on CPU...")
         Threads.@threads for b in 0:(B - 1)
             for f in 0:(F - 1), p in 0:(P - 1), t in 0:(Tout - 1)
-                s = s_memory[(f * P + p) * B + b + 1]
+                S = S_memory[(f * P + p) * B + b + 1]
                 Ju = 0 + 0im
                 for d in 0:(D - 1)
                     A = Complex{Int}(reinterpret(NTuple{2,Int8}, A_memory)[((f * P + p) * B + b) * D + d + 1]...)
                     E = Complex{Int}(convert(NTuple{2,Int8}, reinterpret(Int4x2, E_memory)[((t * F + f) * P + p) * D + d + 1])...)
                     Ju += A * E
                 end
-                Ju = shift(Ju, σ)
-                @assert max(abs(Ju.re), abs(Ju.im)) ≤ 32767
-                J = Ju
-                J = shift(J, s - σ)
+                J = scale(Ju, S)
                 reinterpret(Int4x2, J_wanted)[((b * F + f) * P + p) * Tout + t + 1] = Int4x2(
                     Int32(clamp(J.re, -7:+7)), Int32(clamp(J.im, -7:+7))
                 )
@@ -1523,7 +1475,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
     println("Copying data from CPU to GPU...")
     A_cuda = CuArray(A_memory)
     E_cuda = CuArray(swap_offset.(E_memory))
-    s_cuda = CuArray(s_memory)
+    S_cuda = CuArray(S_memory)
     J_cuda = CUDA.fill(swap_offset(Int4x8(-8, -8, -8, -8, -8, -8, -8, -8)), idiv(Tout, 4) * P * F * B)
     info_cuda = CUDA.fill(-1i32, num_threads * num_warps * num_blocks)
     log_cuda = CUDA.fill(0i32, num_blocks)
@@ -1534,7 +1486,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         Tmax,
         A_cuda,
         E_cuda,
-        s_cuda,
+        S_cuda,
         J_cuda,
         info_cuda,
         log_cuda;
@@ -1553,7 +1505,7 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
                     Tmax,
                     A_cuda,
                     E_cuda,
-                    s_cuda,
+                    S_cuda,
                     J_cuda,
                     info_cuda,
                     log_cuda;
@@ -1584,7 +1536,6 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             number-of-polarizations: $P
             number-of-timesamples: $T
             sampling-time-μsec: $sampling_time_μsec
-            shift-parameter-σ: $σ
           compile-parameters:
             minthreads: [$num_threads, $num_warps]
             blocks_per_sm: $num_blocks_per_sm
