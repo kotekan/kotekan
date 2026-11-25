@@ -31,7 +31,15 @@ from . import iface
 
 # name prefix -> the single-letter constellation the broker and RINEX both use
 # (W: GuoWang, no RINEX letter; transit_windows.py uses it too)
-_SYS = {"GPS": "G", "GAL": "E", "BDS": "C", "GLO": "R", "SBAS": "S", "GW": "W"}
+_SYS = {
+    "GPS": "G",
+    "GAL": "E",
+    "BDS": "C",
+    "GLO": "R",
+    "SBAS": "S",
+    "QZSS": "J",
+    "GW": "W",
+}
 
 
 def _load_descriptors(doc=None):
@@ -77,6 +85,9 @@ _CHAINS = {
     # SBAS L1: the same GEOs on the C/A code family, data only, 500 sps. The tracker code tiles
     # two periods into one 2 ms symbol, as SBAS_L5_I_MC's pair does on L5.
     "sbas_l1": ("SBAS_L1", "SBAS_L1_SYM", None),
+    # QZSS L5: the Q5 pilot of the QZSS satellites (PRNs 193..202), GPS L5's structure with the
+    # NH20 tiled into the tracker code; RINEX J records, keyed by PRN (Jnn + 192).
+    "qzss_l5": ("QZSS_L5_Q", "QZSS_L5_Q_NH", None),
     # E1-C is the dataless OS pilot under the shared CS25; the tracker code bakes it into one
     # 100 ms code, as the E5a-Q CS100, and the model places it from absolute time.
     "gal_e1c": ("GAL_E1C", "GAL_E1C_CS", None),
@@ -283,6 +294,7 @@ class SignalDef(object):
         "BDS": "BeiDou",
         "GLO": "GLONASS",
         "SBAS": "SBAS",
+        "QZSS": "QZSS",
         "GW": "GuoWang",
     }
 
