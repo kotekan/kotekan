@@ -134,7 +134,8 @@ public:
         const double bb_scale_real = bb_gain * std::exp2(24) / bb_amplitude;
         if (!(bb_scale_real >= 1 && bb_scale_real < 0x7fffffff))
             FATAL_ERROR("bb_gain is {:g}, but must be in [{:g}, {:g})", bb_gain,
-                        bb_amplitude / std::exp2(24), 0x7fffffff * bb_amplitude / std::exp2(24));
+                        bb_amplitude / std::exp2(24),
+                        double(0x7fffffff) * bb_amplitude / std::exp2(24));
         const std::int32_t bb_scale = std::int32_t(std::lrint(bb_scale_real));
 
         // Get frequencies
