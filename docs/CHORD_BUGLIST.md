@@ -89,21 +89,6 @@ the aggregator and gather. #184–#187 below are what the removal left for later
 
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
 
-### #244 — our node configs render the stock template without production's vars, so choco's /dtv_mask_enabled push kills every node (2026-11-25, KV: "implement and cycle tomorrow")
-**What [live 11-25 02:09-02:13Z]:** after the node cycle onto fleet-33c6ffc90 with choco in development mode, all 8 nodes
-crash-looped (NRestarts 7-8). choco pushes its stored `/dtv_mask_enabled` {"enabled": true} after each start;
-DtvRfiMask (#1924/#1927) refuses to enable a detect-only bundle and returns false on purpose ("a refused update stops
-Kotekan"), and configUpdater stops kotekan. Our bundle is detect-only because gen_chord_gnss_config renders the stock
-pathfinder.j2 with `STOCK_RENDER_VARS = {}`, so dtv.j2's `dtv_runtime_bundle_dir` takes its default
-`pathfinder-commissioning-e2e90219`, while production (choco `/etc/choco/configs/vars.yaml`) sets `pathfinder-run1-day1-ef14658c`.
-The same gap leaves our nodes on `incoherent_write_power` true (production: false): send_incoherent_power retries
-10.222.0.51:11039 every 10 s.
-**Stopgap:** all 8 in choco MAINTENANCE since 02:12:27Z (no pushes; tonight's configs carry an EOP table days ahead).
-**Fix (tomorrow, then a node cycle):** render with production's vars from a staged copy of choco's vars.yaml (as eop_cron stages
-state.json): the generator loads it into STOCK_RENDER_VARS and stock_parity compares against it. Then development mode
-(EOP and the other pushes) is safe. Consequence: choco's mask `true` then applies the stock DTV mask to our N2 in the TV
-channels, as on production's nodes; our voltage-domain DTV subtraction and the GNSS bands are not involved.
-
 ### #242 — in a boresight transit the trk chains fall back to the search-fed joint state, which runs up to 2.6 chips from the tracker state (2026-11-23, from the restart analysis)
 **What [archive, 11-21 log]:** the tracker-fed joint state (TRK_STATE) takes no updates while a satellite is in the transit
 cone (jtrk withholds its feed), goes stale, and every `joint-source trk` chain (gal_e5a, bds_b2a, gal_e5b, bds_b2b, bds_b3i,
