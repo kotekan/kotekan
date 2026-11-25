@@ -17,6 +17,7 @@ import statistics
 from gnss_broker import node_api
 from gnss_broker.transport import _now, _post, _log, _log_rl, axis_now_utc, now_utc_s
 from gnss_broker.sky import brdc_predict, lists_constellation, nearest_boresight
+from gnss_broker import deadreckon
 from gnss_broker import timebase
 from gnss_broker import prnmap
 from gnss_broker import signals
@@ -119,6 +120,48 @@ def _refresh_fdma(ctx):
             "signal %s: FDMA carrier offsets for %s from BRDC and the decoded almanacs"
             % (ctx.args.signal, " ".join("R%02d" % p for p in sorted(new)))
         )
+
+
+def adopt_freq_bias(ctx, adopt_fb):
+    """The clock-frequency bias of a chain that did not solve its own this cycle. Returns
+    True when it came from the joint state.
+
+    --freq-bias-joint: the joint state's clock rate (deadreckon.dr_joint_rate, under its
+    gates), scaled to this chain's carrier, as dr_drift scales it. It measures the same
+    oscillator from the trackers. Once every visible satellite is locked and dead-reckoned
+    the search detects nothing, no chain solves the bias, it goes stale (bias_stale_s) and
+    each unlocked satellite is searched over the wide margin. Otherwise, a free-running
+    oscillator (--dr-drift-source bias) or --freq-bias-adopt takes another chain's solved
+    bias, scaled to its own carrier."""
+    a = ctx.args
+    jla = None
+    if getattr(a, "freq_bias_joint", False):
+        jla = deadreckon.dr_joint_rate(ctx)
+    if jla is not None:
+        ctx.cb.ema = ctx.cb.value = jla * a.carrier_hz
+        ctx.cb.meas_t = ctx.t0
+        ctx.cb.update_seed(a.seed_bias_source)
+        _log_rl(
+            "clkbias-joint",
+            "clock-freq bias %+.2f Hz from the joint state's clock rate (%+.5f ppm)"
+            % (ctx.cb.ema, jla * 1e6),
+            every_s=60.0,
+        )
+        return True
+    if not adopt_fb and getattr(a, "dr_drift_source", "solve") != "bias":
+        return False
+    fb = ctx.rx.freq_bias(exclude=ctx.chain_id, t_now=ctx.t0)
+    if fb is not None:
+        ctx.cb.ema = ctx.cb.value = fb.value * a.carrier_hz
+        ctx.cb.meas_t = ctx.t0
+        ctx.cb.update_seed(a.seed_bias_source)
+        _log_rl(
+            "clkbias-adopt",
+            "clock-freq bias %+.1f Hz ADOPTED from '%s' (%d sats, %+.4f ppm)"
+            % (ctx.cb.ema, fb.src, fb.weight, fb.value * 1e6),
+            every_s=60.0,
+        )
+    return False
 
 
 def stage_almanac_predict(ctx):
@@ -417,26 +460,10 @@ def stage_almanac_predict(ctx):
                 ),
             )
         else:
-            # A free-running oscillator (--dr-drift-source bias): a chain that cannot solve the
-            # bias takes another chain's, scaled to its own carrier, as does a chain told to.
-            _fb = (
-                ctx.rx.freq_bias(exclude=ctx.chain_id, t_now=ctx.t0)
-                if _adopt_fb or getattr(ctx.args, "dr_drift_source", "solve") == "bias"
-                else None
-            )
-            if _fb is not None:
-                ctx.cb.ema = ctx.cb.value = _fb.value * ctx.args.carrier_hz
-                ctx.cb.meas_t = ctx.t0
-                ctx.cb.update_seed(ctx.args.seed_bias_source)
-                _log_rl(
-                    "clkbias-adopt",
-                    "clock-freq bias %+.1f Hz ADOPTED from '%s' (%d sats, %+.4f ppm)"
-                    % (ctx.cb.ema, _fb.src, _fb.weight, _fb.value * 1e6),
-                    every_s=60.0,
-                )
+            _joint = adopt_freq_bias(ctx, _adopt_fb)
             # Log both counts, so a held or unsolved bias reads as too few satellites rather
-            # than a clock or front-end fault. An adopted bias has its own line above.
-            if not _adopt_fb:
+            # than a clock or front-end fault. An adopted bias has its own line.
+            if not _adopt_fb and not _joint:
                 _log_rl(
                     "clkbias",
                     "clock-freq bias %s (%d sats < bias_min_sats %d: residual not "

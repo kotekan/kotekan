@@ -2362,6 +2362,16 @@ def build_parser(description):
         "Doppler moves 100 Hz/s, so a detection half a second old reads 50 Hz off.",
     )
     ap.add_argument(
+        "--freq-bias-joint",
+        action="store_true",
+        help="a cycle with no clock-frequency bias solved from this chain's Doppler residuals "
+        "takes it from the joint state's clock rate (the --joint-source state, under the "
+        "joint_min_sats and joint_max_rate_ppm gates), scaled to this chain's carrier, before "
+        "any other chain's solve (--freq-bias-adopt). On a fleet where every visible satellite "
+        "is locked the search detects nothing and the solved bias goes stale "
+        "(bias_stale_s), which widens every hint to --search-margin-wide-hz. Off by default.",
+    )
+    ap.add_argument(
         "--dr-clock-publish",
         type=int,
         default=1,
