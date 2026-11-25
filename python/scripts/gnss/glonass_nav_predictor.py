@@ -7,15 +7,21 @@ the 0.3 s time mark, 30 meander-free 10 ms symbols, which against the meander in
 leave 15 bit values of a fixed pattern, 8 of them nonzero. Strings are found by that pattern,
 the relative code is undone, and each string is checked by its Hamming code (bits 8-1: one error
 corrected, two rejected) and by its number against its place in the 30 s frame (string m starts
-2(m - 1) s after a UTC 30 s boundary, GLONASS time being UTC + 3 h). Strings 1-4 of one frame
-give the satellite's ephemeris: the PZ-90 state vector at tb, tau_n and gamma_n, taken when the
-next frame repeats it and built as a gnss_ephemeris record (sys "R"), so sat_pos_clk propagates
-it and the BRDC cross-check compares like with like.
+2(m - 1) s after a frame start, frames start every 30 s of UTC, GLONASS time being UTC + 3 h).
+The place is the one most of the satellite's strings read on the host clock, not the host
+clock's own, so a clock off by any amount still frames them. Strings 1-4 of one frame give the
+satellite's ephemeris: the PZ-90 state vector at tb, tau_n and gamma_n, taken when the next frame
+repeats it and built as a gnss_ephemeris record (sys "R"), so sat_pos_clk propagates it and the
+BRDC cross-check compares like with like. The frame's date and time come from its own strings:
+t_k (string 1), N_T (string 4) and N_4 (string 5), so each string's start is known by the
+satellite's clock (utc_off, once two frames agree): nav_decode's time marks.
 
 Layout per the GLONASS ICD (edition 5.1): string fields in table 4.5, the Hamming code in 4.7,
 the time mark in 3.3.2.2.
 """
 
+import calendar
+import collections
 import math
 import time
 
@@ -37,6 +43,10 @@ HIST_BITS = 1500  # 30 s: a frame's strings 1-4 and room
 STRING_TTL_S = 300.0
 PROP_S = 0.07  # a GLONASS signal's travel time, ~64-83 ms: receive time back to transmit time
 UTC_MSK_S = 3 * 3600.0  # GLONASS time is Moscow time, UTC + 3 h
+# A string is taken when its place in the frame on the host clock is the one most of the
+# satellite's last PHASE_N strings read, by at least PHASE_MIN of them.
+PHASE_N = 45
+PHASE_MIN = 3
 
 
 def _hamming_positions():
@@ -106,6 +116,23 @@ def _sm(b, hi, lo):
 
 def string_number(b):
     return _u(b, 84, 81)
+
+
+def frame_utc(s1, s4, n4, t_ref):
+    """UTC (unix s) of a frame's start by the satellite's clock: t_k (string 1) on day N_T
+    (string 4) of the four-year span N_4 (string 5), or with no N_4, of the span that puts it
+    nearest t_ref. None for an N_T out of range."""
+    tk = _u(s1, 76, 72) * 3600.0 + _u(s1, 71, 66) * 60.0 + _u(s1, 65, 65) * 30.0
+    n_t = _u(s4, 26, 16)
+    if not 1 <= n_t <= 1461:
+        return None
+    best = None
+    for n in [n4] if n4 else range(1, 32):
+        t = calendar.timegm((1996 + 4 * (n - 1), 1, 1, 0, 0, 0))
+        t += (n_t - 1) * 86400.0 + tk - UTC_MSK_S
+        if best is None or abs(t - t_ref) < abs(best - t_ref):
+            best = t
+    return best
 
 
 def ephemeris_from(s1, s2, s3, s4, prn, t_rx):
@@ -198,7 +225,16 @@ class _PrnState(HistoryState):
     def __init__(self):
         super().__init__()
         self.sym_s = 0.02
-        self.strings = {}  # UTC start of the string (s) -> (m, bits, t_decoded)
+        self.strings = (
+            {}
+        )  # start of the string on the host clock (s) -> (m, bits, t_decoded)
+        self.edges = {}  # the same key -> the host label of the string's first bit edge
+        self.phase = collections.deque(maxlen=PHASE_N)  # strings' places in the frame
+        self.n4 = None  # N_4, from string 5
+        # the string's start by the satellite's clock (UTC) less its key in strings, once two
+        # frames agree; None until then
+        self.utc_off = None
+        self.off_cand = None  # (frame key, the offset it gave)
         self.n_str = 0  # distinct strings decoded
         self.n_corr = 0  # strings the Hamming code corrected
         self.n_tm = 0  # time marks found
@@ -254,24 +290,55 @@ class GloNavPredictor(SymbolHistory):
             if ncorr is None:
                 continue
             m = string_number(b)
-            t_start = st.grid0 + (st.s0 + i) * st.sym_s - PROP_S
+            if not 1 <= m <= 15:
+                continue
+            t_edge = st.grid0 + (st.s0 + i) * st.sym_s
+            t_start = t_edge - PROP_S
             ts = round(t_start / 2.0) * 2.0
-            if m != int(ts % 30.0) // 2 + 1:
+            q = (round(ts / 2.0) - (m - 1)) % 15
+            st.phase.append(q)
+            if st.phase.count(q) < PHASE_MIN or q != max(
+                set(st.phase), key=st.phase.count
+            ):
                 continue
             if ts not in st.strings:
                 st.n_str += 1
                 st.n_corr += ncorr
             st.strings[ts] = (m, b, now)
+            st.edges[ts] = t_edge
+            f0 = ts - 2.0 * (m - 1)
+            if m == 5:
+                st.n4 = _u(b, 36, 32) or st.n4
+            if m in (1, 4):
+                self._place(st, f0)
             if m <= 4:
-                self._assemble(prn, st, ts - 2.0 * (m - 1), t_start)
+                self._assemble(prn, st, f0, t_start)
         st.scan = st.s0 + last + 1
         for k in [k for k, v in st.strings.items() if now - v[2] > STRING_TTL_S]:
             del st.strings[k]
+            st.edges.pop(k, None)
+
+    def _place(self, st, f0):
+        """The satellite's clock against the string keys, from frame f0's strings 1 and 4: set
+        once another frame gives the same (a miscorrected t_k or N_T would misdate every
+        string)."""
+        s1, s4 = st.strings.get(f0), st.strings.get(f0 + 6.0)
+        if s1 is None or s4 is None or s1[0] != 1 or s4[0] != 4:
+            return
+        t = frame_utc(s1[1], s4[1], st.n4, f0)
+        if t is None:
+            return
+        if st.off_cand is not None and st.off_cand[0] != f0:
+            if st.off_cand[1] == t - f0:
+                st.utc_off = t - f0
+        st.off_cand = (f0, t - f0)
 
     def _assemble(self, prn, st, f0, t_rx):
         got = [st.strings.get(f0 + 2.0 * j) for j in range(4)]
         if not all(g is not None and g[0] == j + 1 for j, g in enumerate(got)):
             return
+        if st.utc_off is not None:
+            t_rx = f0 + st.utc_off
         e = ephemeris_from(got[0][1], got[1][1], got[2][1], got[3][1], prn, t_rx)
         if e is None or e["slot"] != prn:
             return
@@ -336,14 +403,28 @@ def _selftest():
         c[i] ^= 1
         c[j] ^= 1
         assert hamming_check(c) is None
-    # A frame's strings 1-4 for slot 7, twice, starting on a UTC 30 s boundary.
-    t_frame = math.floor(time.time() / 30.0) * 30.0 - 60.0
+    # Slot 7's frames, three of them, from a UTC 30 s boundary, with t_k, N_T and N_4 as
+    # broadcast; read on a host clock right, and one 1234.6 s fast.
+    t_frame = math.floor(time.time() / 30.0) * 30.0 - 90.0
+    msk = time.gmtime(t_frame + UTC_MSK_S)
     tb = int(((t_frame + UTC_MSK_S) % 86400.0) // 900)
+    y0 = 1996 + 4 * ((msk.tm_year - 1996) // 4)
+    n_t = (
+        int(
+            (
+                calendar.timegm(msk[:3] + (0, 0, 0))
+                - calendar.timegm((y0, 1, 1, 0, 0, 0))
+            )
+            // 86400
+        )
+        + 1
+    )
     fields = {
         1: {
             (84, 81): 1,
-            (76, 72): 5,
-            (71, 66): 7,
+            (76, 72): msk.tm_hour,
+            (71, 66): msk.tm_min,
+            (65, 65): msk.tm_sec // 30,
             (64, 41): -1234567,
             (40, 36): 3,
             (35, 9): 12345678,
@@ -368,33 +449,46 @@ def _selftest():
             (80, 59): -654321,
             (58, 54): 2,
             (53, 49): 1,
+            (26, 16): n_t,
             (15, 11): 7,
             (10, 9): 1,
         },
+        5: {(84, 81): 5, (36, 32): (y0 - 1996) // 4 + 1},
     }
     air = []
-    for f in range(2):
+    for f in range(3):
         for m in range(1, 16):
-            fl = fields.get(m, {(84, 81): m})
+            fl = dict(fields.get(m, {(84, 81): m}))
+            if m == 1:  # t_k, the frame's own start
+                tm = time.gmtime(t_frame + 30.0 * f + UTC_MSK_S)
+                fl[(76, 72)], fl[(71, 66)] = tm.tm_hour, tm.tm_min
+                fl[(65, 65)] = tm.tm_sec // 30
             air += _air(_string_bits(fl))
-    p = GloNavPredictor()
-    # The time mark's zero places as weak bits (soft 0.1), as the combiner exports them.
-    obs = dict(
-        utc_ref=t_frame + PROP_S,
-        rec_dt=0.001,
-        phase=0,
-        br=20,
-        bits=[[i, 1 if v >= 0 else -1] for i, v in enumerate(air)],
-        soft=[10.0 * v if v != 0 else 0.1 for v in air],
-    )
-    p.ingest(7, obs)
-    st = p._p[7]
-    assert st.n_str == 30, st.n_str
-    e = p.ephemeris(7)
-    assert e is not None and e["slot"] == 7 and e["tb"] == tb
-    assert abs(e["pos"][0] - 12345678 * 2.0**-11 * 1e3) < 1e-6
-    assert abs(e["af0"] - 654321 * 2.0**-30) < 1e-15
-    assert abs(e["af1"] + 321 * 2.0**-40) < 1e-20
+    for fast in (0.0, 1234.6):
+        p = GloNavPredictor()
+        # The time mark's zero places as weak bits (soft 0.1), as the combiner exports them.
+        obs = dict(
+            utc_ref=t_frame + PROP_S + fast,
+            rec_dt=0.001,
+            phase=0,
+            br=20,
+            bits=[[i, 1 if v >= 0 else -1] for i, v in enumerate(air)],
+            soft=[10.0 * v if v != 0 else 0.1 for v in air],
+        )
+        p.ingest(7, obs)
+        st = p._p[7]
+        # the first PHASE_MIN - 1 strings set the place in the frame
+        assert st.n_str == 45 - (PHASE_MIN - 1), st.n_str
+        e = p.ephemeris(7)
+        assert e is not None and e["slot"] == 7 and e["tb"] == tb
+        assert e["toe_gpst"] == ge.gpst_of_utc(t_frame - (t_frame + UTC_MSK_S) % 900.0)
+        assert abs(e["pos"][0] - 12345678 * 2.0**-11 * 1e3) < 1e-6
+        assert abs(e["af0"] - 654321 * 2.0**-30) < 1e-15
+        assert abs(e["af1"] + 321 * 2.0**-40) < 1e-20
+        # every string's start by the satellite's clock, whatever the host's
+        for ts, (m, _, _) in st.strings.items():
+            assert (ts + st.utc_off - t_frame) / 2.0 % 15 == m - 1, (fast, ts, m)
+            assert abs(st.edges[ts] - (ts + st.utc_off + fast + PROP_S)) < 1e-6
     print(
         "glonass_nav_predictor self-test: OK (%d strings, eph tb %d)"
         % (st.n_str, e["tb"])

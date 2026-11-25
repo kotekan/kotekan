@@ -341,18 +341,22 @@ class Collector:
         """GLONASS: the decoder keeps every string by its UTC start, so each odd almanac string
         (7-15) read since the last scan is joined to the even one 2 s before it, with N^A from
         string 5 of its frame (or the newest one seen). Frame 5's strings 14 and 15 are not
-        almanac. Frames start on the 150 s superframe grid of UTC (Moscow midnight). A pair is
+        almanac. Frames start on the 150 s superframe grid of UTC (Moscow midnight), on the
+        satellite's clock (the decoder's utc_off), so a satellite's strings are read once they
+        are placed in time. A pair is
         taken once it has been read again, from another satellite or superframe: a string the
         Hamming code "corrected" to the wrong word would otherwise put one slot's orbit and
         channel on another."""
         for prn, st in list(dec._p.items()):
+            if st.utc_off is None:
+                continue
             for ts, (m, b, _t) in sorted(st.strings.items()):
                 if m == 5:
                     self.last[(prn, "n_a")] = _glo_u(b, 80, 11)
                 if m < 7 or m % 2 == 0 or self.seen.get((prn, ts)):
                     continue
                 f0 = ts - 2.0 * (m - 1)
-                if int(f0 % 150.0 // 30.0) + 1 == 5 and m >= 14:
+                if int((f0 + st.utc_off) % 150.0 // 30.0) + 1 == 5 and m >= 14:
                     continue
                 even = st.strings.get(ts - 2.0)
                 if even is None or even[0] != m - 1:

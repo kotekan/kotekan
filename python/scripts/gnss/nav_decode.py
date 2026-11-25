@@ -233,9 +233,10 @@ def timemarks(srcs):
     (gnss_skytime.py): the host-labelled UTC of its first symbol's edge, to a record (1 ms), and
     the time count it carries, as broadcast: a CNAV TOW count (6 s), an F/NAV page's TOW (s), a
     B-CNAV2 frame's SOW count (3 s), a B-CNAV3 frame's BDT SOW (s), a GuoWang subframe's BDT SOW
-    (s). With it the week number
+    (s), a GLONASS string's start as GPS seconds of week (strings 1-4, once its satellite's
+    strings are dated: glonass_nav_predictor's utc_off). With it the week number
     where the message has one (a CNAV type 10, F/NAV pages 1-3, a B-CNAV2 type 10, GuoWang page
-    1). Each message's edge is placed when it decodes:
+    1, every GLONASS mark). Each message's edge is placed when it decodes:
     edges move ~3 us/s against the slot grid, and decoders keep messages for minutes. A CNAV
     mark carries the message too ("bits", hex), which nav_symbol_feed re-encodes to find the
     symbol stream's sign."""
@@ -306,6 +307,21 @@ def timemarks(srcs):
                     if wn is not None:
                         mark["wn"] = wn
                     marks.append(mark)
+            elif sig == "GLO_L2OF" and st.utc_off is not None:
+                for ts, (m, _, _) in sorted(st.strings.items()):
+                    if m > 4 or ts not in st.edges:
+                        continue
+                    g = round(ge.gpst_of_utc(ts + st.utc_off))
+                    marks.append(
+                        {
+                            "signal": sig,
+                            "prn": prn,
+                            "t_host": round(st.edges[ts], 5),
+                            "tow": g % 604800,
+                            "wn": g // 604800,
+                            "type": m,
+                        }
+                    )
     return marks
 
 

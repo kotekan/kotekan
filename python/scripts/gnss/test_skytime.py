@@ -9,13 +9,15 @@ import gnss_ephemeris as ge
 import gnss_skytime as st
 
 ROW = {"range_m": 2.25e7, "sat_clk_s": 1.2e-4}
-# a time count per signal: a CNAV TOW count, an F/NAV TOW, a B-CNAV2 SOW count, a GuoWang SOW
+# a time count per signal: a CNAV TOW count, an F/NAV TOW, a B-CNAV2 SOW count, a GuoWang SOW,
+# a GLONASS string's start (GPS time)
 COUNT = {
     "GPS_L5_CNAV": 50000,
     "GPS_L2C_CNAV": 50000,
     "GAL_E5AI_FNAV": 300000,
     "BDS_B2A_BCNAV2": 100000,
     "GW_1202_NAV": 300003,
+    "GLO_L2OF": 300018,
 }
 
 

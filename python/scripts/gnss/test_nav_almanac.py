@@ -127,11 +127,12 @@ class TestGlonass(unittest.TestCase):
     def test_collector_pairs_strings(self):
         f0 = 1795546800.0  # a frame start (2 s strings; frame 1 of its superframe)
         st = types.SimpleNamespace(
+            utc_off=0.0,
             strings={
                 f0 + 8.0: (5, glo_bits(GLO_S5), 0.0),
                 f0 + 10.0: (6, glo_bits(GLO_EVEN), 0.0),
                 f0 + 12.0: (7, glo_bits(GLO_ODD), 0.0),
-            }
+            },
         )
         col = na.Collector("GLO_L2OF")
         col.scan(types.SimpleNamespace(_p={16: st}))
@@ -150,11 +151,12 @@ class TestGlonass(unittest.TestCase):
         col = na.Collector("GLO_L2OF")
         for f, even in ((f0, bad), (f0 + 150.0, glo_bits(GLO_EVEN))):
             st = types.SimpleNamespace(
+                utc_off=0.0,
                 strings={
                     f + 8.0: (5, glo_bits(GLO_S5), 0.0),
                     f + 10.0: (6, even, 0.0),
                     f + 12.0: (7, glo_bits(GLO_ODD), 0.0),
-                }
+                },
             )
             col.scan(types.SimpleNamespace(_p={16: st}))
         self.assertEqual(col.got, [])

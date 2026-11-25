@@ -2,21 +2,21 @@
 """Bootstrap the bladeRF receiver from the sky alone: no cached orbits, no time, no position.
 
     python3 gnss_bootstrap.py [--apply] [--bands gps_l5,gal_e5a,bds_b2a,gw_1202] [--max-wait-s 900]
-                              [--truth-yaml Y]
+                              [--truth-yaml Y]       # or --bands glo_l2of, GLONASS alone
 
 The broker's model needs all three, so it is held off (the gnss-broker unit's
 ConditionPathExists on --hold) while this runs:
 
-1. Acquire with no date, on each of --bands (GPS L5, Galileo E5a, BeiDou B2a, GuoWang; one is
-   enough):
+1. Acquire with no date, on each of --bands (GPS L5, Galileo E5a, BeiDou B2a, GuoWang, GLONASS
+   L2OF; one is enough):
    every search slot hinted at 0 +- 5 kHz (the GPSDO leaves only the satellites' own Doppler),
    each detection seeded, and the tracks held on the combiner's discriminators (code by
    dll_disc, Doppler by carrier_hz_resid), as bladerf/track_live.py does. E5a and B2a
    detections carry their 100 ms phase from the search's nh_sync. Each tracked satellite's
    record is logged each second (--rows), with its measured Doppler: the record's less the
    carrier residual.
-2. A decoder of its own (nav_decode.py: L5 CNAV, E5a F/NAV, B2a B-CNAV2, in place of the
-   gnss-nav-decode units for those bands, into files that start empty, with no freshness gate
+2. A decoder of its own (nav_decode.py: L5 CNAV, E5a F/NAV, B2a B-CNAV2, GLONASS strings, in
+   place of the gnss-nav-decode units for those bands, into files that start empty, with no freshness gate
    against the host clock and no BRDC) reads those tracks: time marks, and orbits with clocks.
    Wait for a week number and three tracked satellites with orbits and clocks: a LEO pass's
    Doppler fixes the position from as few.
@@ -68,7 +68,8 @@ DECODER_STALL_S = 240.0
 # slots, ~20 s of the CPU search; a detection is confirmed by a search rate_max x its age wide.
 # GuoWang's deep SNR integrates 200 ms coherently, so a seed off its 250 Hz search grid never
 # reaches it: there the per-record amp_snr (1 on noise) over amp_lock lets the loop pull the
-# Doppler in first.
+# Doppler in first. GLONASS L2OF is FDMA: each slot's search, track and rows are on its own
+# carrier, the band's plus the slot's prn_freq_offset_hz in the search's config.
 BANDS = {
     "gps_l5": dict(
         search="l5_search",
@@ -144,6 +145,27 @@ BANDS = {
         lock=15.0,
         amp_lock=4.0,
     ),
+    # MEO: Doppler to +-3.5 kHz at L2. The 20 ms search (meander-tiled code, 3 windows) reads
+    # noise to ~10 over this window; the combiner's deep SNR is ~10 on a track, under 2.5 on
+    # noise (11-24).
+    "glo_l2of": dict(
+        search="glo_search",
+        track="glo_track",
+        combine="glo_combine",
+        code_chips=10220,
+        chip_hz="0.511e6",
+        carrier_hz=1246.0e6,
+        sys="R",
+        decoder="GLO_L2OF",
+        symbols="glo_bits",
+        unit="glo",
+        blind_hz=4000.0,
+        blind_chunk=8,
+        rate_max=1.0,
+        seed_snr=12.0,
+        lock=5.0,
+        amp_lock=float("inf"),
+    ),
 }
 # The measured Doppler's slope over this long is the seed's rate (Hz/s); none until it spans
 # RATE_MIN_S.
@@ -196,7 +218,13 @@ class Tracker:
         self.rows = rows
         # the capture's labels run this far from the host clock (clock_offset.json)
         self.offset_s = offset_s
-        self.prns = get("/config")[self.c["search"]]["prns"]
+        cfg = get("/config")[self.c["search"]]
+        self.prns = cfg["prns"]
+        # each slot's own carrier (FDMA), for its rows' Doppler
+        self.carrier = {
+            p: self.c["carrier_hz"] + df
+            for p, df in zip(self.prns, cfg.get("prn_freq_offset_hz", []))
+        }
         self.t_hint = 0.0
         self.chunk = 0
         self.hinted = set()
@@ -313,7 +341,7 @@ class Tracker:
                         "band": self.band,
                         "sys": c["sys"],
                         "prn": prn,
-                        "carrier_hz": c["carrier_hz"],
+                        "carrier_hz": self.carrier.get(prn, c["carrier_hz"]),
                         "rec_hop": hop,
                         "cp_rec_chips": cs["code_phase_chips"],
                         "dop_rec_hz": cs["doppler_hz"],
@@ -383,7 +411,7 @@ def start_decoder(here, run_dir, eph_path, marks_path, bands):
 def decoded_ready(eph_path, marks_path, t_start, logged):
     """(satellites with a clocked ephemeris and rows logged, marks' satellites, has a week
     number), from files written since t_start; logged is {(sys, prn): rows}. A clock is af0
-    (CNAV, F/NAV, GuoWang) or a0 (B-CNAV2). A satellite decoded but not tracked long enough
+    (CNAV, F/NAV, GLONASS, GuoWang) or a0 (B-CNAV2). A satellite decoded but not tracked long enough
     to log rows does not count: in a GuoWang run, two of four did not (11-24)."""
     n_clk = n_marks = 0
     week = False

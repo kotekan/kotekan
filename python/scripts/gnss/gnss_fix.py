@@ -149,9 +149,13 @@ class Orbits:
             return ge.best_eph(self.brdc.get((sys, prn), []), t, self.max_age_s)
         best = None
         for signal, eph, toef in self.dec.get((sys, prn), []):
-            age = abs(t - decoded_eph.toe_gpst_near(sys, eph[toef], t))
+            toe = eph[toef]  # GLONASS's toe_gpst is GPS time already
+            if toef != "toe_gpst":
+                toe = decoded_eph.toe_gpst_near(sys, toe, t)
+            age = abs(t - toe)
             key = (signal in decoded_eph.LAST_RESORT, age)
-            if age <= self.max_age_s and (best is None or key < best[0]):
+            max_age = min(self.max_age_s, decoded_eph.MAX_AGE_S.get(signal, age))
+            if age <= max_age and (best is None or key < best[0]):
                 best = (key, {"sys": sys, "prn": prn, "signal": signal, "eph": eph})
         return best[1] if best else None
 
