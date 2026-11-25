@@ -18,6 +18,7 @@
 #include <algorithm>   // for max
 #include <array>       // for array
 #include <assert.h>    // for assert
+#include <chrono>      // for milliseconds
 #include <csignal>     // for signal, size_t, SIGINT, SIGTERM, sig_atomic_t
 #include <exception>   // for exception
 #include <functional>  // for function
@@ -36,6 +37,7 @@
 #include <strings.h>   // for strcasecmp
 #include <sys/wait.h>  // for waitpid
 #include <syslog.h>    // for closelog, openlog, LOG_CONS, LOG_LOCAL1, LOG_NDELAY
+#include <thread>      // for sleep_for
 #include <type_traits> // for underlying_type
 #include <unistd.h>    // for close, optarg, dup2, execvp, fork, pipe, sleep, STDOUT...
 #include <utility>     // for pair
@@ -988,7 +990,9 @@ int main(int argc, char** argv) {
     baseband.register_with_server(&rest_server);
 
     for (EVER) {
-        sleep(1);
+        // A stage stops kotekan by raising SIGTERM on its own thread, which does not wake
+        // this thread, so check often.
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
         // Update running state
         {
             std::lock_guard<std::mutex> lock(kotekan_state_lock);
