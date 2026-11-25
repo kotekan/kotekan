@@ -10,6 +10,13 @@
 #include <cmath>     // for hypot, sqrt
 #include <string>    // for string
 
+#ifdef WITH_FFTW
+#include "fftwPlannerLock.hpp" // for fftw_planner_mutex
+
+#include <fftw3.h> // for fftw_plan_dft_1d, fftw_execute
+#include <map>     // for map
+#endif
+
 using kotekan::Config;
 
 namespace gnss {
@@ -42,6 +49,82 @@ kotekan::prometheus::Gauge& add_gauge(const std::string& metric, const std::stri
     return m.add_gauge(metric, name, {"chain"}).labels({chain});
 }
 } // namespace
+
+void rate_magnitudes(const std::vector<std::complex<double>>& x, const std::vector<long long>& m,
+                     size_t nb, std::vector<double>& mag) {
+    mag.assign(nb, 0.0);
+#ifdef WITH_FFTW
+    // One in-place buffer per thread and its plans by size. A window's span, and so nb, moves
+    // with the records the broker dropped, so the plans are dropped past 64 sizes.
+    struct Plans {
+        size_t n = 0;
+        fftw_complex* buf = nullptr;
+        std::map<size_t, fftw_plan> by_nb;
+        void clear() {
+            for (auto& kv : by_nb)
+                fftw_destroy_plan(kv.second);
+            by_nb.clear();
+        }
+        ~Plans() {
+            std::lock_guard<std::mutex> lk(fftw_planner_mutex());
+            clear();
+            fftw_free(buf);
+        }
+    };
+    thread_local Plans plans;
+    auto it = plans.by_nb.find(nb);
+    if (it == plans.by_nb.end()) {
+        // The planner lock only to plan: the cache is this thread's.
+        std::lock_guard<std::mutex> lk(fftw_planner_mutex());
+        if (nb > plans.n) {
+            plans.clear();
+            fftw_free(plans.buf);
+            plans.buf = fftw_alloc_complex(nb);
+            plans.n = nb;
+        } else if (plans.by_nb.size() >= 64) {
+            plans.clear();
+        }
+        it = plans.by_nb
+                 .emplace(nb, fftw_plan_dft_1d((int)nb, plans.buf, plans.buf, FFTW_FORWARD,
+                                               FFTW_ESTIMATE))
+                 .first;
+    }
+    const fftw_plan plan = it->second;
+    std::complex<double>* b = reinterpret_cast<std::complex<double>*>(plans.buf);
+    std::fill(b, b + nb, std::complex<double>(0.0, 0.0));
+    for (size_t k = 0; k < x.size(); ++k)
+        b[(size_t)(m[k] % (long long)nb)] += x[k];
+    fftw_execute(plan);
+    for (size_t i = 0; i < nb; ++i)
+        mag[i] = std::abs(b[i]);
+#else
+    std::vector<std::complex<double>> tw(nb); // integer-indexed: no trig in the inner loop
+    for (size_t i = 0; i < nb; ++i)
+        tw[i] = std::polar(1.0, -2.0 * M_PI * (double)i / (double)nb);
+    // Four bins per pass, each with its own accumulator: one accumulator is a serial dependency
+    // chain, and four run ~2x faster. A bin's twiddle index (i m[k]) mod nb advances by i
+    // between consecutive records, without a division.
+    const size_t L = x.size();
+    for (size_t i0 = 0; i0 < nb; i0 += 4) {
+        std::complex<double> acc[4] = {};
+        size_t idx[4] = {};
+        const size_t nj = std::min<size_t>(4, nb - i0);
+        for (size_t k = 0; k < L; ++k) {
+            const bool next = k > 0 && m[k] - m[k - 1] == 1;
+            for (size_t j = 0; j < nj; ++j) {
+                const size_t i = i0 + j;
+                if (next)
+                    idx[j] = idx[j] + i >= nb ? idx[j] + i - nb : idx[j] + i;
+                else
+                    idx[j] = (size_t)(((long long)i * m[k]) % (long long)nb);
+                acc[j] += x[k] * tw[idx[j]];
+            }
+        }
+        for (size_t j = 0; j < nj; ++j)
+            mag[i0 + j] = std::abs(acc[j]);
+    }
+#endif
+}
 
 CombinerChain::CombinerChain(Config& config, const std::string& cfg_path, const std::string& name,
                              const std::string& chain) : _name(name), _chain(chain) {
@@ -572,30 +655,8 @@ void CombinerChain::emit(float* out) {
         const size_t nb = (size_t)std::min<long long>(4 * (span + 1), 4096);
         if (nb < 8)
             return;
-        std::vector<std::complex<double>> tw(nb); // integer-indexed: no trig in the inner loop
-        for (size_t i = 0; i < nb; ++i)
-            tw[i] = std::polar(1.0, -2.0 * M_PI * (double)i / (double)nb);
-        // Four bins per pass, each with its own accumulator (nb is a multiple of 4): one
-        // accumulator is a serial dependency chain, and four run ~2x faster. A bin's twiddle
-        // index (i m[k]) mod nb advances by i between consecutive records, without a division.
-        std::vector<double> mag(nb, 0.0);
-        for (size_t i0 = 0; i0 < nb; i0 += 4) {
-            std::complex<double> acc[4] = {};
-            size_t idx[4] = {};
-            for (size_t k = 0; k < L; ++k) {
-                const bool next = k > 0 && m[k] - m[k - 1] == 1;
-                for (size_t j = 0; j < 4; ++j) {
-                    const size_t i = i0 + j;
-                    if (next)
-                        idx[j] = idx[j] + i >= nb ? idx[j] + i - nb : idx[j] + i;
-                    else
-                        idx[j] = (size_t)(((long long)i * m[k]) % (long long)nb);
-                    acc[j] += x[k] * tw[idx[j]];
-                }
-            }
-            for (size_t j = 0; j < 4; ++j)
-                mag[i0 + j] = std::abs(acc[j]);
-        }
+        std::vector<double> mag;
+        rate_magnitudes(x, m, nb, mag);
         size_t ip = 0, ip_full = 0;
         double best_m = -1.0, best_m_full = -1.0;
         for (size_t i = 0; i < nb; ++i) {

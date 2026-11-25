@@ -20,6 +20,16 @@
 namespace gnss {
 
 /**
+ * @brief Magnitude spectrum of records on an integer time grid, for the deep rate search.
+ *
+ * mag[i] = |sum_k x[k] exp(-2 pi j i m[k] / nb)| for i < nb: x[k] sits at grid index m[k] >= 0,
+ * the holes are zeros, and an index past nb wraps. With FFTW (WITH_FFTW) one transform per
+ * call, planned once per nb on each thread; without it the direct sum, O(nb x.size()).
+ */
+void rate_magnitudes(const std::vector<std::complex<double>>& x, const std::vector<long long>& m,
+                     size_t nb, std::vector<double>& mag);
+
+/**
  * @class CombinerChain
  * @brief The coherent combine of one chain's records (see GnssCoherentCombiner), without the
  *        buffers: a host feeds it records and takes its emits.
