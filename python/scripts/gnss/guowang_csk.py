@@ -66,6 +66,11 @@ SEMI = math.pi * 2.0**-34
 # The fewest symbols of a second worth an LDPC attempt: belief propagation recovers a quarter
 # of the symbols missing at 12 dB.
 MIN_SLOTS = 300
+# A code whose last FAIL_RUN seconds all failed to decode is tried one second in FAIL_EVERY until
+# one decodes: a failing second costs belief propagation its full 50 iterations (a decoding one
+# a median of 1), and on 11-25 three codes that never decoded took half of this process.
+FAIL_RUN = 5
+FAIL_EVERY = 8
 
 
 def log(msg):
@@ -394,6 +399,7 @@ def live(args):
     relay = {}  # (sys, prn) -> newest relayed record and its check
     fallback = {}  # (sys, prn) -> its decoded_eph entry
     stats = collections.Counter()
+    failing = collections.Counter()  # code -> seconds failed in a row
     prog = collections.defaultdict(lambda: {"n": 0, "ev": collections.deque()})
     dhw = (
         decode_health.DecodeHealthWriter(
@@ -447,10 +453,15 @@ def live(args):
                 if (p.max(axis=1) > 0).sum() < MIN_SLOTS:
                     stats["short"] += 1
                     continue
+                if failing[code] >= FAIL_RUN and (s // SLOTS) % FAIL_EVERY:
+                    stats["skipped"] += 1
+                    continue
                 b, nerr = decode_second(loglik_from_powers(p))
                 if b is None:
                     stats["fail"] += 1
+                    failing[code] += 1
                     continue
+                failing[code] = 0
                 msg = parse(b)
                 stats["ok"] += 1
                 pg = prog[code]
@@ -536,11 +547,15 @@ def live(args):
             fresh = [v for v in relay.values() if now - v["t_unix"] < 600]
             dps = sorted(v["dpos_m"] for v in fresh if v["dpos_m"] is not None)
             log(
-                "messages: %d decoded, %d failed, %d short; %d GNSS satellites relayed in 10 min%s"
+                "messages: %d decoded, %d failed, %d short, %d skipped (codes failing: %s); "
+                "%d GNSS satellites relayed in 10 min%s"
                 % (
                     stats["ok"],
                     stats["fail"],
                     stats["short"],
+                    stats["skipped"],
+                    ",".join(str(c) for c in sorted(failing) if failing[c] >= FAIL_RUN)
+                    or "none",
                     len(fresh),
                     ", median %.1f m from BRDC" % dps[len(dps) // 2] if dps else "",
                 )
