@@ -23,6 +23,7 @@ that goes with it.
 
 | # | what it was | closed by | check |
 |---|---|---|---|
+| #244 | our node configs rendered the stock template without production's vars (dtv.j2's detect-only bundle), so choco's /dtv_mask_enabled push stopped every node (crash loop 2026-11-25 02:09-02:13Z) | `cb4bc90a8` (choco_vars.py: render with choco's vars.yaml; bundle pathfinder-run1-day1-ef14658c), nodes restarted 03:27-03:35Z | all 8 in choco development; a POST of /dtv_mask_enabled true on each logs "DTV mask on", NRestarts 0. Never `choco maint off` our nodes (it returns them to nodes.yaml's normal and choco kills our kotekan): use `choco mode development` |
 | #122 | the readback carried a chain-common offset on the non-primary bands | `50fd24b46` (#191 0b, frame-0 GPST modulo the exact code period) | 11-21 median readback trims b2b -0.04, b3i -0.005, e6 +0.003, e5a -0.017, e5b -0.009, inside #191's +-0.05 |
 | #126 | the F-engine axis was drift-free but ~217 ms stale, usable only for labels | #208 `9f9808c7c` (ephemeris at the hop-axis epoch; `dr-fengine-axis: 1`) | the dead-reckon ephemeris runs on the F-engine axis since 10-19 |
 | #33 | the vector tracker | closed as built 2026-08-30 | `rrate-state`, `rrate-kcoh-feed` armed fleet-wide; `rrate-command` on 3 chains |

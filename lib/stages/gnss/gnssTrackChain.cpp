@@ -213,6 +213,7 @@ TrackChain::TrackChain(Config& config, const std::string& cfg_path) {
     _set_trim_ep = config.get<std::string>(cfg_path, "set_trim_endpoint");
     _get_prns_ep = config.get<std::string>(cfg_path, "get_prns_endpoint");
     _set_prns_ep = config.get<std::string>(cfg_path, "set_prns_endpoint");
+    _set_nav_ep = config.get_default<std::string>(cfg_path, "set_nav_symbols_endpoint", "");
     INFO_NON_OO("cudaGnssChordTrack: {:d} PRN x {:d} chan x {:d} elem, {:d} hops/record "
                 "({:d} rec/frame), seeds on {:s}",
                 n_prn, n_chan, n_elem, hops_per_record, n_rec, _seed_ep);
@@ -223,13 +224,17 @@ std::vector<RestVerb> TrackChain::rest_verbs() {
     // set_trim is GnssFleetTrim's actuator. Slot membership is always served, with no enable
     // flag on the node: whether to apply swaps is the broker's decision (it also has a
     // report-only mode).
-    return {
+    std::vector<RestVerb> verbs = {
         {"set_seeds", _seed_ep, nullptr, std::bind(&TrackChain::set_seeds_callback, this, _1, _2)},
         {"set_trim", _set_trim_ep, nullptr,
          std::bind(&TrackChain::set_trim_callback, this, _1, _2)},
         {"get_prns", _get_prns_ep, std::bind(&TrackChain::get_prns, this), nullptr},
         {"set_prns", _set_prns_ep, nullptr,
          std::bind(&TrackChain::set_prns_callback, this, _1, _2)}};
+    if (!_set_nav_ep.empty())
+        verbs.push_back({"set_nav_symbols", _set_nav_ep, nullptr,
+                         std::bind(&TrackChain::set_nav_symbols_callback, this, _1, _2)});
+    return verbs;
 }
 
 std::vector<GnssCudaDespread::Spec>
@@ -298,6 +303,25 @@ TrackChain::record_specs(long long hop0, const std::vector<Seed>& seeds,
             sp.nav_frame =
                 sd.nav_frame_at_ref
                 + (long long)std::floor(pr.phase_now / (double)replica->eff_code_length());
+        } else if (sd.nav_frame_at_ref >= 0 && psi_synth && !_set_nav_ep.empty()) {
+            // Streamed data symbols: the periods of this record's first and last hops (the
+            // kernel's wrap count, at each hop's newest sample) and those between, all held, or
+            // no wipe. The table repeats its last entry.
+            const double L = (double)replica->eff_code_length();
+            const gnss::SeedPropagation pe =
+                gnss::propagate_seed(*replica, ss, hop0 + hops_per_record - 1, sample_rate,
+                                     sig->carrier_hz, trim_now[(size_t)p]);
+            const long long q0 = (long long)std::floor(pr.phase_now / L);
+            const long long n_span = (long long)std::floor(pe.phase_now / L) - q0 + 1;
+            if (n_span >= 1 && n_span <= GnssCudaDespread::Spec::NAV_N) {
+                std::lock_guard<std::mutex> lk(nav_mtx);
+                const auto it = nav_rings.find(prns[(size_t)p]);
+                if (it != nav_rings.end()
+                    && it->second.get(sd.nav_frame_at_ref + q0, (int)n_span, sp.nav.data())) {
+                    std::fill(sp.nav.begin() + n_span, sp.nav.end(), sp.nav[n_span - 1]);
+                    sp.nav_on = true;
+                }
+            }
         }
 
         // PrnCtl, the gnssGpuChain.hpp contract the assembler reads. job0 indexes the 4 rows
@@ -620,6 +644,48 @@ std::vector<TrackChain::Seed> TrackChain::snapshot_seeds(std::vector<int>& expir
         }
     }
     return seeds;
+}
+
+void TrackChain::set_nav_symbols_callback(kotekan::connectionInstance& conn,
+                                          nlohmann::json& request) {
+    struct Row {
+        int prn;
+        long long sym0;
+        std::vector<int8_t> signs;
+        uint32_t stream_id;
+    };
+    std::vector<Row> rows;
+    try {
+        if (!request.is_array())
+            throw std::runtime_error("expected an array");
+        rows.reserve(request.size());
+        for (const auto& r : request) {
+            Row row{r.at("prn").get<int>(),
+                    r.at("sym0").get<long long>(),
+                    {},
+                    r.value("stream_id", (uint32_t)0)};
+            const std::string s = r.at("signs").get<std::string>();
+            if (s.size() > (size_t)gnss::NavSymbolRing::N)
+                throw std::runtime_error("more signs than a ring holds");
+            row.signs.reserve(s.size());
+            for (char c : s) {
+                if (c != '+' && c != '-')
+                    throw std::runtime_error("signs: only '+' and '-'");
+                row.signs.push_back(c == '+' ? 1 : -1);
+            }
+            rows.push_back(std::move(row));
+        }
+    } catch (const std::exception& e) {
+        conn.send_error(std::string("bad nav symbols payload: ") + e.what(),
+                        kotekan::HTTP_RESPONSE::BAD_REQUEST);
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lk(nav_mtx);
+        for (const auto& r : rows)
+            nav_rings[r.prn].put(r.sym0, (int)r.signs.size(), r.signs.data(), r.stream_id);
+    }
+    conn.send_empty_reply(kotekan::HTTP_RESPONSE::OK);
 }
 
 void TrackChain::set_trim_callback(kotekan::connectionInstance& conn, nlohmann::json& request) {

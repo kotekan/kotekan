@@ -20,10 +20,12 @@ log_buffer: true
 # The full name: restClient resolves with libevent's evdns, and
 # systemd-resolved answers SERVFAIL for a bare single-label name, which
 # evdns takes as nameserver failure (a 10 s stall, or no GPS time).
+# Port 8080 is the F-engine service (f-engine-tools), which forwards these
+# three GETs to fpga_master; it answers 503 while fpga_master is down.
 fpga_controller:
     host: "crs-control.site.chord-observatory.ca"
-    port: 54321
-    config_endpoint: /config
+    port: 8080
+    config_endpoint: /fpga_master_config
     timing_endpoint: /get-frame0-time
     gains_endpoint: /get-current-gain-file
 

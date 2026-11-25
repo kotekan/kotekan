@@ -26,11 +26,12 @@
 #include "gsl-lite.hpp"     // for span
 #include "jsonMetadata.hpp" // for MAX_NUM_RFI_THRESHOLDS
 
-#include <algorithm>  // for fill
+#include <algorithm>  // for fill, find, sort
 #include <array>      // for array
 #include <assert.h>   // for assert
 #include <cmath>      // for isfinite
 #include <complex>    // for complex, operator*, conj, operator-, norm
+#include <cstring>    // for memcpy, memset
 #include <exception>  // for exception
 #include <functional> // for bind, function, placeholders
 #include <limits>     // for numeric_limits
@@ -160,6 +161,18 @@ N2Accumulate::N2Accumulate(Config& config, const std::string& unique_name,
         config.exists(unique_name, "in_gains_buf") ? get_buffer("in_gains_buf") : nullptr;
     if (in_gains_buf != nullptr)
         in_gains_buf->register_consumer(unique_name);
+
+    // Optional mean projector: GnssN2Project's basis record in, one frame per bin out.
+    in_proj_basis_buf =
+        config.exists(unique_name, "in_proj_basis_buf") ? get_buffer("in_proj_basis_buf") : nullptr;
+    out_proj_mean_buf =
+        config.exists(unique_name, "out_proj_mean_buf") ? get_buffer("out_proj_mean_buf") : nullptr;
+    if ((in_proj_basis_buf == nullptr) != (out_proj_mean_buf == nullptr))
+        FATAL_ERROR("N2Accumulate: in_proj_basis_buf and out_proj_mean_buf go together");
+    if (in_proj_basis_buf != nullptr) {
+        in_proj_basis_buf->register_consumer(unique_name);
+        out_proj_mean_buf->register_producer(unique_name);
+    }
 
     // Sanity checks on initialization
     {
@@ -367,6 +380,8 @@ void N2Accumulate::main_thread() {
         "kotekan_N2accumulate_samples_in_accumulated_out_frame", unique_name);
     auto& skipped_input_frames = Metrics::instance().add_gauge(
         "kotekan_N2accumulate_skipped_frames", unique_name, {"freq_id", "reason"});
+    auto& proj_mean_dropped = Metrics::instance().add_counter(
+        "kotekan_N2accumulate_proj_mean_dropped_total", unique_name);
 
     frameID in_frame_id(in_buf);
     frameID in_counts_frame_id(in_counts_buf);
@@ -374,6 +389,8 @@ void N2Accumulate::main_thread() {
     frameID in_plcounts_frame_id(in_plcounts_buf);
     frameID in_rfiframemask_frame_id(in_rfiframemask_buf);
     int in_bad_feed_mask_frame_id = 0; // only used when the mask input is wired
+    int in_proj_basis_frame_id = 0;    // only used when the basis input is wired
+    int previous_in_proj_basis_frame_id = -1;
     frameID out_frame_id(out_buf);
 
     int previous_in_frame_id = -1;
@@ -407,6 +424,8 @@ void N2Accumulate::main_thread() {
     const int32_t* plcounts_t1 = nullptr;
     const uint8_t* rfiframemask_t0 = nullptr;
     const uint8_t* rfiframemask_t1 = nullptr;
+    const uint8_t* basis_t0 = nullptr;
+    const uint8_t* basis_t1 = nullptr;
 
     // EOP at target fringestop time.
     EOP target_eop = eop_null;
@@ -478,6 +497,15 @@ void N2Accumulate::main_thread() {
             bad_feed_mask = (uint8_t*)in_bad_feed_mask_buf->wait_for_full_frame(
                 unique_name, in_bad_feed_mask_frame_id);
             if (bad_feed_mask == nullptr)
+                break;
+        }
+
+        // Fetch the basis record of this frame's projection, when wired.
+        const uint8_t* proj_basis = nullptr;
+        if (in_proj_basis_buf != nullptr) {
+            proj_basis =
+                in_proj_basis_buf->wait_for_full_frame(unique_name, in_proj_basis_frame_id);
+            if (proj_basis == nullptr)
                 break;
         }
 
@@ -628,6 +656,29 @@ void N2Accumulate::main_thread() {
         previous_seq = frame_seq;
         have_previous_seq = true;
 
+        if (proj_basis != nullptr) {
+            int64_t basis_seq;
+            std::memcpy(&basis_seq, proj_basis, sizeof(basis_seq));
+            if (basis_seq != frame_seq)
+                FATAL_ERROR("Correlation buffer {:s} seq={:d} has lost synchronization with basis "
+                            "buffer {:s}[{:d}] seq={:d}",
+                            in_buf->buffer_name, frame_seq, in_proj_basis_buf->buffer_name,
+                            in_proj_basis_frame_id, basis_seq);
+            if (_proj_slot.empty())
+                init_proj(proj_basis, frame_metadata->get_coarse_freq());
+            for (int64_t t = 0; t < _n_integrations_per_n2k_frame; ++t)
+                for (int s = 0; s < _proj_slots; ++s) {
+                    int32_t fid;
+                    std::memcpy(&fid,
+                                proj_basis + _proj_head_bytes
+                                    + (t * _proj_slots + s) * _proj_slot_bytes,
+                                sizeof(fid));
+                    if (fid != _proj_freq_id[s])
+                        FATAL_ERROR("N2Accumulate: basis slot {:d} moved from freq_id {:d} to {:d}",
+                                    s, _proj_freq_id[s], fid);
+                }
+        }
+
         // Only the first count entry of each subintegration and frequency is used
         // (packet_loss_is_scalar), so that is the one that has to be sane.
         for (int64_t t = 0; t < _n_integrations_per_n2k_frame; ++t) {
@@ -773,6 +824,8 @@ void N2Accumulate::main_thread() {
                 rficounts_t0 = rficounts + rfipl_offset_t;
                 plcounts_t0 = plcounts + rfipl_offset_t;
                 rfiframemask_t0 = rfiframemask + rfipl_offset_t;
+                if (proj_basis != nullptr)
+                    basis_t0 = proj_basis + _proj_head_bytes + t * _proj_slots * _proj_slot_bytes;
                 continue;
             }
 
@@ -782,6 +835,8 @@ void N2Accumulate::main_thread() {
             rficounts_t1 = rficounts + rfipl_offset_t;
             plcounts_t1 = plcounts + rfipl_offset_t;
             rfiframemask_t1 = rfiframemask + rfipl_offset_t;
+            if (proj_basis != nullptr)
+                basis_t1 = proj_basis + _proj_head_bytes + t * _proj_slots * _proj_slot_bytes;
 
             EOP eop_t0 =
                 _tel.get_EOP_at_time(_tel.to_time(seq - _n_fpga_samples_per_n2k_correlation / 2));
@@ -831,6 +886,14 @@ void N2Accumulate::main_thread() {
                                    corr_t1 + f * corr_stride_f, freq_MHz, target_eop, eop_t0,
                                    eop_t1, count_t0, count_t1, fringe_phase_t0.at(f),
                                    fringe_phase_t1.at(f));
+
+                if (proj_basis != nullptr && _proj_slot[f] >= 0) {
+                    const int s = _proj_slot[f];
+                    accum_proj(s, basis_t0, count_t0, fringe_phase_t0.at(f));
+                    accum_proj(s, basis_t1, count_t1, fringe_phase_t1.at(f));
+                    _proj_n_valid[s] += count_t0 + count_t1;
+                    _proj_frames[s] += 2;
+                }
             }
 
             // We're adding frames in pairs, increment frame count by 2
@@ -848,6 +911,8 @@ void N2Accumulate::main_thread() {
                     skipped_input_frames.labels({std::to_string(coarse_freq.at(f)), "rfi"})
                         .set(_vis_input_frames_skipped_rfi.at(f));
                 }
+                if (in_proj_basis_buf != nullptr)
+                    output_proj_mean(proj_mean_dropped);
                 output_and_reset(in_frame_id, in_rfiframemask_frame_id, out_frame_id);
 
                 _vis_samples_in_out_frame = 0;
@@ -901,6 +966,12 @@ void N2Accumulate::main_thread() {
             in_bad_feed_mask_frame_id =
                 (in_bad_feed_mask_frame_id + 1) % in_bad_feed_mask_buf->num_frames;
         }
+        if (in_proj_basis_buf != nullptr) {
+            if (previous_in_proj_basis_frame_id != -1)
+                in_proj_basis_buf->mark_frame_empty(unique_name, previous_in_proj_basis_frame_id);
+            previous_in_proj_basis_frame_id = in_proj_basis_frame_id;
+            in_proj_basis_frame_id = (in_proj_basis_frame_id + 1) % in_proj_basis_buf->num_frames;
+        }
     }
 }
 
@@ -933,6 +1004,9 @@ bool N2Accumulate::receive_rfi_first_stage_enabled(nlohmann::json& update) {
 }
 
 bool N2Accumulate::receive_dtv_mask_enabled(nlohmann::json& update) {
+    // configUpdater passes the config value first, then each POST
+    const bool posted = _dtv_mask_config_read;
+    _dtv_mask_config_read = true;
     bool enabled;
     int64_t time_ns;
     try {
@@ -942,20 +1016,158 @@ bool N2Accumulate::receive_dtv_mask_enabled(nlohmann::json& update) {
         WARN("Failed to read update to {:s}: {:s}", _dtv_mask_config_path, e.what());
         return false;
     }
-    // Same rule as DtvRfiMask
-    int64_t seq = 0;
-    if (time_ns != 0) {
-        if (time_ns < _tel.to_time_ns(0)) {
-            WARN("Got invalid start time: {:d} - keeping the current DTV mask state", time_ns);
-            return true;
-        }
-        seq = _tel.to_seq(time_ns);
-    }
-    INFO("Recording the DTV mask {:s} from seq {:d}", enabled ? "on" : "off", seq);
     std::lock_guard<std::mutex> lock(_dtv_mask_mutex);
+    if (!posted) {
+        _dtv_mask_enabled = _next_dtv_mask_enabled = enabled;
+        return true;
+    }
+    // Same rule as DtvRfiMask, so both switch at the same frame
+    time_ns = N2::switch_time_ns(time_ns, N2::current_system_time_ns());
+    update["valid_at_time_ns"] = time_ns;
+    // to_seq underflows before the stream start
+    const int64_t seq = time_ns < _tel.to_time_ns(0) ? 0 : _tel.to_seq(time_ns);
+    INFO("Recording the DTV mask {:s} from time {:d} ns, seq {:d}", enabled ? "on" : "off", time_ns,
+         seq);
     _next_dtv_mask_enabled = enabled;
     _next_dtv_mask_valid_at_seq = seq;
     return true;
+}
+
+void N2Accumulate::init_proj(const uint8_t* basis, const std::vector<int>& coarse_freq) {
+    int32_t head[7];
+    std::memcpy(head, basis + 8, sizeof(head));
+    if (head[0] != 1 || head[6] != 0x53414250 || head[1] < 1 || head[1] > _num_elements
+        || head[2] != _n_integrations_per_n2k_frame || head[3] < 0 || head[4] < 0
+        || head[5] != 16 + 8 * head[4] * head[1])
+        FATAL_ERROR("N2Accumulate: {:s} is not a version 1 basis record for {:d} "
+                    "sub-integrations per frame",
+                    in_proj_basis_buf->buffer_name, _n_integrations_per_n2k_frame);
+    _proj_n = head[1];
+    _proj_slots = head[3];
+    _proj_head_bytes = 64 + 4 * (size_t)_proj_n;
+    _proj_slot_bytes = (size_t)head[5];
+    if ((size_t)in_proj_basis_buf->frame_size
+        < _proj_head_bytes + (size_t)_n_integrations_per_n2k_frame * _proj_slots * _proj_slot_bytes)
+        FATAL_ERROR("N2Accumulate: {:s}'s frames are smaller than its header says",
+                    in_proj_basis_buf->buffer_name);
+    const size_t out_bytes =
+        _proj_head_bytes + (size_t)_proj_slots * (16 + 4 * (size_t)_proj_n * (_proj_n + 1));
+    if ((size_t)out_proj_mean_buf->frame_size < out_bytes)
+        FATAL_ERROR("N2Accumulate: {:s} frames hold {:d} bytes; {:d} slots of {:d} stations need "
+                    "{:d}",
+                    out_proj_mean_buf->buffer_name, (int)out_proj_mean_buf->frame_size, _proj_slots,
+                    _proj_n, (int)out_bytes);
+
+    _proj_stations.resize(_proj_n);
+    std::memcpy(_proj_stations.data(), basis + 64, 4 * (size_t)_proj_n);
+    for (int a = 0; a < _proj_n; ++a)
+        if (_proj_stations[a] < 0 || _proj_stations[a] >= _num_elements)
+            FATAL_ERROR("N2Accumulate: basis station {:d} is outside [0, {:d})", _proj_stations[a],
+                        _num_elements);
+    _proj_out.resize(_proj_n);
+    for (int a = 0; a < _proj_n; ++a)
+        _proj_out[a] = a;
+    std::sort(_proj_out.begin(), _proj_out.end(), [this](int a, int b) {
+        return _reorder.at(_proj_stations[a]) < _reorder.at(_proj_stations[b]);
+    });
+
+    _proj_slot.assign(_num_freq_per_n2k_frame, -1);
+    _proj_freq_id.resize(_proj_slots);
+    for (int s = 0; s < _proj_slots; ++s) {
+        std::memcpy(&_proj_freq_id[s], basis + _proj_head_bytes + s * _proj_slot_bytes,
+                    sizeof(int32_t));
+        const auto it = std::find(coarse_freq.begin(), coarse_freq.end(), _proj_freq_id[s]);
+        if (it == coarse_freq.end())
+            FATAL_ERROR("N2Accumulate: basis slot {:d} is for freq_id {:d}, not in this stream", s,
+                        _proj_freq_id[s]);
+        _proj_slot[it - coarse_freq.begin()] = s;
+    }
+    _proj_acc.assign((size_t)_proj_slots * 2 * _proj_n * _proj_n, 0.0);
+    _proj_tmp.assign((size_t)_proj_slots * 2 * _proj_n, 0.0);
+    _proj_n_valid.assign(_proj_slots, 0);
+    _proj_frames.assign(_proj_slots, 0);
+    INFO("N2Accumulate: the mean projector of {:d} channels over {:d} stations into {:s}",
+         _proj_slots, _proj_n, out_proj_mean_buf->buffer_name);
+}
+
+void N2Accumulate::accum_proj(int slot, const uint8_t* basis_t, int32_t count,
+                              const std::vector<std::complex<float>>& phase) {
+    const uint8_t* p = basis_t + (size_t)slot * _proj_slot_bytes;
+    int32_t k;
+    std::memcpy(&k, p + 4, sizeof(k));
+    if (k <= 0 || count <= 0)
+        return;
+    const int n = _proj_n;
+    const std::complex<float>* q = (const std::complex<float>*)(p + 16);
+    double* cr = _proj_acc.data() + (size_t)slot * 2 * n * n;
+    double* ci = cr + (size_t)n * n;
+    double* xr = _proj_tmp.data() + (size_t)slot * 2 * n;
+    double* xi = xr + n;
+    for (int j = 0; j < k; ++j) {
+        for (int a = 0; a < n; ++a) {
+            std::complex<float> v = q[(size_t)j * n + a];
+            if (_do_fringestop && !_debug_accum_mode)
+                v *= phase[_proj_stations[a]];
+            xr[a] = v.real();
+            xi[a] = v.imag();
+        }
+        // C[a][b] += count q_a conj(q_b), a <= b
+        for (int a = 0; a < n; ++a) {
+            const double wr = count * xr[a], wi = count * xi[a];
+            double* rr = cr + (size_t)a * n;
+            double* ri = ci + (size_t)a * n;
+            for (int b = a; b < n; ++b) {
+                rr[b] += wr * xr[b] + wi * xi[b];
+                ri[b] += wi * xr[b] - wr * xi[b];
+            }
+        }
+    }
+}
+
+void N2Accumulate::output_proj_mean(kotekan::prometheus::Counter& dropped) {
+    const int n = _proj_n;
+    if (out_proj_mean_buf->is_frame_empty(_proj_mean_frame_id)) {
+        uint8_t* out = out_proj_mean_buf->wait_for_empty_frame(unique_name, _proj_mean_frame_id);
+        if (out == nullptr)
+            return;
+        const int64_t ticks = _vis_samples_in_out_frame * _n_fpga_samples_per_n2k_correlation;
+        const timespec ts = _tel.to_time(_accum_fpga_start_tick);
+        const double t_start = ts.tv_sec + 1e-9 * ts.tv_nsec;
+        const int32_t head[5] = {1, n, _proj_slots, _do_fringestop ? 1 : 0, 0x4e41454d};
+        std::memset(out, 0, 64);
+        std::memcpy(out, &_accum_fpga_start_tick, 8);
+        std::memcpy(out + 8, &ticks, 8);
+        std::memcpy(out + 16, &t_start, 8);
+        std::memcpy(out + 24, head, sizeof(head));
+        for (int p = 0; p < n; ++p) {
+            const int32_t st = _reorder.at(_proj_stations[_proj_out[p]]);
+            std::memcpy(out + 64 + 4 * (size_t)p, &st, 4);
+        }
+        uint8_t* slot = out + _proj_head_bytes;
+        for (int s = 0; s < _proj_slots; ++s, slot += 16 + 4 * (size_t)n * (n + 1)) {
+            const int32_t sh[2] = {_proj_freq_id[s], _proj_frames[s]};
+            std::memcpy(slot, sh, sizeof(sh));
+            std::memcpy(slot + 8, &_proj_n_valid[s], 8);
+            const double* cr = _proj_acc.data() + (size_t)s * 2 * n * n;
+            const double* ci = cr + (size_t)n * n;
+            const double norm = _proj_n_valid[s] > 0 ? 1.0 / _proj_n_valid[s] : 0.0;
+            std::complex<float>* tri = (std::complex<float>*)(slot + 16);
+            // The upper triangle in the output order; the sums hold the input order's.
+            for (int p = 0; p < n; ++p)
+                for (int r = p; r < n; ++r) {
+                    const int a = _proj_out[p], b = _proj_out[r];
+                    const size_t i = a <= b ? (size_t)a * n + b : (size_t)b * n + a;
+                    const double im = a <= b ? ci[i] : -ci[i];
+                    *tri++ = std::complex<float>(norm * cr[i], norm * im);
+                }
+        }
+        out_proj_mean_buf->mark_frame_full(unique_name, _proj_mean_frame_id);
+        _proj_mean_frame_id = (_proj_mean_frame_id + 1) % out_proj_mean_buf->num_frames;
+    } else
+        dropped.inc();
+    std::fill(_proj_acc.begin(), _proj_acc.end(), 0.0);
+    std::fill(_proj_n_valid.begin(), _proj_n_valid.end(), 0);
+    std::fill(_proj_frames.begin(), _proj_frames.end(), 0);
 }
 
 void N2Accumulate::fold_bad_feed_mask_into_accum(const uint8_t* bad_feed_mask) {
@@ -1376,6 +1588,7 @@ bool N2Accumulate::output_and_reset(frameID& in_frame_id, frameID& in_rfiframema
         meta->n_pl_fpga_ticks = _n_pl_samples_in_vis.at(f);
         meta->n_rfi_first_stage_enabled_fpga_ticks = _n_rfi_first_stage_enabled_ticks;
         meta->n_dtv_mask_enabled_fpga_ticks = _n_dtv_mask_enabled_ticks;
+        meta->n_usable_variance_pairs = _n_usable_variance_pairs.at(f);
 
         meta->rfi_frame_excision_enabled = rfi_frame_excision_enabled;
         meta->fringestop_enabled = _do_fringestop;

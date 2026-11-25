@@ -89,6 +89,26 @@ the aggregator and gather. #184–#187 below are what the removal left for later
 
 ## Open — the fix is in the BROKER or a script (ships today, no node cycle)
 
+### #242 — in a boresight transit the trk chains fall back to the search-fed joint state, which runs up to 2.6 chips from the tracker state (2026-11-23, from the restart analysis)
+**What [archive, 11-21 log]:** the tracker-fed joint state (TRK_STATE) takes no updates while a satellite is in the transit
+cone (jtrk withholds its feed), goes stale, and every `joint-source trk` chain (gal_e5a, bds_b2a, gal_e5b, bds_b2b, bds_b3i,
+gal_e6) switches to the search-fed state. 8 such fallbacks on 11-21, 13-23 min each (~2.3 h/day). The search-fed state keeps
+updating from gps_l5's search solve, and tracker minus search runs to +2.6 chips there; in steady state it is -0.08 chips
+(p10/p90 -0.14/-0.01). Log extracts: cf06:/var/tmp/kvand-restart-1121/joint_all.log.
+**Open:** whether the consuming chains adopt the offset (joint_clk_max_chips is 5, so a 2.6-chip step passes the bound), and
+whether it explains #155's Galileo transit losses since the repoint (E5a x E6 arcs survive 67-75% of transits against 91-92%
+before). The #119 gate keeps false detections out of the cp-fit history, not out of the clock solve the search state reads.
+**Next:** per transit, the consumers' JOINT-CLK adoptions and their code_resid_m against the slips in transit_arcs_1121.
+
+### #241 — retire the site's GuoWang beam-dump capture: the standalone system now covers GuoWang (2026-11-23, KV: "We might want to consider pulling that out altogether; the standalone system already handles it now, so let's make a note.")
+**What:** the site still runs the GuoWang beam-dump chain: the scheduler on the gnss VM (`beam_dump_sched.py`, from
+`~/gnss/gw1202-wt`) arms the nodes' beamdump gates every pass, the nodes write `/tmp/gnss/beamdump` (~0.8 TB per node in five
+days before the 11-23 cleanup, 4.5 TB deleted across eight nodes), and `gw_catchup.py` on cf05 pulls and reduces it (it
+never pruned the node originals; it died in cf05's 11-22 03:03Z reboot). Stopped 11-23 before the 21:16Z window (KV go; guowang): the VM loop is gone and all 12 gates on the six nodes read armed "no"; cx42/cx47 have not been armed since 11-21. The unreduced dumps are being caught up (corrcal first, then the cf05 follow loop with node pruning).
+**Decide:** remove it altogether (scheduler, arm cron, the node beamdump stages and gates, the catch-up), or keep a minimal
+capture for cross-checks against the standalone system. Until then: if it runs, gw_catchup's retain step must prune the
+node originals (`gw_retain_cf05.py --nodes`), and ~1.4 TB of unreduced dumps from 11-22 03:28Z onward remain on the nodes.
+
 ### #240 — GuoWang track beam: the code epoch wanders 20-100 ns over a minute or two at high elevation (2026-11-18, KV: "add to the buglist") (was kv/docs-tree #230)
 **What:** on DIGUI-55, DIGUI-134 and DIGUI-96 the code epoch wanders 20 to 100 ns over one to two minutes,
 growing toward the top of the pass; per-run slopes scatter four times more at 75-90 deg than at 15-30 deg.
@@ -1166,6 +1186,17 @@ rho² exceeds 0.99 is dropped, so a very bright satellite's own cal can end with
 ---
 
 ## Open — bench or offline, no deployment at all
+
+### #243 — the node's lane projection leaves ~8x the imprint of an ideal MEO projector in the fully laned stretch (2026-11-24, KV: "I would like to dig into the 8x expectations, but let's file that a buglist item and we'll come back to it")
+**What [archive, 11-20 N2]:** in 1212.3-1218 MHz the beam statistic's negative eigen-part (the unrecorded projector's
+hole) reads 617 on the node against 98 for 24 ideal moving MEO lanes; per bin the node has 11-15 modes below 0.1 and
+another 14 between 0.1 and 0.5, against 18 and 6 ideal. Same on all 14 comb phases. Write-up:
+`~/gnss/fixtures/deproj_1124/README.md`, "Fourth pass".
+**Open:** why the nulls are part-deep. Candidates: lanes entering and leaving inside a 21 s bin (coherence gate,
+k_lanes_max budget order, fleet-lane age), direction jitter frame to frame. A recorded mean projector removes the
+imprint either way, so this sets how much sky the lanes cost, not the floor.
+**Next:** with the mean projector recorded, read P̄'s spectrum per bin against the ideal; a lane dump over one bin
+gives the per-frame lane set.
 
 ### #237 — the array-mean beam's own phase and amplitude from fast GuoWang crossings: think it through once the GW birds track well (2026-11-22, KV: "we should keep this option in mind, maybe add a todo to think it through carefully once the GW birds track well")
 **What:** the complex beam maps (`~/gnss/fixtures/beamjones_1121/`, 11-21) give every feed over the coherent array

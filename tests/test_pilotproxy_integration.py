@@ -260,11 +260,20 @@ def test_too_few_fine_power_rows_stop_the_run(pipeline):
     assert "more than dtv_fine_powers_rows" in output, output[-12000:]
 
 
-def test_control_channel_is_recorded_and_never_masked(pipeline):
+@pytest.mark.parametrize("mask_control", [False, True])
+def test_control_channel_is_recorded_and_masked_only_with_mask_control(
+    pipeline, mask_control
+):
     pipeline.calibrate()
+    pipeline.detector["mask_control"] = mask_control
     profiles = pipeline.bundle["profiles"]
     for profile in profiles:
         profile["fine_calibration"]["cfar_multiplier_q16"] = 1
+    for profile in profiles[1:]:
+        # a bundle with its own control row gives that row the channel of profile 0
+        if profile["physical_channel"] == 37:
+            profile["physical_channel"] = profiles[0]["physical_channel"]
+            profile["fine_calibration"]["status"] = "calibrated"
     profiles[0]["fine_calibration"]["status"] = "control"
     profiles[0]["physical_channel"] = 37
     ids = pipeline.generator["manual_freq_ids"]
@@ -290,9 +299,14 @@ def test_control_channel_is_recorded_and_never_masked(pipeline):
         if p["receiver_channel_id"] in ids
     ]
     assert power[:, control].any()
-    assert not mask[:, control].any()
-    # DtvRfiMask clears a frequency with support (0, n), so the control row has none
-    assert (support[:, control] == -1).all()
+    if mask_control:
+        # at multiplier 1 the control fires and gets rank support, as the pilots do
+        assert mask[:, control].any()
+        assert (support[:, control, 0] >= 0).all()
+    else:
+        assert not mask[:, control].any()
+        # DtvRfiMask clears a frequency with support (0, n), so the control row has none
+        assert (support[:, control] == -1).all()
     assert (support[:, others, 0] >= 0).all()
     assert mask[:, others].any()
 
@@ -302,7 +316,7 @@ def test_only_channel_37_can_be_the_control(pipeline):
     pipeline.bundle["profiles"][0]["fine_calibration"]["status"] = "control"
     code, output = pipeline.run()
     assert code != 0
-    assert "only physical channel 37 can have status control" in output, output[-12000:]
+    assert "no other channel can be control" in output, output[-12000:]
 
 
 def test_independent_detectors_share_gpu(pipeline):
@@ -322,6 +336,8 @@ def test_independent_detectors_share_gpu(pipeline):
     command.update(
         pilot_profiles_path="other/pilot_profiles.json",
         weights_path="other/weights.bin",
+        # every output region of a detector needs its own name on a shared GPU
+        dtv_stat_name="dtv_stat_other",
     )
     for product in ("mask", "powers"):
         name = f"dtv_{product}"
@@ -377,7 +393,11 @@ def test_pipeline_decisions(pipeline, reverse, mode):
         "time_reverse_detector_windows_before_kernel"
     ] = reverse
     if mode == "disabled":
-        for row in pipeline.bundle["profiles"]:
+        rows = pipeline.bundle["profiles"]
+        # the control channel may be pending too
+        if 37 not in [row["physical_channel"] for row in rows]:
+            rows[0]["physical_channel"] = 37
+        for row in rows:
             row["fine_calibration"]["status"] = "pending_campaign"
         pipeline.config["gen_voltage"]["manual_freq_ids"] = [1600, 4000, 1601, 4001]
     elif not reverse:
@@ -470,8 +490,16 @@ def test_bad_feed_mask_zeroes_flagged_inputs(pipeline, lifetime_blocks):
     stage = config["run_dtv_detector"]["gpu_0"]
     stage["in_buffers"]["host_bf_mask_ringbuffer"] = "host_bf_mask_ringbuffer"
     pipeline.detector["bf_mask_name"] = "bf_mask"
+    inputs = 2 * num_dishes
+    for profile in pipeline.bundle["profiles"]:
+        profile["fine_calibration"]["provenance"]["summed_inputs"] = inputs
     code, output = pipeline.run()
     assert code == 0, output[-12000:]
+    # the all-bad elements are logged against the calibrated count, and the all-good ones clear it
+    assert f"0 inputs are summed but the bundle was calibrated with {inputs}" in output
+    assert (
+        f"{inputs} inputs are summed, within 10% of the calibrated {inputs}" in output
+    )
 
     masks = reference.read_raw_frames(
         str(pipeline.directory / "out/bf_mask_*.raw"), 2 * num_dishes
@@ -667,6 +695,28 @@ def test_rejects_invalid_bundle(pipeline, field, value, diagnostic):
     assert code != 0, "invalid bundle was accepted"
     assert diagnostic in output, output[-12000:]
     assert not list((pipeline.directory / "out").glob("dtv_*.raw"))
+
+
+@pytest.mark.parametrize(
+    "field", ["anchor_bin", "designated_half_width", "cfar_rank", "bulk_mask_words_hex"]
+)
+def test_v3_profile_refuses_geometry(pipeline, field):
+    pipeline.calibrate()
+    for profile in pipeline.bundle["profiles"]:
+        calibration = profile["fine_calibration"]
+        kept = calibration.get(field)
+        calibration["decision_version"] = "fine_decision_v3"
+        for key in (
+            "anchor_bin",
+            "designated_half_width",
+            "cfar_rank",
+            "bulk_mask_words_hex",
+        ):
+            calibration.pop(key, None)
+        calibration[field] = kept
+    code, output = pipeline.run()
+    assert code != 0, "a v3 profile with a geometry field was accepted"
+    assert f"fine_decision_v3 takes no {field}" in output, output[-12000:]
 
 
 def test_exported_bundle_loads_unchanged(pipeline):
@@ -1074,3 +1124,49 @@ def test_archive_review_profiles_allow_permanent_reject_limit(pipeline):
     masks = reference.read_raw_frames(str(pipeline.directory / "out/dtv_mask_*.raw"), 4)
     assert len(masks) == pipeline.config["num_gen_frames"]
     assert all(not frame.payload.any() for frame in masks)
+
+
+def test_v3_statistic_matches_the_reference(pipeline):
+    """A fine_decision_v3 bundle writes [n_peak, d_rho] and leaves the decision to DtvRfiMask."""
+    from pilot_proxy.fine_decision import fine_stat_v3
+
+    pipeline.calibrate()
+    for profile in pipeline.bundle["profiles"]:
+        calibration = profile["fine_calibration"]
+        calibration["decision_version"] = "fine_decision_v3"
+        calibration.pop("bulk_mask_words_hex", None)
+        calibration.pop("cfar_rank", None)
+        calibration.pop("anchor_bin", None)
+        calibration.pop("designated_half_width", None)
+    num_freq = len(pipeline.generator["manual_freq_ids"])
+    bound = bound_indices(pipeline)
+    rows = len(bound)
+    add_output(pipeline, "stat", num_freq * 2 * 8)
+    add_output(pipeline, "fine_support", num_freq * 2 * 4)
+    add_output(pipeline, "fine_powers", rows * 3 * 256 * 8)
+    pipeline.detector["dtv_fine_powers_rows"] = rows
+    code, output = pipeline.run()
+    assert code == 0, output[-12000:]
+    out = pipeline.directory / "out"
+    stats = reference.read_raw_frames(str(out / "dtv_stat_*.raw"), num_freq * 2 * 8)
+    fines = reference.read_raw_frames(
+        str(out / "dtv_fine_powers_*.raw"), rows * 3 * 256 * 8
+    )
+    masks = reference.read_raw_frames(str(out / "dtv_mask_*.raw"), num_freq)
+    supports = reference.read_raw_frames(
+        str(out / "dtv_fine_support_*.raw"), num_freq * 2 * 4
+    )
+    assert len(stats) == len(fines) == len(masks) == len(supports) > 0
+    for stat, fine, mask, support in zip(stats, fines, masks, supports):
+        pairs = stat.payload.view("<u8").reshape(num_freq, 2)
+        fine = fine.payload.view("<u8").reshape(rows, 3, 256)
+        for f in range(num_freq):
+            if f not in bound:
+                # not evaluated: every word keeps it
+                assert pairs[f].tolist() == [0, 2**64 - 1], f
+                continue
+            want = fine_stat_v3(np.ascontiguousarray(fine[bound.index(f)]))
+            assert pairs[f].tolist() == [want.n_peak, want.d_rho], f
+        # v3 makes no decision in the stage
+        assert not mask.payload.any()
+        assert (support.payload.view("<i4") == -1).all()

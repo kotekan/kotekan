@@ -66,6 +66,22 @@ DECLARED = [
         "gnss_n2_proj_buffer{,_1} written by gnss_n2_project",
     ),
     (
+        "host_side_buffer_depth",
+        "~",
+        "data lag (--data-lag-s, default off): the host buffers hold the frames the GPU copy "
+        "holds back",
+    ),
+    (
+        "n2_accumulate.accum_*.in_proj_basis_buf",
+        "+",
+        "mean projector (--proj-mean, default off): gnss_n2_project's basis record in",
+    ),
+    (
+        "n2_accumulate.accum_*.out_proj_mean_buf",
+        "+",
+        "and the projector averaged over each bin out, to a rawFileWrite",
+    ),
+    (
         "run_send_voltage.gpu_*.commands",
         "~",
         "DTV subtraction (--dtv-subtract-freq-ids, default off): after the stock "
@@ -109,21 +125,17 @@ def template():
     return kotekan_src.src("config", "chord", "pathfinder.j2")
 
 
-# The variables of the stock render: gen_chord_gnss_config.STOCK_RENDER_VARS (none: the template's
-# defaults are what production runs). Keep the two equal.
-STOCK_RENDER_VARS = {}
-
-
 def render_stock(path=None):
     """The template (default template()) rendered stock as kotekan does (see kotekan/kotekan.cpp),
-    with STOCK_RENDER_VARS."""
+    with production's variables (choco_vars.py), as gen_chord_gnss_config renders it."""
+    import choco_vars
     import jinja2
 
     d, f = os.path.split(os.path.abspath(path or template()))
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(d), autoescape=jinja2.select_autoescape()
     )
-    return yaml.safe_load(env.get_template(f).render(STOCK_RENDER_VARS))
+    return yaml.safe_load(env.get_template(f).render(choco_vars.load()))
 
 
 def load(src):

@@ -6,7 +6,7 @@
 # itself, so Restart=, MemoryMax= and a clean stop all act on it. The header of
 # stack_components.sh says why the units cannot call a daemonising launcher instead.
 #
-#     run_component.sh broker|gather|aggregator|viewer|rail|lanerelay|fengine
+#     run_component.sh broker|gather|aggregator|viewer|rail|lanerelay|navrelay|fengine
 #     GNSS_CHAIN=gps_l5 run_component.sh obs
 #     run_component.sh cubearch|cubecompact   # cf06's cube leg (gnss-cube.target)
 #     CUBE_STAGE=<dir> run_component.sh cubestage   # the staging loop (gnss-cubevm.target)
@@ -19,7 +19,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 
 PRINT=0
 [ "${1:-}" = "--print" ] && { PRINT=1; shift; }
-name=${1:?usage: run_component.sh [--print] <broker|gather|aggregator|viewer|obs|rail|lanerelay|cubearch|cubecompact|cubestage>}
+name=${1:?usage: run_component.sh [--print] <broker|gather|aggregator|viewer|obs|rail|lanerelay|navrelay|cubearch|cubecompact|cubestage>}
 
 gnss_component "$name"
 [ -n "${GNSS_CWD:-}" ] && cd "$GNSS_CWD"

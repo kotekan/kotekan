@@ -60,6 +60,24 @@ aggregator:
             - "GPS_L5_Q:131,133,135"
 
 common:
+    # GnssN2Project's channel loop on two cpus per GPU, a hyperthread pair (#225): proj_0 15+47, proj_1 19+51,
+    # num_workers 2. The single-thread stage ran at 87-95% of its core and its stalls tripped the capture
+    # (11-25 "stream is out of step"). Needs a binary with 14face496. The pair is a whole physical core
+    # per NUMA node outside the runtime pools (15/47 and 19/51 read 0 % on cx27/43/44/51 on 10-24).
+    n2-project-cpus: "15+47,19+51"
+    # The mean projector record (N2Accumulate out_proj_mean_buf, /tmp/gnss/projmean, ~18 GB/node/day): per 21 s bin and
+    # projected channel, the lane projector averaged over the frames the accumulator took. Nodes with n2-project only.
+    # Needs a binary with 93bc715f1 (builds/fleet-745aebb92-cu135); install at a node_up cycle only.
+    proj-mean: true
+    # Data symbols streamed from the gx10's bladeRF receiver (scripts/gnss/site/nav_symbol_relay.py):
+    # the chains named take them on <chain>inject/set_nav_symbols and wipe them from the replica
+    # (gnssTrackChain.hpp); their brokers need dr-nav-symbols. B3I's endpoint waits idle for the
+    # gx10's B3I time marks. Needs a binary with the wipe (builds/fleet-ccd212f26-cu135).
+    nav-symbols: "GPS_L2C_CM,BDS_B2B_I,BDS_B3I_NH"
+    # Every GPU's voltage copy holds each frame until it is 0.5 s old, so those symbols (~0.2-0.4 s
+    # old at the relay) arrive first; host buffers +12 frames (~13.6 GB/node). Every node at once:
+    # the fleet trim waits one window for a late node. Restart the broker after the cycle.
+    data-lag-s: 0.5
     # Signal as index (F1-F7): each GPU half runs its chains as rows of one tiles and control
     # array, with one inject, record, combine and telemetry host and one record buffer.
     fold-epl: true
@@ -246,10 +264,6 @@ common:
     # (11-07); at 0.005 they keep refitting. The ATSC stations' edge channels (0.01-0.05) refit too.
     dtv-roll-min-explained: 0.005
     assembler-core-slots: "2,1,3,4,8"
-    # The stage on a whole idle physical core per NUMA node (15/47 and 19/51 read 0 % on
-    # cx27/43/44/51 on 10-24), outside the runtime pools: 127 stations with the transfers ran at
-    # 75-79 % of it on cx51 (10-24 16:40Z).
-    n2-project-cpus: "15,19"
     # The same satellites' other signals: each chain's lanes, turned through the geometric delay,
     # on the live channels of the band (tier 1.5). cx51 10-24 16:40Z, fraction of the non-noise
     # power removed: Galileo E6 PRS lower lobe (BOCcos(10,5) at 1268.52 +-5.1 MHz) from E6-B/C

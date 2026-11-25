@@ -66,6 +66,13 @@ PTX_NEED = re.compile(
     r"^(lib/cuda/generated/|tools/check_ptx\.sh|tools/ci_select_jobs\.py|\.github/)"
 )
 
+# Tests only the GPU job runs (tests/ci-scripts/pilotproxy/run_pilotproxy_tests.sh).
+PILOTPROXY_TESTS = (
+    "config/tests/verify_pilotproxy_pipeline.yaml",
+    "tests/test_pilotproxy_integration.py",
+    "tests/test_dtv_rfi_mask.py",
+)
+
 # Source text that compiles differently in the GPU build.
 GPU_TEXT = re.compile(r"float16_t|KOTEKAN_FLOAT16|WITH_(CUDA|HIP|OPENCL)|cuda_fp16")
 
@@ -83,10 +90,13 @@ def gpu_reached():
     src = [f for f in git_files("lib", "kotekan", "external") if SOURCE.search(f)]
     text = {f: open(f, errors="ignore").read() for f in src}
 
-    # Stage types named in the GPU test configs, including .j2 templates.
+    # Stage types named in the GPU test configs, including .j2 templates, and in the
+    # PilotProxy tests the GPU job runs.
     stages = set()
-    for f in git_files("config/ci-tests/gpu_batch"):
-        stages |= set(re.findall(r"kotekan_stage['\"]?:\s*['\"]?(\w+)", open(f).read()))
+    for f in git_files("config/ci-tests/gpu_batch", *PILOTPROXY_TESTS):
+        stages |= set(
+            re.findall(r"kotekan_stage['\"]?\s*[:=]\s*['\"]?(\w+)", open(f).read())
+        )
 
     # Start from the root directories and the files that register those stages.
     todo = [f for f in src if GPU_ROOTS.match(f)]
@@ -143,6 +153,8 @@ SELF_TEST_CASES = [
     (["config/ci-tests/cpu_batch/new.yaml"], True, False, False),
     (["tests/test_dtv_rfi_mask.py"], True, True, False),
     (["lib/stages/DtvRfiMask.cpp"], True, True, False),
+    (["lib/stages/RfiMaskSum.cpp"], True, True, False),  # stage in the PilotProxy tests
+    (["lib/stages/rawFileWrite.cpp"], True, True, False),
     (["config/fengine/include/dtv_chord.j2"], True, True, False),
     (["config/chime/dtv.j2"], True, True, False),
     (["docs/sphinx/index.rst", "README.md"], False, False, False),

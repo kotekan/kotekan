@@ -21,7 +21,8 @@
 #include "visUtil.hpp"             // for current_time
 #include "waitingForMaxFrames.hpp" // for waiting_for_max_frames
 
-#include "fmt.hpp" // for compile_string_to_view
+#include "fmt.hpp"  // for compile_string_to_view
+#include "json.hpp" // for json
 
 #include <algorithm>                             // for max, min
 #include <array>                                 // for array
@@ -30,6 +31,7 @@
 #include <chrono>                                // for system_clock
 #include <cstddef>                               // for size_t
 #include <cstdint>                               // for int64_t, uint8_t, uint32_t
+#include <ctime>                                 // for gmtime_r, time_t, tm
 #include <filesystem>                            // for create_directories
 #include <functional>                            // for function
 #include <gsl-lite.hpp>                          // for span
@@ -45,15 +47,13 @@
 #include <iomanip>                               // for operator<<, setfill, setw
 #include <memory>                                // for allocator, shared_ptr, __shared_ptr_access
 #include <sstream>                               // for basic_ostream, operator<<, basic_ostrin...
+#include <stdexcept>                             // for runtime_error
 #include <string>                                // for basic_string, char_traits, string, oper...
 #include <vector>                                // for vector
 
 
 using namespace hdf5;
 using namespace HighFive;
-
-// Names the acq_dir directory, once per Kotekan instance.
-const auto kotekan_start_time = std::chrono::system_clock::now();
 
 /**
  * @class hdf5FileWrite
@@ -66,9 +66,14 @@ const auto kotekan_start_time = std::chrono::system_clock::now();
  *
  * @conf base_dir  String. Directory to write into.
  * @conf acq_dir   Bool. Default: false. Write into "<base_dir>/acq_YYYYMMDD_HHMMSS_NNNNNNNNN",
- *       named for the time Kotekan started, so a restart does not overwrite the previous run.
- *       Every hdf5FileWrite with the same base_dir in one instance shares the directory.
+ *       named for the time the pipeline started, so a restart does not overwrite the previous
+ *       run. Every hdf5FileWrite with the same base_dir in one pipeline shares the directory.
  * @conf file_name String. Base filename to write.
+ * @conf time_in_file_name  Bool. Default: false. Put the UTC time of the file's first frame,
+ *       "YYYYMMDDTHHMMSS" from its fpga_seq_num, before the frame counter in the file name:
+ *       for frames that come now and then, such as one per event. Only for chord metadata
+ *       with fpga_seq_num, and not with @c create_single_file. hdf5FileRead does not read
+ *       files with such names.
  * @conf prefix_hostname  Bool. Prepend hostname to output file names. Default:
  *       true.
  * @conf prefix_host_rank  Bool. Prepend rank to output file names. Default: false.
@@ -92,6 +97,15 @@ const auto kotekan_start_time = std::chrono::system_clock::now();
  *       - frame decimation (@c write_x_frames / @c per_y_frames) must not be used.
  *       A writer whose buffer violates one of these has to use per-frame files
  *       (`create_single_file: false`), which have no such constraints.
+ * @conf frames_per_file  Int. Default: 1. The number of frames in each file, appended along
+ *       axis 0. More than one frame per file has the constraints of @c create_single_file,
+ *       except that a frame that does not continue `fpga_seq_num` starts a new file. With
+ *       @c record_per_frame_metadata there are no constraints.
+ * @conf record_per_frame_metadata  Bool. Default: false. Also store the metadata of every
+ *       frame, as one row per frame of the datasets in the group `frame_metadata`. The frames
+ *       of a file then need not be contiguous or in time order, as when several senders share
+ *       the buffer. A frame whose metadata does not fit the datasets of the current file
+ *       starts a new file, or is fatal with @c create_single_file.
  * @conf write_x_frames  Int. Write the first X out of every Y frames (see per_y_frames).
  *       Default: -1 (disabled). Cannot be combined with @c create_single_file.
  * @conf per_y_frames  Int. Period Y for frame decimation (see write_x_frames).
@@ -110,10 +124,15 @@ const auto kotekan_start_time = std::chrono::system_clock::now();
 class hdf5FileWrite : public kotekan::Stage {
 
     const bool acq_dir = config.get_default<bool>(unique_name, "acq_dir", false);
+    // held for the life of the stage, so the pipeline's writers share one time
+    const std::shared_ptr<const std::chrono::system_clock::time_point> run_time =
+        acq_dir ? acq_run_time() : nullptr;
     const std::string base_dir =
-        acq_dir ? acq_dir_path(config.get<std::string>(unique_name, "base_dir"), kotekan_start_time)
+        acq_dir ? acq_dir_path(config.get<std::string>(unique_name, "base_dir"), *run_time)
                 : config.get<std::string>(unique_name, "base_dir");
     const std::string file_name = config.get<std::string>(unique_name, "file_name");
+    const bool time_in_file_name =
+        config.get_default<bool>(unique_name, "time_in_file_name", false);
     const bool prefix_hostname = config.get_default<bool>(unique_name, "prefix_hostname", true);
     const bool prefix_host_rank = config.get_default<bool>(unique_name, "prefix_host_rank", false);
     const int host_pool_rank = config.get_default<int>(unique_name, "frequency_pool_rank", 0);
@@ -128,6 +147,8 @@ class hdf5FileWrite : public kotekan::Stage {
     const int64_t per_y_frames = config.get_default<int64_t>(unique_name, "per_y_frames", -1);
     const uint64_t frames_per_file =
         config.get_default<uint64_t>(unique_name, "frames_per_file", 1);
+    const bool record_per_frame_metadata =
+        config.get_default<bool>(unique_name, "record_per_frame_metadata", false);
 
     const uint64_t num_polarizations = config.get<uint64_t>(unique_name, "num_polarizations");
     const uint64_t num_dishes = config.get<uint64_t>(unique_name, "num_dishes");
@@ -147,6 +168,8 @@ class hdf5FileWrite : public kotekan::Stage {
     int64_t current_file_start_frame = 0;
     // track whether a new file should be started on the next frame
     bool start_new_file = true;
+    // The per-frame metadata datasets of the current file (record_per_frame_metadata).
+    FrameMetadataColumns frame_metadata_file_columns;
 
     kotekan::prometheus::Gauge& write_time_metric =
         kotekan::prometheus::Metrics::instance().add_gauge(
@@ -171,6 +194,16 @@ public:
                         "file must hold a contiguous stream",
                         unique_name);
 
+        if (create_single_file && time_in_file_name)
+            FATAL_ERROR("hdf5FileWrite {:s}: time_in_file_name cannot be combined with "
+                        "create_single_file",
+                        unique_name);
+
+        if (record_per_frame_metadata && file_name == frame_metadata_group)
+            FATAL_ERROR("hdf5FileWrite {:s}: file_name \"{:s}\" is the name of the per-frame "
+                        "metadata group",
+                        unique_name, file_name);
+
         if (create_single_file && frames_per_file > 1)
             INFO("single file mode requested - ignoring `frames_per_file` config parameter (={:d})",
                  frames_per_file);
@@ -184,8 +217,10 @@ public:
     virtual ~hdf5FileWrite() {}
 
     // Create the HDF5 file.
-    // Determine the file name, and create the containing directory if necessary.
-    std::shared_ptr<File> create_file(const std::int64_t frame_counter) const {
+    // Determine the file name, and create the containing directory if necessary. A time_tag
+    // goes before the frame counter.
+    std::shared_ptr<File> create_file(const std::int64_t frame_counter,
+                                      const std::string& time_tag = "") const {
         // Define file name
         std::ostringstream buf;
         buf << hdf5::file_path_prefix(base_dir, file_name, prefix_hostname, prefix_host_rank,
@@ -201,6 +236,8 @@ public:
                 FATAL_ERROR("Internal error -- cannot handle a negative frame_counter when a "
                             "regular (non single_file) HDF5 file with base name \"{:s}\"",
                             file_name);
+            if (!time_tag.empty())
+                buf << "." << time_tag;
             buf << "." << std::setw(8) << std::setfill('0') << frame_counter;
         }
         buf << ".h5";
@@ -276,6 +313,26 @@ public:
 
         bool do_create_dataset = false; // Whether to create the dataset and write the attributes
 
+        FrameMetadataColumns frame_metadata;
+        if (record_per_frame_metadata) {
+            nlohmann::json metadata_json;
+            ::to_json(metadata_json, *meta);
+            try {
+                frame_metadata = frame_metadata_columns(metadata_json);
+            } catch (const std::runtime_error& ex) {
+                FATAL_ERROR("Buffer \"{:s}\" frame {:d}: {:s}", buffer->buffer_name, frame_counter,
+                            ex.what());
+            }
+            if (the_current_file_pointer
+                && !frame_metadata_fits(frame_metadata_file_columns, frame_metadata)) {
+                if (create_single_file)
+                    FATAL_ERROR("Buffer \"{:s}\": the metadata of frame {:d} does not fit the "
+                                "per-frame metadata datasets of the single file",
+                                buffer->buffer_name, frame_counter);
+                start_new_file = true;
+            }
+        }
+
         if (create_single_file) {
             // Create only a single file
             if (!the_current_file_pointer) {
@@ -297,7 +354,21 @@ public:
             if ((frame_offset % frames_per_file == 0) || start_new_file) {
                 // NB: `HighFive` flushes and closes a file once it goes out of scope,
                 // so the last file is automatically closed here
-                the_current_file_pointer = create_file(frame_counter);
+                std::string time_tag;
+                if (time_in_file_name) {
+                    if (!meta->has_fpga_seq_num())
+                        FATAL_ERROR("Buffer \"{:s}\": time_in_file_name needs fpga_seq_num in "
+                                    "the frame's metadata",
+                                    buffer->buffer_name);
+                    const std::time_t seconds =
+                        telescope.to_time_ns(meta->get_fpga_seq_num()) / 1'000'000'000LL;
+                    std::tm utc{};
+                    gmtime_r(&seconds, &utc);
+                    std::ostringstream tag;
+                    tag << std::put_time(&utc, "%Y%m%dT%H%M%S");
+                    time_tag = tag.str();
+                }
+                the_current_file_pointer = create_file(frame_counter, time_tag);
                 current_file_start_frame = frame_counter;
                 do_create_dataset = true;
                 start_new_file = false;
@@ -309,7 +380,7 @@ public:
 
         auto& file = *the_current_file_pointer;
 
-        if (create_single_file || (frames_per_file > 1)) {
+        if ((create_single_file || frames_per_file > 1) && !record_per_frame_metadata) {
             // A file with multiple frames concatenates frames along axis 0 and stores the metadata
             // only once, so hdf5FileRead can only reconstruct the per-frame fpga_seq_num if axis 0
             // is a contiguous, uniformly sampled time axis.
@@ -474,6 +545,10 @@ public:
 
             write_telescope_metadata(dataset);
 
+            if (record_per_frame_metadata)
+                frame_metadata_file_columns =
+                    create_frame_metadata(file, frame_metadata, use_compression);
+
             // only true when a new file is being started
             if (create_single_file || frames_per_file > 1) {
                 // Start SWMR mode
@@ -508,6 +583,9 @@ public:
         // Write data
         hyperslab.write_raw(frame, type);
 
+        if (record_per_frame_metadata)
+            append_frame_metadata(file, frame_metadata_file_columns, frame_metadata);
+
         // Only flush when writing multiple frames to a single file.
         // Otherwise we'll close the file anyway so we don't need to flush.
         if (create_single_file || (frames_per_file > 1 && !start_new_file)) {
@@ -527,6 +605,9 @@ public:
      */
     void write_n2(const N2FrameView& frame, const std::int64_t frame_counter) {
         DEBUG("Writing N2 frame seq: {:d}", frame.fpga_start_tick);
+        if (time_in_file_name)
+            FATAL_ERROR("hdf5FileWrite {:s}: time_in_file_name is only for chord metadata",
+                        unique_name);
 
         std::shared_ptr<File> fileptr = create_file(frame_counter);
         auto& file = *fileptr;
@@ -622,6 +703,7 @@ public:
         file.createAttribute("n_rfi_first_stage_enabled_fpga_ticks",
                              frame.n_rfi_first_stage_enabled_fpga_ticks);
         file.createAttribute("n_dtv_mask_enabled_fpga_ticks", frame.n_dtv_mask_enabled_fpga_ticks);
+        file.createAttribute("n_usable_variance_pairs", frame.n_usable_variance_pairs);
         file.createAttribute("rfi_frame_excision_enabled", frame.rfi_frame_excision_enabled);
         file.createAttribute("fringestop_enabled", frame.fringestop_enabled);
         file.createAttribute("rfi_frame_excision_num", frame.rfi_frame_excision_num);

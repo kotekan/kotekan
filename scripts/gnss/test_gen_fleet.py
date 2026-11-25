@@ -11,6 +11,9 @@ import contextlib
 import io
 import json
 import os
+
+# Offline: the stock render takes the template's defaults, not production's vars over ssh.
+os.environ.setdefault("GNSS_STOCK_VARS", "none")
 import shutil
 import subprocess
 import sys
@@ -322,7 +325,6 @@ def test_check_leaves_the_stamp_out():
     )
 
 
-
 def test_keep_bad_inputs_writes_with_the_files_block():
     """A write with --keep-bad-inputs hands the generator the bad-input block of the config on
     disk (eop_cron.sh's regen: EOP only, and it works while bffs flags every input); a plain
@@ -347,9 +349,15 @@ def test_keep_bad_inputs_writes_with_the_files_block():
             seen = []
 
             def fake_run(cmd, **kw):
-                i = cmd.index("--bad-inputs-from") if "--bad-inputs-from" in cmd else None
+                i = (
+                    cmd.index("--bad-inputs-from")
+                    if "--bad-inputs-from" in cmd
+                    else None
+                )
                 seen.append(json.load(open(cmd[i + 1])) if i is not None else None)
-                return subprocess.CompletedProcess(cmd, 0, stdout=regenerated, stderr="")
+                return subprocess.CompletedProcess(
+                    cmd, 0, stdout=regenerated, stderr=""
+                )
 
             real_run, real_argv = subprocess.run, sys.argv
             subprocess.run, sys.argv = fake_run, argv
@@ -367,6 +375,7 @@ def test_keep_bad_inputs_writes_with_the_files_block():
                 % (extra, want, seen, exc),
             )
 
+
 def run_check(base):
     with tempfile.TemporaryDirectory() as d:
         p = subprocess.run(
@@ -376,6 +385,39 @@ def run_check(base):
             text=True,
         )
     return p.returncode, p.stderr
+
+
+def test_repeated_key_is_refused():
+    with tempfile.TemporaryDirectory() as d:
+        path = manifest(d, "/nonexistent/base.j2")
+        with open(path, "a") as fh:
+            fh.write(
+                "common:\n  n2-project-cpus: '15+47,19+51'\n  n2-project-cpus: '15,19'\n"
+            )
+        p = subprocess.run(
+            [sys.executable, os.path.join(HERE, "gen_fleet.py"), path, "--print-path"],
+            capture_output=True,
+            text=True,
+        )
+    check(
+        p.returncode == 1
+        and "found key 'n2-project-cpus' again" in p.stderr
+        and not p.stdout,
+        "a manifest that repeats a key exits 1 naming it, before any output (rc %d, %r)"
+        % (p.returncode, p.stderr.strip().splitlines()[-1:]),
+    )
+    with tempfile.TemporaryDirectory() as d:
+        path = manifest(d, "/nonexistent/base.j2")
+        with open(path, "a") as fh:
+            fh.write(
+                "common:\n  n2-project-cpus: '15+47,19+51'\nnode-defaults:\n  n2-project-cpus: x\n"
+            )
+        with open(path) as fh:
+            man = gen_fleet.yaml.load(fh, Loader=gen_fleet.ManifestLoader)
+    check(
+        man["common"]["n2-project-cpus"] == "15+47,19+51",
+        "the same key in two different mappings is not a repeat",
+    )
 
 
 def test_missing_base_exits_2():

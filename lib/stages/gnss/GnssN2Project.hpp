@@ -95,6 +95,9 @@
  * @conf solve_every      Int. Frames between solves per channel (4).
  * @conf metric_period_s  Double. Gauge update period (1.0).
  * @conf archive_period_s Double. Accepted; it has no effect.
+ * @conf num_workers      Int. OpenMP threads sharing the channel loop, the frame copy included
+ *                        (1). They inherit the stage's cpu_affinity, which should list as many
+ *                        cpus. The output does not depend on it.
  *
  * Known-satellite directions (#190). With source lanes or lanes+residual the stage first
  * projects, per live channel, the directions the chains publish on the process-wide ProjBoard
@@ -184,6 +187,21 @@
  * @conf lane_dump_period_s Double. Seconds between dump frames (2.0), in whole frames.
  * @conf lane_dump_max_cand Int. Candidates recorded per channel (96); lane_dump_buf's frame must
  *                          hold a slot per live channel.
+ *
+ * Basis record. With basis_buf, every frame also carries the directions each live channel was
+ * projected with, so N2Accumulate can average the projector over its bins (in_proj_basis_buf).
+ * The output's live block is (I - Q Q^H) V (I - Q Q^H), Q the slot's k orthonormal columns
+ * given row-wise (gnss_n2proj::project's layout).
+ * Source lanes+residual is refused: it projects twice in turn, which one basis cannot describe.
+ * Layout, little-endian, version 1:
+ *  - header, 64 bytes: int64 seq; int32 version, n (stations), n_integrations, n_slots (the
+ *    live channels, in local channel order), k_slot (k_lanes_max with lanes, else k_max),
+ *    slot_bytes, magic 0x53414250 ("PBAS");
+ *  - int32 stations[n];
+ *  - n_integrations x n_slots slots of slot_bytes = 16 + 8 k_slot n: int32 freq_id, k, two
+ *    int32 unused; complex<float> q[k_slot][n] on the stations axis, the first k rows set.
+ *
+ * @buffer basis_buf  Optional. The basis record, one frame per input frame, no metadata.
  */
 class GnssN2Project : public kotekan::Stage {
 public:
@@ -215,6 +233,7 @@ private:
     const double pr_min;
     const int solve_every;
     const double metric_period_s;
+    const int num_workers;
 
     gnss_n2proj::Layout layout;
     gnss::ProjSubspace sub; ///< the raw live block's subspace
@@ -237,7 +256,6 @@ private:
     const double lane_min_new_frac;
     const bool lane_conj;
     std::vector<int> e2a;    ///< tracker element e -> index on the stations axis, -1 if absent
-    gnss::ProjBasis lanes;   ///< the channel's lane basis, rebuilt every frame
     std::vector<int> lane_k; ///< per channel: lanes projected this frame
     std::vector<double> lane_rq_conj_db,
         lane_rq_raw_db; ///< per channel: top lane's q^H V q / mean auto
@@ -257,14 +275,24 @@ private:
         double los[3] = {0.0, 0.0, 0.0}, los_rate[3] = {0.0, 0.0, 0.0};
         std::string owner;
     };
-    std::vector<LaneCand> cand;
-    /// Read the board for local channel f, build `lanes` from the fresh, coherent entries in
+    /// One worker's scratch for the channel loop, and its counts for the frame.
+    struct Scratch {
+        std::vector<cd> V, W, M, q, X, Y;
+        gnss::ProjBasis lanes; ///< the channel's lane basis, rebuilt every frame
+        std::vector<LaneCand> cand;
+        size_t cand_n_local = 0; ///< build_lanes: the board's candidates (the fleet's follow)
+        std::vector<gnss::ElemSteer::cf> lane_sh; ///< lane_resteer scratch [n_elem]
+        std::vector<double> rank_y;
+        uint64_t lane_dup = 0, lane_used = 0, proj = 0;
+    };
+    std::vector<Scratch> work; ///< per worker
+    /// Read the board for local channel f, build `w.lanes` from the fresh, coherent entries in
     /// power order, then the fleet lanes that cover the channel; with @p diag also the two
     /// Rayleigh quotients of the strongest one against the raw block V. With @p dump, keep each
     /// candidate's owner and track for dump_channel. @p t_utc is the integration's data time
     /// (0 = unknown) for lane_resteer. Returns the basis size.
-    int build_lanes(int f, int freq_id, const cd* V, double now_s, double t_utc, bool diag,
-                    bool dump = false);
+    int build_lanes(Scratch& w, int f, int freq_id, const cd* V, double now_s, double t_utc,
+                    bool diag, bool dump = false);
 
     // Lane dump
     Buffer* dump_buf = nullptr;
@@ -272,9 +300,17 @@ private:
     const int lane_dump_max_cand;
     size_t dump_cand_bytes = 0, dump_slot_bytes = 0;
     int dump_slots = 0;
-    size_t cand_n_local = 0; ///< build_lanes: the board's candidates (the fleet's follow)
-    /// Write channel f's slot: the raw block V and build_lanes' candidates.
-    void dump_channel(uint8_t* slot, int f, const cd* V) const;
+    /// Write channel f's slot: the raw block V and build_lanes' candidates in @p w.
+    void dump_channel(uint8_t* slot, const Scratch& w, int f, const cd* V) const;
+
+    // Basis record
+    Buffer* basis_buf = nullptr;
+    int basis_k = 0;
+    size_t basis_head_bytes = 0, basis_slot_bytes = 0;
+    int live_slots = 0;
+    std::vector<int> live_slot; ///< per local channel: its basis and dump slot, -1 if not live
+    /// Write a slot: @p freq_id and the first @p k rows of @p q ([k][n]).
+    void write_basis_slot(uint8_t* slot, int freq_id, int k, const cd* q) const;
 
     // Fleet lanes (docs/CHORD_FLEET_LANES.md)
     const bool fleet_lanes;
@@ -284,13 +320,11 @@ private:
     /// lane_resteer turns lanes whose line of sight moves faster than this, rad/s: a GuoWang
     /// satellite ~5e-3, a GNSS satellite at most ~1.5e-4.
     static constexpr double LANE_RESTEER_RATE = 1.0e-3;
-    std::vector<gnss::ElemSteer::cf> lane_sh; ///< lane_resteer scratch [n_elem]
     const double lane_rank_min_rel;
     static constexpr int LANE_RANK_MODES = 3;
     /// lane_rank_min_rel, per channel: the subspace S describes ([m][n]), the next iterate
     /// ([m][n]) and S ([m][m]); rank_step's scratch
     std::vector<cd> rank_uk, rank_un, rank_s;
-    std::vector<double> rank_y;
     std::vector<int> lane_ranked;          ///< per channel: board lanes ranked by explained power
     gnss::ElemSteer geo;                   ///< element positions and steering sign (shift() only)
     std::atomic<bool> labelled_pub{false}; ///< freq_ids and live_ch are resolved

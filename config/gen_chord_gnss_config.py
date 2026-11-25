@@ -933,6 +933,36 @@ def dtv_targets(args):
 DTV_CUDA_STREAM = 9
 
 
+def add_data_lag(out, cfg, args, spds):
+    """--data-lag-s: every GPU's voltage copy (run_send_voltage's cudaCopyToRingbuffer) holds
+    each frame until it is that old, and host_side_buffer_depth grows by the frames the lag
+    holds, so the input keeps its headroom."""
+    if not args.data_lag_s:
+        return
+    if args.data_lag_s < 0:
+        raise SystemExit("--data-lag-s %g: must be >= 0" % args.data_lag_s)
+    fe = cfg["fengine"]
+    frame_s = spds * fe["fft_length"] / (float(fe["sampling_rate_MHz"]) * 1e6)
+    for gpu, proc in sorted(out.get("run_send_voltage", {}).items()):
+        if not isinstance(proc, dict):
+            continue
+        copies = [
+            c for c in proc["commands"] if c.get("name") == "cudaCopyToRingbuffer"
+        ]
+        if len(copies) != 1:
+            raise SystemExit(
+                f"--data-lag-s: run_send_voltage/{gpu} has {len(copies)} "
+                "cudaCopyToRingbuffer commands, expected one"
+            )
+        copies[0]["data_lag_s"] = float(args.data_lag_s)
+    extra = int(math.ceil(args.data_lag_s / frame_s))
+    out["host_side_buffer_depth"] = "%s + %d" % (out["host_side_buffer_depth"], extra)
+    sys.stderr.write(
+        "  data lag %.3f s: +%d frames of %.2f ms on every host_side_buffer_depth buffer\n"
+        % (args.data_lag_s, extra, 1e3 * frame_s)
+    )
+
+
 def add_dtv_subtract(out, cfg, args, node, spds):
     """cudaDtvSubtract (lib/cuda/cudaDtvSubtract.cpp) after cudaCopyToRingbuffer in
     run_send_voltage on every GPU holding one of --dtv-subtract-freq-ids: the lagged subtraction
@@ -1481,6 +1511,13 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
                     # shares one REST server, so a shared path would apply one chain's trims to
                     # another chain's PRNs.
                     "set_trim_endpoint": f"/{pre}inject/set_trim",
+                    # Streamed data symbols (gnssTrackChain.hpp), for the chains named.
+                    **(
+                        {"set_nav_symbols_endpoint": f"/{pre}inject/set_nav_symbols"}
+                        if chain
+                        and chain["signal"] in (args.nav_symbols or "").split(",")
+                        else {}
+                    ),
                     "trim_ttl_s": TRIM_TTL_S,
                     # A pinned F-engine epoch (the node file's frame0_utc, or --frame0-nano)
                     # overrides the telescope's GPS time0 as the record epoch. Records are
@@ -1932,7 +1969,11 @@ INJECT_ROW_KEYS = (
     "get_prns_endpoint",
     "set_prns_endpoint",
 )
-INJECT_ROW_OPTIONAL_KEYS = ("prn_freq_offset_hz", "trim_endpoint")
+INJECT_ROW_OPTIONAL_KEYS = (
+    "prn_freq_offset_hz",
+    "trim_endpoint",
+    "set_nav_symbols_endpoint",
+)
 
 
 def inject_host_form(injects, gpu):
@@ -3080,18 +3121,21 @@ def build_gather_instance(cfg, args, port):
     return out
 
 
-# The template variables the stock render sets: none. pathfinder.j2 always renders the PilotProxy
-# DTV detector (dtv.j2) since chord 0fbd333d0, and the detector loads its runtime bundle at
-# construction, FATAL if absent, while its mask and recording are off. The bundle is the one
-# `make install` puts under /usr/local/etc/kotekan/chord/dtv_bundles, so a node needs that
-# directory (node_up.sh checks it before a start).
-STOCK_RENDER_VARS = {}
+# The template variables the stock render takes: production's (choco_vars.py, choco's vars.yaml),
+# so the stock half of a node config is what choco renders for its own nodes (#244).
+# pathfinder.j2 always renders the PilotProxy DTV detector (dtv.j2), which loads its runtime
+# bundle at construction, FATAL if absent; the bundle is one `make install` puts under
+# /usr/local/etc/kotekan/chord/dtv_bundles, so a node needs that directory (node_up.sh checks it).
+def stock_render_vars():
+    import choco_vars
+
+    return choco_vars.load()
 
 
 def render_stock_template(path):
     """A kotekan .j2 config rendered as kotekan renders it (kotekan/kotekan.cpp): jinja2 with a
     FileSystemLoader on the template's own directory and select_autoescape(), then
-    yaml.safe_load, with STOCK_RENDER_VARS only: the variables that make the render what production
+    yaml.safe_load, with production's variables (stock_render_vars): the render is what production
     actually runs.
 
     A render rather than a config captured from a running node: a capture goes stale silently as
@@ -3105,7 +3149,7 @@ def render_stock_template(path):
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(d), autoescape=jinja2.select_autoescape()
     )
-    return yaml.safe_load(env.get_template(f).render(STOCK_RENDER_VARS))
+    return yaml.safe_load(env.get_template(f).render(stock_render_vars() or {}))
 
 
 def choco_bad_inputs(timeout=20.0):
@@ -3620,7 +3664,7 @@ def main():
         "--base",
         required=True,
         help="the production config the GNSS branch is injected into: a .j2 template, "
-        "rendered as kotekan renders it, with no template variables (the fleet uses "
+        "rendered as kotekan renders it, with production's template variables (choco_vars.py; the fleet uses "
         "config/chord/pathfinder.j2), or a .json or yaml config",
     )
     ap.add_argument("--node", required=True)
@@ -4144,9 +4188,11 @@ def main():
         "--n2-project-cpus",
         type=str,
         default="",
-        help="GnssN2Project's logical cpu per GPU, 'gpu0,gpu1', outside the runtime pools; "
-        "overrides --n2-project-core-index. The nodes leave whole physical cores idle on each "
-        "NUMA node (15/47 on node 0, 19/51 on node 1), and the lanes on 127 stations want one",
+        help="GnssN2Project's logical cpus per GPU, 'gpu0,gpu1', outside the runtime pools; "
+        "overrides --n2-project-core-index. A GPU's entry may list several cpus joined by '+' "
+        "('15+47,19+51'): the stage then runs a worker on each (num_workers). The nodes leave "
+        "whole physical cores idle on each NUMA node (15/47 on node 0, 19/51 on node 1), and "
+        "the lanes on 127 stations want one",
     )
     ap.add_argument(
         "--lane-transfer",
@@ -4232,6 +4278,39 @@ def main():
         metavar="N",
         dest="lane_dump_depth",
         help="frames of slack between the lane-dump gate and its writer (default %(default)s)",
+    )
+    ap.add_argument(
+        "--data-lag-s",
+        type=float,
+        default=0.0,
+        metavar="S",
+        help="hold every voltage frame until it is S seconds old before the GPUs see it "
+        "(cudaCopyToRingbuffer data_lag_s), so streamed data symbols (--nav-symbols) arrive "
+        "first; host-side buffers grow by the frames held. Every node at once: the fleet "
+        "trim waits one window for a late node. Default 0 (off)",
+    )
+    ap.add_argument(
+        "--nav-symbols",
+        default="",
+        metavar="DESC[,DESC]",
+        help="the extra-signal chains (descriptor names, e.g. GPS_L2C_CM,BDS_B2B_I) that "
+        "take data symbols streamed from another receiver on <chain>inject/set_nav_symbols "
+        "(gnssTrackChain.hpp). Their brokers need --dr-nav-symbols. Default none",
+    )
+    ap.add_argument(
+        "--proj-mean",
+        action="store_true",
+        help="record the mean projector: GnssN2Project's basis record into N2Accumulate, which "
+        "writes per bin the projected-out part averaged as the visibilities are, under "
+        "<record_dir>/projmean (N2Accumulate.hpp). Needs --n2-project-source eigen or lanes",
+    )
+    ap.add_argument(
+        "--proj-mean-frames-per-file",
+        type=int,
+        default=171,
+        metavar="N",
+        dest="proj_mean_frames_per_file",
+        help="mean-projector bins per file (default %(default)s, ~1 h of 21 s bins)",
     )
     ap.add_argument(
         "--elem-dir-publish",
@@ -4961,19 +5040,22 @@ def main():
             _suf = "" if _gpu == 0 else "_1"
             if _corr not in out:
                 raise SystemExit("--n2-project: %s is not in the base" % _corr)
-            _stage = {
-                "kotekan_stage": "GnssN2Project",
-                # The telemetry packer's core (see gnss_chain_vars) by default: a light host
-                # stage on this GPU's own NUMA pool; --n2-project-core-index picks another slot.
-                "cpu_affinity": [
-                    int(args.n2_project_cpus.split(",")[_gpu])
-                    if args.n2_project_cpus
-                    else (
+            # The telemetry packer's core (see gnss_chain_vars) by default: a light host stage
+            # on this GPU's own NUMA pool; --n2-project-core-index picks another slot.
+            _cpus = (
+                [int(c) for c in args.n2_project_cpus.split(",")[_gpu].split("+")]
+                if args.n2_project_cpus
+                else [
+                    (
                         _pool[(_gpu + 5) % len(_pool)]
                         if args.n2_project_core_index < 0
                         else _pool[args.n2_project_core_index % len(_pool)]
                     )
-                ],
+                ]
+            )
+            _stage = {
+                "kotekan_stage": "GnssN2Project",
+                "cpu_affinity": _cpus,
                 "in_buf": _corr,
                 # num_elements / num_local_freq / samples_per_data_set / sub_integration_ntime
                 # are read from the globals (a local `num_elements: num_elements` is a
@@ -4988,6 +5070,8 @@ def main():
                 "solve_every": int(N2_PROJECT_SOLVE_EVERY),
                 "metric_period_s": 1.0,
             }
+            if len(_cpus) > 1:
+                _stage["num_workers"] = len(_cpus)
             if args.n2_project_eigen_channels == "live":
                 _stage["eigen_channels"] = "live"
             elif args.n2_project_eigen_channels != "all":
@@ -5099,6 +5183,58 @@ def main():
                     "  gpu%d: lane dump over %d channels, %.1f MB/frame every %.1f s\n"
                     % (_gpu, _nch, (64 + _nch * _slot) / 1e6, args.lane_dump_period_s)
                 )
+            if args.proj_mean and _nch:
+                # The basis record (GnssN2Project.hpp) 1:1 with the correlation frames, and
+                # N2Accumulate's mean projector per bin (N2Accumulate.hpp), to the sink core.
+                if args.n2_project_source == "lanes+residual":
+                    raise SystemExit(
+                        "--proj-mean needs --n2-project-source eigen or lanes"
+                    )
+                _k = (
+                    _stage["k_lanes_max"]
+                    if args.n2_project_source == "lanes"
+                    else _stage["k_max"]
+                )
+                _n = len(_st)
+                _nint = int(out.get("samples_per_data_set", 8192)) // int(
+                    out.get("sub_integration_ntime", 8192)
+                )
+                _pb, _pm = "gnss%d_proj_basis" % _gpu, "gnss%d_proj_mean" % _gpu
+                out[_pb] = {
+                    "kotekan_buffer": "standard",
+                    "num_frames": out[_corr]["num_frames"],
+                    "frame_size": 64 + 4 * _n + _nint * _nch * (16 + 8 * _k * _n),
+                }
+                out[_pm] = {
+                    "kotekan_buffer": "standard",
+                    "num_frames": 4,
+                    "frame_size": 64 + 4 * _n + _nch * (16 + 4 * _n * (_n + 1)),
+                }
+                _stage["basis_buf"] = _pb
+                out["n2_accumulate"]["accum_%d" % _gpu]["in_proj_basis_buf"] = _pb
+                out["n2_accumulate"]["accum_%d" % _gpu]["out_proj_mean_buf"] = _pm
+                out["gnss%d_proj_mean_sink" % _gpu] = {
+                    "kotekan_stage": "rawFileWrite",
+                    "in_buf": _pm,
+                    "base_dir": (args.record_dir or cfg["runtime"]["record_dir"])
+                    + "/projmean",
+                    "file_name": "%s_gnss%d_projmean" % (args.node, _gpu),
+                    "file_ext": "raw",
+                    "prefix_hostname": False,
+                    "num_frames_per_file": args.proj_mean_frames_per_file,
+                    "continue_numbering": True,
+                    "create_base_dir": True,
+                    "cpu_affinity": [_pool[(_gpu + 7) % len(_pool)]],
+                }
+                sys.stderr.write(
+                    "  gpu%d: mean projector over %d channels, basis %.2f MB/frame, %.2f MB/bin\n"
+                    % (
+                        _gpu,
+                        _nch,
+                        out[_pb]["frame_size"] / 1e6,
+                        out[_pm]["frame_size"] / 1e6,
+                    )
+                )
             _buf = copy.deepcopy(out[_corr])  # no YAML aliases
             out["gnss_n2_proj_buffer" + _suf] = _buf
             _stage["out_buf"] = "gnss_n2_proj_buffer" + _suf
@@ -5179,6 +5315,7 @@ def main():
         )
         out.update(blocks)
     add_dtv_subtract(out, cfg, args, args.node, out.get("samples_per_data_set", 8192))
+    add_data_lag(out, cfg, args, out.get("samples_per_data_set", 8192))
 
     # The header is the provenance, complete enough to regenerate from: the argv and a hash of
     # the base. The generator and config/chord_gnss_node.yaml are inputs too, deliberately not

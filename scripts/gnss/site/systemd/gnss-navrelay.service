@@ -1,0 +1,22 @@
+[Unit]
+Description=CHORD GNSS nav-symbol relay (the gx10's data symbols to the chains that wipe them)
+Documentation=file:///home/kvand/gnss/gnss-broker/scripts/gnss/site/nav_symbol_relay.py
+# This host only: the user copies sit in the NFS-shared home (see gnss-stack.target).
+ConditionHost=|gnss
+ConditionHost=|gnss.site.chord-observatory.ca
+RequiresMountsFor=/home/kvand
+PartOf=gnss-stack.target
+
+[Service]
+Type=simple
+# Through run_component.sh like every stack unit: argv and environment from one definition.
+ExecStart=/home/kvand/gnss/gnss-broker/scripts/gnss/site/run_component.sh navrelay
+Restart=on-failure
+RestartSec=10
+MemoryAccounting=yes
+MemoryMax=256M
+StandardOutput=append:/var/tmp/gnss-logs/navrelay.log
+StandardError=inherit
+
+[Install]
+WantedBy=gnss-stack.target

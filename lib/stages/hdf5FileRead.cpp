@@ -1,4 +1,5 @@
-#include "fmt.hpp" // for compile_string_to_view
+#include "fmt.hpp"  // for compile_string_to_view
+#include "json.hpp" // for json
 
 #include <Config.hpp>          // for Config
 #include <DataType.hpp>        // for string_to_type, DataType
@@ -64,6 +65,12 @@ using namespace HighFive;
  *   sequence numbers of the frames.
  * - Single file (`read_single_file: true`): all frames concatenated along axis 0 of one
  *   dataset in `<input_dir>/[<hostname>_][x<rank:04d>_]<file_name>.h5`.
+ *
+ * A file written with `record_per_frame_metadata` holds the metadata of every frame in the
+ * group `frame_metadata`. Such a file is replayed frame by frame in either mode, each frame
+ * with its own metadata, and without the constraints of a single file. Among per-frame files
+ * the reader then goes on to the file named for the frame after the last one it read, so
+ * files of several frames each (`frames_per_file`) are read as one stream.
  *
  * In both modes the attributes @c chord_metadata_version, @c name, @c type, @c dim_names
  * and @c dim_scalings are mandatory (a missing one is fatal, naming the attribute), the
@@ -422,12 +429,94 @@ public:
     }
 
     /**
-     * @brief Read one file per frame, with consecutively numbered file names
+     * @brief Read the frames of a file that holds per-frame metadata
      *
-     * Reading stops when a file is missing; a missing file at index 0 is fatal.
+     * The metadata of every frame comes from its row of the `frame_metadata` group, and its
+     * `dim[0]` gives the frame's extent along axis 0 of the dataset.
+     *
+     * @param file         The open file
+     * @param full_path    Its path, for the error messages
+     * @param frame_index  The index of the next frame, advanced by the frames read
+     * @return Whether to go on reading: false after a shutdown or with @c do_once
+     */
+    bool read_recorded_frames(const File& file, const std::string& full_path,
+                              std::int64_t& frame_index) {
+        const auto dataset = file.getDataSet(file_name);
+        const auto type = dataset.getDataType();
+        const auto dims = dataset.getSpace().getDimensions();
+        require_attributes(dataset, full_path);
+        check_metadata_version(dataset);
+        check_telescope_metadata(dataset);
+
+        std::vector<nlohmann::json> rows;
+        try {
+            rows = read_frame_metadata(file);
+        } catch (const std::runtime_error& ex) {
+            FATAL_ERROR("{:s}: {:s}", full_path, ex.what());
+        }
+        if (rows.empty())
+            FATAL_ERROR("{:s} holds no frames", full_path);
+
+        std::size_t start = 0; // of the frame along axis 0 of the dataset
+        for (const nlohmann::json& row : rows) {
+            if (stop_thread)
+                return false;
+            const int frame_id = int(frame_index % buffer->num_frames);
+            const double t0 = current_time();
+            std::uint8_t* const frame = buffer->wait_for_empty_frame(unique_name, frame_id);
+            if (!frame)
+                return false;
+            buffer->allocate_new_metadata_object(frame_id);
+            const std::shared_ptr<metadataObject> metadata = buffer->get_metadata(frame_id);
+            if (!metadata || !metadata_is_chord(metadata))
+                FATAL_ERROR("Metadata of buffer \"{:s}\" frame {:d} is not of type CHORD",
+                            buffer->buffer_name, frame_id);
+            const std::shared_ptr<chordMetadata> meta = get_chord_metadata(metadata);
+            try {
+                ::from_json(row, *meta);
+            } catch (const std::exception& ex) {
+                FATAL_ERROR("{:s}: the metadata of frame {:d} is not valid: {:s}", full_path,
+                            frame_index, ex.what());
+            }
+
+            if (meta->dims != int(dims.size()) || meta->dim[0] <= 0
+                || start + meta->dim[0] > dims.at(0))
+                FATAL_ERROR("{:s}: the metadata of frame {:d} does not match the dataset",
+                            full_path, frame_index);
+            std::vector<std::size_t> frame_dims(dims);
+            frame_dims.at(0) = meta->dim[0];
+            require_frame_desc_from(dataset, frame_dims);
+            meta->check_frame_desc(buffer->get_frame_desc<kotekan::GenericNDArray>());
+
+            std::vector<std::size_t> offset(dims.size(), 0);
+            offset.at(0) = start;
+            dataset.select(offset, frame_dims).read_raw(frame, type);
+            start += frame_dims.at(0);
+
+            buffer->mark_frame_full(unique_name, frame_id);
+            read_time_metric.set(current_time() - t0);
+            ++frame_index;
+            if (do_once) {
+                INFO("do_once is set: read the first frame from {:s}, now idling", full_path);
+                while (!stop_thread)
+                    sleep(1);
+                return false;
+            }
+        }
+        if (start != dims.at(0))
+            WARN("{:s}: ignoring {:d} samples along axis 0 that have no frame metadata", full_path,
+                 dims.at(0) - start);
+        return true;
+    }
+
+    /**
+     * @brief Read numbered files, each named for its first frame
+     *
+     * A file holds one frame, or the frames listed in its per-frame metadata. Reading stops
+     * when the next file is missing; a missing file at index 0 is fatal.
      */
     void read_per_frame_files() {
-        for (int frame_index = 0;; ++frame_index) {
+        for (std::int64_t frame_index = 0;;) {
             const int frame_id = frame_index % buffer->num_frames;
 
         wait:
@@ -464,6 +553,12 @@ public:
             // Open HDF5 file
             try {
                 const File file(full_path, File::ReadOnly);
+
+                if (file.exist(frame_metadata_group)) {
+                    if (!read_recorded_frames(file, full_path, frame_index))
+                        break;
+                    continue;
+                }
 
                 // Wait for buffer
                 DEBUG("[{:s}/{:d}] Waiting for buffer...", buffer->buffer_name, frame_index);
@@ -519,6 +614,7 @@ public:
             } catch (const HighFive::Exception& ex) {
                 FATAL_ERROR("Could not read HDF5 file {:s}: {:s}", full_path, ex.what());
             }
+            ++frame_index;
 
         } // while !stop_thread
     }
@@ -536,6 +632,12 @@ public:
                                       + ".h5";
         try {
             const File file(full_path, File::ReadOnly);
+            if (file.exist(frame_metadata_group)) {
+                std::int64_t frame_index = 0;
+                if (read_recorded_frames(file, full_path, frame_index))
+                    INFO("Done reading {:d} frames from {:s}", frame_index, full_path);
+                return;
+            }
             const auto dataset = file.getDataSet(file_name);
             const auto type = dataset.getDataType();
             const auto dims = dataset.getSpace().getDimensions();

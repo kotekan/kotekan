@@ -13,6 +13,9 @@
 #include <cstring>
 #include <map>
 #include <memory>
+#ifdef WITH_OMP
+#include <omp.h>
+#endif
 
 using kotekan::bufferContainer;
 using kotekan::Config;
@@ -39,6 +42,7 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
     pr_min(config.get_default<double>(unique_name, "pr_min", 6.0)),
     solve_every(std::max(1, config.get_default<int>(unique_name, "solve_every", 4))),
     metric_period_s(config.get_default<double>(unique_name, "metric_period_s", 1.0)),
+    num_workers(std::max(1, config.get_default<int>(unique_name, "num_workers", 1))),
     source(config.get_default<std::string>(unique_name, "source", "eigen")),
     use_lanes(source != "eigen"), use_residual(source != "lanes"),
     board_group(config.get_default<std::string>(unique_name, "board_group", "")),
@@ -139,7 +143,6 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
                 ++n_mapped;
             }
         }
-        lanes.init(n, k_lanes_max);
         if (n_mapped < n)
             WARN("GnssN2Project: {:d} of the {:d} stations have no tracker element: a lane "
                  "direction is zero there and the projection cannot null those inputs",
@@ -225,17 +228,32 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
              "candidates",
              lane_dump_period_s, dump_buf->buffer_name, dump_slots, lane_dump_max_cand);
     }
+    if (config.exists(unique_name, "basis_buf")) {
+        if (use_lanes && use_residual)
+            FATAL_ERROR("GnssN2Project: basis_buf needs source eigen or lanes, not {:s}", source);
+        basis_buf = get_buffer("basis_buf");
+        basis_buf->register_producer(unique_name);
+        basis_k = use_lanes ? k_lanes_max : k_max;
+        basis_head_bytes = 64 + 4 * (size_t)n;
+        basis_slot_bytes = 16 + 8 * (size_t)basis_k * n;
+    }
+    work.resize((size_t)num_workers);
+    for (Scratch& w : work)
+        if (use_lanes)
+            w.lanes.init(n, k_lanes_max);
     INFO("GnssN2Project {:s}: {:d} live stations of {:d}, k_max {:d}, tau {:.2f} s, trigger "
          "frac0 >= {:.2f}, lambda0 >= {:.1f} x mean auto, spread >= {:.1f} inputs, solve every "
-         "{:d} frames -> {:s}",
+         "{:d} frames, {:d} workers -> {:s}",
          mode, n, num_elements, k_max, tau_s, frac_first_min, lambda_min_rel, pr_min, solve_every,
-         out_buf->buffer_name);
+         num_workers, out_buf->buffer_name);
 }
 
-int GnssN2Project::build_lanes(int f, int freq_id, const cd* V, double now_s, double t_utc,
-                               bool diag, bool dump) {
+int GnssN2Project::build_lanes(Scratch& w, int f, int freq_id, const cd* V, double now_s,
+                               double t_utc, bool diag, bool dump) {
     const int n = (int)stations.size();
     const double f_hz = freq_id * 195312.5;
+    gnss::ProjBasis& lanes = w.lanes;
+    std::vector<LaneCand>& cand = w.cand;
     lanes.clear();
     cand.clear();
     // Copy the fresh, coherent lane entries out under the board's lock, mapped onto the
@@ -276,14 +294,14 @@ int GnssN2Project::build_lanes(int f, int freq_id, const cd* V, double now_s, do
             if (!(c.t_utc > 0.0)
                 || std::sqrt(r[0] * r[0] + r[1] * r[1] + r[2] * r[2]) <= LANE_RESTEER_RATE)
                 continue;
-            lane_sh.resize(e2a.size());
-            if (!gnss::lane_turn(geo, c.los, r, c.t_utc, t_utc, f_hz, lane_sh.data()))
+            w.lane_sh.resize(e2a.size());
+            if (!gnss::lane_turn(geo, c.los, r, c.t_utc, t_utc, f_hz, w.lane_sh.data()))
                 continue;
             for (size_t el = 0; el < e2a.size(); ++el) {
                 const int a = e2a[el];
                 if (a < 0)
                     continue;
-                const cd s(lane_sh[el].real(), lane_sh[el].imag());
+                const cd s(w.lane_sh[el].real(), w.lane_sh[el].imag());
                 c.v[(size_t)a] *= lane_conj ? std::conj(s) : s;
             }
         }
@@ -311,7 +329,7 @@ int GnssN2Project::build_lanes(int f, int freq_id, const cd* V, double now_s, do
     // Fleet lanes after the board's, in the posted order: a local lane always wins the
     // duplicate test and the budget.
     const size_t n_local = cand.size();
-    cand_n_local = n_local;
+    w.cand_n_local = n_local;
     if (fleet_on)
         for (size_t l = 0; l < fleet_v.size(); ++l) {
             const std::vector<cd>& v = fleet_v[l][(size_t)f];
@@ -371,14 +389,14 @@ int GnssN2Project::build_lanes(int f, int freq_id, const cd* V, double now_s, do
             break;
         if (lanes.add(cand[i].v.data(), lane_min_new_frac, &cand[i].new_frac)) {
             cand[i].verdict = 1;
-            ++lane_used;
+            ++w.lane_used;
             if (i >= n_local)
                 ++kf;
             else if (cand[i].held)
                 ++kh;
         } else {
             cand[i].verdict = 0;
-            ++lane_dup;
+            ++w.lane_dup;
         }
     }
     fleet_k[f] = kf;
@@ -386,11 +404,12 @@ int GnssN2Project::build_lanes(int f, int freq_id, const cd* V, double now_s, do
     return lanes.k;
 }
 
-void GnssN2Project::dump_channel(uint8_t* slot, int f, const cd* V) const {
+void GnssN2Project::dump_channel(uint8_t* slot, const Scratch& w, int f, const cd* V) const {
     const int n = (int)stations.size();
+    const std::vector<LaneCand>& cand = w.cand;
     const int n_rec = std::min((int)cand.size(), lane_dump_max_cand);
-    const int32_t head[5] = {freq_ids[f], n_rec, (int32_t)cand.size(), (int32_t)cand_n_local,
-                             lanes.k};
+    const int32_t head[5] = {freq_ids[f], n_rec, (int32_t)cand.size(), (int32_t)w.cand_n_local,
+                             w.lanes.k};
     std::memcpy(slot, head, sizeof(head));
     std::memcpy(slot + 24, &mean_auto[f], sizeof(double));
     std::complex<float>* tri = (std::complex<float>*)(slot + 64);
@@ -412,6 +431,15 @@ void GnssN2Project::dump_channel(uint8_t* slot, int f, const cd* V) const {
         for (int i = 0; i < n; ++i)
             v[i] = std::complex<float>(c.v[(size_t)i]);
     }
+}
+
+void GnssN2Project::write_basis_slot(uint8_t* slot, int freq_id, int k, const cd* q) const {
+    const size_t n = stations.size();
+    const int32_t head[4] = {freq_id, k, 0, 0};
+    std::memcpy(slot, head, sizeof(head));
+    std::complex<float>* v = (std::complex<float>*)(slot + sizeof(head));
+    for (size_t i = 0; i < (size_t)k * n; ++i)
+        v[i] = std::complex<float>(q[i]);
 }
 
 void GnssN2Project::take_fleet(double now_s) {
@@ -589,8 +617,6 @@ void GnssN2Project::main_thread() {
     const int n = (int)stations.size();
     const size_t per_freq = layout.per_freq();
     const size_t per_int = per_freq * (size_t)num_local_freq; // words per integration
-    std::vector<cd> V((size_t)n * n), W, M;
-    std::vector<cd> q((size_t)k_max * n);
     // The inputs outside the stations: their products with the stations are projected on the
     // station side, so the frame stays the projection of the station voltages.
     std::vector<int> others;
@@ -598,7 +624,11 @@ void GnssN2Project::main_thread() {
         if (!std::binary_search(stations.begin(), stations.end(), i))
             others.push_back(i);
     const int n_o = (int)others.size();
-    std::vector<cd> X((size_t)n * n_o), Y;
+    for (Scratch& w : work) {
+        w.V.assign((size_t)n * n, cd(0.0, 0.0));
+        w.q.assign((size_t)k_max * n, cd(0.0, 0.0));
+        w.X.assign((size_t)n * n_o, cd(0.0, 0.0));
+    }
     freq_ids.assign((size_t)num_local_freq, 0);
     for (int f = 0; f < num_local_freq; ++f)
         freq_ids[f] = f;
@@ -643,6 +673,8 @@ void GnssN2Project::main_thread() {
         Metrics::instance().add_gauge("kotekan_gnss_n2project_fleet_lane_age_s", unique_name);
     auto& c_dump_drop = Metrics::instance().add_counter(
         "kotekan_gnss_n2project_lane_dump_dropped_total", unique_name);
+    auto& g_frame_ms =
+        Metrics::instance().add_gauge("kotekan_gnss_n2project_frame_ms", unique_name);
 
     const double tick_s = Telescope::instance().seq_length_nsec() * 1e-9;
     int64_t prev_seq = -1;
@@ -654,6 +686,10 @@ void GnssN2Project::main_thread() {
         * samples_per_data_set;
     int64_t dump_block = -1;
     int dump_id = 0;
+    int basis_id = 0;
+    // The time from the empty output frame to the frame's end, per metric period and in all
+    double busy_s = 0.0, busy_all_s = 0.0;
+    int busy_frames = 0;
 
     while (!stop_thread) {
         const int32_t* in = (const int32_t*)in_buf->wait_for_full_frame(unique_name, in_id);
@@ -662,7 +698,11 @@ void GnssN2Project::main_thread() {
         int32_t* out = (int32_t*)out_buf->wait_for_empty_frame(unique_name, out_id);
         if (out == nullptr)
             break;
-        std::memcpy(out, in, in_buf->frame_size);
+        const auto t_start = std::chrono::steady_clock::now();
+        // The workers copy the channels below; this is whatever follows them in the frame.
+        const size_t body = (size_t)n_integrations * per_int * sizeof(int32_t);
+        if ((size_t)in_buf->frame_size > body)
+            std::memcpy((uint8_t*)out + body, (const uint8_t*)in + body, in_buf->frame_size - body);
         // Frame spacing from the sequence numbers, so a dropped frame lengthens dt; freq_id
         // labels from the first frame that carries them.
         double dt = samples_per_data_set * tick_s;
@@ -714,6 +754,19 @@ void GnssN2Project::main_thread() {
                 FATAL_ERROR("GnssN2Project: {:s} holds {:d} channel slots of {:d} bytes, fewer "
                             "than the {:d} live channels",
                             dump_buf->buffer_name, dump_slots, (int)dump_slot_bytes, n_live_ch);
+            live_slot.assign(num_local_freq, -1);
+            for (int f = 0; f < num_local_freq; ++f)
+                if (live_ch[f])
+                    live_slot[f] = live_slots++;
+            if (basis_buf) {
+                const size_t need =
+                    basis_head_bytes + (size_t)n_integrations * live_slots * basis_slot_bytes;
+                if ((size_t)basis_buf->frame_size < need)
+                    FATAL_ERROR("GnssN2Project: {:s} frames hold {:d} bytes; the basis of {:d} "
+                                "live channels needs {:d}",
+                                basis_buf->buffer_name, (int)basis_buf->frame_size, live_slots,
+                                (int)need);
+            }
         }
         const double dt_int = dt / n_integrations;
         const bool solve_now = (frame_count % (uint64_t)solve_every) == 0;
@@ -740,7 +793,6 @@ void GnssN2Project::main_thread() {
         }
         // The dump never waits: an empty frame now cannot block, a full buffer drops the dump.
         uint8_t* dump = nullptr;
-        int dump_ch = 0;
         if (dump_buf && meta && meta->get_fpga_seq_num() / dump_period_seq != dump_block) {
             const int64_t seq = meta->get_fpga_seq_num();
             dump_block = seq / dump_period_seq;
@@ -762,15 +814,38 @@ void GnssN2Project::main_thread() {
             } else
                 c_dump_drop.inc();
         }
+        uint8_t* basis = nullptr;
+        if (basis_buf) {
+            basis = basis_buf->wait_for_empty_frame(unique_name, basis_id);
+            if (basis == nullptr)
+                break;
+            const int64_t seq = meta ? meta->get_fpga_seq_num() : -1;
+            const int32_t head[7] = {
+                1, n, n_integrations, live_slots, basis_k, (int32_t)basis_slot_bytes, 0x53414250};
+            std::memset(basis, 0, 64);
+            std::memcpy(basis, &seq, sizeof(seq));
+            std::memcpy(basis + 8, head, sizeof(head));
+            std::memcpy(basis + 64, stations.data(), 4 * (size_t)n);
+        }
 
-        for (int t = 0; t < n_integrations; ++t) {
-            for (int f = 0; f < num_local_freq; ++f) {
+        // The channels are independent: the workers take them in turn, each copying its
+        // channels of the frame before writing them; the integrations of a channel stay in order.
+#pragma omp parallel for schedule(dynamic) num_threads(num_workers)
+        for (int f = 0; f < num_local_freq; ++f) {
+#ifdef WITH_OMP
+            Scratch& w = work[(size_t)omp_get_thread_num()];
+#else
+            Scratch& w = work[0];
+#endif
+            for (int t = 0; t < n_integrations; ++t) {
+                const size_t off = (size_t)t * per_int + (size_t)f * per_freq;
+                std::memcpy(out + off, in + off, per_freq * sizeof(int32_t));
                 // A channel neither written nor on the eigen path costs nothing.
                 if (!live_ch[f] && !eigen_ch[f])
                     continue;
-                const int32_t* fin = in + (size_t)t * per_int + (size_t)f * per_freq;
-                gnss_n2proj::extract(layout, fin, stations, V.data());
-                mean_auto[f] = gnss_n2proj::mean_auto(n, V.data());
+                const int32_t* fin = in + off;
+                gnss_n2proj::extract(layout, fin, stations, w.V.data());
+                mean_auto[f] = gnss_n2proj::mean_auto(n, w.V.data());
                 auto_raw[f] = mean_auto[f];
                 // #190: the known directions first, on the live channels (the only ones a
                 // chain publishes for); what follows sees the residual.
@@ -780,15 +855,17 @@ void GnssN2Project::main_thread() {
                     if (lane_rank_min_rel > 0.0 && t == 0) {
                         const size_t un = (size_t)LANE_RANK_MODES * n;
                         gnss_n2proj::rank_step(
-                            n, LANE_RANK_MODES, V.data(), &rank_uk[un * f], &rank_un[un * f],
-                            &rank_s[(size_t)LANE_RANK_MODES * LANE_RANK_MODES * f], rank_y);
+                            n, LANE_RANK_MODES, w.V.data(), &rank_uk[un * f], &rank_un[un * f],
+                            &rank_s[(size_t)LANE_RANK_MODES * LANE_RANK_MODES * f], w.rank_y);
                     }
                     const double t_int = t_frame > 0.0 ? t_frame + (t + 0.5) * dt_int : 0.0;
-                    kl = build_lanes(f, freq_ids[f], V.data(), now_s, t_int, solve_now, dump_f);
+                    kl =
+                        build_lanes(w, f, freq_ids[f], w.V.data(), now_s, t_int, solve_now, dump_f);
                     if (dump_f)
-                        dump_channel(dump + 64 + (size_t)dump_ch++ * dump_slot_bytes, f, V.data());
+                        dump_channel(dump + 64 + (size_t)live_slot[f] * dump_slot_bytes, w, f,
+                                     w.V.data());
                     if (kl > 0)
-                        gnss_n2proj::project(n, kl, lanes.q.data(), V.data(), W, M);
+                        gnss_n2proj::project(n, kl, w.lanes.q.data(), w.V.data(), w.W, w.M);
                 }
                 lane_k[f] = kl;
                 // eigen_channels list: a live channel outside it gets the lanes only.
@@ -798,7 +875,7 @@ void GnssN2Project::main_thread() {
                     frac0[f] = lam0_rel[f] = pr0[f] = 0.0;
                 }
                 if (eig)
-                    sub.push_cov(f, V.data(), dt_int);
+                    sub.push_cov(f, w.V.data(), dt_int);
                 if (eig && solve_now) {
                     const int ks = sub.solve(f, 2);
                     // Components spread over the array, in energy order; a lone correlated
@@ -841,14 +918,20 @@ void GnssN2Project::main_thread() {
                     const int* use = &q_use[(size_t)f * k_max];
                     for (int j = 0; j < k; ++j)
                         std::copy(sub.q(f, use[j]), sub.q(f, use[j]) + n,
-                                  q.begin() + (size_t)j * n);
-                    gnss_n2proj::project(n, k, q.data(), V.data(), W, M);
+                                  w.q.begin() + (size_t)j * n);
+                    gnss_n2proj::project(n, k, w.q.data(), w.V.data(), w.W, w.M);
                 }
+                // At most one of kl and k is nonzero: lanes+residual has no basis record.
+                if (basis && live_ch[f])
+                    write_basis_slot(
+                        basis + basis_head_bytes
+                            + ((size_t)t * live_slots + live_slot[f]) * basis_slot_bytes,
+                        freq_ids[f], kl > 0 ? kl : k, kl > 0 ? w.lanes.q.data() : w.q.data());
                 auto_proj[f] =
-                    (k > 0 || kl > 0) ? gnss_n2proj::mean_auto(n, V.data()) : auto_raw[f];
+                    (k > 0 || kl > 0) ? gnss_n2proj::mean_auto(n, w.V.data()) : auto_raw[f];
                 if (k > 0 || kl > 0) {
                     if (eigen_ch[f])
-                        nul.push_cov(f, V.data(), dt_int);
+                        nul.push_cov(f, w.V.data(), dt_int);
                     if (eigen_ch[f] && solve_now) {
                         const int kn = nul.solve(f, 2);
                         double l1 = 0.0;
@@ -874,31 +957,51 @@ void GnssN2Project::main_thread() {
                             (l0 > 0.0) ? 10.0 * std::log10(std::max(l1, 1e-12 * l0) / l0) : 0.0;
                     }
                     if (live_ch[f]) {
-                        int32_t* fout = out + (size_t)t * per_int + (size_t)f * per_freq;
-                        gnss_n2proj::writeback(layout, fout, stations, V.data());
+                        int32_t* fout = out + off;
+                        gnss_n2proj::writeback(layout, fout, stations, w.V.data());
                         if (n_o > 0) {
-                            gnss_n2proj::extract_cross(layout, fin, stations, others, X.data());
-                            gnss_n2proj::project_cross(n, n_o, kl, lanes.q.data(), X.data(), Y);
-                            gnss_n2proj::project_cross(n, n_o, k, q.data(), X.data(), Y);
-                            gnss_n2proj::writeback_cross(layout, fout, stations, others, X.data());
+                            gnss_n2proj::extract_cross(layout, fin, stations, others, w.X.data());
+                            gnss_n2proj::project_cross(n, n_o, kl, w.lanes.q.data(), w.X.data(),
+                                                       w.Y);
+                            gnss_n2proj::project_cross(n, n_o, k, w.q.data(), w.X.data(), w.Y);
+                            gnss_n2proj::writeback_cross(layout, fout, stations, others,
+                                                         w.X.data());
                         }
                     }
-                    c_proj.inc();
+                    ++w.proj;
                 } else {
                     null_db[f] = 0.0;
                 }
             }
         }
+        for (Scratch& w : work) {
+            lane_used += w.lane_used;
+            lane_dup += w.lane_dup;
+            c_proj.inc(w.proj);
+            w.lane_used = w.lane_dup = w.proj = 0;
+        }
         if (dump) {
-            std::memcpy(dump + 24, &dump_ch, sizeof(dump_ch));
+            std::memcpy(dump + 24, &live_slots, sizeof(live_slots));
             dump_buf->mark_frame_full(unique_name, dump_id);
             dump_id = (dump_id + 1) % dump_buf->num_frames;
         }
+        if (basis) {
+            basis_buf->mark_frame_full(unique_name, basis_id);
+            basis_id = (basis_id + 1) % basis_buf->num_frames;
+        }
         ++frame_count;
         c_frames.inc();
+        const double busy =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - t_start).count();
+        busy_s += busy;
+        busy_all_s += busy;
+        ++busy_frames;
         since_metric += dt;
         if (since_metric >= metric_period_s) {
             since_metric = 0.0;
+            g_frame_ms.set(1e3 * busy_s / busy_frames);
+            busy_s = 0.0;
+            busy_frames = 0;
             for (int f = 0; f < num_local_freq; ++f) {
                 if (!live_ch[f] && !eigen_ch[f])
                     continue;
@@ -937,4 +1040,6 @@ void GnssN2Project::main_thread() {
     if (use_lanes)
         INFO("GnssN2Project {:s}: {:d} frames; lane directions used {:d}, duplicates {:d}", source,
              (int)frame_count, (int)lane_used, (int)lane_dup);
+    INFO("GnssN2Project: {:d} frames, {:.2f} ms each on {:d} workers", (int)frame_count,
+         frame_count ? 1e3 * busy_all_s / frame_count : 0.0, num_workers);
 }

@@ -87,6 +87,8 @@ public:
     uint64_t& n_rfi_first_stage_enabled_fpga_ticks;
     /// FPGA ticks during which the DTV mask was applied
     uint64_t& n_dtv_mask_enabled_fpga_ticks;
+    /// Accepted frame pairs with samples in both frames (k of the EvenOddPosDef weight)
+    uint64_t& n_usable_variance_pairs;
 
     /// Whether second stage RFI excision was applied to this frame
     bool& rfi_frame_excision_enabled;

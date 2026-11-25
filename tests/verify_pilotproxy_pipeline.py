@@ -185,10 +185,12 @@ def expected_row_projections(real, imag, weights_packed):
 def synthetic_calibration(bundle):
     """Write a synthetic fine calibration into every bundle profile.
 
-    The anchors alternate between an even and an odd fine bin. The bulk is every
-    second bin more than two fine bins from the anchor, so the designated set and
-    one independent bin on each side are excluded. The calibration is for tests
-    only.
+    The anchors alternate between an even and an odd fine bin, and the decision
+    version alternates in pairs of profiles. The bulk is every second bin more than
+    two fine bins from the anchor, so the designated set and one independent bin on
+    each side are excluded. Physical channel 37 keeps
+    the status ``control``, as the detector requires. The calibration is for
+    tests only.
     """
     for index, row in enumerate(bundle["profiles"]):
         anchor, half_width = (254 if index % 2 == 0 else 1), 2
@@ -198,14 +200,23 @@ def synthetic_calibration(bundle):
             sum(1 << (b % 64) for b in bulk if b // 64 == word) for word in range(4)
         ]
         row["fine_calibration"] = {
-            "status": "calibrated",
-            "decision_version": "fine_decision_v1",
+            "status": "control" if row.get("physical_channel") == 37 else "calibrated",
+            "decision_version": (
+                "fine_decision_v2" if index % 4 >= 2 else "fine_decision_v1"
+            ),
             "anchor_bin": anchor,
             "designated_half_width": half_width,
             "cfar_rank": len(bulk) // 2,
             "cfar_multiplier_q16": (1 << 14) if index % 2 == 0 else (4 << 16),
             "bulk_mask_words_hex": [f"0x{word:016x}" for word in words],
-            "provenance": {"note": "Synthetic test calibration; not for deployment."},
+            "provenance": {
+                "note": "Synthetic test calibration; not for deployment.",
+                # lets DtvRfiMask switch the mask on in the tests
+                "mask_qualification": {
+                    "test_report_sha256": "0" * 64,
+                    "reviewer": "synthetic test",
+                },
+            },
         }
 
 
@@ -262,7 +273,7 @@ def expected_products(
     integer CFAR reference of PilotProxy. No GPU output is used to construct the
     expected products.
     """
-    from pilot_proxy.fine_decision import fine_mask_decision
+    from pilot_proxy.fine_decision import decision_functions
     from pilot_proxy.fxfft import fine_power_fx
 
     profiles = {
@@ -297,7 +308,8 @@ def expected_products(
             raise ValueError(
                 f"physical channel {profile['physical_channel']} is not calibrated"
             )
-        decision = fine_mask_decision(
+        decide, _ = decision_functions(calibration["decision_version"])
+        decision = decide(
             fine,
             anchor_bin=calibration["anchor_bin"],
             designated_half_width=calibration["designated_half_width"],

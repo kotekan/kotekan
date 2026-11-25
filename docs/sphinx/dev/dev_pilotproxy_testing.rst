@@ -34,7 +34,7 @@ the tests are run:
     pilot-proxy export-runtime-weight-bundle \
         --receiver-profile "$PP_CONFIGS/receiver_profiles/chord_dtv_fengine.json" \
         --detector-core-profile "$PP_CONFIGS/detector_core/pilotproxy_cuda_local_reference_power_ratio.json" \
-        --weight-coordinate-system post_spectral_sense_normalization \
+        --weight-coordinate-system post_nyquist_zone_normalization \
         --physical-channel-range 14:36 --output-dir "$PILOTPROXY_TEST_BUNDLE"
     pilot-proxy validate-runtime-weight-bundle --bundle-dir "$PILOTPROXY_TEST_BUNDLE"
     python3 -m pytest -v tests/test_pilotproxy_pipeline.py \

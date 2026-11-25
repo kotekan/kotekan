@@ -382,6 +382,25 @@ inline int64_t current_system_time_ns() {
     return timespec_to_nanosec_i64(output_ts);
 }
 
+/**
+ * @brief Return the time from which a switch posted at now_ns applies.
+ *
+ * A time after now_ns is kept. 0, or a time already passed, becomes the next whole 5 s at
+ * least 1 s after now_ns. A subscriber that writes the result back into the update passes
+ * it on to the later subscribers as a future time, so they all switch at the same frame.
+ *
+ * @param  valid_at_time_ns  The posted time in ns since the UNIX epoch.
+ * @param  now_ns            The node's system time in ns since the UNIX epoch.
+ *
+ * @returns  The time of the switch in ns since the UNIX epoch.
+ **/
+inline int64_t switch_time_ns(int64_t valid_at_time_ns, int64_t now_ns) {
+    const int64_t step_ns = 5'000'000'000;
+    if (valid_at_time_ns > now_ns)
+        return valid_at_time_ns;
+    return ((now_ns + 1'000'000'000) / step_ns + 1) * step_ns;
+}
+
 } // namespace N2
 
 // Include json.hpp for JSON serialization support
