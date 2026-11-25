@@ -113,6 +113,13 @@ target_link_libraries(test_gnss_cube_write PRIVATE libexternal kotekan_stages ko
                                                    kotekan_utils kotekan_core kotekan_metadata)
 target_include_directories(test_gnss_cube_write PRIVATE ../../lib/stages ../../lib/stages/gnss)
 
+# The combiner's deep rate-search spectrum (gnss::rate_magnitudes), FFTW or direct, against the
+# definition.
+add_executable(test_gnss_rate_magnitudes test_gnss_rate_magnitudes.cpp)
+target_link_libraries(test_gnss_rate_magnitudes PRIVATE libexternal kotekan_stages kotekan_libs
+                                                        kotekan_utils kotekan_core kotekan_metadata)
+target_include_directories(test_gnss_rate_magnitudes PRIVATE ../../lib/stages ../../lib/stages/gnss)
+
 # The GnssFleetTrim stage driven over its REST endpoints, and fed hand-built wire frames.
 add_executable(test_gnss_fleet_trim test_gnss_fleet_trim.cpp)
 target_link_libraries(test_gnss_fleet_trim PRIVATE libexternal kotekan_stages kotekan_libs
