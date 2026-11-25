@@ -841,6 +841,10 @@ HEALTH_GATE_EXEMPT = {
     ("E", 14): "GSAT0202",
     # Galileo GSAT0201, GSAT0202's twin: the same orbit type and the same health words.
     ("E", 18): "GSAT0201",
+    # Galileo GSAT0209: the same health words on 2026-11-25. Up 07:15-14:10Z and never within
+    # 29 deg of boresight, with no lane it raised the projected residual in the E5a, E5b and E6
+    # lobes by 4 dB.
+    ("E", 9): "GSAT0209",
 }
 
 
