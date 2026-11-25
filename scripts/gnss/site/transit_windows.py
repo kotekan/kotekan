@@ -36,7 +36,9 @@ SITE = dict(lat=49.3199845, lon=-119.62262691, h=528.4)
 GNSS_TLE = os.path.expanduser("~/.cache/kotekan_gps")
 GROUPS = [("gps-ops", "G"), ("galileo", "E"), ("beidou", "C"), ("glo-ops", "R")]
 GW_CACHE = os.path.expanduser("~/.cache/guowang")
-GW_URL = "https://celestrak.org/NORAD/elements/gp.php?GROUP=hulianwang&FORMAT=csv"
+# The query guowang_passes.OMM_URL makes: the GuoWang tools read the newest gp_hulianwang_*.csv
+# whoever fetched it, and GROUP=hulianwang lacks the JISHU-SHIYAN objects (JISHU-SHIYAN-8A sends at 1202).
+GW_URL = "https://celestrak.org/NORAD/elements/gp.php?NAME=HULIANWANG&FORMAT=CSV"
 SOURCES = {
     "Tau A": (83.633, 22.014),
     "Cyg A": (299.868, 40.734),
