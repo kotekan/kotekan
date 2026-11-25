@@ -28,6 +28,7 @@ import galileo_cnav as C
 PAGE = C.PAGE_SYMS
 MID_TIMEOUT_S = 150.0
 SEEN_KEEP_S = 600.0
+SETS_KEEP = 3
 
 
 class _PrnState:
@@ -50,6 +51,10 @@ class HasPredictor:
         self.n_messages = 0
         # "orbit" / "clock" / "bias" / "mask" -> (host time, parsed message)
         self.newest = {}
+        # (kind, mask ID, IOD set ID) -> (host time, parsed message), the newest SETS_KEEP of a
+        # kind: a clock message pairs with the orbit message of its own set, which is not always
+        # the newest one.
+        self.sets = {}
 
     def ingest(self, prn, obs):
         st = self._p.setdefault(prn, _PrnState())
@@ -144,6 +149,10 @@ class HasPredictor:
         ):
             if any(f in d["flags"] for f in flags) and "sats" in d:
                 self.newest[kind] = (now, d)
+                self.sets[(kind, d["mask_id"], d["iod_set"])] = (now, d)
+                held = sorted((v[0], k) for k, v in self.sets.items() if k[0] == kind)
+                for _, k in held[:-SETS_KEEP]:
+                    del self.sets[k]
 
     @staticmethod
     def _agrees(m, pid, octets):
@@ -152,6 +161,15 @@ class HasPredictor:
 
     def ephemeris(self, prn):
         return None
+
+    def corrections(self):
+        """{kind: [message, ...]} for orbit, clock and bias, newest first, each parse_mt1's form
+        with t_rx, the host time it was recovered: gnss_has's input."""
+        out = {}
+        for (kind, _, _), (t, d) in sorted(self.sets.items(), key=lambda kv: -kv[1][0]):
+            if kind != "mask":
+                out.setdefault(kind, []).append(dict(d, t_rx=round(t, 2)))
+        return out
 
     def health(self, prn):
         st = self._p.get(prn)

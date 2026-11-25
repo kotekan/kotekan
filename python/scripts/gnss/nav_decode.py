@@ -364,6 +364,8 @@ def write_payload(srcs, path, now):
             except Exception as e:
                 log("%s PRN %d: payload failed (%s)" % (s["signal"], prn, e))
         doc["signals"][s["signal"]] = {"sys": sysc, "prns": prns}
+        if hasattr(dec, "corrections"):
+            doc["signals"][s["signal"]]["has"] = dec.corrections()
     write_atomic(doc, path)
 
 
