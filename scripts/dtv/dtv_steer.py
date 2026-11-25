@@ -18,15 +18,19 @@ identify: rolling saves every --every s for --minutes; per (GPU, channel, source
           on channels within --near whose weights match its own (coherence >= --min-match), when only
           one satellite's do: the channels between the MUOS carriers and their edges hear the same
           two satellites as the carriers.
-run:      every --every s, POST /steer for each assigned source: its turn since the frame its weights
-          were set (/status anchor_seq), at the latest frame, and its rate over the next 30 s. A source
-          whose weights were set again since it was identified loses its assignment.
+run:      every --every s, POST /steer for each assigned source: its turn since the time its weights
+          are valid for (anchor_utc), at the latest frame, and its rate over the next 30 s. A source
+          whose weights were set again since it was identified loses its assignment, unless the watcher
+          restored them from a save (dtv_roll.py watch --restore: WORK/restored/<node>_g<g>.json), which
+          carries each source's satellite and the time its weights are valid for. A frame0 that does not
+          match the latest frame is read again from --frame0 (an F-engine re-base) before the GPU is skipped.
 
 Geometry: input i (pol * 64 + dish) sits at its dish's position (--positions, ENU m). An emitter at
 topocentric unit vector s(t) turns input i's response by psi_i = SIGN 2 pi f / c r_i . (s(t) - s(t_a)),
 f the channel's centre; SIGN = +1 was checked on recv1's N2 on 11-05 (MUOS-5's mode over 6 h, coherence
 0.99). Times: seq is hops of 5.12 us since the F-engine's frame0 (--frame0, the latest entry), checked
-against the wall clock. Assignments are kept in WORK/steer_assign.json.
+against the wall clock; assignments keep their anchor as UTC too, so they outlast a re-base.
+Assignments are kept in WORK/steer_assign.json.
 """
 import argparse
 import datetime
@@ -118,6 +122,9 @@ class Clock:
     def seq(self, unix):
         return int(round((unix - self.f0) / HOP_S))
 
+    def ok(self, seq_now):
+        return abs(self.utc(seq_now) - time.time()) <= 30.0
+
     def check(self, seq_now):
         d = self.utc(seq_now) - time.time()
         if abs(d) > 30.0:
@@ -174,6 +181,35 @@ def save_assign(a):
 
 def key(node, g, fid, k):
     return "%s:%d:%d:%d" % (node, g, fid, k)
+
+
+def anchor_utc(e, clock):
+    return e["anchor_utc"] if "anchor_utc" in e else clock.utc(e["anchor_seq"])
+
+
+def valid_sources(node, g, st, asg, clock):
+    """{"fid:k": {"sat", "valid_utc"}} of the GPU's assigned sources still on the weights they were
+    identified on: the time their weights in use are valid for. A steered source's weights carry its
+    turn at the latest frame (a save keeps it); an unsteered one's are as they were set. {} when the
+    latest frame is not in the past of the wall clock under this frame0 (a re-base not yet synced)."""
+    seq = st.get("seq", -1)
+    d = clock.utc(seq) - time.time()
+    if seq < 0 or not -6 * 3600 < d < 30.0:
+        return {}
+    out = {}
+    for c in st.get("channels", []):
+        for k in range(c["sources"]):
+            e = asg.get(key(node, g, c["freq_id"], k))
+            if not e or c["anchor_seq"][k] != e["anchor_seq"]:
+                continue
+            t = clock.utc(seq) if c["steered"][k] else anchor_utc(e, clock)
+            out["%d:%d" % (c["freq_id"], k)] = dict(sat=e["sat"], valid_utc=t)
+    return out
+
+
+def restored(node, g):
+    p = os.path.join(WORK, "restored", "%s_g%d.json" % (node, g))
+    return json.load(open(p)) if os.path.exists(p) else {}
 
 
 def targets(st, fids):
@@ -367,6 +403,7 @@ def cmd_identify(a, fids, clock, sky, r):
                     asg[kk] = dict(
                         sat=name,
                         anchor_seq=anchor[k],
+                        anchor_utc=clock.utc(anchor[k]),
                         coherence=round(best, 3),
                         when=stamp(),
                     )
@@ -381,6 +418,7 @@ def cmd_identify(a, fids, clock, sky, r):
         asg[kk] = dict(
             sat=name,
             anchor_seq=anchors[kk],
+            anchor_utc=clock.utc(anchors[kk]),
             coherence=round(m, 3),
             when=stamp(),
             via="weights",
@@ -408,12 +446,42 @@ def cmd_run(a, fids, clock, sky, r):
                 if seq < 0:
                     print("%s %s g%d: no frames yet" % (stamp(), node, g), flush=True)
                     continue
-                clock.check(seq)
+                if not clock.ok(seq):
+                    clock = Clock(a.frame0)
+                    if not clock.ok(seq):
+                        print(
+                            "%s %s g%d: frame0 %.6f (from %s) is %.0f s off the latest frame: skipped"
+                            % (
+                                stamp(),
+                                node,
+                                g,
+                                clock.f0,
+                                clock.start,
+                                clock.utc(seq) - time.time(),
+                            ),
+                            flush=True,
+                        )
+                        continue
                 t = clock.utc(seq)
-                by_src = {}
+                rec = restored(node, g).get("sources", {})
+                by_src, back = {}, 0
                 for fid, ch in targets(st, fids).items():
                     for k in range(ch["sources"]):
-                        e = asg.get(key(node, g, fid, k))
+                        kk = key(node, g, fid, k)
+                        e = asg.get(kk)
+                        v = rec.get("%d:%d" % (fid, k))
+                        if (not e or ch["anchor_seq"][k] != e["anchor_seq"]) and (
+                            v and v["anchor_seq"] == ch["anchor_seq"][k]
+                        ):
+                            e = asg[kk] = dict(
+                                sat=v["sat"],
+                                anchor_seq=v["anchor_seq"],
+                                anchor_utc=v["valid_utc"],
+                                via="restore",
+                                when=stamp(),
+                            )
+                            back += 1
+                            changed = True
                         if not e:
                             continue
                         if ch["anchor_seq"][k] != e["anchor_seq"]:
@@ -431,10 +499,10 @@ def cmd_run(a, fids, clock, sky, r):
                                 ),
                                 flush=True,
                             )
-                            asg.pop(key(node, g, fid, k))
+                            asg.pop(kk)
                             changed = True
                             continue
-                        ta = clock.utc(e["anchor_seq"])
+                        ta = anchor_utc(e, clock)
                         sa = sky.enu(e["sat"], ta)
                         p0 = turn(r, fid, sa, sky.enu(e["sat"], t))
                         p1 = turn(r, fid, sa, sky.enu(e["sat"], t + 30.0))
@@ -445,6 +513,12 @@ def cmd_run(a, fids, clock, sky, r):
                                 "rate": [float(v) for v in (p1 - p0) / 30.0],
                             }
                         )
+                if back:
+                    print(
+                        "%s %s g%d: %d sources re-attached from the restore of %s"
+                        % (stamp(), node, g, back, restored(node, g).get("file")),
+                        flush=True,
+                    )
                 for k, chans in sorted(by_src.items()):
                     resp = post(
                         node,

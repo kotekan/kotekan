@@ -17,7 +17,10 @@ meridian at --boresight-dec), so the blind sources do not fit it as it crosses t
 freezes every source on the GPUs holding a --pass-freq channel while a satellite of that file is above the
 horizon, from --pass-pad s before its rise to as long after its set, so the fit does not follow the
 satellite's burst and trip when it ends (CHUANGXIN 1-03/1-04 at 369 MHz); with --rearm, re-enables a GPU that subtracts with the rolling fit off (a node restart loses it); with
---restore, first loads the node's current state on a GPU in pass-through 600..30000 frames after a restart;
+--restore, first loads the node's current state on a GPU in pass-through 600..30000 frames after a restart,
+and records which satellite each loaded source follows and when its weights are valid for (from the save's
+.json beside it, written at each save from dtv_steer's assignments) in dtv_steer's WORK/restored/, so
+dtv_steer run steers them again without an identify;
 with --min-explained, sets the rolling fit's hold on a GPU that reports another value (a node restart brings
 back its config's). Saves go through the node's local /tmp/gnss/dtvroll (kotekan cannot write /home).
 REST calls only: safe on the VM.
@@ -40,6 +43,7 @@ import dtv_state  # noqa: E402
 
 STATES = os.environ.get("DTV_STATES", "/home/kvand/gnss/builds/dtv-live/states-rev2")
 NODE_DIR = "/tmp/gnss/dtvroll"
+FRAME0 = os.environ.get("DTV_FRAME0", "/home/kvand/gnss/builds/gw1202/frame0.json")
 # a node that dies mid-save must not hang the watcher
 SSH = [
     "ssh",
@@ -132,6 +136,45 @@ def line(node, g, s, prev=None):
     )
 
 
+def save_steer(node, g, p):
+    """Beside the save p: the satellite of each steered source and the time its weights are valid for."""
+    import dtv_steer  # skyfield: only where the steering runs
+
+    st = get(node, g)
+    src = (
+        dtv_steer.valid_sources(
+            node, g, st, dtv_steer.load_assign(), dtv_steer.Clock(FRAME0)
+        )
+        if "error" not in st
+        else {}
+    )
+    with open(p[:-4] + ".json", "w") as fh:
+        json.dump(dict(seq=st.get("seq"), sources=src), fh, indent=1, sort_keys=True)
+
+
+def note_restore(node, g, p, st):
+    """WORK/restored/<node>_g<g>.json: the saved sources of p, with the anchor_seq the load gave them."""
+    import dtv_steer
+
+    q = p[:-4] + ".json"
+    src = json.load(open(q))["sources"] if os.path.exists(q) else {}
+    anchors = {
+        "%d:%d" % (c["freq_id"], k): c["anchor_seq"][k]
+        for c in st.get("channels", [])
+        for k in range(c["sources"])
+    }
+    out = {
+        kk: dict(v, anchor_seq=anchors[kk]) for kk, v in src.items() if kk in anchors
+    }
+    d = os.path.join(dtv_steer.WORK, "restored")
+    os.makedirs(d, exist_ok=True)
+    f = os.path.join(d, "%s_g%d.json" % (node, g))
+    with open(f + ".tmp", "w") as fh:
+        json.dump(dict(file=p, when=stamp(), sources=out), fh, indent=1, sort_keys=True)
+    os.replace(f + ".tmp", f)
+    return len(out)
+
+
 def save(node, gpus):
     # kotekan cannot write /home (root-squashed NFS, or another account): the node writes to its local NODE_DIR,
     # world-writable so either account works, and we pull the file.
@@ -157,6 +200,14 @@ def save(node, gpus):
                 check=False,
             )
             subprocess.run(SSH + [node, "rm -f %s/%s" % (NODE_DIR, name)], check=False)
+            if os.path.exists(p):
+                try:
+                    save_steer(node, g, p)
+                except Exception as e:  # noqa: BLE001 - the save stands without it; a restore then needs an identify
+                    print(
+                        "%s %s g%d steering note failed: %s" % (stamp(), node, g, e),
+                        flush=True,
+                    )
         if "error" in r or not os.path.exists(p):
             print("%s %s g%d save failed: %s" % (stamp(), node, g, r), flush=True)
             ok = False
@@ -170,8 +221,9 @@ def save(node, gpus):
         for p0 in old:
             for g in (0, 1):
                 q = p0.replace("st_g0_", "st_g%d_" % g)
-                if os.path.exists(q):
-                    os.remove(q)
+                for f in (q, q[:-4] + ".json"):
+                    if os.path.exists(f):
+                        os.remove(f)
     return tag if ok else None
 
 
@@ -365,6 +417,24 @@ def main():
                         s = get(n, g)
                         if "error" in s:
                             continue
+                        try:
+                            print(
+                                stamp(),
+                                n,
+                                "g%d" % g,
+                                "steering kept for %d sources"
+                                % note_restore(n, g, p, s),
+                                flush=True,
+                            )
+                        except Exception as e:  # noqa: BLE001
+                            print(
+                                stamp(),
+                                n,
+                                "g%d" % g,
+                                "restore note failed:",
+                                e,
+                                flush=True,
+                            )
                     subtracting = any(2 in c["act"] for c in s["channels"])
                     if a.rearm and subtracting and not r["enable"]:
                         print(
