@@ -80,9 +80,12 @@ def old_predict_all(
         )
         if e is None:
             continue
+        health = e.get("health", 0)
+        if key[0] == "J":
+            health = int(health) & ge.QZSS_HEALTH_L5
         if (
             health_gate
-            and e.get("health", 0) not in (0, 0.0)
+            and health not in (0, 0.0)
             and key[0] not in "CS"
             and key not in ge.HEALTH_GATE_EXEMPT
         ):
