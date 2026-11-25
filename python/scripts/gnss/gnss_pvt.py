@@ -511,3 +511,150 @@ def measurements_from_obs(globs, max_age_s, t_now, smooth_s=90.0):
             m.update(extra.get((sysid, prn, fr), {}))
             out.append(m)
     return out
+
+
+def rows_from_obs(globs, t0, t1, sysid, every_s=10.0):
+    """Every code observation of one constellation in [t0, t1] from the obs logs, one per
+    satellite per every_s (the rows are smoothed and correlated over seconds): a list of
+    {group, sys, prn, az, el, resid_m, t}, oldest first. The residuals are wrapped,
+    clock-dominated ranges; each is de-wrapped to within half a code period of the median of
+    the 20 before it, so the receiver clock stays continuous across the window."""
+    rows, last = [], {}
+    for pat in globs:
+        for path in glob.glob(pat):
+            try:
+                if os.path.getmtime(path) < t0:
+                    continue
+                with open(path) as f:
+                    for line in f:
+                        if line.startswith('{"t":'):
+                            try:
+                                t = float(line[5 : line.index(",", 5)])
+                                if t < t0 or t > t1:
+                                    continue
+                            except ValueError:
+                                pass
+                        try:
+                            d = json.loads(line)
+                        except ValueError:
+                            continue
+                        t, res = d.get("t"), d.get("code_resid_m")
+                        if d.get("sys") != sysid or t is None or res is None:
+                            continue
+                        if (
+                            not (t0 <= t <= t1)
+                            or d.get("az") is None
+                            or d.get("el") is None
+                        ):
+                            continue
+                        if d.get("noise_probe") or d.get("fleet_present") is False:
+                            continue
+                        key = (d.get("prn"), d.get("band"))
+                        if t - last.get(key, -1e18) < every_s:
+                            continue
+                        last[key] = t
+                        cl, ch = d.get("code_len"), d.get("chip_rate_hz")
+                        rows.append(
+                            {
+                                "group": d.get("band"),
+                                "sys": sysid,
+                                "prn": d.get("prn"),
+                                "az": d["az"],
+                                "el": d["el"],
+                                "resid_m": float(res),
+                                "t": t,
+                                "L": (cl / ch * C_LIGHT) if (cl and ch) else None,
+                            }
+                        )
+            except OSError:
+                continue
+    rows.sort(key=lambda r: r["t"])
+    ref = []
+    for r in rows:
+        L = r.pop("L")
+        if ref and L:
+            med = statistics.median(ref[-20:])
+            r["resid_m"] -= L * round((r["resid_m"] - med) / L)
+        ref.append(r["resid_m"])
+    return rows
+
+
+def batch_solve(rows, lat0, lon0, alt0, min_el_deg=10.0, sigma_m=5.0, reject_k=5.0):
+    """A stationary receiver's position from code observations spread over a window, for a
+    constellation too sparse to solve at one epoch (GuoWang). rows: {t, az, el, resid_m}. The
+    model is resid = -los . dx + c0 + c1 (t - t_mid): one receiver clock offset and rate over the
+    window, which a disciplined oscillator holds, so the directions a low satellite sweeps through
+    in minutes stand in for simultaneous satellites. Rows whose post-fit residual exceeds
+    max(60 m, reject_k x the median) are dropped and the fit repeated. Valid only for a receiver
+    that did not move over the window; the caller must check that. Returns solve's result fields
+    plus n_rows, n_sats, span_s and clock_rate_m_s, or None when the window cannot determine the
+    position (under 2 satellites or 120 s, no redundancy, or a degenerate geometry)."""
+    use = [r for r in rows if r.get("el") is not None and r["el"] >= min_el_deg]
+    if len(use) < 8 or len({r.get("prn") for r in use}) < 2:
+        return None
+    ts = np.array([r["t"] for r in use], dtype=float)
+    span = float(ts.max() - ts.min())
+    if span < 120.0:
+        return None
+    t_mid = 0.5 * (ts.max() + ts.min())
+    H = np.zeros((len(use), 5))
+    y = np.zeros(len(use))
+    for i, r in enumerate(use):
+        H[i, 0:3] = -_los_enu(r["az"], r["el"])
+        H[i, 3] = 1.0
+        H[i, 4] = r["t"] - t_mid
+        y[i] = r["resid_m"]
+    keep = np.ones(len(use), dtype=bool)
+    for _ in range(10):
+        if keep.sum() < 8:
+            return None
+        Hk, yk = H[keep], y[keep]
+        try:
+            Ninv = np.linalg.inv(Hk.T @ Hk)
+        except np.linalg.LinAlgError:
+            return None
+        x = Ninv @ (Hk.T @ yk)
+        post = y - H @ x
+        thr = max(60.0, reject_k * float(np.median(np.abs(post[keep]))))
+        bad = keep & (np.abs(post) > thr)
+        if not bad.any():
+            break
+        keep &= ~bad
+    dof = max(1, int(keep.sum()) - 5)
+    pk = post[keep]
+    rms = math.sqrt(float(pk @ pk) / dof)
+    sigma0 = rms / sigma_m
+    # The rows are not independent (smoothed, and one satellite's error persists through its
+    # pass), so the formal error is scaled by the rows per satellite: a pass counts as a few
+    # measurements, not as many as it has rows.
+    n_sats = len({use[i].get("prn") for i in np.nonzero(keep)[0]})
+    corr = math.sqrt(max(1.0, keep.sum() / max(1, 3 * n_sats)))
+    cov = (max(1.0, sigma0) * sigma_m * corr) ** 2 * Ninv
+    pd = math.sqrt(max(0.0, float(np.trace(Ninv[0:3, 0:3]))))
+    if pd > 30.0:
+        return None
+    sd = np.sqrt(np.clip(np.diag(cov), 0.0, None))
+    apr = _llh_to_ecef(lat0, lon0, alt0)
+    pos = apr + _enu_axes(lat0, lon0).T @ x[0:3]
+    lat, lon, alt = _ecef_to_llh(pos)
+    return dict(
+        n_sats=n_sats,
+        n_rejected=int((~keep).sum()),
+        n_rows=int(keep.sum()),
+        span_s=span,
+        lat=lat,
+        lon=lon,
+        alt=alt,
+        ecef=pos.tolist(),
+        d_e=float(x[0]),
+        d_n=float(x[1]),
+        d_u=float(x[2]),
+        clock_m=float(x[3]),
+        clock_rate_m_s=float(x[4]),
+        resid_rms_m=rms,
+        sigma0=sigma0,
+        sigma_e=float(sd[0]),
+        sigma_n=float(sd[1]),
+        sigma_u=float(sd[2]),
+        **_dops(Ninv[0:3, 0:3])
+    )
