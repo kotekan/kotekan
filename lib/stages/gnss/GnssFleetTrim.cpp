@@ -197,13 +197,18 @@ GnssFleetTrim::GnssFleetTrim(Config& config, const std::string& unique_name,
         FATAL_ERROR("GnssFleetTrim[{:s}]: post_every_n_windows must be 1; a chain's trims are "
                     "posted on every close of its window",
                     unique_name);
+    _min_post_interval = std::chrono::duration<double>(
+        std::max(0.0, config.get_default<double>(unique_name, "min_post_interval_s", 0.0)));
     const int nthr = std::max(1, config.get_default<int>(unique_name, "post_threads", 4));
     _n_post_threads = nthr; // set before the first poster reads it
     for (int i = 0; i < nthr; ++i)
         _post_threads.emplace_back(&GnssFleetTrim::post_loop, this, i);
     INFO("GnssFleetTrim[{:s}]: {:d} poster thread(s), blocking sends, posting on every window "
-         "close. Nothing is trimmed until the broker posts /set_policy with targets.",
-         unique_name, nthr);
+         "close{:s}. Nothing is trimmed until the broker posts /set_policy with targets.",
+         unique_name, nthr,
+         _min_post_interval.count() > 0
+             ? fmt::format(", at most every {:.0f} ms per target", 1e3 * _min_post_interval.count())
+             : std::string());
 }
 
 GnssFleetTrim::~GnssFleetTrim() {
@@ -664,6 +669,7 @@ void GnssFleetTrim::post_loop(int slot) {
     std::map<std::string, Conn> conns; // target url -> socket, this thread's alone
     std::map<std::string, int> skips;  // rounds still to skip (backoff)
     std::map<std::string, int> nfails; // consecutive failures
+    std::map<std::string, std::chrono::steady_clock::time_point> sent; // last post, per url
     while (!stop_thread) {
         std::map<std::string, nlohmann::json> work;
         std::vector<Target> tgt;                        // this thread's targets, sorted by url
@@ -723,11 +729,16 @@ void GnssFleetTrim::post_loop(int slot) {
                 --skip;
                 continue;
             }
+            const auto now = std::chrono::steady_clock::now();
+            const auto last_sent = sent.find(t.url);
+            if (last_sent != sent.end() && now - last_sent->second < _min_post_interval)
+                continue;
             std::string err;
             const int status = t.half ? post_half(conns[t.url], t, due, &err)
                                       : post(conns[t.url], t, it->second.dump(), &err);
             if (status < 0)
                 continue; // a handshake in flight: costs this thread nothing
+            sent[t.url] = now;
             int& nfail = nfails[t.url];
             // A GPU half's url carries every chain that names it, so its failure is logged.
             if (t.half && status != 200 && nfail == 0)
@@ -755,6 +766,7 @@ void GnssFleetTrim::post_loop(int slot) {
                 ::close(f->second.fd);
             skips.erase(f->first);
             nfails.erase(f->first);
+            sent.erase(f->first);
             f = conns.erase(f);
         }
     }

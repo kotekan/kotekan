@@ -1527,6 +1527,9 @@ telem_gather:
 fleet_trim:
     kotekan_stage: GnssFleetTrim
     in_buf: telem_buf
+    # Every chain's window closes 250 times a second and the trackers apply trims once per 16 ms
+    # frame: at most one post per target per frame (1685 POSTs/s -> 545 on 11-25).
+    min_post_interval_s: 0.016
     n_win: 2
     # One sender here (telem_pack's gx10.0), so one instance completes a record.
     min_instances: 1

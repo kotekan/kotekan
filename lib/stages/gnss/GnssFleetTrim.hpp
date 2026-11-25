@@ -64,6 +64,10 @@
  * @conf post_every_n_windows  Int, default 1, and 1 is the only value accepted: a chain's
  *                             trims are posted on every close of its window.
  * @conf post_threads          Int, default 4. Poster threads.
+ * @conf min_post_interval_s   Double, default 0 (every close). Least time between two posts to
+ *                             one target url. Trims are absolute and a tracker applies them once
+ *                             per frame, so with windows shorter than its frame a post sooner
+ *                             than this is dropped and the next close brings a newer one.
  *
  * @par REST
  * `<unique_name>/get_dll`      -- per chain (?chain=<name> one chain), per PRN: disc, q,
@@ -220,6 +224,8 @@ private:
     /// before any poster starts; post_loop must not use _post_threads.size(), which grows while
     /// the first posters run.
     int _n_post_threads = 1;
+    /// min_post_interval_s; zero posts on every close.
+    std::chrono::duration<double> _min_post_interval{0.0};
     /// rearm() and policy_callback take it while holding _mtx, so _mtx is never taken while this
     /// is held.
     std::mutex _pend_mtx;
