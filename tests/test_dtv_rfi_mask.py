@@ -11,7 +11,8 @@ from jinja2 import Environment, FileSystemLoader
 from test_pilotproxy_integration import Pipeline, ROOT, reference, runtime
 
 pytestmark = pytest.mark.serial
-T, F, D, FRAMES = 8192, 4, 64, 8
+# Six frames wrap the four-frame buffers and ring buffers.
+T, F, D, FRAMES = 8192, 4, 64, 6
 
 
 def buffer(size):

@@ -76,6 +76,12 @@ class Pipeline:
             weights_path="bundle/weights.bin",
         )
         self.config["gen_voltage"]["wait"] = False
+        # Six frames still wrap the ring of buffer_depth (4) frames; the random voltage fill
+        # takes most of a run.
+        self.config["num_gen_frames"] = 6
+        for block in self.config.values():
+            if isinstance(block, dict) and "exit_after_n_files" in block:
+                block["exit_after_n_files"] = 6
         self.generator = self.config["gen_voltage"]
         self.detector = self.config["run_dtv_detector"]["gpu_0"]["commands"][0]
         window_samples = self.bundle["profiles"][0]["weight_bank_nbytes"] // 3
