@@ -223,12 +223,8 @@ void pirateFrbSend::main_thread() {
         std::shared_ptr<chordMetadata> chordmeta = get_chord_metadata(intensity_buf, frame_id);
         int64_t fpga_seq = chordmeta->get_fpga_seq_num();
         int time_downsampling_fpga = chordmeta->get_time_downsampling_fpga();
-        // NOT FOUND
-        // int frame_counter = chordmeta->get_frame_counter();
-        int frame_counter = -1;
 
-        INFO("Got data for frame {:d}: frame counter {:d}, FPGA seq {:d}", frame_id, frame_counter,
-             fpga_seq);
+        INFO("Got data for frame {:d}: FPGA seq {:d}", frame_id, fpga_seq);
 
         auto intensity_nd = intensity_buf->get_frame_desc<kotekan::GenericNDArray>();
         auto offset_scale_nd = offset_scale_buf->get_frame_desc<kotekan::GenericNDArray>();
