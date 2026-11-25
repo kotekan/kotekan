@@ -170,7 +170,7 @@ def main(argv: list[str]) -> int:
     yaml.preserve_quotes = True
     yaml.indent(mapping=4, sequence=6, offset=4)
     yaml.explicit_start = True
-    yaml.width = 2 ** 31 - 1  # disable width-based wrapping
+    yaml.width = 2**31 - 1  # disable width-based wrapping
 
     errors = 0
     fixed = 0

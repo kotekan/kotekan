@@ -187,7 +187,7 @@ void frbNetworkSend::main_thread() {
     const int numa_node = in_buf->numa_node;
     assert(numa_node < 2);
     // 32 GPUs, 2 NUMA per node with a sender each, 256 L1 receivers IPs
-    const int my_sequence_id = (my_node_id * 2 + numa_node) * (256/(32*2));
+    const int my_sequence_id = (my_node_id * 2 + numa_node) * (256 / (32 * 2));
     assert(my_sequence_id < 256); // nothing really breaks, but this would be at least unexpected
 
     int number_of_l1_links = initialize_destinations();

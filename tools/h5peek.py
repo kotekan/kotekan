@@ -146,7 +146,7 @@ def preview_data(dset, per_dim=4, max_chars=240):
         if np.issubdtype(arr.dtype, np.bytes_):
             arr = arr.astype("U")  # decode as UTF-8 if possible
         text = np.array2string(
-            arr, threshold=per_dim ** 2, edgeitems=per_dim, max_line_width=120
+            arr, threshold=per_dim**2, edgeitems=per_dim, max_line_width=120
         )
         return shorten(text, max_chars)
     except Exception as e:
