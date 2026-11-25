@@ -31,7 +31,8 @@ hfb2_weights_ring_depth: 1
 # The HFB1 beamforming weights are valid for this many input samples (about one second). The
 # U = 128 HFB1 kernel processes multiples of 128 * 128 = 16384 input samples, so this must be a
 # multiple of 16384. The HFB1 stages see this as their frb1_phase_lifetime_in_samples.
-# setFRB1Phase applies bad feed mask frame k to weight frame k.
+# processFRBFeedGains emits one set of weights per bad feed mask frame, so this has to be the
+# mask's lifetime.
 hfb1_phase_lifetime_in_samples: bf_mask_lifetime_in_samples
 
 ################################################################################
@@ -127,24 +128,18 @@ host_hfb2_beams_buffer:
 
 # HFB 1
 
-run_set_hfb1_U128_phase:
-    kotekan_stage: setFRB1Phase
+# The HFB1 weights: the FRB feed gains (include/frb_chime.j2), copied to every fine channel, zero
+# for bad feeds
+run_process_hfb1_U128_phase:
+    kotekan_stage: processFRBFeedGains
     # Must match the HFB voltage chain (run_upchan_hfb_U128)
     max_upchannelization_factor: 128
-    num_dishes_x: 256           # tranposed dish layout
-    num_dishes_y: 4
     upchan_factor: 128
-    upchan_min_channel: upchan_hfb_upchan_U128_min_channel
-    upchan_max_channel: upchan_hfb_upchan_U128_max_channel
-    upchan_max_num_channels: upchan_hfb_upchan_U128_max_num_channels
-    frb1_phase: host_hfb1_U128_phase_buffer
-    bf_mask: host_bf_mask_buffer
     frb1_phase_lifetime_in_samples: hfb1_phase_lifetime_in_samples
-    # The weight stream starts at the sequence number of the first voltage frame
-    metadata_source:
-{% for id in range(16) %}   # num_frequencies = 16
-        - host_voltage_buffer_{{ id }}
-{% endfor %}
+    gain_buffers:
+      - host_frb1_phase_buffer
+    in_mask_buf: host_bf_mask_buffer
+    out_buf: host_hfb1_U128_phase_buffer
 
 # Send the weights to their GPU ringbuffer. One set of weights covers
 # hfb1_phase_lifetime_in_samples input samples, so this runs far less often than run_hfb1_U128.
@@ -260,6 +255,8 @@ run_hfb23:
             # host_hfb3_beams_offsetscale_buffer: host_hfb3_beams_offsetscale_buffer
         commands:
         - name: cudaFRBBeamReformer
+          # accumulate the sums in float32, as for FRB2; float16 loses precision
+          accumulate_float32: true
           frb1_max_num_frequencies: upchan_hfb_upchan_U128_max_num_output_channels
           frb1_max_num_times: buffer_depth * hfb_num_output_times
           frb2_num_frequencies: upchan_hfb_upchan_U128_max_num_output_channels
