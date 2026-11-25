@@ -13,9 +13,10 @@
  * at shutdown) and AirspyAlign's per-REST-callback plan create/destroy run
  * on other threads and can race each other and any concurrent stage dtor.
  *
- * Every fftwf plan create/destroy across all stages must take this one
- * lock. It's a Meyers singleton in an inline function so all translation
- * units share a single mutex without a separate .cpp.
+ * Every plan create/destroy across all stages, single (fftwf_) or double
+ * (fftw_) precision, must take this one lock. It's a Meyers singleton in
+ * an inline function so all translation units share a single mutex without
+ * a separate .cpp.
  */
 inline std::mutex& fftw_planner_mutex() {
     static std::mutex m;
