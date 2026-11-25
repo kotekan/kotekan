@@ -28,6 +28,7 @@ record after a u32 byte length:
 """
 import argparse
 import glob
+import http.client
 import json
 import os
 import queue
@@ -37,7 +38,7 @@ import struct
 import sys
 import threading
 import time
-import urllib.request
+import urllib.parse
 
 import yaml
 
@@ -177,34 +178,50 @@ def targets(root, nodes=None):
 
 
 class Target(threading.Thread):
-    """One endpoint's POSTs, in order, from a bounded queue: a slow node drops its own batches
-    and nobody else's."""
+    """One endpoint's POSTs, in order, from a bounded queue over one kept-alive connection: a
+    slow node drops its own batches and nobody else's."""
 
     def __init__(self, url, timeout):
         super().__init__(daemon=True)
         self.url, self.timeout = url, timeout
+        u = urllib.parse.urlsplit(url)
+        self.host, self.port, self.path = u.hostname, u.port, u.path
+        self.name = "%s%s" % (self.host, self.path.rsplit("_inject/", 1)[0])
+        self.conn = None
         self.q = queue.Queue(maxsize=50)
         self.sent = self.dropped = self.failed = 0
+        self.logged = (0, 0)  # dropped, failed at the last report
 
-    def offer(self, rows):
+    def offer(self, data):
         try:
-            self.q.put_nowait(rows)
+            self.q.put_nowait(data)
         except queue.Full:
             self.dropped += 1
 
+    def post(self, data):
+        if self.conn is None:
+            self.conn = http.client.HTTPConnection(
+                self.host, self.port, timeout=self.timeout
+            )
+        self.conn.request(
+            "POST", self.path, body=data, headers={"Content-Type": "application/json"}
+        )
+        r = self.conn.getresponse()
+        r.read()
+        if r.status != 200:
+            raise http.client.HTTPException("HTTP %d" % r.status)
+
     def run(self):
         while True:
-            rows = self.q.get()
-            data = json.dumps(rows, separators=(",", ":")).encode()
-            req = urllib.request.Request(
-                self.url, data=data, headers={"Content-Type": "application/json"}
-            )
+            data = self.q.get()
             try:
-                with urllib.request.urlopen(req, timeout=self.timeout) as r:
-                    r.read()
+                self.post(data)
                 self.sent += 1
             except Exception:
                 self.failed += 1
+                if self.conn is not None:
+                    self.conn.close()
+                self.conn = None
 
 
 class Relay:
@@ -271,8 +288,9 @@ class Relay:
             with self.lock:
                 batch, self.pending = self.pending, {}
             for desc, rows in batch.items():
+                data = json.dumps(rows, separators=(",", ":")).encode()
                 for t in self.targets[desc]:
-                    t.offer(rows)
+                    t.offer(data)
 
     def report(self):
         while True:
@@ -292,8 +310,15 @@ class Relay:
                 )
             self.counts, self.ages = {}, {}
             tg = [t for ts in self.targets.values() for t in ts]
+            slow = []
+            for t in tg:
+                d, f = t.dropped - t.logged[0], t.failed - t.logged[1]
+                t.logged = (t.dropped, t.failed)
+                if d or f:
+                    slow.append("%s %d/%d" % (t.name, d, f))
             log(
                 "NAVSYM 60s: %s | seq gaps %d | posts %d dropped %d failed %d over %d targets"
+                " (totals) | dropped/failed this minute: %s"
                 % (
                     "; ".join(parts) or "nothing",
                     self.gaps,
@@ -301,6 +326,7 @@ class Relay:
                     sum(t.dropped for t in tg),
                     sum(t.failed for t in tg),
                     len(tg),
+                    ", ".join(slow) or "none",
                 )
             )
 

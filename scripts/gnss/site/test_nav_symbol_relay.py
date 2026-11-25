@@ -70,6 +70,44 @@ class Targets(unittest.TestCase):
         )
 
 
+class KeepAlive(unittest.TestCase):
+    def test_batches_share_one_connection(self):
+        peers = []
+
+        class H(http.server.BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def do_POST(self):
+                self.rfile.read(int(self.headers["Content-Length"]))
+                peers.append(self.client_address)
+                self.send_response(200)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+            def log_message(self, *a):
+                pass
+
+        node = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=node.serve_forever, daemon=True).start()
+        t = R.Target(
+            "http://127.0.0.1:%d/gnss0_bds_b2b_inject/set_nav_symbols"
+            % node.server_port,
+            1.0,
+        )
+        t.start()
+        try:
+            for _ in range(3):
+                t.offer(b"[]")
+            t0 = time.time()
+            while t.sent + t.failed < 3 and time.time() - t0 < 2.0:
+                time.sleep(0.01)
+        finally:
+            node.shutdown()
+        self.assertEqual((t.sent, t.failed), (3, 0))
+        self.assertEqual(len(set(peers)), 1)
+        self.assertEqual(t.name, "127.0.0.1/gnss0_bds_b2b")
+
+
 class EndToEnd(unittest.TestCase):
     def test_resolved_symbols_reach_the_node(self):
         got = []
