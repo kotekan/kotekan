@@ -276,6 +276,7 @@ def test_headers_carry_the_iface_stamp():
         "choco_bad_inputs",
         "live_bad_inputs",
         "live_frame0_utc",
+        "stock_render_vars",
     )
     real = {n: getattr(g, n) for n in names}
     for n in names:
@@ -1357,7 +1358,6 @@ def test_bad_inputs_reach_the_gnss_branch():
         g.choco_bad_inputs, g.live_bad_inputs, g.gnss_arraymap.manual_bad_inputs = real
 
 
-
 def test_search_tap_follows_the_reference_element():
     """The acquisition search taps the reference element: one knob, so the search (which
     bootstraps every chain's receiver clock) never sits on a different, possibly dark, feed
@@ -1397,7 +1397,9 @@ def test_reference_element_must_sit_on_element_0s_dish():
     arr = node_cfg()["array"]
     n = g.live_element_count(arr)
     ok = g.elem_steer_keys(
-        argparse.Namespace(elem_positions_file=None, elem_steer_sign=1.0, reference_element=0),
+        argparse.Namespace(
+            elem_positions_file=None, elem_steer_sign=1.0, reference_element=0
+        ),
         arr,
         n,
     )
@@ -1417,6 +1419,7 @@ def test_reference_element_must_sit_on_element_0s_dish():
             "reference element 40 (E05, 42 m out) is refused, saying how to move it live (%s)"
             % str(e)[:90],
         )
+
 
 _ARR128 = {"array": {"live_element_ranges": [[0, 63], [64, 127]]}}
 

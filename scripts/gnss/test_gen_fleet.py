@@ -11,6 +11,9 @@ import contextlib
 import io
 import json
 import os
+
+# Offline: the stock render takes the template's defaults, not production's vars over ssh.
+os.environ.setdefault("GNSS_STOCK_VARS", "none")
 import shutil
 import subprocess
 import sys
@@ -322,7 +325,6 @@ def test_check_leaves_the_stamp_out():
     )
 
 
-
 def test_keep_bad_inputs_writes_with_the_files_block():
     """A write with --keep-bad-inputs hands the generator the bad-input block of the config on
     disk (eop_cron.sh's regen: EOP only, and it works while bffs flags every input); a plain
@@ -347,9 +349,15 @@ def test_keep_bad_inputs_writes_with_the_files_block():
             seen = []
 
             def fake_run(cmd, **kw):
-                i = cmd.index("--bad-inputs-from") if "--bad-inputs-from" in cmd else None
+                i = (
+                    cmd.index("--bad-inputs-from")
+                    if "--bad-inputs-from" in cmd
+                    else None
+                )
                 seen.append(json.load(open(cmd[i + 1])) if i is not None else None)
-                return subprocess.CompletedProcess(cmd, 0, stdout=regenerated, stderr="")
+                return subprocess.CompletedProcess(
+                    cmd, 0, stdout=regenerated, stderr=""
+                )
 
             real_run, real_argv = subprocess.run, sys.argv
             subprocess.run, sys.argv = fake_run, argv
@@ -366,6 +374,7 @@ def test_keep_bad_inputs_writes_with_the_files_block():
                 "a write with %r passes the generator %r (got %r, exit %r)"
                 % (extra, want, seen, exc),
             )
+
 
 def run_check(base):
     with tempfile.TemporaryDirectory() as d:

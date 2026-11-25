@@ -3121,18 +3121,21 @@ def build_gather_instance(cfg, args, port):
     return out
 
 
-# The template variables the stock render sets: none. pathfinder.j2 always renders the PilotProxy
-# DTV detector (dtv.j2) since chord 0fbd333d0, and the detector loads its runtime bundle at
-# construction, FATAL if absent, while its mask and recording are off. The bundle is the one
-# `make install` puts under /usr/local/etc/kotekan/chord/dtv_bundles, so a node needs that
-# directory (node_up.sh checks it before a start).
-STOCK_RENDER_VARS = {}
+# The template variables the stock render takes: production's (choco_vars.py, choco's vars.yaml),
+# so the stock half of a node config is what choco renders for its own nodes (#244).
+# pathfinder.j2 always renders the PilotProxy DTV detector (dtv.j2), which loads its runtime
+# bundle at construction, FATAL if absent; the bundle is one `make install` puts under
+# /usr/local/etc/kotekan/chord/dtv_bundles, so a node needs that directory (node_up.sh checks it).
+def stock_render_vars():
+    import choco_vars
+
+    return choco_vars.load()
 
 
 def render_stock_template(path):
     """A kotekan .j2 config rendered as kotekan renders it (kotekan/kotekan.cpp): jinja2 with a
     FileSystemLoader on the template's own directory and select_autoescape(), then
-    yaml.safe_load, with STOCK_RENDER_VARS only: the variables that make the render what production
+    yaml.safe_load, with production's variables (stock_render_vars): the render is what production
     actually runs.
 
     A render rather than a config captured from a running node: a capture goes stale silently as
@@ -3146,7 +3149,7 @@ def render_stock_template(path):
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(d), autoescape=jinja2.select_autoescape()
     )
-    return yaml.safe_load(env.get_template(f).render(STOCK_RENDER_VARS))
+    return yaml.safe_load(env.get_template(f).render(stock_render_vars() or {}))
 
 
 def choco_bad_inputs(timeout=20.0):
@@ -3661,7 +3664,7 @@ def main():
         "--base",
         required=True,
         help="the production config the GNSS branch is injected into: a .j2 template, "
-        "rendered as kotekan renders it, with no template variables (the fleet uses "
+        "rendered as kotekan renders it, with production's template variables (choco_vars.py; the fleet uses "
         "config/chord/pathfinder.j2), or a .json or yaml config",
     )
     ap.add_argument("--node", required=True)
