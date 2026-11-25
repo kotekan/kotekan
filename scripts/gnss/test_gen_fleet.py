@@ -387,6 +387,39 @@ def run_check(base):
     return p.returncode, p.stderr
 
 
+def test_repeated_key_is_refused():
+    with tempfile.TemporaryDirectory() as d:
+        path = manifest(d, "/nonexistent/base.j2")
+        with open(path, "a") as fh:
+            fh.write(
+                "common:\n  n2-project-cpus: '15+47,19+51'\n  n2-project-cpus: '15,19'\n"
+            )
+        p = subprocess.run(
+            [sys.executable, os.path.join(HERE, "gen_fleet.py"), path, "--print-path"],
+            capture_output=True,
+            text=True,
+        )
+    check(
+        p.returncode == 1
+        and "found key 'n2-project-cpus' again" in p.stderr
+        and not p.stdout,
+        "a manifest that repeats a key exits 1 naming it, before any output (rc %d, %r)"
+        % (p.returncode, p.stderr.strip().splitlines()[-1:]),
+    )
+    with tempfile.TemporaryDirectory() as d:
+        path = manifest(d, "/nonexistent/base.j2")
+        with open(path, "a") as fh:
+            fh.write(
+                "common:\n  n2-project-cpus: '15+47,19+51'\nnode-defaults:\n  n2-project-cpus: x\n"
+            )
+        with open(path) as fh:
+            man = gen_fleet.yaml.load(fh, Loader=gen_fleet.ManifestLoader)
+    check(
+        man["common"]["n2-project-cpus"] == "15+47,19+51",
+        "the same key in two different mappings is not a repeat",
+    )
+
+
 def test_missing_base_exits_2():
     rc, err = run_check("/nonexistent/base.j2")
     check(rc == 2, "--check with a missing base exits 2 (got %d)" % rc)

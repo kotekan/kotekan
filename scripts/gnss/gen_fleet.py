@@ -59,6 +59,27 @@ import gnss_fleet  # noqa: E402
 CHAINS = os.path.join(K, "config", "gnss_chains_chord.yaml")
 
 
+class ManifestLoader(getattr(yaml, "CSafeLoader", yaml.SafeLoader)):
+    """The safe loader, refusing a mapping that repeats a key: yaml keeps the last one without a
+    word, so a stale manifest line would override the one meant."""
+
+    def construct_mapping(self, node, deep=False):
+        seen = set()
+        for k, _ in node.value:
+            if k.tag == "tag:yaml.org,2002:merge":
+                continue
+            key = self.construct_object(k, deep=deep)
+            if key in seen:
+                raise yaml.constructor.ConstructorError(
+                    "while constructing a mapping",
+                    node.start_mark,
+                    "found key %r again" % (key,),
+                    k.start_mark,
+                )
+            seen.add(key)
+        return super().construct_mapping(node, deep)
+
+
 def _split_header(text):
     """(leading '#' comment lines, the YAML body). The generator writes its provenance header,
     then yaml.safe_dump(sort_keys=True), so the body holds no comments."""
@@ -652,7 +673,10 @@ def main():
 
     man_path = a.manifest if os.path.isabs(a.manifest) else os.path.join(K, a.manifest)
     with open(man_path) as f:
-        man = yaml.safe_load(f)
+        try:
+            man = yaml.load(f, Loader=ManifestLoader)
+        except yaml.YAMLError as e:
+            sys.exit("%s: %s" % (man_path, e))
 
     if a.check_prns:
         return check_prns(man)
