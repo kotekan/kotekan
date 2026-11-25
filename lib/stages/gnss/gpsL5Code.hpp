@@ -26,14 +26,20 @@ constexpr int L5_CODE_LENGTH = 10230;
 constexpr int L5_NH10_LENGTH = 10; ///< I5 Neuman-Hofman overlay length
 constexpr int L5_NH20_LENGTH = 20; ///< Q5 Neuman-Hofman overlay length
 
+/// PRN range of the QZSS rows of the XB advance table (QZSS L5 has the GPS L5 structure).
+constexpr int QZSS_PRN_MIN = 193;
+constexpr int QZSS_PRN_MAX = 202;
+
 /**
- * I5 (data) primary code for @p prn (1..210; 120..158 are the SBAS GEOs), bipolar +1/-1.
+ * I5 (data) primary code for @p prn (1..210; 120..158 are the SBAS GEOs, 193..202 QZSS), bipolar
+ * +1/-1.
  * @throws std::out_of_range if prn is outside 1..210.
  */
 std::array<int8_t, L5_CODE_LENGTH> generate_l5i_code(int prn);
 
 /**
- * Q5 (pilot) primary code for @p prn (1..210; 120..158 are the SBAS GEOs), bipolar +1/-1.
+ * Q5 (pilot) primary code for @p prn (1..210; 120..158 are the SBAS GEOs, 193..202 QZSS), bipolar
+ * +1/-1.
  * @throws std::out_of_range if prn is outside 1..210.
  */
 std::array<int8_t, L5_CODE_LENGTH> generate_l5q_code(int prn);

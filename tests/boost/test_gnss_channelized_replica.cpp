@@ -776,7 +776,7 @@ BOOST_AUTO_TEST_CASE(set_prns_takes_the_sbas_prns_on_sbas_signals_only) {
     }
     for (const gnss::SignalDescriptor* s : gnss::ALL_SIGNALS) {
         const std::string name(s->name);
-        if (name.rfind("SBAS_", 0) == 0)
+        if (name.rfind("SBAS_", 0) == 0 || name.rfind("QZSS_", 0) == 0)
             continue;
         BOOST_CHECK_MESSAGE(gnss::min_prn(*s) == 1, name);
         BOOST_CHECK_MESSAGE(gnss::max_prn(*s) == (name == "GW_1202" ? 2047 : 63), name);
@@ -787,4 +787,52 @@ BOOST_AUTO_TEST_CASE(set_prns_takes_the_sbas_prns_on_sbas_signals_only) {
     BOOST_CHECK_EQUAL(gnss::prn_map_error(l5, {131, 133, 135, 121, 123, 32}),
                       "PRN 32 at slot 5 is outside 120..158");
     BOOST_CHECK_EQUAL(gnss::prn_map_error(l5, {131, 133, 131}), "PRN 131 appears in slots 0 and 2");
+}
+
+// The QZSS L5 pilot is GPS L5 Q5 on the QZSS PRNs: QZSS_L5_Q_NH's period k is the Q5 primary of
+// the PRN times NH20[k], QZSS_L5_Q applies the NH20 as its secondary, and /set_prns takes
+// 193..202 only, so a QZSS chain cannot be handed a GPS or SBAS row of the same table.
+BOOST_AUTO_TEST_CASE(qzss_l5q_is_the_q5_code_of_the_qzss_prns) {
+    const gnss::SignalDescriptor* nh = gnss::signal_by_name("QZSS_L5_Q_NH");
+    const gnss::SignalDescriptor* gps_nh = gnss::signal_by_name("GPS_L5_Q_NH");
+    BOOST_REQUIRE(nh != nullptr && gps_nh != nullptr);
+    BOOST_CHECK_EQUAL(nh->code_length, gps_nh->code_length);
+    BOOST_CHECK_EQUAL(nh->code_period_s, gps_nh->code_period_s);
+    BOOST_CHECK_EQUAL(nh->carrier_hz, gps_nh->carrier_hz);
+    BOOST_CHECK_EQUAL(nh->secondary_length, 0);
+    for (int prn : {194, 201}) {
+        const auto q5 = gps::generate_l5q_code(prn);
+        auto bank_nh = make_bank("QZSS_L5_Q_NH", {prn});
+        auto bank_q = make_bank("QZSS_L5_Q", {prn});
+        BOOST_REQUIRE_EQUAL(bank_q.secondary_length(), 20);
+        for (int k = 0; k < 20; ++k) {
+            BOOST_CHECK_EQUAL(bank_q.overlay_sign(k, 0), (int)gps::L5_NH20[(size_t)k]);
+            for (int i = 0; i < 10230; i += 331) {
+                BOOST_REQUIRE_EQUAL((int)bank_nh.code_chip(0, (double)k * 10230 + i),
+                                    (int)q5[(size_t)i] * (int)gps::L5_NH20[(size_t)k]);
+                BOOST_REQUIRE_EQUAL((int)bank_q.code_chip(0, (double)i), (int)q5[(size_t)i]);
+            }
+        }
+    }
+    // J09's code is its own: against a GPS PRN and another QZSS PRN it decorrelates.
+    auto bank = make_bank("QZSS_L5_Q", {201, 194});
+    auto gps_bank = make_bank("GPS_L5_Q", {9});
+    const int H = bank.repl_period_hops();
+    auto r201 = bank.channels(0, 0, 0.0, 0.0, H);
+    BOOST_CHECK_CLOSE(despread_mag(r201, r201), 1.0, 1e-2);
+    BOOST_CHECK_LT(despread_mag(r201, bank.channels(1, 0, 0.0, 0.0, H)), 0.3);
+    BOOST_CHECK_LT(despread_mag(r201, gps_bank.channels(0, 0, 0.0, 0.0, H)), 0.3);
+
+    for (const char* name : {"QZSS_L5_Q", "QZSS_L5_Q_NH"}) {
+        auto b = make_bank(name, {194});
+        for (int prn : {193, 196, 201, 202}) {
+            BOOST_CHECK_MESSAGE(set_prns_takes(name, prn), name << " refuses PRN " << prn);
+            BOOST_CHECK_MESSAGE(b.set_prn(0, prn), name << " has no code for PRN " << prn);
+        }
+        for (int prn : {0, 1, 9, 32, 63, 131, 192, 203, 210})
+            BOOST_CHECK_MESSAGE(!set_prns_takes(name, prn), name << " takes PRN " << prn);
+    }
+    BOOST_CHECK(gnss::prn_map_error(*nh, {194, 195, 196, 201, 199, 200}).empty());
+    BOOST_CHECK_EQUAL(gnss::prn_map_error(*nh, {194, 195, 9}),
+                      "PRN 9 at slot 2 is outside 193..202");
 }
