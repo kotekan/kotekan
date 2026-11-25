@@ -6,3 +6,4 @@ Each directory is a PilotProxy runtime bundle, named `<purpose>-<first 8 digits 
 |---|---|---|
 | `pathfinder-commissioning-b8026807` | 18, 24, 29 | Detect-only runs, never with `/dtv_mask_enabled` on |
 | `pathfinder-commissioning-e2e90219` | 18, 24, 29, control 37 | The same words, and records channel 37 for the next calibration. Detect-only runs, never with `/dtv_mask_enabled` on |
+| `pathfinder-run1-day1-ef14658c` | 18, 24, 29, control 37 | Calibrated `fine_decision_v3` thresholds. All three channels are qualified for masking, so `/dtv_mask_enabled` can be on |

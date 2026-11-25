@@ -286,9 +286,9 @@ BOOST_AUTO_TEST_CASE(both_stages_switch_at_the_same_frame) {
     BOOST_REQUIRE_MESSAGE(reply.first, reply.second);
     BOOST_REQUIRE_EQUAL(p.before_wait_ns / step, now / step);
     BOOST_REQUIRE_EQUAL(p.after_wait_ns / step, now / step + 1);
-    // DtvRfiMask passes the resolved time on, and the config stores it.
+    // DtvRfiMask passes the resolved time on; the config keeps the posted value.
     BOOST_CHECK_EQUAL(p.passed_time_ns, switch_ns);
-    BOOST_CHECK_EQUAL(p.config.get<int64_t>("/dtv_mask_enabled", "valid_at_time_ns"), switch_ns);
+    BOOST_CHECK_EQUAL(p.config.get<int64_t>("/dtv_mask_enabled", "valid_at_time_ns"), 0);
 
     for (int k = 1; k < 4; ++k)
         BOOST_CHECK_EQUAL(p.mask_frame(k, seq0 + k * p.span), seq0 + k * p.span >= switch_seq);
@@ -301,6 +301,11 @@ BOOST_AUTO_TEST_CASE(both_stages_switch_at_the_same_frame) {
                           seq0 + k * p.span >= switch_seq ? p.span : 0);
         p.vis.mark_frame_empty("test", k);
     }
+}
+
+BOOST_AUTO_TEST_CASE(detect_only_bundle_refuses_the_mask_on) {
+    BOOST_CHECK_THROW(SwitchPipeline(true, 0, false), std::runtime_error);
+    std::remove(("/tmp/test_dtv_mask_enabled_" + std::to_string(getpid()) + ".json").c_str());
 }
 
 BOOST_AUTO_TEST_CASE(config_value_applies_from_startup) {

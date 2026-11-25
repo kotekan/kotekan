@@ -81,6 +81,9 @@ namespace kotekan {
  * the actual values in the callback function and return `false` if anything
  * is wrong.
  *
+ * The subscribers of an endpoint get one copy of a POST in turn, so a change one
+ * makes reaches the later ones. The config keeps the values as posted.
+ *
  * The stage must be ready to receive updates **before** it subscribes and it
  * has to apply save threading principles.
  *

@@ -116,6 +116,12 @@ RUN python3 -m pip install --upgrade \
         ruamel.yaml \
         tabulate
 
+# PilotProxy's bundle exporter and Python reference, for the DTV detector tests
+# (tests/ci-scripts/pilotproxy). Keep the commit equal to upstream_commit in
+# external/pilotproxy/VENDOR.json; the tests check it.
+RUN python3 -m pip install \
+        "pilot-proxy @ https://github.com/WVURAIL/pilotproxy/archive/0c4f613a22d4fc9f5109b4bed738828a1234ffa1.tar.gz"
+
 # Uncomment this to check what version got installed
 # RUN python3 -m pip show <package>
 # RUN apt-cache policy <package>
