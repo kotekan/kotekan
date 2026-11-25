@@ -94,6 +94,8 @@ public:
 
     /// Closes the open connection and starts the process of trying to reconnect
     void close_connection();
+
+    bool send_data(const uint8_t* data, int32_t len);
 };
 
 /**

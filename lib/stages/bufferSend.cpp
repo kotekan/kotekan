@@ -126,9 +126,6 @@ void bufferSend::main_thread() {
 }
 
 bool bufferSend::send_frame(uint8_t* frame, int frame_id, networkDestination& dest) {
-    int32_t n = 0;
-    int32_t n_sent = 0;
-
     auto meta = buf->get_metadata(frame_id);
     if (!meta) {
         // FATAL_ERROR throws out of this function, so end the connect thread first.
@@ -162,13 +159,7 @@ bool bufferSend::send_frame(uint8_t* frame, int frame_id, networkDestination& de
 
     // Recover from partial sends
     DEBUG2("Sending header");
-    while (
-        (n = send(dest.socket_fd, &((uint8_t*)&header)[n_sent], header_len - n_sent, MSG_NOSIGNAL))
-        > 0) {
-        n_sent += n;
-    }
-    // Handle errors
-    if (n < 0) {
+    if (!dest.send_data((uint8_t*)&header, header_len)) {
         ERROR("Error {:s}, failed to send header to {:s}:{:d}", strerror(errno), dest.server_ip,
               dest.server_port);
         return false;
@@ -180,7 +171,7 @@ bool bufferSend::send_frame(uint8_t* frame, int frame_id, networkDestination& de
     if (dest.config_tracker_combined_hash != ConfigTracker::instance().getTrackerHash()) {
         dest.config_tracker_combined_hash = ConfigTracker::instance().getTrackerHash();
     }
-    DEBUG2("Sent header: {:d}", n_sent);
+    DEBUG2("Sent header: {:d}", header_len);
 
     // Send the frame descriptor once per connection (independent of the
     // config tracker), right after the first frame's header: a 4-byte
@@ -189,28 +180,18 @@ bool bufferSend::send_frame(uint8_t* frame, int frame_id, networkDestination& de
         auto desc = buf->get_frame_desc();
         const std::string desc_json = desc ? desc->to_json().dump() : std::string();
         uint32_t frame_desc_size = static_cast<uint32_t>(desc_json.size());
-        n_sent = 0;
-        while ((n = send(dest.socket_fd, &((uint8_t*)&frame_desc_size)[n_sent],
-                         sizeof(frame_desc_size) - n_sent, MSG_NOSIGNAL))
-               > 0)
-            n_sent += n;
-        if (n < 0) {
+        if (!dest.send_data((uint8_t*)&frame_desc_size, sizeof(frame_desc_size))) {
             ERROR("Error {:s}, failed to send frame_desc size to {:s}:{:d}",
                   strerror(errno), dest.server_ip, dest.server_port);
             dest.close_connection();
-	    return false;
+            return false;
         }
         if (frame_desc_size > 0) {
-            n_sent = 0;
-            while ((n = send(dest.socket_fd, desc_json.data() + n_sent, frame_desc_size - n_sent,
-                             MSG_NOSIGNAL))
-                   > 0)
-                n_sent += n;
-            if (n < 0) {
+            if (!dest.send_data((uint8_t*)desc_json.data(), frame_desc_size)) {
                 ERROR("Error {:s}, failed to send frame_desc to {:s}:{:d}", strerror(errno),
                       dest.server_ip, dest.server_port);
                 dest.close_connection();
-		return false;
+                return false;
             }
         }
         dest.desc_sent = true;
@@ -218,36 +199,25 @@ bool bufferSend::send_frame(uint8_t* frame, int frame_id, networkDestination& de
 
     // Send metadata
     DEBUG2("Sending metadata");
-    n_sent = 0;
     {
         char metabuf[metadata_size];
         meta->serialize(metabuf);
-        while ((n = send(dest.socket_fd, metabuf + n_sent, metadata_size - n_sent, MSG_NOSIGNAL))
-               > 0) {
-            n_sent += n;
+        if (!dest.send_data((uint8_t*)metabuf, metadata_size)) {
+            ERROR("Error {:s}, failed to send metadata to {:s}:{:d}", strerror(errno), dest.server_ip,
+                  dest.server_port);
+            return false;
         }
     }
-    if (n < 0) {
-        ERROR("Error {:s}, failed to send metadata to {:s}:{:d}", strerror(errno), dest.server_ip,
-              dest.server_port);
-        return false;
-    }
-    DEBUG2("Sent metadata: {:d}", n_sent);
+    DEBUG2("Sent metadata: {:d}", metadata_size);
 
     // Send buffer frame.
     DEBUG2("Sending frame with {:d} bytes", frame_size);
-    n_sent = 0;
-    while ((n = send(dest.socket_fd, &frame[n_sent], (int32_t)frame_size - n_sent, MSG_NOSIGNAL))
-           > 0) {
-        n_sent += n;
-        // DEBUG("Total sent: {:d}", n_sent);
-    }
-    if (n < 0) {
+    if (!dest.send_data(frame, frame_size)) {
         ERROR("Error {:s}, failed to frame data to {:s}:{:d}", strerror(errno), dest.server_ip,
               dest.server_port);
         return false;
     }
-    DEBUG2("Sent frame: {:d}", n_sent);
+    DEBUG2("Sent frame: {:d}", frame_size);
 
     // Set to true since we've sent a transmission.
     dest.first_transmission_sent = true;
@@ -271,6 +241,17 @@ networkDestination::networkDestination(const std::string& ip, uint16_t port,
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = inet_addr(server_ip.c_str());
     server_addr.sin_port = htons(server_port);
+}
+
+bool networkDestination::send_data(const uint8_t* data, int32_t len) {
+    int32_t n = 0;
+    int32_t n_sent = 0;
+    while (
+        (n = send(socket_fd, &data[n_sent], len - n_sent, MSG_NOSIGNAL))
+        > 0) {
+        n_sent += n;
+    }
+    return (n >= 0);
 }
 
 void networkDestination::start_connect_thread(const std::string& name,
