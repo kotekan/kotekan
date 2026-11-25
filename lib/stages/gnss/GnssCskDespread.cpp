@@ -435,31 +435,54 @@ void GnssCskDespread::despread(Slot& s, const RecordBatch& b, int p,
 }
 
 void GnssCskDespread::get_status_callback(kotekan::connectionInstance& conn) {
-    nlohmann::json rows = nlohmann::json::array();
+    // Copied under _m and serialised after it is released: the reply runs to megabytes, and
+    // building it under the lock stalled the despread workers.
+    struct Row {
+        int prn;
+        double snr_db, utc_ref;
+        long long n_sym, n_drop, id_ref;
+        std::vector<Symbol> sym;
+    };
+    std::vector<Row> snap;
     {
         std::lock_guard<std::mutex> lk(_m);
-        for (const Slot& s : _slots) {
-            if (s.prn <= 0 || s.sym.empty())
-                continue;
-            nlohmann::json sym = nlohmann::json::array();
-            for (const Symbol& y : s.sym) {
-                nlohmann::json row = {y.id};
-                for (int i = 0; i < 4; ++i) {
-                    row.push_back(y.k[(size_t)i]);
-                    row.push_back(std::round(y.db[(size_t)i] * 10.0f) / 10.0f);
-                }
-                sym.push_back(row);
+        for (const Slot& s : _slots)
+            if (s.prn > 0 && !s.sym.empty())
+                snap.push_back({s.prn, s.snr_db, s.utc_ref, s.n_sym, s.n_drop, s.id_ref,
+                                std::vector<Symbol>(s.sym.begin(), s.sym.end())});
+    }
+    // A slot no longer despread keeps its last symbols: one whose newest is STATUS_STALE_S older
+    // than the newest slot's is left out, so the reply carries only the slots with new data.
+    constexpr double STATUS_STALE_S = 2.0;
+    auto last_utc = [](const Row& r) {
+        return r.utc_ref + (double)(r.sym.back().id - r.id_ref) * FRAME_S;
+    };
+    double newest = -1e300;
+    for (const Row& r : snap)
+        newest = std::max(newest, last_utc(r));
+    nlohmann::json rows = nlohmann::json::array();
+    for (const Row& r : snap) {
+        if (last_utc(r) < newest - STATUS_STALE_S)
+            continue;
+        nlohmann::json sym = nlohmann::json::array();
+        for (const Symbol& y : r.sym) {
+            nlohmann::json row = {y.id};
+            for (int i = 0; i < 4; ++i) {
+                row.push_back(y.k[(size_t)i]);
+                // rounded in double, so it serialises as 6.4 and not 6.400000095367432
+                row.push_back(std::round((double)y.db[(size_t)i] * 10.0) / 10.0);
             }
-            const auto g = _csk_g2.find(s.prn);
-            rows.push_back({{"prn", s.prn},
-                            {"csk_g2", g == _csk_g2.end() ? -1 : g->second},
-                            {"snr_db", s.snr_db},
-                            {"n_sym", s.n_sym},
-                            {"n_drop", s.n_drop},
-                            {"utc_ref", s.utc_ref},
-                            {"id_ref", s.id_ref},
-                            {"sym", sym}});
+            sym.push_back(row);
         }
+        const auto g = _csk_g2.find(r.prn);
+        rows.push_back({{"prn", r.prn},
+                        {"csk_g2", g == _csk_g2.end() ? -1 : g->second},
+                        {"snr_db", r.snr_db},
+                        {"n_sym", r.n_sym},
+                        {"n_drop", r.n_drop},
+                        {"utc_ref", r.utc_ref},
+                        {"id_ref", r.id_ref},
+                        {"sym", sym}});
     }
     conn.send_json_reply(rows);
 }

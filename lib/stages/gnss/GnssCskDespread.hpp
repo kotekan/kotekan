@@ -59,6 +59,7 @@
  * n_drop, utc_ref, id_ref, sym}: sym holds the newest @c symbol_export frames as
  * [id, k1, db1, k2, db2, k3, db3, k4, db4], the four strongest shifts and their power over the
  * mean of the other 60, dB; frame id starts at utc_ref + (id - id_ref) * 2 ms.
+ * A slot whose newest symbol is 2 s older than the newest slot's is left out.
  * POST `<unique_name>/capture` {prn, seconds, path}: append each data half's chip outputs for
  * that PRN to @c path for @c seconds, per frame an int64 id, a float64 UTC, a float64 Doppler
  * and 2046 complex64 z_j.
