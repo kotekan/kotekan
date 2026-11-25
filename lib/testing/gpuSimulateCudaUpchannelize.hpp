@@ -20,6 +20,13 @@
  * @class gpuSimulateCudaUpchannelize
  * @brief Stage for faking CUDA upchannelization.
  *
+ * These tests use float32 on purpose, although the respective GPU kernels use float16.
+ * This catches an important possible issue: there could be catastrophic cancellation
+ * when using float16, and this would then happen on both CPU and GPU, so we would never know.
+ * That is very unlikely in float32. We thus know that the float32 results don’t suffer from
+ * catastrophic floating-point round-off problems. Since the bots agree with me that comparing
+ * float16 to float32 is fine, we’re doing that, allowing the results to differ by at most 1 ulp.
+ *
  * @par Buffers
  * @buffer voltage_in_buf   Input voltages
  *         @buffer_format Int4+4
