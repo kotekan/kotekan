@@ -205,7 +205,7 @@ def main():
     ap.add_argument(
         "--sys",
         default="G",
-        choices=("G", "E", "C", "R", "S", "W"),
+        choices=("G", "E", "C", "R", "S", "J", "W"),
         help="RINEX constellation letter of the chain's satellites: selects their BRDC "
         "records for the geometry and is written as each row's sys (W, GuoWang, has no "
         "BRDC: its geometry comes from --gw-table)",

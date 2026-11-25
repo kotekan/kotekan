@@ -779,6 +779,21 @@ chains:
       proj-sys: G
       shared-ref-band: l1
 
+    # QZSS L5-Q, the dataless pilot (GPS L5-Q's structure on PRNs 193..202, QZSS_L5_Q_NH), on
+    # gps_l5's channels. 201 is QZS-7 at 175 W, az 243 el 11-16 from DRAO all day, and
+    # 194/195/196 the inclined satellites, which rise to el ~17 in the north-west; RINEX J
+    # records (Jnn = PRN - 192). Model-primary, as SBAS L5. The noise probes: 199 and 200
+    # (QZS-3 and QZS-6, geostationary at el -23 and -41 here) and 193, a code no satellite
+    # sends: presence needs 3.
+    - id: 18
+      key: qzss_l5
+      descriptor: QZSS_L5_Q_NH
+      prns: 194,195,196,201,199,200,193
+      dll-spacing-chips: 0.5
+      telem-rows: 14
+      proj-sys: G
+      shared-ref-band: l5
+
 nodes:
     # THE FLEET LIST: every host that runs the GNSS branch, and nothing else names one.
     # config/gnss_fleet.py derives from it each node's search-port-base, the search aggregator's

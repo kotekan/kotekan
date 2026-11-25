@@ -641,6 +641,7 @@ def test_stage_chain():
         ("gnss0_n2assemble", "n2assemble", "gps_l5"),
         ("gnss1_sbas_l5_n2assemble", "n2assemble", "sbas_l5"),
         ("gnss1_l5_n2assemble", "n2assemble", "sbas_l5"),
+        ("gnss1_qzss_l5_n2assemble", "n2assemble", "qzss_l5"),
         ("gnss1_gw_1202_n2combine", "n2combine", "gw_1202"),
         ("gnss1_1202_n2combine", "n2combine", "gw_1202"),
         ("/gnss1_glo_l2of_n2assemble", "n2assemble", "glo_l2of"),
@@ -673,6 +674,7 @@ def test_stage_chain():
     check(
         gf.signal_tag("GAL_E5A_Q_CS") == "_gal_e5a"
         and gf.signal_tag("SBAS_L5_I_MC") == "_sbas_l5"
+        and gf.signal_tag("QZSS_L5_Q_NH") == "_qzss_l5"
         and gf.signal_tag("GPS_L5_Q") == "_gps_l5",
         "signal_tag is _ and the broker chain key",
     )

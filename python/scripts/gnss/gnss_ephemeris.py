@@ -33,9 +33,11 @@ GPS_UTC_LEAP = 18.0  # GPST - UTC, s; update at the next leap second
 BDT_GPST = -14.0  # BDT = GPST - 14 s
 GPS_EPOCH = datetime(1980, 1, 6, tzinfo=timezone.utc)
 
-# Gravitational parameter / earth rotation per constellation ICD (S: WGS84, the MT9 frame).
+# Gravitational parameter / earth rotation per constellation ICD (S: WGS84, the MT9 frame;
+# J: IS-QZSS-PNT gives the GPS values).
 MU = {
     "G": 3.986005e14,
+    "J": 3.986005e14,
     "E": 3.986004418e14,
     "C": 3.986004418e14,
     "R": 3.986004418e14,
@@ -43,12 +45,19 @@ MU = {
 }
 OMEGA_E = {
     "G": 7.2921151467e-5,
+    "J": 7.2921151467e-5,
     "E": 7.2921151467e-5,
     "C": 7.292115e-5,
     "R": 7.292115e-5,
     "S": 7.2921151467e-5,
     "W": 7.2921151467e-5,  # GuoWang: TLE tables in ITRS (load_gw_table)
 }
+# RINEX numbers QZSS satellites Jnn = PRN - 192 (J09 = PRN 201, QZS-7). The records are keyed by
+# the PRN, the number the L5 code table and the chains use, as SBAS is.
+QZSS_PRN_OFFSET = 192
+# The L5 bit of the QZSS health word (IS-QZSS-PNT 4.1.2.3: of the 6-bit word in RINEX, 32 is
+# L1, 16 L1C/A, 8 L2C, 4 L5, 2 L1C, 1 L1C/B).
+QZSS_HEALTH_L5 = 4
 # PZ-90.11 (GLONASS ICD): the oblateness term of the equations of motion. PZ-90.11 and ITRF
 # agree to centimetres, so no frame transform is applied to the result.
 A_E_PZ90 = 6378136.0
@@ -235,11 +244,11 @@ def _parse_rinex_nav_file(path):
         i += 1
     i += 1
     out = {}
-    # broadcast orbit line counts per system (RINEX 3): G/E/C use 7 orbit lines, R uses 3.
+    # broadcast orbit line counts per system (RINEX 3): G/E/C/J use 7 orbit lines, R and S 3.
     while i < len(lines):
         line = lines[i]
         sysc = line[0] if line else ""
-        if sysc not in "GECRS":
+        if sysc not in "GECRSJ":
             i += 1
             continue
         norb = 3 if sysc in "RS" else 7
@@ -282,6 +291,8 @@ def _parse_rinex_nav_file(path):
             if e is not None:
                 out.setdefault((sysc, prn), []).append(e)
             continue
+        if sysc == "J":
+            prn += QZSS_PRN_OFFSET  # the GPS record layout; QZSST = GPST
         e = dict(
             sys=sysc,
             prn=prn,
@@ -303,7 +314,7 @@ def _parse_rinex_nav_file(path):
             crc=orb[13],
             omega=orb[14],
             omegadot=orb[15],
-            # health = BROADCAST ORBIT 6 field 2 (orb[21]): SV health (G/E), SatH1 (C).
+            # health = BROADCAST ORBIT 6 field 2 (orb[21]): SV health (G/E/J), SatH1 (C).
             # Field 2 of orbit line 7 (orb[25]) is a different quantity in every system
             # (GPS fit interval, BeiDou AODC), and predict_all's health gate reads this one.
             idot=orb[16],
@@ -323,15 +334,16 @@ def _parse_rinex_nav_file(path):
             tgd=orb[22],
             iodc=orb[23],
         )
-        # toe as absolute GPST: the RINEX week field is the system's own week count (GPS and
-        # Galileo: the GPS-aligned continuous week; BeiDou: the BDT week, epoch 2006-01-01).
-        if sysc in "GE":
+        # toe as absolute GPST: the RINEX week field is the system's own week count (GPS,
+        # Galileo and QZSS: the GPS-aligned continuous week; BeiDou: the BDT week, epoch
+        # 2006-01-01).
+        if sysc in "GEJ":
             e["toe_gpst"] = e["week"] * 604800.0 + e["toe_sow"]
         else:
             e["toe_gpst"] = (e["week"] + 1356.0) * 604800.0 + e["toe_sow"] - BDT_GPST
         if e["sqrta"] > 1000.0:  # sanity: reject empty/garbled records
             out.setdefault((sysc, prn), []).append(e)
-        # (SBAS, QZSS and NavIC records are skipped by the sysc filter.)
+        # (NavIC records are skipped by the sysc filter.)
     for k in out:
         out[k] = EphRecords(sorted(out[k], key=lambda e: e["toe_gpst"]))
     return out
@@ -705,12 +717,13 @@ def group_delay_s(e, signal, dcb=None):
                 return _v
         except Exception:
             pass
-    tgd = float(e.get("tgd") or 0.0)  # G: TGD | E: BGD(E1,E5a) | C: TGD1(B1I,B3I)
+    tgd = float(e.get("tgd") or 0.0)  # G, J: TGD | E: BGD(E1,E5a) | C: TGD1(B1I,B3I)
     tgd2 = float(e.get("iodc") or 0.0)  # E: BGD(E1,E5b) | C: TGD2(B2I,B3I) | G: IODC
-    if sysc == "G":
+    if sysc in ("G", "J"):
         # L5: IS-GPS-705's term is -TGD + ISC_L5I5 (the form the DCB path computes). ISC_L5I5
         # is CNAV-only and not in RINEX 3, so it is taken as 0. Scaling TGD as 1/f^2
         # (gamma_15 * TGD) would assume ISC_L5I5 = (1 - gamma_15) * TGD, which the ICD does not.
+        # QZSS L5 has the same term (IS-QZSS-PNT), with ISC_L5Q5 taken as 0 likewise.
         if "l5" in sig:
             return -tgd
         # L2C: IS-GPS-200's term is -TGD + ISC_L2C, and ISC_L2C is CNAV-only too. TGD is
@@ -845,6 +858,10 @@ HEALTH_GATE_EXEMPT = {
     # 29 deg of boresight, with no lane it raised the projected residual in the E5a, E5b and E6
     # lobes by 4 dB.
     ("E", 9): "GSAT0209",
+    # QZSS QZS-7 (J09, PRN 201) at 175 W, not yet in service: health 55, the L5 bit set.
+    # On 2026-11-25 its L5 signal was in the visibilities all night from az 243 el 11-16, a mode
+    # fixed in the array frame with the spectrum of a 10.23 Mcps code at 1176.45 MHz.
+    ("J", 201): "QZS-7",
 }
 
 
@@ -1004,9 +1021,15 @@ def predict_all(
         )
         if e is None:
             continue
+        health = e.get("health", 0)
+        if key[0] == "J":
+            # QZSS health is per signal, and the L1C/A and L1C/B bits are never both clear
+            # (one satellite sends only one of the two), so the whole word is non-zero on a
+            # healthy satellite. L5 is the QZSS signal the chains track.
+            health = int(health) & QZSS_HEALTH_L5
         if (
             health_gate
-            and e.get("health", 0) not in (0, 0.0)
+            and health not in (0, 0.0)
             and key[0] not in "CS"
             and key not in HEALTH_GATE_EXEMPT
         ):

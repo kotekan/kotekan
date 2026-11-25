@@ -1001,3 +1001,31 @@ chains:
     # No phase-slope fit: one channel per instance.
         spectrum-endpoints: null
         dll-combiners: fleet
+
+  # -- 1176.45 MHz: qzss_l5 --
+  # QZSS L5-Q, the dataless pilot: GPS L5-Q's code family and NH20 on PRNs 193..202
+  # (QZSS_L5_Q_NH), gps_l5's channels. Its satellites never cross the beam; the chain is for
+  # 201, QZS-7 at 175 W, which stands at az 243 el 11-16 all day, in the far sidelobes of every
+  # pointing. 194/195/196 rise to el ~17 in the north-west. Orbits from the IGS BRDC's J
+  # records (gnss_ephemeris: GPS's layout, keyed by PRN = Jnn + 192; the health gate reads the
+  # L5 bit, and 201, not yet in service, passes by HEALTH_GATE_EXEMPT). Model-primary like
+  # sbas_l5, with its key set: no search, the dead-reckon seed from the ephemeris, the joint
+  # clock adopted. No signal-capability: prn-reconfig-prns, the manifest's PRN list, is the
+  # capable set. The probes: 199 and 200 (QZS-3, QZS-6), geostationary at el -23 and -41, and
+  # 193, a code no satellite sends, at el -90.
+    qzss_l5:
+        signal: qzss_l5
+        prn-reconfig-prns: "194,195,196,201,199,200,193"
+        probe-dark: true
+        probe-dark-prns: "199,200,193"
+        presence-admit-displaced: true
+        seed-phase-transport: true
+        dr-clock-adopt: true
+        joint-consume: clk,rate
+        fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+        fleet-trim-bandwidth: 2.5
+        fleet-trim-readback: 1
+        trackers: fleet
+        combiner: fleet
+        spectrum-endpoints: fleet
+        dll-combiners: fleet

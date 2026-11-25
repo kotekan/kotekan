@@ -385,6 +385,8 @@ def set_prns_range(desc):
     gnss::max_prn, gnssSignal.hpp)."""
     if desc == "GW_1202":
         return 1, 2047
+    if desc.startswith("QZSS_"):
+        return 193, 202
     return (120, 158) if desc.startswith("SBAS_") else (1, 63)
 
 
