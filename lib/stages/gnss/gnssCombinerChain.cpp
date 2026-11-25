@@ -74,7 +74,8 @@ void rate_magnitudes(const std::vector<std::complex<double>>& x, const std::vect
     thread_local Plans plans;
     auto it = plans.by_nb.find(nb);
     if (it == plans.by_nb.end()) {
-        // The planner lock only to plan: the cache is this thread's.
+        // Every create and destroy holds the shared planner lock: gnssPsiTable plans double
+        // precision in the same process. fftw_execute runs outside it, on this thread's buffer.
         std::lock_guard<std::mutex> lk(fftw_planner_mutex());
         if (nb > plans.n) {
             plans.clear();
