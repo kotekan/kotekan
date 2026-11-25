@@ -13,7 +13,7 @@
 #include "kotekanLogging.hpp"          // for FATAL_ERROR, INFO
 #include "upchannelizeReference.hpp"   // for upchan_default_num_taps
 
-#include <cmath>      // for pow
+#include <cmath>      // for llround, pow
 #include <cstddef>    // for ptrdiff_t
 #include <cstdint>    // for uint64_t
 #include <functional> // for function
@@ -70,12 +70,16 @@ public:
 
             // Invent input data.
             std::vector<uint64_t> h_in(in_count);
-            std::uniform_real_distribution<double> ud(0.0, 1.0);
+            // Each bit is 1 with probability ones_prob, to 1/65536: one 16-bit draw per bit
+            const uint64_t threshold = std::llround(ones_prob * 65536);
             for (auto& x : h_in) {
                 uint64_t v = 0;
-                for (int b = 0; b < 64; ++b)
-                    if (ud(rng) < ones_prob)
-                        v |= uint64_t(1) << b;
+                for (int b = 0; b < 64; b += 4) {
+                    const uint64_t r = rng();
+                    for (int k = 0; k < 4; ++k)
+                        if (((r >> (16 * k)) & 0xffff) < threshold)
+                            v |= uint64_t(1) << (b + k);
+                }
                 x = v;
             }
 

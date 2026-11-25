@@ -12,11 +12,11 @@
 #include "errors.h"            // for TEST_PASSED
 #include "kotekanLogging.hpp"  // for FATAL_ERROR, INFO
 
-#include <cmath>      // for pow
+#include <cmath>      // for llround, pow
 #include <cstddef>    // for ptrdiff_t
 #include <cstdint>    // for uint64_t, uint8_t
 #include <functional> // for function
-#include <random>     // for mt19937_64, uniform_real_distribution
+#include <random>     // for mt19937_64
 #include <string>     // for string
 #include <vector>     // for vector
 
@@ -60,12 +60,16 @@ public:
 
             // Invent input data
             std::vector<uint64_t> h_in(in_count);
-            std::uniform_real_distribution<double> ud(0.0, 1.0);
+            // Each bit is 1 with probability ones_prob, to 1/65536: one 16-bit draw per bit
+            const uint64_t threshold = std::llround(ones_prob * 65536);
             for (auto& x : h_in) {
                 uint64_t v = 0;
-                for (int b = 0; b < 64; ++b)
-                    if (ud(rng) < ones_prob)
-                        v |= uint64_t(1) << b;
+                for (int b = 0; b < 64; b += 4) {
+                    const uint64_t r = rng();
+                    for (int k = 0; k < 4; ++k)
+                        if (((r >> (16 * k)) & 0xffff) < threshold)
+                            v |= uint64_t(1) << (b + k);
+                }
                 x = v;
             }
 
