@@ -60,6 +60,10 @@ aggregator:
             - "GPS_L5_Q:131,133,135"
 
 common:
+    # GnssN2Project's channel loop on two cpus per GPU, a hyperthread pair (#225): proj_0 15+47, proj_1 19+51,
+    # num_workers 2. The single-thread stage ran at 87-95% of its core and its stalls tripped the capture
+    # (11-25 "stream is out of step"). Needs a binary with 14face496.
+    n2-project-cpus: "15+47,19+51"
     # The mean projector record (N2Accumulate out_proj_mean_buf, /tmp/gnss/projmean, ~18 GB/node/day): per 21 s bin and
     # projected channel, the lane projector averaged over the frames the accumulator took. Nodes with n2-project only.
     # Needs a binary with 93bc715f1 (builds/fleet-745aebb92-cu135); install at a node_up cycle only.
