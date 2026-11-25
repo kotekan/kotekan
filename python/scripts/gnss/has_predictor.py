@@ -1,0 +1,160 @@
+"""Streaming Galileo E6-B C/NAV decoder (the E6 chain's HAS pages, run by nav_decode.py).
+
+Ingests the e6b_symbols stage's per-PRN nav_obs windows (GnssNavSymbols, one symbol per 1 ms
+record), decodes every whole page in each, and gathers the HAS pages of all satellites by message
+type and ID: a message of MS pages goes out as Reed-Solomon pages spread over the satellites, and
+any MS distinct ones give it back (galileo_cnav.recover). Each window is decoded on its own, as
+for B2b: a 3 s window holds two whole 1 s pages, and a page seen again in the next window is
+counted once, by its start.
+
+A recovered message stays held under its ID; a later page of that ID is checked against it, and
+one that disagrees starts the next message on that ID. Pages older than MID_TIMEOUT_S are
+dropped (the ICD's message completion time-out). Type 1 messages are parsed with the masks the
+earlier ones carried (galileo_cnav.parse_mt1).
+
+There is no ephemeris here: ephemeris() is None. health() counts pages; newest holds the newest
+type 1 message of each kind (orbit, clock, bias).
+
+nav_obs: {utc_ref, rec_dt, br, phase, bits=[[idx, +-1], ...]}, br = 1, rec_dt = 0.001.
+"""
+
+import time
+
+import numpy as np
+
+import galileo_cnav as C
+
+PAGE = C.PAGE_SYMS
+MID_TIMEOUT_S = 150.0
+SEEN_KEEP_S = 600.0
+
+
+class _PrnState:
+    def __init__(self):
+        self.last_obs = None
+        self.seen = {}  # page start (s, rounded) -> host time decoded
+        self.n_pages = 0  # CRC-valid pages
+        self.n_dummy = 0
+        self.n_bad = 0  # synced pages whose CRC failed
+        self.n_msgs = 0  # recovered messages this satellite sent a page of
+        self.page = None  # (bits, host time decoded) of the newest page
+        self.last_decode = 0.0
+
+
+class HasPredictor:
+    def __init__(self):
+        self._p = {}
+        self._min_gap = 0.0
+        self._msgs = (
+            {}
+        )  # (type, mid) -> {ms, pages {pid: octets}, prns {pid: prn}, t, octets}
+        self._masks = {}  # mask ID -> systems (galileo_cnav.parse_mt1)
+        self.n_messages = 0
+        self.newest = (
+            {}
+        )  # "orbit" / "clock" / "bias" / "mask" -> (host time, parsed message)
+
+    def ingest(self, prn, obs):
+        st = self._p.setdefault(prn, _PrnState())
+        try:
+            utc_ref = float(obs["utc_ref"])
+            sym_s = int(obs["br"]) * float(obs["rec_dt"])
+            pairs = obs["bits"]
+        except (KeyError, TypeError, ValueError):
+            return
+        key = (utc_ref, len(pairs))
+        if key == st.last_obs or sym_s <= 0 or len(pairs) < PAGE:
+            return
+        st.last_obs = key
+        s = np.zeros(int(pairs[-1][0]) + 1)
+        for i, v in pairs:
+            s[int(i)] = v
+        now = time.time()
+        sync = 1.0 - 2.0 * np.array(C.SYNC, dtype=float)
+        c = np.correlate(s[: len(s) - PAGE + C.N_SYNC], sync, "valid")
+        for i in np.nonzero(np.abs(c) == C.N_SYNC)[0]:
+            t = round(utc_ref + i * sym_s)
+            if t in st.seen or not s[i : i + PAGE].all():
+                continue
+            bits = C.decode_page(np.sign(c[i]) * s[i : i + PAGE])
+            if bits is None:
+                continue
+            if not C.check_page(bits):
+                st.n_bad += 1
+                continue
+            st.seen[t] = now
+            st.n_pages += 1
+            st.page = (bits, now)
+            h = C.header(bits)
+            if h is None:
+                st.n_dummy += 1
+            else:
+                self._add(prn, h, C.body_octets(bits), now)
+        if len(st.seen) > SEEN_KEEP_S:
+            st.seen = {k: v for k, v in st.seen.items() if now - v < SEEN_KEEP_S}
+
+    def _add(self, prn, h, octets, now):
+        k = (h["type"], h["mid"])
+        m = self._msgs.get(k)
+        held = m["pages"].get(h["pid"]) if m else None
+        if (
+            m is None
+            or m["ms"] != h["ms"]
+            or now - m["t"] > MID_TIMEOUT_S
+            or (held is not None and not np.array_equal(held, octets))
+            or (m["octets"] is not None and not self._agrees(m, h["pid"], octets))
+        ):
+            m = self._msgs[k] = {
+                "ms": h["ms"],
+                "pages": {},
+                "prns": {},
+                "t": now,
+                "octets": None,
+            }
+        m["pages"][h["pid"]] = octets
+        m["prns"][h["pid"]] = prn
+        m["t"] = now
+        if m["octets"] is not None or len(m["pages"]) < m["ms"]:
+            return
+        msg, _ = C.recover(m["pages"], m["ms"])
+        if msg is None:
+            return
+        m["octets"] = msg
+        self.n_messages += 1
+        for p in set(m["prns"].values()):
+            if p in self._p:
+                self._p[p].n_msgs += 1
+        if h["type"] != 1:
+            return
+        try:
+            d = C.parse_mt1(C.message_bits(msg), self._masks)
+        except ValueError:
+            return
+        d["mid"], d["ms"] = h["mid"], h["ms"]
+        for kind, flags in (
+            ("mask", ("mask",)),
+            ("orbit", ("orbit",)),
+            ("clock", ("clock", "clock_subset")),
+            ("bias", ("code_bias", "phase_bias")),
+        ):
+            if any(f in d["flags"] for f in flags) and "sats" in d:
+                self.newest[kind] = (now, d)
+
+    @staticmethod
+    def _agrees(m, pid, octets):
+        """Whether a page fits the message already recovered under its ID."""
+        return np.array_equal(C._combine(C.G[pid - 1, : m["ms"]], m["octets"]), octets)
+
+    def ephemeris(self, prn):
+        return None
+
+    def health(self, prn):
+        st = self._p.get(prn)
+        if st is None:
+            return None
+        return {
+            "pages": st.n_pages,
+            "dummy": st.n_dummy,
+            "crc_fail": st.n_bad,
+            "messages": st.n_msgs,
+        }

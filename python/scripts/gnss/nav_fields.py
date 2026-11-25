@@ -604,6 +604,40 @@ def _glo(b, hi, width):
     return v
 
 
+# Galileo E6-B C/NAV: the HAS page header (galileo_cnav).
+E6B_PAGE = [
+    ("HAS status", 14, 2, "u", 1, ""),
+    ("message type", 18, 2, "u", 1, ""),
+    ("message ID", 20, 5, "u", 1, ""),
+    ("message size less one", 25, 5, "u", 1, "pages"),
+    ("page ID", 30, 8, "u", 1, ""),
+]
+
+
+def has_rows(msg, sat, kind):
+    """[[label, value, unit], ...]: the HAS corrections of one kind ("orbit", "clock" or "bias")
+    a parsed type 1 message (galileo_cnav.parse_mt1) carries for one satellite ("E04"),
+    unavailable ones left out."""
+    d = msg.get("sats", {}).get(sat, {})
+    rows = []
+    orb = d.get("orbit") if kind == "orbit" else None
+    if orb:
+        rows.append(["IOD", orb["iod"], ""])
+        for k in ("radial", "in_track", "cross_track"):
+            if orb[k + "_m"] is not None:
+                rows.append([k.replace("_", "-"), orb[k + "_m"], "m"])
+    if kind == "clock" and d.get("clock_m") is not None:
+        rows.append(["clock", d["clock_m"], "m"])
+    for key, label, unit in (
+        ("code_bias_m", "code bias", "m"),
+        ("phase_bias_cyc", "phase bias", "cyc"),
+    ):
+        for sig, v in (d.get(key) or {}).items() if kind == "bias" else ():
+            if v is not None:
+                rows.append(["%s %s" % (label, sig), v, unit])
+    return rows
+
+
 def _rows(bits, layout, glo=False):
     out = []
     for label, start, width, kind, scale, unit in layout:
@@ -668,6 +702,10 @@ def parse(signal, kind, num, bits, frame=None):
     if signal == "GAL_E5AI_FNAV":
         title, lay = FNAV.get(num, ("", []))
         return title, _rows(bits, lay)
+    if signal == "GAL_E6B_CNAV":
+        if _read(bits, 14, 24, "u") == 0xAF3BC3:
+            return "dummy page (no HAS)", []
+        return "HAS page", _rows(bits, E6B_PAGE)
     if signal == "BDS_B3I_D1":
         title, lay = D1.get(num, ("", []))
         rows = _rows(bits, [("SOW", (18, 8, 30, 12), 20, "u", 1, "s")] + lay)

@@ -23,8 +23,9 @@ const SIG_NAME = {
     GPS_L5_CNAV: "L5-I · CNAV",
     GAL_E1B_INAV: "E1-B · I/NAV", GAL_E5AI_FNAV: "E5a-I · F/NAV", GAL_E5BI_INAV: "E5b-I · I/NAV",
     BDS_B1C_BCNAV1: "B1C-D · B-CNAV1", BDS_B2A_BCNAV2: "B2a-D · B-CNAV2",
-    BDS_B2B_BCNAV3: "B2b-I · B-CNAV3",
-    GW_1202: "1202 MHz · low-rate",
+    BDS_B2B_BCNAV3: "B2b-I · B-CNAV3", BDS_B3I_D1: "B3I · D1", SBAS_L5_DFMC: "L5 · DFMC",
+    GLO_L2OF: "L2OF · GLONASS nav", GAL_E6B_CNAV: "E6-B · C/NAV (HAS)",
+    GW_1202: "1202 MHz · low-rate", GW_CSK: "1202 MHz · CSK",
 };
 
 function dot(color, title) {

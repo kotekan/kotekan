@@ -133,6 +133,8 @@ DECODERS = {
         glonass_nav_predictor.brdc_xcheck,
         "toe_gpst",
     ),
+    # E6-B's HAS pages: corrections to the broadcast orbits and clocks, no ephemeris.
+    "GAL_E6B_CNAV": ("E", "has_predictor", "HasPredictor", None, "t0e"),
 }
 
 BRDC_REFRESH_S = 1800.0
@@ -174,11 +176,12 @@ def note_progress(src, prn, now):
         p["ev"].popleft()
 
 
-def message_types(signal, st):
+def message_types(signal, st, dec=None, prn=None):
     """{message type: [count or None, newest decode time or None, title, fields]} from a
     decoder's per-PRN state: I/NAV words, F/NAV pages, B-CNAV2/3 message types, D1 subframes
     (subframe 5's time-offset pages on their own), GLONASS strings, SBAS message types (counts),
-    CNAV message types (counts); fields as nav_fields.parse reads the newest of each."""
+    CNAV message types (counts), the newest C/NAV page and the HAS corrections for the satellite
+    (from dec); fields as nav_fields.parse reads the newest of each."""
     out = {}
 
     def put(key, kind, num, n, t, bits, frame=None):
@@ -216,6 +219,14 @@ def message_types(signal, st):
     elif signal == "SBAS_L5_DFMC":
         for k, n in st.types.items():
             put("type %d" % k, "type", k, n, None, None)
+    elif signal == "GAL_E6B_CNAV":
+        if st.page is not None:
+            put("page", "page", 0, st.n_pages, st.page[1], st.page[0])
+        for kind, (t, d) in sorted(dec.newest.items()) if dec is not None else ():
+            rows = nav_fields.has_rows(d, "E%02d" % prn, kind)
+            if rows:
+                title = "HAS %s (message %d, TOH %d s)" % (kind, d["mid"], d["toh"])
+                out["HAS " + kind] = [None, t, title, rows]
     elif signal in ("GPS_L5_CNAV", "GPS_L2C_CNAV"):
         count, newest = {}, {}
         for slot, bits in st.decoded.items():
@@ -348,7 +359,7 @@ def write_payload(srcs, path, now):
                     "health": h,
                     "eph": eph,
                     "eph_age_s": None if age is None else round(age),
-                    "msgs": message_types(s["signal"], st),
+                    "msgs": message_types(s["signal"], st, dec, prn),
                 }
             except Exception as e:
                 log("%s PRN %d: payload failed (%s)" % (s["signal"], prn, e))
