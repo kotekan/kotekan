@@ -5,14 +5,14 @@
 
 class pirateDestination : public networkDestination {
 public:
-    pirateDestination(const std::string& server_ip="", uint16_t server_port=0,
-                       uint32_t reconnect_timeout=0, uint32_t send_timeout=0);
+    pirateDestination(const std::string& server_ip = "", uint16_t server_port = 0,
+                      uint32_t reconnect_timeout = 0, uint32_t send_timeout = 0);
 
     /// Have we sent the pirate protocol header yet?
     bool sent_header;
 
     /// Beamset that we're sending to this destination
-    //int beamset;
+    // int beamset;
 
     /// Beam index range
     int beam_index_min;

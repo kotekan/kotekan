@@ -51,8 +51,8 @@ static_assert(sizeof(bufferFrameHeader) == 12, "bufferFrameHeader should be 12 b
  */
 class networkDestination : public kotekan::kotekanLogging {
 public:
-    networkDestination(const std::string& server_ip="", uint16_t server_port=0,
-                       uint32_t reconnect_timeout=0, uint32_t send_timeout=0);
+    networkDestination(const std::string& server_ip = "", uint16_t server_port = 0,
+                       uint32_t reconnect_timeout = 0, uint32_t send_timeout = 0);
 
     /// The connection file handle
     int socket_fd;
