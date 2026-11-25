@@ -150,6 +150,8 @@ def powers_from_top(top):
     the other 60 at the noise."""
     p = np.ones(64)
     for i in range(0, len(top), 2):
+        if top[i + 1] is None:  # -inf dB (a frame with no power) reads as JSON null
+            continue
         p[int(top[i])] = 10.0 ** (float(top[i + 1]) / 10.0)
     return p
 
