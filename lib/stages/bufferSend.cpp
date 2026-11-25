@@ -46,8 +46,7 @@ bufferSend::bufferSend(Config& config, const std::string& unique_name,
          config.get_default<uint32_t>(unique_name, "reconnect_time", 5),
          config.get_default<uint32_t>(unique_name, "send_timeout", 20)),
     dropped_frame_counter(
-                          Metrics::instance().add_counter("kotekan_buffer_send_dropped_frame_count", unique_name))
-{
+        Metrics::instance().add_counter("kotekan_buffer_send_dropped_frame_count", unique_name)) {
     buf = get_buffer(buffer_name);
     // Every frame is sent with its metadata object; bufferRecv cannot accept a frame without one.
     if (!buf->metadata_pool) {
@@ -181,8 +180,8 @@ bool bufferSend::send_frame(uint8_t* frame, int frame_id, networkDestination& de
         const std::string desc_json = desc ? desc->to_json().dump() : std::string();
         uint32_t frame_desc_size = static_cast<uint32_t>(desc_json.size());
         if (!dest.send_data((uint8_t*)&frame_desc_size, sizeof(frame_desc_size))) {
-            ERROR("Error {:s}, failed to send frame_desc size to {:s}:{:d}",
-                  strerror(errno), dest.server_ip, dest.server_port);
+            ERROR("Error {:s}, failed to send frame_desc size to {:s}:{:d}", strerror(errno),
+                  dest.server_ip, dest.server_port);
             dest.close_connection();
             return false;
         }
@@ -203,8 +202,8 @@ bool bufferSend::send_frame(uint8_t* frame, int frame_id, networkDestination& de
         char metabuf[metadata_size];
         meta->serialize(metabuf);
         if (!dest.send_data((uint8_t*)metabuf, metadata_size)) {
-            ERROR("Error {:s}, failed to send metadata to {:s}:{:d}", strerror(errno), dest.server_ip,
-                  dest.server_port);
+            ERROR("Error {:s}, failed to send metadata to {:s}:{:d}", strerror(errno),
+                  dest.server_ip, dest.server_port);
             return false;
         }
     }
@@ -225,18 +224,11 @@ bool bufferSend::send_frame(uint8_t* frame, int frame_id, networkDestination& de
     return true;
 }
 
-networkDestination::networkDestination(const std::string& ip, uint16_t port,
-                                       uint32_t reconnect_t, uint32_t send_t) :
-    socket_fd(-1),
-    server_port(port),
-    server_ip(ip),
-    connected(false),
-    reconnect_time(reconnect_t),
-    send_timeout(send_t),
-    first_transmission_sent(false),
-    desc_sent(false),
-    config_tracker_combined_hash("")
-{
+networkDestination::networkDestination(const std::string& ip, uint16_t port, uint32_t reconnect_t,
+                                       uint32_t send_t) :
+    socket_fd(-1), server_port(port), server_ip(ip), connected(false), reconnect_time(reconnect_t),
+    send_timeout(send_t), first_transmission_sent(false), desc_sent(false),
+    config_tracker_combined_hash("") {
     bzero(&server_addr, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = inet_addr(server_ip.c_str());
@@ -246,9 +238,7 @@ networkDestination::networkDestination(const std::string& ip, uint16_t port,
 bool networkDestination::send_data(const uint8_t* data, int32_t len) {
     int32_t n = 0;
     int32_t n_sent = 0;
-    while (
-        (n = send(socket_fd, &data[n_sent], len - n_sent, MSG_NOSIGNAL))
-        > 0) {
+    while ((n = send(socket_fd, &data[n_sent], len - n_sent, MSG_NOSIGNAL)) > 0) {
         n_sent += n;
     }
     return (n >= 0);
@@ -256,8 +246,8 @@ bool networkDestination::send_data(const uint8_t* data, int32_t len) {
 
 void networkDestination::start_connect_thread(const std::string& name,
                                               const std::atomic_bool& stop_thread) {
-    connect_thread = std::thread(&networkDestination::connect_to_server, this,
-                                 std::ref(name), std::ref(stop_thread));
+    connect_thread = std::thread(&networkDestination::connect_to_server, this, std::ref(name),
+                                 std::ref(stop_thread));
 }
 
 void networkDestination::close_connection() {
@@ -273,7 +263,7 @@ void networkDestination::close_connection() {
 }
 
 void networkDestination::connect_to_server(const std::string& name,
-                                           const std::atomic_bool & stop_thread) {
+                                           const std::atomic_bool& stop_thread) {
 
     while (!stop_thread) {
 
