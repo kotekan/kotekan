@@ -442,11 +442,11 @@ numa_{{ numa }}:
 
     n2_pool{{ numa_sfx }}:
         kotekan_metadata_pool: N2Metadata
-        num_metadata_objects: num_freq_gpu_buf * host_buffer_depth
+        num_metadata_objects: 2 * num_freq_gpu_buf * host_buffer_depth
 
     vis_pool{{ numa_sfx }}:
         kotekan_metadata_pool: VisMetadata
-        num_metadata_objects: num_freq_gpu_buf * gpu_buffer_depth # same as n2_pool
+        num_metadata_objects: 2 * num_freq_gpu_buf * gpu_buffer_depth # same as n2_pool
 
     ############################################################################
     # Packet intake
@@ -1065,6 +1065,13 @@ numa_{{ numa }}:
         num_frames: gpu_buffer_depth * num_freq_gpu_buf
         metadata_pool: n2_pool{{ numa_sfx }}
 
+    vis_10s_valved_buffer{{ numa_sfx }}:
+        kotekan_buffer: N2
+        num_ev: 0
+        n2_layout: "FullUpperTri"
+        num_frames: gpu_buffer_depth * num_freq_gpu_buf
+        metadata_pool: n2_pool{{ numa_sfx }}
+
     eig_10s_buffer{{ numa_sfx }}:
         kotekan_buffer: N2
         num_ev: num_ev_to_calculate
@@ -1124,13 +1131,18 @@ numa_{{ numa }}:
         num_ev: 0 # only allowed value
         variance_mode: CHIMEv1
 
+    vis_valve:
+        kotekan_stage: Valve
+        in_buf: vis_10s_buffer{{ numa_sfx }}
+        out_buf: vis_10s_valved_buffer{{ numa_sfx }}
+
     eigencalc:
         kotekan_stage: EigenN2Iter
         # dedicated cores of this NUMA domain, one per blaze worker
         cpu_affinity: {{ cpus(numa, eigen_cores) }}
         num_blaze_workers: {{ eigen_cores | length }}
         num_ev: num_ev_to_calculate
-        in_buf: vis_10s_buffer{{ numa_sfx }}
+        in_buf: vis_10s_valved_buffer{{ numa_sfx }}
         out_buf: eig_10s_buffer{{ numa_sfx }}
         # Convergence config from chime science run
         tol_eval: 0.00001
