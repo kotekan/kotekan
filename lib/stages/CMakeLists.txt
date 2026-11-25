@@ -63,6 +63,7 @@ add_library(
     restInspectFrame.cpp
     frbNetworkSend.cpp
     pulsarNetworkProcess.cpp
+    pulsarNetworkProducer.cpp
     bufferMerge.cpp
     bufferCopy.cpp
     bufferSwitch.cpp
@@ -77,6 +78,8 @@ add_library(
     setFRB1Phase.cpp
     setFRBBeams.cpp
     calcFRB2Weights.cpp
+    BeamformingPhaseUpdate.cpp
+    FloatPhaseUpdate.cpp
     # RFI Pipeline Processes
     rfiVDIF.cpp
     rfiAVXVDIF.cpp

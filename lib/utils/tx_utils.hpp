@@ -10,6 +10,15 @@
 #include <chrono> // for clockid_t
 #endif
 
+#include <arpa/inet.h>
+
+
+/** @brief get primary IPv4 address from gethostname()
+ *
+ *  @return scokaddr_in IPv4 address of node
+ **/
+
+struct sockaddr_in get_my_addr(const in_addr_t netaddr, const in_addr_t netmask);
 
 /** @brief parse the gethostname() return string to the IP address of the node
  *
