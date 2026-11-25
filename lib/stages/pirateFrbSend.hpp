@@ -12,7 +12,7 @@ public:
     bool sent_header;
 
     /// Beamset that we're sending to this destination
-    //int beamset;
+    // int beamset;
 
     /// Beam index range
     int beam_index_min;
