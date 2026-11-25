@@ -72,6 +72,21 @@ def conv_encode(bits, flush=True):
     return np.array(out, dtype=np.int8)
 
 
+def _preds():
+    """Each next state's two (state, bit) predecessors, in the order the trellis loop meets
+    them (state, then bit), so a tie keeps the first."""
+    ps = [[] for _ in range(NSTATES)]
+    for s in range(NSTATES):
+        for b in (0, 1):
+            ps[int(_NXT[s, b])].append((s, b))
+    ps = np.array(ps)
+    s, b = ps[..., 0], ps[..., 1]
+    return s, b.astype(np.int8), _EXP[s, b, 0], _EXP[s, b, 1]
+
+
+_PS, _PB, _PE0, _PE1 = _preds()
+
+
 def viterbi_decode(symbols, known_start=True):
     n = len(symbols) // 2
     r = np.asarray(symbols[: 2 * n], dtype=float).reshape(n, 2)
@@ -82,20 +97,14 @@ def viterbi_decode(symbols, known_start=True):
     prev = np.zeros((n, NSTATES), dtype=np.int32)
     pbit = np.zeros((n, NSTATES), dtype=np.int8)
     for i in range(n):
-        npm = np.full(NSTATES, NEG)
-        r0, r1 = r[i, 0], r[i, 1]
-        for s in range(NSTATES):
-            if pm[s] <= NEG:
-                continue
-            base = pm[s]
-            for b in (0, 1):
-                m = base + _EXP[s, b, 0] * r0 + _EXP[s, b, 1] * r1
-                ns = int(_NXT[s, b])
-                if m > npm[ns]:
-                    npm[ns] = m
-                    prev[i, ns] = s
-                    pbit[i, ns] = b
-        pm = npm
+        # Add-compare-select over all states at once; a predecessor not yet reached is out.
+        m = np.where(pm[_PS] > NEG, pm[_PS] + _PE0 * r[i, 0] + _PE1 * r[i, 1], -np.inf)
+        second = m[:, 1] > m[:, 0]
+        best = np.where(second, m[:, 1], m[:, 0])
+        live = best > NEG
+        prev[i] = np.where(live, np.where(second, _PS[:, 1], _PS[:, 0]), 0)
+        pbit[i] = np.where(live, np.where(second, _PB[:, 1], _PB[:, 0]), 0)
+        pm = np.where(live, best, NEG)
     s = int(np.argmax(pm))
     bits = np.zeros(n, dtype=np.int8)
     for i in range(n - 1, -1, -1):
