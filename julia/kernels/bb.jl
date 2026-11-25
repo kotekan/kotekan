@@ -1519,10 +1519,9 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
         println("Finished benchmark runs in $(stats.time) seconds.")
         # All times in μsec
         runtime = stats.time / nruns * 1.0e+6
-        num_frequencies_scaled = F₀
-        runtime_scaled = runtime / F * num_frequencies_scaled
-        dataframe_length = T * sampling_time_μsec
-        fraction = runtime_scaled / dataframe_length
+        # Each call processes `Tmax - Tmin` time samples for all `F` frequencies of one GPU
+        dataframe_length = (Tmax - Tmin) * sampling_time_μsec
+        fraction = runtime / dataframe_length
         round1(x) = round(x; digits=1)
         println("""
         benchmark-result:
@@ -1545,8 +1544,6 @@ function main(; compile_only::Bool=false, output_kernel::Bool=false, run_selftes
             shmem_bytes: $shmem_bytes
           result-μsec:
             runtime: $(round1(runtime))
-            scaled-runtime: $(round1(runtime_scaled))
-            scaled-number-of-frequencies: $num_frequencies_scaled
             dataframe-length: $(round1(dataframe_length))
             dataframe-percent: $(round1(fraction * 100))
         """)
