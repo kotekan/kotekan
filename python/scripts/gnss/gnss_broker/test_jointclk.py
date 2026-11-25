@@ -576,6 +576,218 @@ def test_coast_on_refusal():
         )
 
 
+class _TrkJoint(_FakeJoint):
+    """A tracker-fed state double: _FakeJoint plus the newest accepted measurement's time,
+    which trk_unfit reads for staleness."""
+
+    def __init__(self, clk, sigma, t_acc, n=14, clk_rate=0.0, L=REF_LEN):
+        _FakeJoint.__init__(self, clk, sigma, n=n, clk_rate=clk_rate, L=L)
+        self._t_acc = t_acc
+
+    def last_accepted(self):
+        return self._t_acc
+
+
+def _consume_trk(
+    rate,
+    code_len,
+    legacy,
+    trk_clk,
+    primary,
+    sigma=0.037,
+    clk_rate=0.0,
+    dr_state=None,
+    coast_max_s=300.0,
+    t0=100.0,
+    trk_t_acc=None,
+    search_clk=None,
+):
+    """dr_joint_clk on a --joint-source trk chain, joint_read included: TRK_STATE at trk_clk
+    (fresh unless trk_t_acc is older than joint_trk_stale_s 30 s), JOINT_STATE (the
+    search-fed fallback) at search_clk. Returns (clk_now after, JOINT-CLK line)."""
+    rx = Receiver(log=lambda m: None)
+    trk = _TrkJoint(
+        trk_clk, sigma, t0 if trk_t_acc is None else trk_t_acc, clk_rate=clk_rate
+    )
+    srch = _FakeJoint(
+        trk_clk if search_clk is None else search_clk, sigma, clk_rate=clk_rate
+    )
+    rx._joint[deadreckon.TRK_STATE] = trk
+    rx._joint[deadreckon.JOINT_STATE] = srch
+    args = types.SimpleNamespace(
+        joint_source="trk",
+        joint_clk_primary=primary,
+        joint_min_sats=4,
+        joint_clk_max_chips=MAX_CHIPS,
+        joint_clk_max_sigma=MAX_SIGMA,
+        joint_clk_max_step_chips=0.3,
+        joint_clk_step_hold_s=30.0,
+        joint_clk_coast_max_s=coast_max_s,
+        joint_max_rate_ppm=0.01,
+        joint_trk_stale_s=30.0,
+        joint_trk_return_s=30.0,
+        chip_rate_hz=rate,
+    )
+    ctx = types.SimpleNamespace(
+        args=args,
+        rx=rx,
+        band_id="test",
+        code_len=code_len,
+        t0=t0,
+        dr_state={} if dr_state is None else dr_state,
+        drp=types.SimpleNamespace(clk_now=legacy, t_now_abs=t0),
+        joint_state=lambda _rx, _b, _a, which=None: (
+            srch if which == deadreckon.JOINT_STATE else trk
+        ),
+    )
+    lines = []
+    _orig = deadreckon._log_rl, deadreckon._log
+    deadreckon._log_rl = lambda key, msg, every_s=10.0: lines.append(msg)
+    deadreckon._log = lambda msg: None
+    try:
+        deadreckon.dr_joint_clk(ctx)
+    finally:
+        deadreckon._log_rl, deadreckon._log = _orig
+    jl = [x for x in lines if x.startswith("JOINT-CLK")]
+    return ctx.drp.clk_now, (jl[0] if jl else "")
+
+
+def test_primary():
+    """--joint-clk-primary (docs 6.3 step 4): the tracker-fed clock is adopted without the
+    bound against the legacy clock; sigma, the step guard and the coast rules stand; a stale
+    tracker-fed state is coasted on rather than replaced by the search-fed one. Off, the
+    consumer is unchanged (the 11-25 06:45:48 E6 numbers: legacy 2102.215, joint 4210.273
+    reference chips, delta +5.842 -> refused)."""
+    E6_LEGACY, TRK = 2102.215, 4210.273
+    clk, line = _consume_trk(E6_RATE, E6_LEN, E6_LEGACY, TRK, primary=False)
+    check(
+        clk == E6_LEGACY and "-> REFUSED (bounds 5.0 chips" in line,
+        "off: the 11-25 E6 numbers are refused as before (%s)" % line[-60:],
+    )
+    ds = {}
+    clk, line = _consume_trk(E6_RATE, E6_LEN, E6_LEGACY, TRK, primary=True, dr_state=ds)
+    check(
+        abs(clk - TRK / 2.0) < 1e-9
+        and "ADOPTED (primary: past the 5.0-chip legacy bound)" in line
+        and ds["jclk_last"] == TRK
+        and ds["jclk_t"] == 100.0,
+        "primary: adopted at 2105.1365 E6 chips, stamped, and the line says the bound was "
+        "passed (%s)" % line[-60:],
+    )
+    clk, line = _consume_trk(E6_RATE, E6_LEN, 2104.9, TRK, primary=True)
+    check(
+        abs(clk - TRK / 2.0) < 1e-9 and line.endswith("-> ADOPTED"),
+        "primary inside the bound: a plain ADOPTED",
+    )
+    clk, line = _consume_trk(E6_RATE, E6_LEN, E6_LEGACY, TRK, primary=True, sigma=0.6)
+    check(
+        clk == E6_LEGACY and "REFUSED (bounds 5.0 chips / 0.50 sigma)" in line,
+        "primary: the sigma bound still refuses (%s)" % line[-50:],
+    )
+    # The step guard: last adopted 150.2 ref at t=90; the joint is at 151.1 and the legacy
+    # 10 chips away. The guard refuses, and the coast (stamped rate -0.0004) is taken even
+    # though it is 10 chips from the legacy clock.
+    ds = {
+        "jclk_last": 150.2,
+        "jclk_last_t": 90.0,
+        "jclk_t": 90.0,
+        "jclk_last_rate": -0.0004,
+    }
+    clk, line = _consume_trk(REF_RATE, REF_LEN, 140.2, 151.1, primary=True, dr_state=ds)
+    check(
+        abs(clk - (150.2 - 0.004)) < 1e-9 and "COAST (refused: step +0.900" in line,
+        "primary: the step guard refuses and the coast ignores the legacy bound (%s)"
+        % line[-70:],
+    )
+    # A long coast: TRK_STATE stale for 1500 s, stamped rate -0.0046 ref chips/s (the
+    # 11-25 receiver), window 1800 s: 6.9 chips of extrapolation, past what the default
+    # coast allows, and taken; the search-fed state (2 chips off) is not read.
+    ds = {
+        "jclk_last": 4210.0,
+        "jclk_last_t": -1400.0,
+        "jclk_t": -1400.0,
+        "jclk_last_rate": -0.0046,
+    }
+    clk, line = _consume_trk(
+        REF_RATE,
+        REF_LEN,
+        4205.0,
+        4210.0,
+        primary=True,
+        dr_state=ds,
+        coast_max_s=1800.0,
+        trk_t_acc=-1400.0,
+        search_clk=4208.0,
+    )
+    check(
+        abs(clk - (4210.0 - 0.0046 * 1500.0)) < 1e-6
+        and "COAST (primary: the tracker-fed state is stale or unfit" in line,
+        "primary, TRK_STATE stale 1500 s: coasts 6.9 chips on the stamped rate, not onto "
+        "the search-fed state (%s)" % line[-80:],
+    )
+    # Off, with no adoption behind it (so no step guard): the stale TRK_STATE hands over to
+    # the search-fed state, 3 chips from the legacy clock, as before.
+    clk, line = _consume_trk(
+        REF_RATE,
+        REF_LEN,
+        4205.0,
+        4210.0,
+        primary=False,
+        coast_max_s=1800.0,
+        trk_t_acc=-1400.0,
+        search_clk=4208.0,
+    )
+    check(
+        abs(clk - 4208.0) < 1e-9 and "[trk->search" in line and "ADOPTED" in line,
+        "off: a stale TRK_STATE hands over to the search-fed state (%s)" % line[-40:],
+    )
+    # A stamped rate past joint_max_rate_ppm (0.01 ppm = 0.1023 ref chips/s): no coast,
+    # and with the window closed the search-fed state bootstraps under the ordinary bound.
+    # The search-fed state sits within the step guard's 0.3 chips of the last adoption.
+    ds = {
+        "jclk_last": 4210.0,
+        "jclk_last_t": 50.0,
+        "jclk_t": 50.0,
+        "jclk_last_rate": 0.2,
+    }
+    clk, line = _consume_trk(
+        REF_RATE,
+        REF_LEN,
+        4207.0,
+        4210.0,
+        primary=True,
+        dr_state=ds,
+        trk_t_acc=50.0,
+        search_clk=4210.1,
+    )
+    check(
+        abs(clk - 4210.1) < 1e-9 and "[trk->search" in line and "ADOPTED" in line,
+        "primary, rate past the cap: no coast; the search-fed state bootstraps (%s)"
+        % line[-40:],
+    )
+    ds = {
+        "jclk_last": 4210.0,
+        "jclk_last_t": -400.0,
+        "jclk_t": -400.0,
+        "jclk_last_rate": -0.0046,
+    }
+    clk, line = _consume_trk(
+        REF_RATE,
+        REF_LEN,
+        4201.0,
+        4210.0,
+        primary=True,
+        dr_state=ds,
+        trk_t_acc=-400.0,
+        search_clk=4208.0,
+    )
+    check(
+        clk == 4201.0 and "[trk->search" in line and "REFUSED (bounds 5.0" in line,
+        "primary, coast window closed: the search-fed state bootstraps under the ordinary "
+        "bound, which refuses it 7 chips out (%s)" % line[-60:],
+    )
+
+
 def rate_consumer_divisors(path=BROKER):
     """(number of joint-rate consumer blocks, divisors of every `clk_rate / x` inside them,
     whether the block reads Receiver.joint_unit)."""
@@ -1019,6 +1231,7 @@ def main():
         test_ten_mcps_unchanged,
         test_one_unit,
         test_coast_on_refusal,
+        test_primary,
         test_rate_consumer_unit,
         test_seed_offset_per_prn,
         test_seed_offset_summary_wrap,

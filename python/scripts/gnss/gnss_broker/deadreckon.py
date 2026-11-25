@@ -1268,7 +1268,15 @@ def _joint_coast(ctx, ds, jrate, jlen):
     if not (0.0 <= age <= ctx.args.joint_clk_coast_max_s):
         return None
     ext = rate * age
-    if abs(ext) > ctx.args.joint_clk_max_chips:
+    # --joint-clk-primary: the clock is the tracker-fed one, so a coast is bounded by what the
+    # stamped rate can be (joint_max_rate_ppm), not by the adoption bound against a legacy
+    # clock it no longer answers to. A long coast (a transit) then follows the receiver's
+    # real drift rather than being declined part way.
+    primary = _jclk_primary(ctx)
+    if primary:
+        if abs(rate) > _jclk_rate_cap(ctx, jrate):
+            return None
+    elif abs(ext) > ctx.args.joint_clk_max_chips:
         return None
     delta, delta_j = ctx.rx.joint_clk_delta(
         (last + ext) % jlen,
@@ -1280,10 +1288,25 @@ def _joint_coast(ctx, ds, jrate, jlen):
     )
     # Nor may the coast move the clock further than an adoption may. Past that the legacy
     # clock has stepped under it (a declared re-pin after the capture re-based), and the
-    # coast would hold every seed on the clock from before the step.
-    if abs(delta_j) > ctx.args.joint_clk_max_chips:
+    # coast would hold every seed on the clock from before the step. Under
+    # --joint-clk-primary an adoption has no such bound either.
+    if not primary and abs(delta_j) > ctx.args.joint_clk_max_chips:
         return None
     return delta, ext, age, rate
+
+
+def _jclk_primary(ctx):
+    """--joint-clk-primary on a --joint-source trk chain: the tracker-fed joint clock is the
+    level, adopted without the bound against the legacy (search or sibling) clock."""
+    return bool(getattr(ctx.args, "joint_clk_primary", False)) and (
+        joint_which(ctx.args) == TRK_STATE
+    )
+
+
+def _jclk_rate_cap(ctx, jrate):
+    """The largest clock rate a primary coast runs on, joint chips per second:
+    joint_max_rate_ppm of the joint's chip rate, the bound the rate consumer uses."""
+    return float(getattr(ctx.args, "joint_max_rate_ppm", 0.01)) * 1e-6 * jrate
 
 
 def dr_joint_rate(ctx):
@@ -1421,11 +1444,37 @@ def dr_joint_clk(ctx):
     membership churn steps the delta while the joint stands still, and a hold on each of
     those would put the chain back on the churned clock the joint replaces. The receiver
     clock moves under 0.003 chips/s, so a walk never meets the guard and a real level change
-    is a discontinuity, followed one hold late."""
+    is a discontinuity, followed one hold late.
+
+    --joint-clk-primary (a --joint-source trk chain only, docs 6.3 step 4): the tracker-fed
+    clock is the level. It is adopted without the joint_clk_max_chips bound against the
+    legacy clock, which is the search median or a sibling's, the very clock the joint
+    replaces; the sigma bound, the step guard and the period check stand. While TRK_STATE is
+    stale or unfit, the chain coasts on its last adoption of it rather than reading the
+    search-fed state (#242: a transit withholds the feed for 13-23 min, where the search is
+    worst), and only once the coast window has closed does the search-fed state bootstrap it,
+    under the ordinary bounds."""
     # --joint-source: the state joint_read hands out (search-fed, tracker-fed, or the
     # search-fed one a trk chain falls back to), whose unit every conversion below must use;
     # the tag says which.
     _jrC, _which, _tag = joint_read(ctx)
+    _prim = _jclk_primary(ctx)
+    if _prim and _which != TRK_STATE:
+        # The tracker-fed state is stale or unfit: coast on its last adoption here.
+        _unitT = ctx.rx.joint_unit(TRK_STATE)
+        _cT = _joint_coast(ctx, ctx.dr_state, _unitT[0], _unitT[1]) if _unitT else None
+        if _cT is not None:
+            _log_rl(
+                "jclk",
+                "JOINT-CLK%s: legacy %.3f chips -> COAST (primary: the tracker-fed state is "
+                "stale or unfit; %+.3f joint chips over %.0f s at clk_rate %+.4f joint "
+                "chips/s)" % (_tag, ctx.drp.clk_now, _cT[1], _cT[2], _cT[3]),
+                every_s=30.0,
+            )
+            ctx.drp.clk_now = (ctx.drp.clk_now + _cT[0]) % ctx.code_len
+            return
+        # No coast left: the search-fed state bootstraps the chain, under the ordinary bounds.
+        _prim = False
     if _jrC is None or len(_jrC._idx) < ctx.args.joint_min_sats:
         # Not fit to consume: thin, deaf, or absent. A transit that thins the feeders below
         # joint_min_sats is the case the coast exists for, so coast here too, on the stamps
@@ -1465,9 +1514,8 @@ def dr_joint_clk(ctx):
     _jdC, _jdJ = ctx.rx.joint_clk_delta(
         _jrC.clk, _jrate, _jlen, ctx.drp.clk_now, ctx.args.chip_rate_hz, ctx.code_len
     )
-    _jokC = (
-        _jsigC <= ctx.args.joint_clk_max_sigma
-        and abs(_jdJ) <= ctx.args.joint_clk_max_chips
+    _jokC = _jsigC <= ctx.args.joint_clk_max_sigma and (
+        _prim or abs(_jdJ) <= ctx.args.joint_clk_max_chips
     )
     # The delta is wrapped in the joint's window, so a clock off by whole periods of it reads
     # as a tiny delta and would be adopted every cycle, keeping this clock fresh and the
@@ -1561,6 +1609,12 @@ def dr_joint_clk(ctx):
             ctx.args.joint_clk_max_chips,
             ctx.args.joint_clk_max_sigma,
         )
+    # An adoption the legacy bound would have refused says so, under --joint-clk-primary.
+    _adopted = "ADOPTED"
+    if _prim and abs(_jdJ) > ctx.args.joint_clk_max_chips:
+        _adopted += (
+            " (primary: past the %.1f-chip legacy bound)" % ctx.args.joint_clk_max_chips
+        )
     # Fields before the bracket are in our chips; the bracket (other chip rates only) gives
     # the joint-chip numbers the bounds are tested in. A COAST's extrapolation and rate are
     # in joint chips too.
@@ -1579,7 +1633,7 @@ def dr_joint_clk(ctx):
             if _r == 1.0
             else " [x%.4f: joint %.3f delta %+.3f sigma %.3f in %.3f-Mcps chips, the"
             " bounds' unit]" % (_r, _jrC.clk, _jdJ, _jsigC, _jrate / 1e6),
-            "ADOPTED"
+            _adopted
             if _jokC
             else "COAST (refused: %s; %+.3f joint chips over %.0f s at clk_rate %+.4f "
             "joint chips/s)" % (_why, _jcoast[1], _jcoast[2], _jcoast[3])

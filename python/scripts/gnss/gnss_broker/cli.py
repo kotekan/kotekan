@@ -1471,6 +1471,18 @@ def build_parser(description):
         "%(default)s.",
     )
     ap.add_argument(
+        "--joint-clk-primary",
+        action="store_true",
+        help="'clk' consumer on a --joint-source trk chain (docs/CHORD_JOINT_TRACKING.md "
+        "6.3 step 4): the tracker-fed joint clock is the level. It is adopted without the "
+        "joint_clk_max_chips bound against the legacy clock (the search median or a "
+        "sibling's); the sigma bound, the step guard and the clock-mod-epoch period check "
+        "stand. While TRK_STATE is stale or unfit the chain coasts on its last adoption of "
+        "it, within --joint-clk-coast-max-s and at a stamped rate within "
+        "joint_max_rate_ppm, instead of reading the search-fed state, which bootstraps it "
+        "only once that window has closed. Off by default.",
+    )
+    ap.add_argument(
         "--rrate-state",
         action="store_true",
         help="feed the receiver's joint rrate state from this chain: one row per "

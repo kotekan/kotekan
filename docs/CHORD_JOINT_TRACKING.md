@@ -408,6 +408,19 @@ At the F-engine's return, one step per restart:
       tolerance reference until that reference is the joint rate); the sibling clock adoption
       as a level (the median solve stays as the modulus owner and the counterfactual the
       JOINT-CLK line prints). Dead-code pass, digests re-blessed.
+      **The level, built 2026-11-25 (kv/bladerf-gnss, `--joint-clk-primary`, default off;
+      trying on the gx10 bladeRF first).** On a trk chain the tracker-fed clock is adopted
+      without joint_clk_max_chips against the legacy clock; sigma, the step guard and the
+      clock-mod-epoch period check stand. A stale or unfit TRK_STATE is coasted on (its last
+      adoption at the stamped rate, within --joint-clk-coast-max-s and joint_max_rate_ppm)
+      instead of handing over to the search-fed state, which bootstraps the chain only once
+      the window has closed (#242's transits). Why: on the bladeRF at night gps_l5's search
+      solve has 2-3 satellites, the sibling adoption puts every dead-reckoned chain's legacy
+      clock 5-6 chips off a 23-satellite TRK_STATE, the bound refuses the joint, and the slew
+      walks the trackers off peak (11-25: 36 of 56 brownouts preceded by a JOINT-CLK coast or
+      refusal, the probe noise floor flat). Tests: test_jointclk.test_primary, which also pins
+      the default path on the 11-25 numbers. The median solve still writes dr_state["clk"]
+      each pass; the line says "ADOPTED (primary: ...)" where the bound would have refused.
   5.  Later and separate: the carrier command on the five uncommanded chains, one per restart,
       judged against the gal_e5a/gal_e5b envelope; P3 (the lanes) after #189; the element model
       stays node-local (#154).
