@@ -90,7 +90,6 @@ private:
     static constexpr int cuda_number_of_polarizations = 2;
     static constexpr int cuda_number_of_timesamples = 65536;
     static constexpr int cuda_granularity_number_of_timesamples = 16384;
-    static constexpr int cuda_shift_parameter_sigma = 3;
 
     // Kernel compile parameters:
     static constexpr int minthreads = 128;
@@ -100,14 +99,14 @@ private:
     static constexpr int threads_x = 32;
     static constexpr int threads_y = 4;
     static constexpr int blocks = 128;
-    static constexpr int shmem_bytes = 13568;
+    static constexpr int shmem_bytes = 17664;
 
     // Kernel name:
     static constexpr const char* kernel_symbol =
         "_Z2bb5Int32S_13CuDeviceArrayI6Int8x4Li1ELi1EES0_I6Int4x8Li1ELi1EES0_IS_Li1ELi1EES4_S5_S5_";
 
     // Kernel arguments:
-    enum class args { T_min, T_max, A, E, s, J, info, log, count };
+    enum class args { T_min, T_max, A, E, S, J, info, log, count };
 
     // T_min: T_min
     static constexpr const char* T_min_quantity = "T_min";
@@ -193,44 +192,44 @@ private:
     static constexpr std::ptrdiff_t E_length = E_strides[E_rank];
     static constexpr std::ptrdiff_t E_length_in_bytes = type_total_bytes(E_type) * E_length;
     //
-    // s: bb_shift_name
-    static constexpr const char* s_quantity = "s";
-    static constexpr kotekan::DataType s_type = kotekan::int32;
-    enum s_indices {
-        s_index_B,
-        s_index_P,
-        s_index_F,
-        s_rank,
+    // S: bb_scale_name
+    static constexpr const char* S_quantity = "S";
+    static constexpr kotekan::DataType S_type = kotekan::int32;
+    enum S_indices {
+        S_index_B,
+        S_index_P,
+        S_index_F,
+        S_rank,
     };
-    static constexpr std::array<const char*, s_rank> s_labels = {
+    static constexpr std::array<const char*, S_rank> S_labels = {
         "B",
         "P",
         "F",
     };
-    static constexpr std::array<std::ptrdiff_t, s_rank> s_lengths = {
+    static constexpr std::array<std::ptrdiff_t, S_rank> S_lengths = {
         16,
         2,
         128,
     };
-    static constexpr std::array<std::ptrdiff_t, s_rank> s_dimscalings = {
+    static constexpr std::array<std::ptrdiff_t, S_rank> S_dimscalings = {
         1,
         1,
         1,
     };
-    static constexpr auto s_calc_stride = [](int dim) {
+    static constexpr auto S_calc_stride = [](int dim) {
         std::ptrdiff_t str = 1;
         for (int d = 0; d < dim; ++d)
-            str *= s_lengths[d];
+            str *= S_lengths[d];
         return str;
     };
-    static constexpr std::array<std::ptrdiff_t, s_rank + 1> s_strides = {
-        s_calc_stride(s_index_B),
-        s_calc_stride(s_index_P),
-        s_calc_stride(s_index_F),
-        s_calc_stride(s_rank),
+    static constexpr std::array<std::ptrdiff_t, S_rank + 1> S_strides = {
+        S_calc_stride(S_index_B),
+        S_calc_stride(S_index_P),
+        S_calc_stride(S_index_F),
+        S_calc_stride(S_rank),
     };
-    static constexpr std::ptrdiff_t s_length = s_strides[s_rank];
-    static constexpr std::ptrdiff_t s_length_in_bytes = type_total_bytes(s_type) * s_length;
+    static constexpr std::ptrdiff_t S_length = S_strides[S_rank];
+    static constexpr std::ptrdiff_t S_length_in_bytes = type_total_bytes(S_type) * S_length;
     //
     // J: bb_beams_name
     static constexpr const char* J_quantity = "J";
@@ -340,7 +339,7 @@ private:
     // Kotekan buffer names
     const std::string A_name;
     const std::string E_name;
-    const std::string s_name;
+    const std::string S_name;
     const std::string J_name;
     const std::string info_name;
     const std::string log_name;
@@ -351,7 +350,7 @@ private:
     // Buffers
     NDArrayRingBuffer<kotekan::GetType_t<A_type>, A_rank> A_buffer;
     NDArrayRingBuffer<kotekan::GetType_t<E_type>, E_rank> E_buffer;
-    NDArrayBuffer<kotekan::GetType_t<s_type>, s_rank> s_buffer;
+    NDArrayBuffer<kotekan::GetType_t<S_type>, S_rank> S_buffer;
     NDArrayBuffer<kotekan::GetType_t<J_type>, J_rank> J_buffer;
     NDArrayBuffer<kotekan::GetType_t<info_type>, info_rank> info_buffer;
     std::vector<kotekan::GetType_t<info_type>> host_info_buffer;
@@ -376,7 +375,7 @@ cudaBasebandBeamformer_hirax128::cudaBasebandBeamformer_hirax128(Config& config,
 
     A_name(config.get<std::string>(unique_name, "bb_phase_name")),
     E_name(config.get<std::string>(unique_name, "voltage_name")),
-    s_name(config.get<std::string>(unique_name, "bb_shift_name")),
+    S_name(config.get<std::string>(unique_name, "bb_scale_name")),
     J_name(config.get<std::string>(unique_name, "bb_beams_name")),
     info_name(unique_name + "/gpu_mem_info"), log_name(unique_name + "/gpu_mem_log"),
 
@@ -386,7 +385,7 @@ cudaBasebandBeamformer_hirax128::cudaBasebandBeamformer_hirax128(Config& config,
              with_leading_dimscaling(reverse(A_dimscalings), A_lifetime_in_samples), *this),
     E_buffer(E_name, E_quantity, reverse(E_lengths), reverse(E_labels), reverse(E_dimscalings),
              *this),
-    s_buffer(s_name, s_quantity, reverse(s_lengths), reverse(s_labels), reverse(s_dimscalings),
+    S_buffer(S_name, S_quantity, reverse(S_lengths), reverse(S_labels), reverse(S_dimscalings),
              *this, buffer_type_t::do_once),
     J_buffer(J_name, J_quantity, reverse(J_lengths), reverse(J_labels), reverse(J_dimscalings),
              *this),
@@ -406,7 +405,7 @@ cudaBasebandBeamformer_hirax128::cudaBasebandBeamformer_hirax128(Config& config,
 
     A_buffer.register_consumer();
     E_buffer.register_consumer();
-    s_buffer.register_consumer();
+    S_buffer.register_consumer();
     J_buffer.register_producer();
     register_gpu_buffer_user(
         {.name = info_name, .is_array = true, .does_read = true, .does_write = true});
@@ -509,14 +508,14 @@ cudaBasebandBeamformer_hirax128::execute(cudaPipelineState& /*pipestate*/,
 
     void* const A_memory = A_buffer.get_ndarray().data();
     void* const E_memory = E_buffer.get_ndarray().data();
-    void* const s_memory = s_buffer.get_ndarray().data();
+    void* const S_memory = S_buffer.get_ndarray().data();
     void* const J_memory = J_buffer.get_ndarray().data();
     void* const info_memory = info_buffer.get_ndarray().data();
     void* const log_memory = log_buffer.get_ndarray().data();
 
     A_buffer.check_metadata();
     E_buffer.check_metadata();
-    s_buffer.check_metadata();
+    S_buffer.check_metadata();
     J_buffer.set_metadata(E_buffer.get_metadata());
 
     const char* exc_arg = "exception";
@@ -524,12 +523,12 @@ cudaBasebandBeamformer_hirax128::execute(cudaPipelineState& /*pipestate*/,
     std::int32_t T_max_arg;
     array_desc A_arg(A_memory, A_length_in_bytes);
     array_desc E_arg(E_memory, E_length_in_bytes);
-    array_desc s_arg(s_memory, s_length_in_bytes);
+    array_desc S_arg(S_memory, S_length_in_bytes);
     array_desc J_arg(J_memory, J_length_in_bytes);
     array_desc info_arg(info_memory, info_length_in_bytes);
     array_desc log_arg(log_memory, log_length_in_bytes);
     void* args[] = {
-        &exc_arg, &T_min_arg, &T_max_arg, &A_arg, &E_arg, &s_arg, &J_arg, &info_arg, &log_arg,
+        &exc_arg, &T_min_arg, &T_max_arg, &A_arg, &E_arg, &S_arg, &J_arg, &info_arg, &log_arg,
     };
 
     // Set E_memory to beginning of input ring buffer

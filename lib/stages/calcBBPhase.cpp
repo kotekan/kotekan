@@ -12,7 +12,7 @@
 #include <algorithm>  // for clamp
 #include <array>      // for array
 #include <cassert>    // for assert
-#include <cmath>      // for exp2, floor, isfinite, log2, lrint, sqrt, M_PI
+#include <cmath>      // for exp2, isfinite, lrint, sqrt, M_PI
 #include <complex>    // for complex, imag, polar, real
 #include <cstddef>    // for ptrdiff_t
 #include <cstdint>    // for int8_t, int32_t
@@ -24,7 +24,7 @@
 
 /**
  * @class calcBBPhase
- * @brief Produce the baseband beamforming phases `A` and shift `s`.
+ * @brief Produce the baseband beamforming phases `A` and scale `S`.
  *
  * One phase matrix is produced per beam position frame and per bad feed mask frame; frame `k` of
  * each stream covers the same FPGA samples, so the three must have the same lifetime. Phases of
@@ -34,7 +34,7 @@
  * @buffer bb_beam_positions The beam positions, [B][X/Y], float32
  * @buffer bf_mask           The bad feed mask, [Tbf=1][P][D], int8, 1 = good
  * @buffer bb_phase          The phases, [Tbb=1][F][P][B][D][C], int8
- * @buffer bb_shift          The shift, [F][P][B], int32; written once
+ * @buffer bb_scale          The scale, [F][P][B], int32; written once
  *
  * @conf bb_phase_lifetime_in_samples Int. How many FPGA samples one phase matrix covers.
  */
@@ -65,14 +65,14 @@ class calcBBPhase : public kotekan::Stage {
     const std::ptrdiff_t A_frame_size [[maybe_unused]] = sizeof(std::int8_t) * num_components
                                                          * num_dishes * bb_num_beams
                                                          * num_polarizations * num_frequencies;
-    const std::ptrdiff_t s_frame_size [[maybe_unused]] =
+    const std::ptrdiff_t S_frame_size [[maybe_unused]] =
         sizeof(std::int32_t) * bb_num_beams * num_polarizations * num_frequencies;
 
     // Buffers
     Buffer* const bb_beam_positions_buffer;
     Buffer* const bf_mask_buffer;
     Buffer* const A_buffer;
-    Buffer* const s_buffer;
+    Buffer* const S_buffer;
 
 public:
     calcBBPhase(kotekan::Config& config, const std::string& unique_name,
@@ -83,17 +83,17 @@ public:
               }),
         bb_beam_positions_buffer(get_buffer("bb_beam_positions")),
         bf_mask_buffer(get_buffer("bf_mask")), A_buffer(get_buffer("bb_phase")),
-        s_buffer(get_buffer("bb_shift"))
+        S_buffer(get_buffer("bb_scale"))
     //
     {
         assert(bb_beam_positions_buffer);
         assert(bf_mask_buffer);
         assert(A_buffer);
-        assert(s_buffer);
+        assert(S_buffer);
         bb_beam_positions_buffer->register_consumer(unique_name);
         bf_mask_buffer->register_consumer(unique_name);
         A_buffer->register_producer(unique_name);
-        s_buffer->register_producer(unique_name);
+        S_buffer->register_producer(unique_name);
 
         bb_beam_positions_buffer->require_frame_desc(kotekan::NDArray<float, 2>::describe(
             "bb_beam_positions", {bb_num_beams, 2}, {"B", "X/Y"}, {1, 1}));
@@ -110,8 +110,8 @@ public:
             "A", {1, num_frequencies, num_polarizations, bb_num_beams, num_dishes, num_components},
             {"Tbb", "F", "P", "B", "D", "C"}, {bb_phase_lifetime_in_samples, 1, 1, 1, 1, 1}));
 
-        s_buffer->require_frame_desc(kotekan::NDArray<std::int32_t, 3>::describe(
-            "s", {num_frequencies, num_polarizations, bb_num_beams}, {"F", "P", "B"}, {1, 1, 1}));
+        S_buffer->require_frame_desc(kotekan::NDArray<std::int32_t, 3>::describe(
+            "S", {num_frequencies, num_polarizations, bb_num_beams}, {"F", "P", "B"}, {1, 1, 1}));
     }
 
     virtual ~calcBBPhase() {}
@@ -128,12 +128,15 @@ public:
             telescope.get_feed_positions_m(num_elements, telescope.fiducial_element_order());
         assert(std::ptrdiff_t(feed_pos_m.size()) == num_elements);
 
-        // Split bb_gain into the beamformer's shift s and the phase amplitude |A| = 127.5 a with
-        // a in (1/2, 1], so that bb_gain = 2^7 a / 2^s. The beamformer requires s >= 1.
-        if (!(bb_gain > 0 && bb_gain <= 64))
-            FATAL_ERROR("bb_gain is {:g}, but must be in (0, 64]", bb_gain);
-        const int bb_shift = 7 + int(std::floor(-std::log2(bb_gain)));
-        const float bb_amplitude = 127.5f * float(bb_gain * std::exp2(bb_shift - 7));
+        // The phases have the full amplitude |A| = 127.5, and the beamformer's scale S carries the
+        // gain: it computes J = S / 2^24 Σ A E, so bb_gain = 127.5 S / 2^24.
+        const float bb_amplitude = 127.5f;
+        const double bb_scale_real = bb_gain * std::exp2(24) / bb_amplitude;
+        if (!(bb_scale_real >= 1 && bb_scale_real < 0x7fffffff))
+            FATAL_ERROR("bb_gain is {:g}, but must be in [{:g}, {:g})", bb_gain,
+                        bb_amplitude / std::exp2(24),
+                        double(0x7fffffff) * bb_amplitude / std::exp2(24));
+        const std::int32_t bb_scale = std::int32_t(std::lrint(bb_scale_real));
 
         // Get frequencies
         std::vector<float> frequencies(num_frequencies); // [Hz]
@@ -148,7 +151,7 @@ public:
         assert(std::ptrdiff_t(bb_beam_positions_buffer->frame_size)
                == bb_beam_positions_frame_size);
         assert(std::ptrdiff_t(A_buffer->frame_size) == A_frame_size);
-        assert(std::ptrdiff_t(s_buffer->frame_size) == s_frame_size);
+        assert(std::ptrdiff_t(S_buffer->frame_size) == S_frame_size);
 
         // `frame_index` counts all frames produced, not just the current slot: it must keep
         // increasing so that the phase matrices form one continuous stream.
@@ -260,27 +263,27 @@ public:
                 }
             }
 
-            // The shift vector does not change, so it is written once and then held by the GPU
+            // The scale vector does not change, so it is written once and then held by the GPU
             // (its `cudaInputData` is configured `do_once`).
             if (frame_index == 0) {
-                DEBUG("[{:s}/{:d}] Waiting for buffer...", s_buffer->buffer_name, frame_index);
-                std::int32_t* const s_frame = static_cast<std::int32_t*>(
-                    static_cast<void*>(s_buffer->wait_for_empty_frame(unique_name, 0)));
-                if (!s_frame)
+                DEBUG("[{:s}/{:d}] Waiting for buffer...", S_buffer->buffer_name, frame_index);
+                std::int32_t* const S_frame = static_cast<std::int32_t*>(
+                    static_cast<void*>(S_buffer->wait_for_empty_frame(unique_name, 0)));
+                if (!S_frame)
                     return;
 
-                s_buffer->allocate_new_metadata_object(0);
-                const auto& s_meta = get_chord_metadata(s_buffer->get_metadata(0));
-                s_meta->set_from_frame_desc(s_buffer->get_frame_desc<kotekan::GenericNDArray>());
-                s_meta->set_fpga_seq_num(seq_num);
-                s_meta->set_time_downsampling_fpga(
+                S_buffer->allocate_new_metadata_object(0);
+                const auto& S_meta = get_chord_metadata(S_buffer->get_metadata(0));
+                S_meta->set_from_frame_desc(S_buffer->get_frame_desc<kotekan::GenericNDArray>());
+                S_meta->set_fpga_seq_num(seq_num);
+                S_meta->set_time_downsampling_fpga(
                     bb_beam_positions_meta->get_time_downsampling_fpga());
-                s_meta->set_coarse_freq(frequency_channels);
-                s_meta->set_freq_upchan_factor(freq_upchan_factor);
-                s_meta->set_freq_upchan_index(freq_upchan_index);
-                s_meta->check_frame_desc(s_buffer->get_frame_desc<kotekan::GenericNDArray>());
+                S_meta->set_coarse_freq(frequency_channels);
+                S_meta->set_freq_upchan_factor(freq_upchan_factor);
+                S_meta->set_freq_upchan_index(freq_upchan_index);
+                S_meta->check_frame_desc(S_buffer->get_frame_desc<kotekan::GenericNDArray>());
 
-                // Set s
+                // Set S
                 {
                     const std::ptrdiff_t str_beam = 1;
                     const std::ptrdiff_t str_polr = str_beam * bb_num_beams;
@@ -291,16 +294,16 @@ public:
                                 const std::ptrdiff_t idx =
                                     str_beam * beam + str_polr * polr + str_freq * freq;
                                 assert(idx >= 0
-                                       && idx < std::ptrdiff_t(s_buffer->frame_size
-                                                               / sizeof *s_frame));
-                                s_frame[idx] = bb_shift;
+                                       && idx < std::ptrdiff_t(S_buffer->frame_size
+                                                               / sizeof *S_frame));
+                                S_frame[idx] = bb_scale;
                             }
                         }
                     }
                 }
 
-                DEBUG("[{:s}/{:d}] Marking buffer as full...", s_buffer->buffer_name, frame_index);
-                s_buffer->mark_frame_full(unique_name, 0);
+                DEBUG("[{:s}/{:d}] Marking buffer as full...", S_buffer->buffer_name, frame_index);
+                S_buffer->mark_frame_full(unique_name, 0);
             }
 
             // Mark buffers as full

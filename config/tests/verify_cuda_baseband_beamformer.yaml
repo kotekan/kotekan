@@ -91,7 +91,7 @@ gen_phase:
 
 gen_shift:
     type: const32
-    value: 0xA
+    value: 0x4000  # 2^14
     kotekan_stage: testDataGen
     out_buf: host_shift_buffer
     log_level: debug
@@ -142,7 +142,7 @@ cpu_beamformer:
     log_level: debug
     voltage_in_buf: host_voltage_buffer
     phase_in_buf: host_phase_buffer
-    shift_in_buf: host_shift_buffer
+    scale_in_buf: host_shift_buffer
     beams_out_buf: simulated_formed_beams_buffer
 
 check_data:

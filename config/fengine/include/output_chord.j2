@@ -567,10 +567,10 @@ write_data:
         in_buf: host_bb_phase_buffer
         file_name: bb_phase
         create_single_file: true
-    write_bb_shift:
+    write_bb_scale:
         kotekan_stage: hdf5FileWrite
-        in_buf: host_bb_shift_buffer
-        file_name: bb_shift
+        in_buf: host_bb_scale_buffer
+        file_name: bb_scale
         create_single_file: false  # not time-major
     write_bb_beams:
         kotekan_stage: hdf5FileWrite

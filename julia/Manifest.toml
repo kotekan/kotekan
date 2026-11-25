@@ -2,7 +2,7 @@
 
 julia_version = "1.12.7"
 manifest_format = "2.0"
-project_hash = "cce54c40deed7a546065e9cea24de42426c430bb"
+project_hash = "db74ac8e426d9f6a7c126ec8987f97a0693f7bb6"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -227,9 +227,9 @@ version = "0.2.0"
 
 [[deps.IndexSpaces]]
 deps = ["BFloat16s", "CUDA", "CUDASIMDTypes"]
-git-tree-sha1 = "cd3ca023bc6b01c3c5140ac6d51df33d81cfd224"
+git-tree-sha1 = "bcf3eb5e7dbba7a21b4aed6b4c3efbd518ca4859"
 uuid = "3ceaaf38-e7b4-4193-a23a-303dd231a83a"
-version = "1.12.0"
+version = "1.13.0"
 
 [[deps.InteractiveUtils]]
 deps = ["Markdown"]
