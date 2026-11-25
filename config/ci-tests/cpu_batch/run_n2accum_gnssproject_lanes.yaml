@@ -418,6 +418,8 @@ gnss_n2_project:
         lambda_min_rel: 0.0
         solve_every: 1
         metric_period_s: 1.0
+        # Two workers share the channel loop (the output does not depend on the count).
+        num_workers: 2
         live_freq_ids:
             - 0
             - 1

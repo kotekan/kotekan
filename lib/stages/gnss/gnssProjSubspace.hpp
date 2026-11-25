@@ -165,9 +165,9 @@ public:
         _k.assign((size_t)_nc, 0);
         _warm.assign((size_t)_nc, 0.0);
         _nz.assign((size_t)_n, 0);
-        _x.assign((size_t)_n, cd(0.0, 0.0));
-        _y.assign((size_t)_n, cd(0.0, 0.0));
-        _d.assign((size_t)_n, 0.0);
+        _x.assign((size_t)_nc * _n, cd(0.0, 0.0));
+        _y.assign((size_t)_nc * _n, cd(0.0, 0.0));
+        _d.assign((size_t)_nc * _n, 0.0);
     }
 
     /// Accumulate one vector for channel @p ch: C <- (1 - alpha) C + alpha v v^H off the
@@ -238,10 +238,10 @@ public:
         double fro2 = 0.0;
         for (size_t i = 0; i < (size_t)_n * _n; ++i)
             fro2 += std::norm(C[i]);
-        std::vector<cd>& x = _x;
-        std::vector<cd>& y = _y;
-        std::vector<double>& d = _d; // model diagonal of the components before j
-        std::fill(d.begin(), d.end(), 0.0);
+        cd* x = &_x[(size_t)ch * _n];
+        cd* y = &_y[(size_t)ch * _n];
+        double* d = &_d[(size_t)ch * _n]; // model diagonal of the components before j
+        std::fill(d, d + _n, 0.0);
         double remaining = fro2;
         int k = 0;
         for (int j = 0; j < _kmax; ++j) {
@@ -401,7 +401,8 @@ private:
     std::vector<int> _k;       ///< [nc]
     std::vector<double> _warm; ///< [nc]
     std::vector<int> _nz;      ///< scratch: indices of the non-zero elements of the last push
-    std::vector<cd> _x, _y;    ///< solve() scratch (no per-call allocation on the record path)
+    std::vector<cd> _x, _y;    ///< solve() scratch [nc][n] (no per-call allocation on the
+                               ///< record path; per channel, so channels solve concurrently)
     std::vector<double> _d;
 };
 
@@ -460,9 +461,10 @@ public:
     void for_each(const std::string& group, int freq_id, const std::string& not_owner, double now_s,
                   double max_age_s, F&& f) const {
         std::lock_guard<std::mutex> lk(_m);
-        for (const auto& [key, e] : _e) {
+        for (auto it = _e.lower_bound(Key(group, freq_id, std::string())); it != _e.end(); ++it) {
+            const auto& [key, e] = *it;
             if (std::get<0>(key) != group || std::get<1>(key) != freq_id)
-                continue;
+                break;
             if (e.k <= 0 || now_s - e.t_pub > max_age_s)
                 continue;
             if (e.owner == not_owner

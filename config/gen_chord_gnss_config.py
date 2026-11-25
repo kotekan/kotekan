@@ -4188,9 +4188,11 @@ def main():
         "--n2-project-cpus",
         type=str,
         default="",
-        help="GnssN2Project's logical cpu per GPU, 'gpu0,gpu1', outside the runtime pools; "
-        "overrides --n2-project-core-index. The nodes leave whole physical cores idle on each "
-        "NUMA node (15/47 on node 0, 19/51 on node 1), and the lanes on 127 stations want one",
+        help="GnssN2Project's logical cpus per GPU, 'gpu0,gpu1', outside the runtime pools; "
+        "overrides --n2-project-core-index. A GPU's entry may list several cpus joined by '+' "
+        "('15+47,19+51'): the stage then runs a worker on each (num_workers). The nodes leave "
+        "whole physical cores idle on each NUMA node (15/47 on node 0, 19/51 on node 1), and "
+        "the lanes on 127 stations want one",
     )
     ap.add_argument(
         "--lane-transfer",
@@ -5038,19 +5040,22 @@ def main():
             _suf = "" if _gpu == 0 else "_1"
             if _corr not in out:
                 raise SystemExit("--n2-project: %s is not in the base" % _corr)
-            _stage = {
-                "kotekan_stage": "GnssN2Project",
-                # The telemetry packer's core (see gnss_chain_vars) by default: a light host
-                # stage on this GPU's own NUMA pool; --n2-project-core-index picks another slot.
-                "cpu_affinity": [
-                    int(args.n2_project_cpus.split(",")[_gpu])
-                    if args.n2_project_cpus
-                    else (
+            # The telemetry packer's core (see gnss_chain_vars) by default: a light host stage
+            # on this GPU's own NUMA pool; --n2-project-core-index picks another slot.
+            _cpus = (
+                [int(c) for c in args.n2_project_cpus.split(",")[_gpu].split("+")]
+                if args.n2_project_cpus
+                else [
+                    (
                         _pool[(_gpu + 5) % len(_pool)]
                         if args.n2_project_core_index < 0
                         else _pool[args.n2_project_core_index % len(_pool)]
                     )
-                ],
+                ]
+            )
+            _stage = {
+                "kotekan_stage": "GnssN2Project",
+                "cpu_affinity": _cpus,
                 "in_buf": _corr,
                 # num_elements / num_local_freq / samples_per_data_set / sub_integration_ntime
                 # are read from the globals (a local `num_elements: num_elements` is a
@@ -5065,6 +5070,8 @@ def main():
                 "solve_every": int(N2_PROJECT_SOLVE_EVERY),
                 "metric_period_s": 1.0,
             }
+            if len(_cpus) > 1:
+                _stage["num_workers"] = len(_cpus)
             if args.n2_project_eigen_channels == "live":
                 _stage["eigen_channels"] = "live"
             elif args.n2_project_eigen_channels != "all":
