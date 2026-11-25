@@ -295,9 +295,10 @@ def main(argv=None, rx=None, publisher=None):
     )
     band_id = "%.2fMHz" % (args.carrier_hz / 1e6)
     # The joint solve (dr_joint_shadow) runs whenever a --joint-consume consumer is named;
-    # without it the consumer would read a state nothing feeds.
+    # without it the consumer would read a state nothing feeds. --joint-no-feed: the consumers
+    # read the state the other chains feed, and this chain's detections stay out of it.
     joint_consume = parse_joint_consume(args.joint_consume)
-    args.joint_shadow = bool(joint_consume)
+    args.joint_shadow = bool(joint_consume) and not args.joint_no_feed
     # Which joint state those consumers read (--joint-source; #191 step 3): said once, here.
     if joint_consume or args.joint_source != "search":
         _log(

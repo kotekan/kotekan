@@ -1471,6 +1471,15 @@ def build_parser(description):
         "%(default)s.",
     )
     ap.add_argument(
+        "--joint-no-feed",
+        action="store_true",
+        help="run this chain's --joint-consume consumers without its detections feeding the "
+        "search-fed joint state (dr_joint_shadow): for a chain whose satellites' clocks are "
+        "known only to microseconds (GuoWang's TLE records), which would add nothing to the "
+        "receiver's clock but noise. The consumers read the state the other chains feed. Off "
+        "by default.",
+    )
+    ap.add_argument(
         "--joint-clk-primary",
         action="store_true",
         help="'clk' consumer on a --joint-source trk chain (docs/CHORD_JOINT_TRACKING.md "

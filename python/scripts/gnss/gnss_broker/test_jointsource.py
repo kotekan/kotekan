@@ -313,6 +313,35 @@ def test_flag_and_mapping():
     )
 
 
+def test_no_feed():
+    """--joint-no-feed: main's joint_shadow assignment, as written, runs the joint solve for
+    any named consumer unless the flag is set; the default parses off."""
+    sets = [
+        n
+        for n in ast.walk(_main_tree())
+        if isinstance(n, ast.Assign)
+        and ast.unparse(n.targets[0]) == "args.joint_shadow"
+    ]
+    check(len(sets) == 1, "one args.joint_shadow assignment in main")
+    ap = cli.build_parser("x")
+    check(
+        not ap.parse_args(["--trackers", "t"]).joint_no_feed,
+        "--joint-no-feed defaults off",
+    )
+    for consume, no_feed, want in (
+        (set(), False, False),
+        ({"clk", "rate"}, False, True),
+        ({"clk", "rate"}, True, False),
+    ):
+        a = types.SimpleNamespace(joint_no_feed=no_feed)
+        _run_nodes(sets[:1], {"joint_consume": consume, "args": a})
+        check(
+            a.joint_shadow == want,
+            "consume %s, no-feed %s -> joint solve %s"
+            % (sorted(consume), no_feed, want),
+        )
+
+
 def test_unit_per_state():
     """joint_unit names a state: the two moduli can differ (each shortens to its own callers'
     shortest code), and the trk consumer must convert in TRK_STATE's."""
