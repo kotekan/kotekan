@@ -33,8 +33,10 @@
  * stream_id, snr_db, residual_deg, carrier_hz, data_pilot_db, n_records, n_boundary, nav_obs}
  * (t0 the stream's start, host-labelled UTC, and stream_id it in ms, as out_buf's rows), nav_obs in
  * the combiner's form (bit_export) holding the newest @c symbol_export decisions: {utc_ref, rec_dt,
- * phase: 0, br, bits: [[index, sign]]}, symbol `index` starting at utc_ref + index * br * rec_dt
- * and utc_ref the oldest one's start. The broker's --cnav-combiner reads it.
+ * phase: 0, br, bits: [[index, sign]], soft: [10 x value]}, symbol `index` starting at utc_ref +
+ * index * br * rec_dt and utc_ref the oldest one's start, and soft each decision's projection in
+ * units of the reference's amplitude (NavSymbolTrack::soft), 10x and rounded. The broker's
+ * --cnav-combiner reads it.
  *
  * @buffer pilot_buf (optional) The pilot chain's records (gnssRecord.hpp), one record per
  *     frame.

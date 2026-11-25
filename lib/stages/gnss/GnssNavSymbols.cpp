@@ -7,8 +7,8 @@
 #include "kotekanLogging.hpp"   // for FATAL_ERROR, INFO, WARN
 #include "visUtil.hpp"          // for frameID, current_time
 
-#include <algorithm>  // for min
-#include <cmath>      // for M_PI, llround
+#include <algorithm>  // for clamp, min
+#include <cmath>      // for M_PI, llround, lround
 #include <complex>    // for complex, polar
 #include <cstring>    // for memcpy, memset
 #include <functional> // for bind
@@ -215,9 +215,11 @@ void GnssNavSymbols::get_status_callback(kotekan::connectionInstance& conn) {
             // As the combiner's emits do, each starts at its oldest symbol, so successive emits
             // differ and the decoder merges them by their overlap.
             nlohmann::json bits = nlohmann::json::array();
-            int k = 0;
-            for (int8_t s : t.sym)
-                bits.push_back({k++, (int)s});
+            nlohmann::json soft = nlohmann::json::array();
+            for (size_t k = 0; k < t.sym.size(); ++k) {
+                bits.push_back({(int)k, (int)t.sym[k]});
+                soft.push_back((int)std::lround(std::clamp(10.0f * t.soft[k], -9999.0f, 9999.0f)));
+            }
             const long long first = t.n_sym - (long long)t.sym.size();
             rows.push_back({{"prn", _prn[(size_t)p]},
                             {"n_sym", t.n_sym},
@@ -235,7 +237,8 @@ void GnssNavSymbols::get_status_callback(kotekan::connectionInstance& conn) {
                               {"rec_dt", _rec_dt},
                               {"phase", 0},
                               {"br", _symbol_records},
-                              {"bits", bits}}}});
+                              {"bits", bits},
+                              {"soft", soft}}}});
         }
     }
     conn.send_json_reply(rows);
