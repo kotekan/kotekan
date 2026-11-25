@@ -174,6 +174,37 @@ class TestPredictor(unittest.TestCase):
         self.assertEqual(d["sats"]["E04"]["orbit"]["iod"], 85)
         self.assertIsNone(pred.ephemeris(4))
 
+    def test_soft_values(self):
+        # At this noise (symbol SNR ~3 dB) hard decisions fail both pages; the soft values
+        # decode them.
+        rng = np.random.default_rng(3)
+        sym = np.concatenate(
+            [
+                1.0
+                - 2.0
+                * C.encode_page(
+                    _page(_header(1, 7, 4, 90 + k), rng.integers(0, 256, C.OCTETS))
+                )
+                for k in range(2)
+            ]
+        )
+        x = sym + 0.7 * rng.standard_normal(len(sym))
+        for k in (0, 1000):
+            x[k : k + C.N_SYNC] = sym[k : k + C.N_SYNC]
+        obs = {
+            "utc_ref": 50.0,
+            "rec_dt": 0.001,
+            "phase": 0,
+            "br": 1,
+            "bits": [[i, 1 if v >= 0 else -1] for i, v in enumerate(x)],
+        }
+        pages = []
+        for soft in (None, [int(round(10 * v)) for v in x]):
+            pred = has_predictor.HasPredictor()
+            pred.ingest(3, dict(obs, soft=soft) if soft else obs)
+            pages.append(pred.health(3)["pages"])
+        self.assertEqual(pages, [0, 2])
+
 
 if __name__ == "__main__":
     unittest.main()

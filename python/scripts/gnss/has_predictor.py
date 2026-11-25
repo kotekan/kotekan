@@ -15,7 +15,8 @@ earlier ones carried (galileo_cnav.parse_mt1).
 There is no ephemeris here: ephemeris() is None. health() counts pages; newest holds the newest
 type 1 message of each kind (orbit, clock, bias).
 
-nav_obs: {utc_ref, rec_dt, br, phase, bits=[[idx, +-1], ...]}, br = 1, rec_dt = 0.001.
+nav_obs: {utc_ref, rec_dt, br, phase, bits=[[idx, +-1], ...], soft=[10 x value, ...]}, br = 1,
+rec_dt = 0.001. soft, when present, weights the Viterbi; without it the decode is hard-decision.
 """
 
 import time
@@ -38,21 +39,17 @@ class _PrnState:
         self.n_bad = 0  # synced pages whose CRC failed
         self.n_msgs = 0  # recovered messages this satellite sent a page of
         self.page = None  # (bits, host time decoded) of the newest page
-        self.last_decode = 0.0
 
 
 class HasPredictor:
     def __init__(self):
         self._p = {}
-        self._min_gap = 0.0
-        self._msgs = (
-            {}
-        )  # (type, mid) -> {ms, pages {pid: octets}, prns {pid: prn}, t, octets}
+        # (type, mid) -> {ms, pages {pid: octets}, prns {pid: prn}, t, octets}
+        self._msgs = {}
         self._masks = {}  # mask ID -> systems (galileo_cnav.parse_mt1)
         self.n_messages = 0
-        self.newest = (
-            {}
-        )  # "orbit" / "clock" / "bias" / "mask" -> (host time, parsed message)
+        # "orbit" / "clock" / "bias" / "mask" -> (host time, parsed message)
+        self.newest = {}
 
     def ingest(self, prn, obs):
         st = self._p.setdefault(prn, _PrnState())
@@ -60,21 +57,29 @@ class HasPredictor:
             utc_ref = float(obs["utc_ref"])
             sym_s = int(obs["br"]) * float(obs["rec_dt"])
             pairs = obs["bits"]
-        except (KeyError, TypeError, ValueError):
+            soft = obs.get("soft")
+        except (KeyError, TypeError, ValueError, AttributeError):
             return
         key = (utc_ref, len(pairs))
         if key == st.last_obs or sym_s <= 0 or len(pairs) < PAGE:
             return
         st.last_obs = key
-        s = np.zeros(int(pairs[-1][0]) + 1)
-        for i, v in pairs:
-            s[int(i)] = v
+        idx = np.array([int(p[0]) for p in pairs])
+        sg = np.zeros(idx.max() + 1)
+        sg[idx] = [int(p[1]) for p in pairs]
+        s = sg
+        if soft is not None and len(soft) == len(pairs):
+            v = np.zeros_like(sg)
+            v[idx] = np.asarray(soft, dtype=float) / 10.0
+            s = np.where(
+                v * sg > 0, v, 0.01 * sg
+            )  # a value rounded to 0 keeps its sign
         now = time.time()
         sync = 1.0 - 2.0 * np.array(C.SYNC, dtype=float)
-        c = np.correlate(s[: len(s) - PAGE + C.N_SYNC], sync, "valid")
+        c = np.correlate(sg[: len(sg) - PAGE + C.N_SYNC], sync, "valid")
         for i in np.nonzero(np.abs(c) == C.N_SYNC)[0]:
             t = round(utc_ref + i * sym_s)
-            if t in st.seen or not s[i : i + PAGE].all():
+            if t in st.seen or not sg[i : i + PAGE].all():
                 continue
             bits = C.decode_page(np.sign(c[i]) * s[i : i + PAGE])
             if bits is None:
