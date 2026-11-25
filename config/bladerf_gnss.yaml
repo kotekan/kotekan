@@ -547,6 +547,9 @@ gputrack:
     kotekan_stage: cudaProcess
     gpu_id: 0
     frame_arrival_period: 0.016
+    # The results thread waits on each frame's join event; spinning there cost ~35% of a big
+    # core (11-25) against frames the GPU holds for ~16 ms.
+    blocking_sync: true
     # Two kernel streams: L5 on 2, the other chains on 3, so the chains' part-filled waves of
     # blocks and their launch gaps overlap.
     num_cuda_streams: 4

@@ -54,6 +54,11 @@
  * @conf require_async_engines Int, default 0 (no check). The number of async copy engines the
  *                        GPU must report, or construction fails; for a config that relies on a
  *                        host-to-device copy overlapping a device-to-host one.
+ * @conf blocking_sync    Bool, default false. Create the end-of-frame join events with
+ *                        cudaEventBlockingSync, so the results thread sleeps on the frame's
+ *                        completion instead of spinning (the runtime's default for a context on
+ *                        a host with spare cores). Costs a wake-up latency of tens of us. Only a
+ *                        pipeline whose commands span several streams records a join event.
  *
  * @author Keith Vanderlinde and Andre Renard
  */
@@ -87,6 +92,8 @@ private:
     /// streams (see queue_commands). Sized in the constructor, created on first use for each
     /// slot, re-recorded each frame, and destroyed in the destructor.
     std::vector<cudaEvent_t> join_events;
+    /// Create the join events with cudaEventBlockingSync (config blocking_sync).
+    bool blocking_sync;
 };
 
 #endif // CUDA_PROCESS_H

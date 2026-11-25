@@ -55,6 +55,7 @@ cudaProcess::cudaProcess(Config& config_, const std::string& unique_name,
                     need_engines, gpu_id, device->async_engine_count());
 
     CHECK_CUDA_ERROR(cudaProfilerStart());
+    blocking_sync = config.get_default<bool>(unique_name, "blocking_sync", false);
     join_events.resize(_gpu_buffer_depth, nullptr);
     init();
     collect_stream_ids(num_streams);
@@ -175,8 +176,9 @@ void cudaProcess::queue_commands(int gpu_frame_counter) {
                 if (events[i] != nullptr && (int32_t)i != final_stream_id)
                     CHECK_CUDA_ERROR(cudaStreamWaitEvent(join_stream, events[i], 0));
             if (join_events[icommand] == nullptr)
-                CHECK_CUDA_ERROR(
-                    cudaEventCreateWithFlags(&join_events[icommand], cudaEventDisableTiming));
+                CHECK_CUDA_ERROR(cudaEventCreateWithFlags(
+                    &join_events[icommand],
+                    cudaEventDisableTiming | (blocking_sync ? cudaEventBlockingSync : 0)));
             CHECK_CUDA_ERROR(cudaEventRecord(join_events[icommand], join_stream));
             final_event = join_events[icommand];
         }
