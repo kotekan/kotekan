@@ -41,8 +41,13 @@ REGISTER_KOTEKAN_STAGE(bufferSend);
 bufferSend::bufferSend(Config& config, const std::string& unique_name,
                        bufferContainer& buffer_container, std::string buffer_name) :
     Stage(config, unique_name, buffer_container, std::bind(&bufferSend::main_thread, this)),
+    dest(config.get<std::string>(unique_name, "server_ip"),
+         config.get_default<uint16_t>(unique_name, "server_port", 11024),
+         config.get_default<uint32_t>(unique_name, "reconnect_time", 5),
+         config.get_default<uint32_t>(unique_name, "send_timeout", 20)),
     dropped_frame_counter(
-        Metrics::instance().add_counter("kotekan_buffer_send_dropped_frame_count", unique_name)) {
+                          Metrics::instance().add_counter("kotekan_buffer_send_dropped_frame_count", unique_name))
+{
     buf = get_buffer(buffer_name);
     // Every frame is sent with its metadata object; bufferRecv cannot accept a frame without one.
     if (!buf->metadata_pool) {
@@ -51,8 +56,6 @@ bufferSend::bufferSend(Config& config, const std::string& unique_name,
     }
     buf->register_consumer(unique_name);
 
-    uint32_t send_timeout = config.get_default<uint32_t>(unique_name, "send_timeout", 20);
-    uint32_t reconnect_time = config.get_default<uint32_t>(unique_name, "reconnect_time", 5);
     drop_frames = config.get_default<bool>(unique_name, "drop_frames", true);
     drop_threshold = config.get_default<float>(unique_name, "drop_threshold", 0.6);
 
@@ -66,21 +69,6 @@ bufferSend::bufferSend(Config& config, const std::string& unique_name,
         config.get_default<bool>(unique_name, "use_config_tracker", ct_enabled) && ct_enabled;
 
     use_frame_desc = config.get_default<bool>(unique_name, "use_frame_desc", false);
-
-    dest.connected = false;
-    dest.desc_sent = false;
-    dest.config_tracker_combined_hash = "";
-    dest.server_ip = config.get<std::string>(unique_name, "server_ip");
-    dest.server_port = config.get_default<uint32_t>(unique_name, "server_port", 11024);
-
-    bzero(&dest.server_addr, sizeof(dest.server_addr));
-    dest.server_addr.sin_family = AF_INET;
-    dest.server_addr.sin_addr.s_addr = inet_addr(dest.server_ip.c_str());
-    dest.server_addr.sin_port = htons(dest.server_port);
-
-    dest.socket_fd = -1;
-    dest.reconnect_time = reconnect_time;
-    dest.send_timeout = send_timeout;
 }
 
 bufferSend::~bufferSend() {}
@@ -89,13 +77,7 @@ void bufferSend::main_thread() {
 
     int frame_id = 0;
 
-    // std::string dest_name = "bufferSend()", buffer_name
-
-    // dest.connect_thread = std::thread(&networkDestination::test_thread, std::ref(dest),
-    // unique_name);
-
-    dest.connect_thread = std::thread(&networkDestination::connect_to_server, std::ref(dest),
-                                      unique_name, std::ref(stop_thread));
+    dest.start_connect_thread(unique_name, stop_thread);
 
     while (!stop_thread) {
 
@@ -273,6 +255,30 @@ bool bufferSend::send_frame(uint8_t* frame, int frame_id, networkDestination& de
     return true;
 }
 
+networkDestination::networkDestination(const std::string& ip, uint16_t port,
+                                       uint32_t reconnect_t, uint32_t send_t) :
+    socket_fd(-1),
+    server_port(port),
+    server_ip(ip),
+    connected(false),
+    reconnect_time(reconnect_t),
+    send_timeout(send_t),
+    first_transmission_sent(false),
+    desc_sent(false),
+    config_tracker_combined_hash("")
+{
+    bzero(&server_addr, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = inet_addr(server_ip.c_str());
+    server_addr.sin_port = htons(server_port);
+}
+
+void networkDestination::start_connect_thread(const std::string& name,
+                                              const std::atomic_bool& stop_thread) {
+    connect_thread = std::thread(&networkDestination::connect_to_server, this,
+                                 std::ref(name), std::ref(stop_thread));
+}
+
 void networkDestination::close_connection() {
     if (socket_fd >= 0)
         close(socket_fd);
@@ -285,7 +291,8 @@ void networkDestination::close_connection() {
     connection_state_cv.notify_all();
 }
 
-void networkDestination::connect_to_server(std::string name, std::atomic_bool const& stop_thread) {
+void networkDestination::connect_to_server(const std::string& name,
+                                           const std::atomic_bool & stop_thread) {
 
     while (!stop_thread) {
 

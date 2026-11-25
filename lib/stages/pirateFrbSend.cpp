@@ -297,8 +297,6 @@ bool pirateFrbSend::send_frame(int frame_id, int64_t fpga_seq, int time_downsamp
     int32_t n = 0;
     int32_t n_sent = 0;
 
-    // pirateDestination* dest = reinterpret_cast<pirateDestination*>(&_dest);
-
     if (!dest->sent_header) {
         INFO("Sending header");
 

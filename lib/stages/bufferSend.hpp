@@ -45,8 +45,15 @@ struct bufferFrameHeader : public bufferFrameHeaderNoConfigTracker {
 };
 static_assert(sizeof(bufferFrameHeader) == 12, "bufferFrameHeader should be 12 bytes");
 
+/**
+ * @brief Holds details for one target of a bufferSend. Also used by
+ * other stages (eg, pirateFrbSend).
+ */
 class networkDestination : public kotekan::kotekanLogging {
 public:
+    networkDestination(const std::string& server_ip="", uint16_t server_port=0,
+                       uint32_t reconnect_timeout=0, uint32_t send_timeout=0);
+
     /// The connection file handle
     int socket_fd;
     /// The server port to connect to.
@@ -80,11 +87,10 @@ public:
     /// hash, or the first frame of a connection, sets config_tracker_update.
     std::string config_tracker_combined_hash;
 
-    /// Thread for connecting to the remote server
-    void test_thread(std::string name);
+    void start_connect_thread(const std::string& name, const std::atomic_bool& stop_thread);
 
     /// Thread for connecting to the remote server
-    void connect_to_server(std::string name, std::atomic_bool const& stop_thread);
+    void connect_to_server(const std::string& name, const std::atomic_bool& stop_thread);
 
     /// Closes the open connection and starts the process of trying to reconnect
     void close_connection();
