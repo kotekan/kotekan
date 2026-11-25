@@ -66,6 +66,10 @@ HOP_SAMPLES = 64
 R_EARTH = 6371e3
 HOPS_PER_S = Fraction(FS_HZ, HOP_SAMPLES)
 CODE_SPAN_S = 30.0  # the code solve takes every row this close to the fix
+# A converged code fix fits its ranges to metres or tens of metres; one that fits no better than
+# this has resolved a wrong whole period somewhere, and the fix stays at the stage before
+# (11-24: a 3.5 km rms code fix 3300 km off was applied over a 14.5 m Doppler fix).
+CODE_RMS_MAX_M = 500.0
 DOP_BASELINE_S = 5.0  # the shortest ADR difference taken as a Doppler
 FRAME0_UTC = 1795132800.0  # config/bladerf_gnss.yaml gps_time frame0_nano
 _KEY = r"\n    %s: ([-0-9.eE+]+)"
@@ -428,6 +432,11 @@ def main(argv=None):
         if clk_sat is None:
             continue
         T = L / s.chip_rate_hz
+        if s.long.endswith("_MC"):
+            # A meander-tiled code is its first half and that half negated, and the data
+            # flips the sign anyway: a blind track knows its phase only modulo the half.
+            # GLONASS L2OF tracks sat on either 10 ms half (11-24 bootstrap: two of four).
+            T /= 2.0
         meas.append((r["band"], e, t, (t + clk_sat - ph / s.chip_rate_hz) % T, T))
     # Doppler from the ADR: each row against the first of its arc at least DOP_BASELINE_S
     # earlier, at the pair's midpoint.
@@ -496,13 +505,28 @@ def main(argv=None):
             % len(meas)
         )
     else:
-        rx, rms, n, nsat, nch = fix
+        rx_c, rms, n, nsat, nch = fix
+        bad = rms > CODE_RMS_MAX_M
         report(
             "code",
-            rx,
-            "rms %.2f m, %d rows of %d sats on %d chains" % (rms, n, nsat, nch),
+            rx_c,
+            "rms %.2f m, %d rows of %d sats on %d chains%s"
+            % (
+                rms,
+                n,
+                nsat,
+                nch,
+                (
+                    "; REJECTED (rms over %.0f m): the fix stands at the stage above"
+                    % CODE_RMS_MAX_M
+                    if bad
+                    else ""
+                ),
+            ),
         )
-        out.update(code_rms_m=rms, n_sats=n)
+        if not bad:
+            rx = rx_c
+            out.update(code_rms_m=rms, n_sats=n)
     out["ecef"] = list(rx)
     if a.json:
         with open(a.json, "w") as f:
