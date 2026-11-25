@@ -417,6 +417,17 @@ e6_rec_buf:
     metadata_pool: gnss_pool
     num_frames: 64
     frame_size: 32 * 44 * 4 + 32 * 6 * 9 * 4
+# E6-B (C/NAV, HAS), despread at the E6 tracker's seeds (its data block), and its symbols.
+e6b_epl_buf:
+    kotekan_buffer: standard
+    metadata_pool: gnss_pool
+    num_frames: 8
+    frame_size: 352432
+e6b_rec_buf:
+    kotekan_buffer: standard
+    metadata_pool: gnss_pool
+    num_frames: 64
+    frame_size: 32 * 44 * 4
 # GPS L2C CL and its CM data component (1227.6 MHz, 2.6 MHz above the LO): DFT bins 1 and 2,
 # frame positions 33 and 34; bin 0 holds the LO's DC. gnss_gpu::frame_bytes(28 PRNs, 2
 # channels, 4 rows, 1 element).
@@ -551,6 +562,7 @@ gputrack:
         gw_epl_buf: gw_epl_buf
         b3i_epl_buf: b3i_epl_buf
         e6_epl_buf: e6_epl_buf
+        e6b_epl_buf: e6b_epl_buf
         l2c_epl_buf: l2c_epl_buf
         l2cm_epl_buf: l2cm_epl_buf
         e5b_epl_buf: e5b_epl_buf
@@ -697,6 +709,10 @@ gputrack:
           set_trim_endpoint: /e6_track/set_trim
           get_prns_endpoint: /e6_track/get_prns
           set_prns_endpoint: /e6_track/set_prns
+          # E6-B: one 1 ms code, one C/NAV symbol.
+          data:
+              signal: GAL_E6_B
+              gpu_mem_output: e6b_epl
         - name: cudaGnssTrack
           gpu_mem_input: gnss_chan_frame
           gpu_mem_output: l2c_epl
@@ -878,6 +894,10 @@ gputrack:
         - name: cudaOutputData
           gpu_mem: e6_epl
           out_buf: e6_epl_buf
+          in_buf: q_valve_buf
+        - name: cudaOutputData
+          gpu_mem: e6b_epl
+          out_buf: e6b_epl_buf
           in_buf: q_valve_buf
         - name: cudaOutputData
           gpu_mem: l2c_epl
@@ -1107,6 +1127,21 @@ e6_combine:
     # A pilot ~11 dB under E5a here (the antenna rolls off at 1278 MHz): 1 s instead of 200 ms.
     integration_length: 1000
     record_export: 64
+# E6-B's C/NAV symbols against E6-C, for nav_decode. E6-B and E6-C share the in-phase carrier
+# with opposite signs. Three 1 s pages per reply, so a poll every 1.5 s sees every page whole.
+e6b_assemble:
+    kotekan_stage: GnssGpuRecordAssemble
+    in_buf: e6b_epl_buf
+    out_buf: e6b_rec_buf
+    prns: *e6_prns
+e6b_symbols:
+    kotekan_stage: GnssNavSymbols
+    pilot_buf: e6_rec_buf
+    data_buf: e6b_rec_buf
+    n_prn: 32
+    symbol_records: 1
+    offset_deg: 180
+    symbol_export: 3000
 
 l2c_assemble:
     kotekan_stage: GnssGpuRecordAssemble
