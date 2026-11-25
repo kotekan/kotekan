@@ -1357,6 +1357,8 @@ numa_{{ numa }}:
         default_gains: [1.0, 0.0] # 1.0 + 0.0j ie unit gain
         gain_buffers:
           - host_frb1_phase_buffer{{ numa_sfx }}
+        # these are only used to extract the list of coarse freuqencies at
+        # startup, no data is read from them
         in_buf: host_rfi_RFImask_buffer{{ numa_sfx }}
         updatable_config:
           frb_gain: /updatable_config/frb_gain
