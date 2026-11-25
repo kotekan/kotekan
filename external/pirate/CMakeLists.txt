@@ -9,7 +9,7 @@ set(HFILES include/pirate/XEngineMetadata.hpp include/pirate/YamlFile.hpp)
 set(CFILES src_lib/XEngineMetadata.cpp src_lib/YamlFile.cpp src_lib/file_utils.cpp)
 
 add_library(pirate SHARED ${CFILES} ${HFILES})
-target_link_libraries(pirate ksgpu)
+target_link_libraries(pirate ksgpu yaml-cpp)
 target_include_directories(pirate PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 # Install the shared library so installed kotekan can find at runtime.
