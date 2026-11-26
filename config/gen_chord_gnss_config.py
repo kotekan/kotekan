@@ -1668,6 +1668,8 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             **elem_proj_keys(args),
             "elem_proj_sys": row.proj_sys,
             **lane_transfer_keys(cfg, node, gpu, V["chain"], freq_ids, args),
+            # --lane-inst-phase: GnssN2Project turns the transfers itself.
+            **({"lane_transfer_inst_apply": False} if args.lane_inst_phase else {}),
             **cube_assembler_keys(args, cfg, gpu, pre),
             "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
             "cpu_affinity": [V["cores"]["assemble"]],
@@ -4213,6 +4215,15 @@ def main():
         "lanes+residual",
     )
     ap.add_argument(
+        "--lane-inst-phase",
+        action="store_true",
+        help="GnssN2Project carries every transferred lane, its board's and the relay's, through "
+        "the instrumental phase table the relay posts (docs/CHORD_FLEET_LANES.md #246; the "
+        "pooled delays where the table does not hold an element), and the assemblers do not "
+        "apply their own delays to their transfers (lane_transfer_inst_apply false). Needs "
+        "--fleet-lanes",
+    )
+    ap.add_argument(
         "--lane-resteer",
         action="store_true",
         help="GnssN2Project turns each fast-moving local lane (a LEO satellite: GuoWang at "
@@ -5113,8 +5124,12 @@ def main():
                     _stage["elem_steer_sign"] = _steer["elem_steer_sign"]
                     if args.lane_resteer:
                         _stage["lane_resteer"] = True
+                    if args.lane_inst_phase:
+                        _stage["lane_inst_phase"] = True
                 elif args.lane_resteer:
                     raise SystemExit("--lane-resteer needs --fleet-lanes")
+                elif args.lane_inst_phase:
+                    raise SystemExit("--lane-inst-phase needs --fleet-lanes")
                 _missing = sorted(
                     set(_stage["tracker_stations"])
                     - set(_st)

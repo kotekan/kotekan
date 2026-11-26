@@ -182,23 +182,39 @@ when it changes and every 300 s. While a start in between is unmeasured it sends
     "inst_phase": {"made_frame0": <frame0_int>, "fids": [<knot freq_id>, ...] (ascending),
                    "phase_deg": [[<n> entries, null where the knot does not hold the input], ...]}
 
-Absent leaves the node's table as it is; `{}` clears it; a table of another length than the
-tracker elements, or with fids not ascending, is refused (400).
+Absent leaves the node's table as it is; `{}` clears it. The whole body is refused (400) for a
+row of another length than the tracker elements, fids that are not ascending integers, a row
+count other than the fids', no knots, a made_frame0 that is not an integer, or a phase that is
+neither a number nor null.
 
-**Node** (GnssN2Project). Per element, the phase at a channel is linear in frequency between the
-two nearest knots that hold the element (the nearest knot's value outside them); an element no
-knot holds has none. A lane carried from f_src to f is multiplied, per station in the N^2 frame,
-by exp(i(phi(f) - phi(f_src))) where the element has both, and by the pooled delay where it does
-not (as before). This applies to the relay's copies (in place of the pooled delay in
-`fleet_lane_direction`) and to the board's own transfers: a transferred `ProjEntry` records the
-channel it was measured on (`fid_src`), and the stage applies the same factor to it. So every
-GPU carries a satellite's lane the same way, whichever GPU measured it.
+**Node** (GnssN2Project, `lane_inst_phase: true`; needs `fleet_lanes`). Per element, the phase
+at a channel is linear in freq_id between the two nearest knots that hold the element (the
+nearest knot's value outside them; `gnss::InstPhaseTable` in gnssFleetLane.hpp, the same as
+`inst_phase_table.phase_at`); an element no knot holds has none. A lane carried from f_src to f
+is multiplied, per station in the N^2 frame, by exp(i(phi(f) - phi(f_src))) where the element has
+both, and by the pooled delay where it does not (as before). This applies to the relay's copies
+(in place of the pooled delay in `fleet_lane_direction`) and to the board's own transfers: a
+transferred `ProjEntry` records the channel it was measured on (`fid_src`), and the stage applies
+the same factor to it. So every GPU carries a satellite's lane the same way, whichever GPU
+measured it.
 - The assemblers then must not apply their own delays to their transfers: `lane_transfer_inst_apply:
-  false` (the generator sets it for every assembler when the fleet yaml has `lane-inst-phase:
-  true`); their `InstDelay` keeps estimating, for `get_lane_inst` and the relay's pooled fallback.
+  false` (the generator's `--lane-inst-phase`, the fleet yaml's `lane-inst-phase: true`, sets it
+  for every assembler and `lane_inst_phase` on the stage, so one regeneration switches both);
+  their `InstDelay` keeps estimating, for `get_lane_inst` and the relay's pooled fallback.
 - With no table (none posted, or cleared after a start), a transfer on the board gets the pooled
   delay, as a relay copy does, so turning the assemblers' own delays off loses nothing.
-- Gauges: `kotekan_gnss_n2project_inst_phase_knots` (0 = no table), `..._inst_phase_age_s`.
+- Whether the table holds an element does not depend on the channel, so each element takes the
+  table, else the pooled delay, else nothing, at both ends. The stage keeps a phasor per element,
+  u(f) (`gnss::inst_carry_phasors`), for each live channel and each relay source channel,
+  rebuilt when the table or the delays change; the carry is u(f) conj(u(f_src)). The pooled
+  delay is a raw-frame slope (InstDelay::apply turns q by exp(+i 2 pi df tau)), so with
+  `lane_conj` it turns the N^2-frame lane by exp(-i 2 pi df tau).
+- `lane_inst_phase: false` (the default): a posted table is kept and shows in the gauges, and
+  nothing else changes.
+- The table does not age out: with the relay dead the node keeps using the last one, and
+  `inst_phase_age_s` grows past the relay's 300 s repost.
+- Gauges: `kotekan_gnss_n2project_inst_phase_knots` (0 = no table), `..._inst_phase_age_s` (since
+  the table was last posted; -1 with none).
 
 **Check.** A lane dump at a bright pass: a carried lane's overlap with the top mode against
 distance from its source (G03 table, `fixtures/deproj_1125/G03_LANE_DUMP.md` section 6); and
