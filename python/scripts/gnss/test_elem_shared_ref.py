@@ -111,11 +111,11 @@ class TestBandConsensus(unittest.TestCase):
         self.assertLess(max(e["R"]), 0.5)
 
     def test_l5_chains_on_one_gpu_are_separate_instances(self):
-        # The three chains' assemblers are band l5. Under one name per node/GPU the consensus
-        # sees one chain's model of each GPU while the re-take quorum counts all of them.
+        # Both chains' assemblers are band l5. Under one name per node/GPU the consensus sees
+        # one chain's model of each GPU while the re-take quorum counts both.
         res = {}
         for i, a in enumerate((0, 50, 100, 150, 200, 250)):
-            for chain in ("gps_l5", "sbas_l5", "qzss_l5"):
+            for chain in ("gps_l5", "sbas_l5"):
                 g = np.concatenate(
                     [
                         model(self.rng, self.shape[0], a),
@@ -128,7 +128,7 @@ class TestBandConsensus(unittest.TestCase):
                     "g_shared": [[float(x.real), float(x.imag)] for x in g],
                 }
         e = esr.band_consensus(res, "l5", esr.EXCLUDE_DEG, esr.MIN_SIM)
-        self.assertEqual(e["n"], [18, 18])
+        self.assertEqual(e["n"], [12, 12])
         self.assertEqual(
             esr.inst_name("cx27", "gnss1_sbas_l5_n2assemble"), "cx27/1:sbas"
         )
@@ -467,6 +467,18 @@ class TestWatchFirstTake(unittest.TestCase):
         del self.node.posts[:]
         self.watch()
         self.assertEqual(self.node.posts, [])
+
+    def test_a_committed_copy_of_the_watchs_file_lists_what_changed_since(self):
+        with open(self.snap) as fh:
+            snap = json.load(fh)
+        snap["auto"] = {"l5": "2025-12-31T00:00:00Z"}
+        with open(self.snap, "w") as fh:
+            json.dump(snap, fh)
+        self.watch()
+        self.age()
+        cur = self.watch()
+        self.assertEqual(sorted(self.auto()["auto"]), ["l1ca", "l5"])
+        self.assertTrue(any("(re-taken: l1ca)" in line for line in cur["alerts"]))
 
     def test_held_band_is_reported_and_left(self):
         cur = self.watch(hold="1202,l1ca")

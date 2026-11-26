@@ -51,7 +51,7 @@
 
 Instances are read from config/generated/chord_gnss_<node>_multi.yaml (port 12048). Band names:
 the shared-ref-band of the assembler's chain in the chains table (config/gnss_fleet_chord.yaml
-chains:), the band the generator copies into it, so GPS, SBAS and QZSS L5 share l5.
+chains:), the band the generator copies into it, so GPS and SBAS L5 share l5.
 """
 import argparse
 import calendar
@@ -173,9 +173,9 @@ def band_of(stage):
 
 
 def inst_name(node, stage):
-    """node/GPU, plus ":sbas" or ":qzss" for the SBAS and QZSS L5 assemblers: GPS, SBAS and QZSS
-    L5 share the band, so one GPU holds three of its assemblers and the bare node/GPU would name
-    them all the same."""
+    """node/GPU, plus ":sbas" or ":qzss" for an SBAS or QZSS assembler: GPS and SBAS L5 share a
+    band, so one GPU holds two of its assemblers and the bare node/GPU would name both the
+    same."""
     system = (gnss_fleet.stage_chain(stage, "n2assemble") or "").partition("_")[0]
     suffix = ":" + system if system in ("sbas", "qzss") else ""
     return "%s/%s%s" % (node, stage[4], suffix)
@@ -927,10 +927,12 @@ def watch(a):
             with open(auto_path + ".tmp", "w") as f:
                 json.dump(snap, f, indent=1)
             os.replace(auto_path + ".tmp", auto_path)
+        # FILE can be a copy of an earlier auto_ref.json: its own entries are not listed.
+        since = sorted(b for b, t in snap.get("auto", {}).items() if t > base_taken)
         lines.append(
             "the reference in use is %s (re-taken: %s); the configs still carry %s: copy the "
             "file into config/, point the manifest's elem-shared-ref at it and regenerate"
-            % (auto_path, ", ".join(sorted(snap.get("auto", {}))), a.file)
+            % (auto_path, ", ".join(since), a.file)
         )
 
     cur = {

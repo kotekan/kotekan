@@ -385,7 +385,12 @@ common:
     # 30 min. Fourteen bands (the ten, plus B1I, E1-C, L1 C/A and SBAS L1), all instances,
     # R >= 0.99, similarity medians 0.85-1.00, phases within 2 deg of the pins in use. GuoWang
     # 1202 and GLONASS L2 FDMA have no consensus and stay out (elem_ref_cron.sh holds them).
-    elem-shared-ref: config/elem_shared_ref_20261113.json
+    # 2026-11-26: the watch's own file (auto_ref.json) as it stood at 03:15Z, copied unchanged.
+    # The F-engine start of 11-25 18:23Z stepped 51 inputs by whole ADC samples: the watch
+    # re-took ten bands at 18:45-20:15Z and turned the four L1 bands by the steps
+    # (fengine_steps.py). The same fourteen bands. QZSS L5 has no entry: the watch takes one
+    # when its assemblers agree.
+    elem-shared-ref: config/elem_shared_ref_20261126.json
     elem-shared-ref-mode: live
     # The gnss VM, which runs the search aggregator, the telemetry gather and the broker.
     # 127.0.0.1, the generator default, would point every node at itself. Moving the aggregator
@@ -784,7 +789,8 @@ chains:
     # 194/195/196 the inclined satellites, which rise to el ~17 in the north-west; RINEX J
     # records (Jnn = PRN - 192). Model-primary, as SBAS L5. The noise probes: 199 and 200
     # (QZS-3 and QZS-6, geostationary at el -23 and -41 here) and 193, a code no satellite
-    # sends: presence needs 3.
+    # sends: presence needs 3. A band of its own in the shared reference: GPS L5's entry does
+    # not describe its models (similarity 0.2 to 0.3).
     - id: 18
       key: qzss_l5
       descriptor: QZSS_L5_Q_NH
@@ -792,7 +798,7 @@ chains:
       dll-spacing-chips: 0.5
       telem-rows: 14
       proj-sys: G
-      shared-ref-band: l5
+      shared-ref-band: qzss_l5
 
 nodes:
     # THE FLEET LIST: every host that runs the GNSS branch, and nothing else names one.
