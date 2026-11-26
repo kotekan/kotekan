@@ -59,7 +59,9 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
     fleet_lane_rebuild_s(config.get_default<double>(unique_name, "fleet_lane_rebuild_s", 0.25)),
     lane_resteer(config.get_default<bool>(unique_name, "lane_resteer", false)),
     lane_rank_min_rel(config.get_default<double>(unique_name, "lane_rank_min_rel", 0.0)),
-    lane_inst_phase(config.get_default<bool>(unique_name, "lane_inst_phase", false)) {
+    lane_inst_phase(config.get_default<bool>(unique_name, "lane_inst_phase", false)),
+    lane_inst_phase_max_age_s(
+        config.get_default<double>(unique_name, "lane_inst_phase_max_age_s", 900.0)) {
     if (source != "eigen" && source != "lanes" && source != "lanes+residual")
         FATAL_ERROR("GnssN2Project: source '{:s}' must be eigen, lanes or lanes+residual", source);
     eigen_channels = config.get_default<std::string>(unique_name, "eigen_channels", "all");
@@ -489,6 +491,16 @@ void GnssN2Project::take_fleet(double now_s) {
         inst_phase_pending = gnss::InstPhaseTable();
         inst_phase_pending_set = false;
         inst_phase_t_rx = now_s;
+        if (lane_inst_phase)
+            fleet_t_built = 0.0;
+        inst_u_stale = true;
+    }
+    // Not reposted: the relay is gone, and a start since may have moved every phase.
+    if (lane_inst_phase_max_age_s > 0.0 && !inst_phase.empty()
+        && now_s - inst_phase_t_rx > lane_inst_phase_max_age_s) {
+        WARN("GnssN2Project: instrumental phase table not posted for {:.0f} s: cleared",
+             now_s - inst_phase_t_rx);
+        inst_phase = gnss::InstPhaseTable();
         if (lane_inst_phase)
             fleet_t_built = 0.0;
         inst_u_stale = true;

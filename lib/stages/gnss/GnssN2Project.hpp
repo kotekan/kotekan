@@ -161,6 +161,10 @@
  *                             does not (false). The assemblers must then not apply their own
  *                             delays (lane_transfer_inst_apply false). Needs fleet_lanes. Off,
  *                             a posted table is kept and reported but not used.
+ * @conf lane_inst_phase_max_age_s Double. The table is cleared when the last post that carried
+ *                             it is older than this, s (900, three of the relay's reposts; 0 =
+ *                             never): a dead relay must not leave a table from before an
+ *                             F-engine start.
  * @conf lane_rank_min_rel     Double. Where the raw block holds a mode of at least this many
  *                             mean autos, the board lanes that explain at least as much of it
  *                             go first, in order of the power they explain, and the rest
@@ -359,6 +363,7 @@ private:
     std::vector<int> held_k; ///< per channel: held local lanes in the basis
     // The instrumental phase table (#246)
     const bool lane_inst_phase;
+    const double lane_inst_phase_max_age_s;
     gnss::InstPhaseTable inst_phase; ///< main_thread's; empty = none
     gnss::InstPhaseTable inst_phase_pending;
     bool inst_phase_pending_set = false;

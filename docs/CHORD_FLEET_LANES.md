@@ -211,8 +211,11 @@ measured it.
   `lane_conj` it turns the N^2-frame lane by exp(-i 2 pi df tau).
 - `lane_inst_phase: false` (the default): a posted table is kept and shows in the gauges, and
   nothing else changes.
-- The table does not age out: with the relay dead the node keeps using the last one, and
-  `inst_phase_age_s` grows past the relay's 300 s repost.
+- The table ages out: when the last post that carried it is older than
+  `lane_inst_phase_max_age_s` (900 s, three of the relay's reposts; 0 = never) the stage clears
+  it as `{}` does and logs a WARN, so a dead relay cannot leave a table from before an F-engine
+  start. The pooled `inst_delay_ns` does not age out (unchanged): with the relay dead the board's
+  transfers keep the last delays.
 - Gauges: `kotekan_gnss_n2project_inst_phase_knots` (0 = no table), `..._inst_phase_age_s` (since
   the table was last posted; -1 with none).
 
