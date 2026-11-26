@@ -108,7 +108,7 @@ common:
     # (2026-10-30), at ~n^2 per lane.
     # qzss_l2c: the L2C main lobe only (1.023 Mcps either side of 1227.6 MHz); QZSS sends no
     # P(Y) or M-code.
-    fleet-lane-transfer: [gps_l2c:1212.3-1242.9, gal_e6:1263.4-1273.6, gal_e6:1283.9-1294.1,
+    fleet-lane-transfer: [gps_l2c:1207.1-1242.9, gal_e6:1263.4-1273.6, gal_e6:1283.9-1294.1,
                           glo_l2of:1237.9-1258.2, qzss_l2c:1226.6-1228.6]
     # Channels exempt from first-stage (SK) RFI excision, absolute freq_id ranges
     # (freq_id = MHz / 0.1953125): the GNSS main lobes, one chip rate either side of each
@@ -282,7 +282,7 @@ common:
     # (gps_l5, gal_e6, ...); the generator refuses a chain it does not build.
     lane-transfer:
         - gal_e6:1263.4-1273.6
-        - gps_l2c:1212.3-1242.9
+        - gps_l2c:1207.1-1242.9
         - gal_e5b:1186.7-1196.9
         - bds_b2b:1186.7-1196.9
         - gps_l5:1186.7-1196.9
@@ -297,6 +297,18 @@ common:
         - gal_e5a:1160.0-1166.2
         - bds_b2a:1160.0-1166.2
         - gps_l5:1160.0-1166.2
+    # 2026-11-26: GPS L2 down to 1207.1 MHz (the P(Y) first lower sidelobe, 1207.1-1217.4, and the
+    # M-code's outer skirt, unlaned in 1208-1212.3 inside E5b); SBAS and QZSS L5 over the same
+    # skirts as GPS L5 (BPSK at 10.23 Mcps; J09 and the WAAS satellites hold one direction all
+    # day); BeiDou B3I's first sidelobes either side of its 1258.5-1278.5 MHz lobe (every GPU
+    # measures B3I on all its channels inside the lobe; above 1278.5 the B3 sidelobes were left
+    # in E6, 11-24).
+        - sbas_l5:1160.0-1166.2
+        - qzss_l5:1160.0-1166.2
+        - sbas_l5:1186.7-1196.9
+        - qzss_l5:1186.7-1196.9
+        - bds_b3i:1248.3-1258.4
+        - bds_b3i:1278.6-1288.7
     # 2026-11-06: GuoWang's lanes over its whole 1202.025 MHz lobe (BPSK at 2.046 Mcps: main lobe
     # +-2.05 MHz, sidelobes to +-6.1). In the 11-06 Tau A window no gw_1202 lane reached
     # 1204.688 MHz, on the upper sidelobe past the null, during the tracked passes (cx27 lane
