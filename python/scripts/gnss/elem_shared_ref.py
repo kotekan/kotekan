@@ -42,7 +42,7 @@
 
 Instances are read from config/generated/chord_gnss_<node>_multi.yaml (port 12048). Band names:
 the shared-ref-band of the assembler's chain in the chains table (config/gnss_fleet_chord.yaml
-chains:), the band the generator copies into it, so GPS and SBAS L5 share l5.
+chains:), the band the generator copies into it, so GPS, SBAS and QZSS L5 share l5.
 """
 import argparse
 import concurrent.futures
@@ -153,10 +153,12 @@ def band_of(stage):
 
 
 def inst_name(node, stage):
-    """node/GPU, plus ":sbas" for the SBAS L5 assembler: GPS and SBAS L5 share the band, so one
-    GPU holds two of its assemblers and the bare node/GPU would name both the same."""
+    """node/GPU, plus ":sbas" or ":qzss" for the SBAS and QZSS L5 assemblers: GPS, SBAS and QZSS
+    L5 share the band, so one GPU holds three of its assemblers and the bare node/GPU would name
+    them all the same."""
     system = (gnss_fleet.stage_chain(stage, "n2assemble") or "").partition("_")[0]
-    return "%s/%s%s" % (node, stage[4], ":sbas" if system == "sbas" else "")
+    suffix = ":" + system if system in ("sbas", "qzss") else ""
+    return "%s/%s%s" % (node, stage[4], suffix)
 
 
 def epoch_of_configs():

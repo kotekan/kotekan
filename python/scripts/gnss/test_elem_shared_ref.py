@@ -102,12 +102,12 @@ class TestBandConsensus(unittest.TestCase):
         self.assertGreaterEqual(min(len(x) for x in e["off"]), 6)
         self.assertLess(max(e["R"]), 0.5)
 
-    def test_gps_and_sbas_l5_on_one_gpu_are_two_instances(self):
-        # Both chains' assemblers are band l5. Named by node/GPU alone they collided, so the
-        # consensus saw half the band while the re-take quorum counted all of it (n 16 of 22).
+    def test_l5_chains_on_one_gpu_are_separate_instances(self):
+        # The three chains' assemblers are band l5. Under one name per node/GPU the consensus
+        # sees one chain's model of each GPU while the re-take quorum counts all of them.
         res = {}
         for i, a in enumerate((0, 50, 100, 150, 200, 250)):
-            for chain in ("gps_l5", "sbas_l5"):
+            for chain in ("gps_l5", "sbas_l5", "qzss_l5"):
                 g = np.concatenate(
                     [
                         model(self.rng, self.shape[0], a),
@@ -120,11 +120,23 @@ class TestBandConsensus(unittest.TestCase):
                     "g_shared": [[float(x.real), float(x.imag)] for x in g],
                 }
         e = esr.band_consensus(res, "l5", esr.EXCLUDE_DEG, esr.MIN_SIM)
-        self.assertEqual(e["n"], [12, 12])
+        self.assertEqual(e["n"], [18, 18])
         self.assertEqual(
             esr.inst_name("cx27", "gnss1_sbas_l5_n2assemble"), "cx27/1:sbas"
         )
+        self.assertEqual(
+            esr.inst_name("cx27", "gnss1_qzss_l5_n2assemble"), "cx27/1:qzss"
+        )
         self.assertEqual(esr.inst_name("cx27", "gnss1_gps_l5_n2assemble"), "cx27/1")
+
+    def test_chains_that_share_a_band_have_their_own_names(self):
+        # every chain of the chains table: a new chain on a band that has one needs a suffix
+        names = {}
+        for r in esr.gnss_chain_table.load():
+            name = esr.inst_name("cx27", "gnss1_%s_n2assemble" % r.key)
+            names.setdefault(r.shared_ref_band, []).append(name)
+        for band, of_band in names.items():
+            self.assertEqual(len(of_band), len(set(of_band)), (band, of_band))
 
     def test_a_model_of_another_shape_is_left_out(self):
         halves = [
