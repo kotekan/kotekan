@@ -73,6 +73,7 @@ PINNED_DLL_SPACING = {
     "gps_l1ca": 0.5,
     "gal_e1c": 0.2,
     "sbas_l1": 0.5,
+    "qzss_l2c": 0.33,
 }
 
 

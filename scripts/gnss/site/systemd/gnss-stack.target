@@ -20,7 +20,7 @@ Wants=gnss-obs@bds_b2a.service gnss-obs@bds_b2b.service gnss-obs@bds_b3i.service
 Wants=gnss-obs@bds_b1i.service
 Wants=gnss-obs@glo_l3oc.service gnss-obs@glo_l2oc.service
 Wants=gnss-obs@sbas_l5.service gnss-obs@sbas_l1.service
-Wants=gnss-obs@qzss_l5.service
+Wants=gnss-obs@qzss_l5.service gnss-obs@qzss_l2c.service
 
 [Install]
 WantedBy=default.target

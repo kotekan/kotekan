@@ -7,6 +7,7 @@
 #include "gnssChannelizedDespread.hpp" // for channelized_despread
 #include "gnssChannelizedReplica.hpp"  // for ChannelizedReplicaBank
 #include "gnssSignal.hpp"              // for signal_by_name
+#include "gpsL2CCode.hpp"              // for generate_l2cm_code, generate_l2cl_code
 #include "gpsL5Code.hpp"               // for L5_NH20, L5_NH10 (overlay references)
 #include "pfbPrototype.hpp"            // for fftwEngine's pfb_prototype, pfb_push, pfb_fold
 
@@ -835,4 +836,50 @@ BOOST_AUTO_TEST_CASE(qzss_l5q_is_the_q5_code_of_the_qzss_prns) {
     BOOST_CHECK(gnss::prn_map_error(*nh, {194, 195, 196, 201, 199, 200}).empty());
     BOOST_CHECK_EQUAL(gnss::prn_map_error(*nh, {194, 195, 9}),
                       "PRN 9 at slot 2 is outside 193..202");
+}
+
+// QZSS L2C is GPS L2C on the QZSS rows of the L2C tables: the bank interleaves the PRN's CM on
+// the even combined chips and its CL on the odd, a QZSS code decorrelates against another QZSS
+// PRN and against GPS, and /set_prns takes 193..202 only.
+BOOST_AUTO_TEST_CASE(qzss_l2c_is_the_l2c_code_of_the_qzss_prns) {
+    const gnss::SignalDescriptor* cm = gnss::signal_by_name("QZSS_L2C_CM");
+    const gnss::SignalDescriptor* gps_cm = gnss::signal_by_name("GPS_L2C_CM");
+    BOOST_REQUIRE(cm != nullptr && gps_cm != nullptr);
+    BOOST_CHECK_EQUAL(cm->carrier_hz, gps_cm->carrier_hz);
+    BOOST_CHECK_EQUAL(cm->chip_rate_hz, gps_cm->chip_rate_hz);
+    BOOST_CHECK_EQUAL(cm->code_length, gps_cm->code_length);
+    BOOST_CHECK_EQUAL(cm->code_period_s, gps_cm->code_period_s);
+    BOOST_CHECK(cm->time_multiplexed && cm->tdm_phase == 0);
+    for (int prn : {194, 199}) {
+        const auto cm_code = gps::generate_l2cm_code(prn);
+        const auto cl_code = gps::generate_l2cl_code(prn);
+        auto bank_cm = make_bank("QZSS_L2C_CM", {prn});
+        auto bank_cl = make_bank("QZSS_L2C_CL", {prn});
+        BOOST_REQUIRE_EQUAL(bank_cm.comb_mult(), 2);
+        for (int i = 0; i < 10230; i += 331) {
+            BOOST_REQUIRE_EQUAL((int)bank_cm.code_chip(0, 2.0 * i), (int)cm_code[(size_t)i]);
+            BOOST_REQUIRE_EQUAL((int)bank_cm.code_chip(0, 2.0 * i + 1), 0);
+            BOOST_REQUIRE_EQUAL((int)bank_cl.code_chip(0, 2.0 * i), 0);
+            BOOST_REQUIRE_EQUAL((int)bank_cl.code_chip(0, 2.0 * i + 1), (int)cl_code[(size_t)i]);
+        }
+    }
+    auto bank = make_bank("QZSS_L2C_CM", {194, 195});
+    auto gps_bank = make_bank("GPS_L2C_CM", {1});
+    const int H = 400; // as l2c_cm_time_multiplexed
+    auto r194 = bank.channels(0, 0, 0.0, 0.0, H);
+    BOOST_CHECK_CLOSE(despread_mag(r194, r194), 1.0, 1e-2);
+    BOOST_CHECK_LT(despread_mag(r194, bank.channels(1, 0, 0.0, 0.0, H)), 0.3);
+    BOOST_CHECK_LT(despread_mag(r194, gps_bank.channels(0, 0, 0.0, 0.0, H)), 0.3);
+
+    for (const char* name : {"QZSS_L2C_CM", "QZSS_L2C_CL"}) {
+        auto b = make_bank(name, {194});
+        for (int prn : {193, 196, 199, 202}) {
+            BOOST_CHECK_MESSAGE(set_prns_takes(name, prn), name << " refuses PRN " << prn);
+            BOOST_CHECK_MESSAGE(b.set_prn(0, prn), name << " has no code for PRN " << prn);
+        }
+        for (int prn : {0, 1, 32, 63, 131, 192, 203})
+            BOOST_CHECK_MESSAGE(!set_prns_takes(name, prn), name << " takes PRN " << prn);
+    }
+    BOOST_CHECK(gnss::prn_map_error(*cm, {194, 195, 196, 199, 200, 193}).empty());
+    BOOST_CHECK_EQUAL(gnss::prn_map_error(*cm, {194, 3}), "PRN 3 at slot 1 is outside 193..202");
 }

@@ -240,9 +240,9 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         auto a = galileo::generate_e5bi_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
     }
-    if (name == "GPS_L2C_CM")
+    if (name == "GPS_L2C_CM" || name == "QZSS_L2C_CM") // QZSS: PRN 193..202 of the same tables
         return gps::generate_l2cm_code(prn);
-    if (name == "GPS_L2C_CL")
+    if (name == "GPS_L2C_CL" || name == "QZSS_L2C_CL")
         return gps::generate_l2cl_code(prn);
     if (name == "GPS_L1CA_BIT") // twenty identical periods, one 20 ms LNAV bit
         return bake_secondary(gps::generate_ca_code(prn), std::vector<int8_t>(20, 1));

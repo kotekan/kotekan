@@ -142,7 +142,7 @@ def signal_tag(name):
 
 _STAGE_CHAINS = {}  # tag -> broker chain, filled by stage_chain's first call
 # Chains named by their broker key from the start: no band-tagged name is theirs.
-_NO_BAND_TAG = {"qzss_l5"}
+_NO_BAND_TAG = {"qzss_l5", "qzss_l2c"}
 
 #: The per-chain stages whose untagged name, gnss<g>_<stage>, was the primary's before every
 #: chain was tagged. No host takes one of these names; a host's (gnss<g>_inject, _records,

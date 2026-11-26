@@ -103,8 +103,10 @@ common:
     # and the relay's copies of its own satellites passed the duplicate test (the re-steer
     # differs by the pooled delays' noise over 10-16 MHz) and filled the 40-lane budget on cx51
     # (2026-10-30), at ~n^2 per lane.
+    # qzss_l2c: the L2C main lobe only (1.023 Mcps either side of 1227.6 MHz); QZSS sends no
+    # P(Y) or M-code.
     fleet-lane-transfer: [gps_l2c:1212.3-1242.9, gal_e6:1263.4-1273.6, gal_e6:1283.9-1294.1,
-                          glo_l2of:1237.9-1258.2]
+                          glo_l2of:1237.9-1258.2, qzss_l2c:1226.6-1228.6]
     # Channels exempt from first-stage (SK) RFI excision, absolute freq_id ranges
     # (freq_id = MHz / 0.1953125): the GNSS main lobes, one chip rate either side of each
     # carrier (10.23 MHz; E6-C's 5.115 MHz at the top), at 1176.45 (L5/E5a/B2a), 1202.025
@@ -799,6 +801,21 @@ chains:
       telem-rows: 14
       proj-sys: G
       shared-ref-band: qzss_l5
+
+    # QZSS L2C CM (GPS L2C's structure on PRNs 193..202, QZSS_L2C_CM), on gps_l2c's channels
+    # with its derived DLL spacing. Only the Block II satellites send L2C (IS-QZSS-PNT-006
+    # Table 3.2.1-1): 194/195/196, which rise to el ~17 in the north-west, and 199 (QZS-3),
+    # geostationary at el -23 here; QZS-5/6/7 (197, 200, 201) send no L2 signal. Model-primary,
+    # as qzss_l5. The noise probes are qzss_l5's: 199, 200 (el -41, no L2C) and 193, a code no
+    # satellite sends. A band of its own in the shared reference, as qzss_l5.
+    - id: 19
+      key: qzss_l2c
+      descriptor: QZSS_L2C_CM
+      prns: 194,195,196,199,200,193
+      dll-spacing-chips: fleet
+      telem-rows: 14
+      proj-sys: G
+      shared-ref-band: qzss_l2c
 
 nodes:
     # THE FLEET LIST: every host that runs the GNSS branch, and nothing else names one.

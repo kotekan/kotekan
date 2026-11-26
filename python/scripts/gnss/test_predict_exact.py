@@ -82,7 +82,11 @@ def old_predict_all(
             continue
         health = e.get("health", 0)
         if key[0] == "J":
-            health = int(health) & ge.QZSS_HEALTH_L5
+            health = int(health) & (
+                ge.QZSS_HEALTH_L2
+                if "l2c" in str(signal or "").lower()
+                else ge.QZSS_HEALTH_L5
+            )
         if (
             health_gate
             and health not in (0, 0.0)
