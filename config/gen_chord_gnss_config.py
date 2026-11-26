@@ -1668,7 +1668,7 @@ def build_n2dual_branch(cfg, node, gpu, chan_idx, freq_ids, args, spds, chain=No
             **elem_proj_keys(args),
             "elem_proj_sys": row.proj_sys,
             **lane_transfer_keys(cfg, node, gpu, V["chain"], freq_ids, args),
-            # --lane-inst-phase: GnssN2Project turns the transfers itself.
+            # --lane-inst-phase: the transfers are carried by GnssN2Project's table instead.
             **({"lane_transfer_inst_apply": False} if args.lane_inst_phase else {}),
             **cube_assembler_keys(args, cfg, gpu, pre),
             "sample_rate": float(cfg["fengine"]["sampling_rate_MHz"]) * 1e6,
@@ -4219,9 +4219,9 @@ def main():
         action="store_true",
         help="GnssN2Project carries every transferred lane, its board's and the relay's, through "
         "the instrumental phase table the relay posts (docs/CHORD_FLEET_LANES.md #246; the "
-        "pooled delays where the table does not hold an element), and the assemblers do not "
-        "apply their own delays to their transfers (lane_transfer_inst_apply false). Needs "
-        "--fleet-lanes",
+        "pooled delays where the table does not hold an element), and the assemblers carry "
+        "their transfers by the same table in place of their own delays "
+        "(lane_transfer_inst_apply false). Needs --fleet-lanes",
     )
     ap.add_argument(
         "--lane-resteer",

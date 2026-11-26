@@ -3,10 +3,13 @@
 #include "gnssLaneDirection.hpp" // for LaneDirection, InstDelay
 
 #include <algorithm> // for max
+#include <atomic>    // for atomic
 #include <boost/test/included/unit_test.hpp>
 #include <cmath>   // for exp, sqrt
 #include <complex> // for complex, conj, norm
+#include <memory>  // for shared_ptr, make_shared
 #include <random>  // for mt19937, normal_distribution
+#include <thread>  // for thread
 #include <vector>
 using cd = std::complex<double>;
 using gnss::ElemSteer;
@@ -948,4 +951,162 @@ BOOST_AUTO_TEST_CASE(fleet_lane_carried_by_the_table_or_the_pooled_delay) {
         d = std::max(d, std::abs(board - v_tab[i]));
     }
     BOOST_CHECK_LT(d, 1e-5);
+}
+
+namespace {
+// A table over 6200-6400 with a few elements no knot holds (they take the delay), pooled delays,
+// and the given lane_conj.
+gnss::InstCarry synth_carry(int n, bool lane_conj) {
+    const SynthInst inst(n, 7);
+    gnss::InstCarry c;
+    c.tab = inst.table(6200, 6400, 5, 7);
+    for (int el = 3; el < n; el += 9)
+        for (size_t k = 0; k < c.tab.fids.size(); ++k)
+            c.tab.phase[k * n + el] = std::nan("");
+    for (int el = 0; el < n; ++el)
+        c.delay_s.push_back(-inst.tau[el]);
+    c.lane_conj = lane_conj;
+    return c;
+}
+
+// The N^2-frame lane GnssN2Project reads from a raw-frame entry: conj with lane_conj.
+cd to_n2(cd x, bool lane_conj) {
+    return lane_conj ? std::conj(x) : x;
+}
+} // namespace
+
+// The assemblers carry a transfer in the raw frame; read into the N^2 frame it must be what
+// GnssN2Project's own carry, u(f) conj(u(f_src)) after lane_conj, gives, for either lane_conj.
+BOOST_AUTO_TEST_CASE(inst_carry_raw_is_the_n2_carry) {
+    const int n = 32;
+    std::mt19937 rng(246);
+    std::uniform_real_distribution<double> u(-M_PI, M_PI);
+    std::vector<cd> x(n), raw(n), uf(n), us(n);
+    for (const bool conj : {true, false}) {
+        const gnss::InstCarry c = synth_carry(n, conj);
+        const int pairs[4][2] = {{6233, 6300}, {6400, 6210}, {6150, 6450}, {6270, 6271}};
+        double d = 0.0, moved = 0.0;
+        for (const auto& p : pairs) {
+            gnss::inst_carry_raw(c, n, p[0], p[1], raw.data());
+            gnss::inst_carry_phasors(c.tab, c.delay_s.data(), conj, n, p[1], uf.data());
+            gnss::inst_carry_phasors(c.tab, c.delay_s.data(), conj, n, p[0], us.data());
+            for (int el = 0; el < n; ++el) {
+                x[el] = std::polar(1.0 / std::sqrt((double)n), u(rng));
+                const cd n2 = to_n2(x[el], conj) * uf[el] * std::conj(us[el]);
+                d = std::max(d, std::abs(to_n2(x[el] * raw[el], conj) - n2));
+                moved = std::max(moved, std::abs(raw[el] - 1.0));
+            }
+        }
+        BOOST_TEST_MESSAGE("lane_conj " << conj << ": raw-frame carry against the N^2 one " << d);
+        BOOST_CHECK_LT(d, 1e-9);
+        BOOST_CHECK_GT(moved, 0.1);
+    }
+    // Delays of another element count are not used: those elements are not turned.
+    gnss::InstCarry c = synth_carry(n, true);
+    c.delay_s.pop_back();
+    gnss::inst_carry_raw(c, n, 6233, 6300, raw.data());
+    for (int el = 3; el < n; el += 9)
+        BOOST_CHECK_EQUAL(raw[el], cd(1.0, 0.0));
+}
+
+// The process-wide holder: set, clear, and readers that always see one whole content while it
+// is replaced.
+BOOST_AUTO_TEST_CASE(inst_carry_board_holds_one_content) {
+    gnss::InstCarryBoard& b = gnss::InstCarryBoard::instance();
+    BOOST_CHECK(!b.get());
+    auto a = std::make_shared<gnss::InstCarry>(synth_carry(16, true));
+    b.set(a);
+    BOOST_CHECK(b.get() == a);
+    b.set(nullptr);
+    BOOST_CHECK(!b.get());
+
+    // Content k holds k + 1 knots and delay k on every element.
+    std::atomic<bool> stop{false};
+    std::atomic<int> bad{0}, seen{0};
+    std::vector<std::thread> readers;
+    for (int r = 0; r < 4; ++r)
+        readers.emplace_back([&] {
+            while (!stop.load()) {
+                const std::shared_ptr<const gnss::InstCarry> c = b.get();
+                if (!c)
+                    continue;
+                const double k = c->delay_s[0];
+                if ((double)c->tab.fids.size() != k + 1 || c->delay_s.back() != k)
+                    ++bad;
+                ++seen;
+            }
+        });
+    for (int k = 0; k < 2000; ++k) {
+        auto c = std::make_shared<gnss::InstCarry>();
+        c->tab.n = 4;
+        for (int j = 0; j <= k % 50; ++j)
+            c->tab.fids.push_back(j);
+        c->tab.phase.assign(c->tab.fids.size() * 4, 0.0);
+        c->delay_s.assign(4, (double)(k % 50));
+        b.set(std::move(c));
+    }
+    stop = true;
+    for (std::thread& t : readers)
+        t.join();
+    BOOST_TEST_MESSAGE("snapshots read: " << seen.load());
+    BOOST_CHECK_EQUAL(bad.load(), 0);
+    b.set(nullptr);
+}
+
+// A transfer published while the holder has content is carried and marked; GnssN2Project skips
+// the carried one (build_lanes), so the lane it reads is the geometric transfer carried once,
+// whoever carried it. With no content nothing is touched.
+BOOST_AUTO_TEST_CASE(carried_transfer_is_not_carried_twice) {
+    const int n = 32, fid_src = 6233, fid = 6300;
+    gnss::ProjEntry geo;
+    geo.src = 2;
+    geo.n = n;
+    geo.k = 1;
+    geo.xfer = 1;
+    geo.fid_src = fid_src;
+    for (int el = 0; el < n; ++el)
+        geo.q.push_back(std::polar(1.0f, 0.37f * el * el));
+
+    gnss::InstCarryCache cache;
+    gnss::ProjEntry e = geo;
+    BOOST_CHECK(!cache.refresh());
+    cache.carry(e, fid);
+    BOOST_CHECK(!e.carried);
+    BOOST_CHECK(e.q == geo.q);
+
+    for (const bool conj : {true, false}) {
+        auto c = std::make_shared<gnss::InstCarry>(synth_carry(n, conj));
+        gnss::InstCarryBoard::instance().set(c);
+        BOOST_REQUIRE(cache.refresh());
+        e = geo;
+        cache.carry(e, fid);
+        BOOST_CHECK(e.carried);
+        // build_lanes' read: the N^2 frame, carried by the stage unless the entry is.
+        std::vector<cd> uf(n), us(n);
+        gnss::inst_carry_phasors(c->tab, c->delay_s.data(), conj, n, fid, uf.data());
+        gnss::inst_carry_phasors(c->tab, c->delay_s.data(), conj, n, fid_src, us.data());
+        double d_once = 0.0, d_twice = 0.0;
+        for (int el = 0; el < n; ++el) {
+            const cd want = to_n2(cd(geo.q[el]), conj) * uf[el] * std::conj(us[el]);
+            const cd got = to_n2(cd(e.q[el]), conj);
+            d_once = std::max(d_once, std::abs(got - want));
+            d_twice = std::max(d_twice, std::abs(got * uf[el] * std::conj(us[el]) - want));
+        }
+        BOOST_CHECK_LT(d_once, 1e-6);
+        BOOST_CHECK_GT(d_twice, 0.05);
+        // The cache is rebuilt when the content changes: the same pair, another table.
+        auto c2 = std::make_shared<gnss::InstCarry>(*c);
+        for (double& ph : c2->tab.phase)
+            ph = -ph;
+        gnss::InstCarryBoard::instance().set(c2);
+        BOOST_REQUIRE(cache.refresh());
+        gnss::ProjEntry e2 = geo;
+        cache.carry(e2, fid);
+        BOOST_CHECK(e2.q != e.q);
+    }
+    gnss::InstCarryBoard::instance().set(nullptr);
+    BOOST_CHECK(!cache.refresh());
+    e = geo;
+    cache.carry(e, fid);
+    BOOST_CHECK(!e.carried && e.q == geo.q);
 }

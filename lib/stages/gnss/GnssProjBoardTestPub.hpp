@@ -27,8 +27,10 @@
  * @conf period_ms    Int. Publish period (20).
  * @conf los_rate     Double list [3]. The tracks' line-of-sight rate, ENU per second
  *                    (zeros: a fixed track).
- * @conf xfer_freq_ids Int list. Freq_ids each direction is also published for, unturned, as
- *                     a transfer from the last of freq_ids (xfer 1, fid_src). Default none.
+ * @conf xfer_freq_ids Int list. Freq_ids each direction is also published for as a transfer
+ *                     from the last of freq_ids (xfer 1, fid_src): carried by
+ *                     gnss::InstCarryBoard where it has content, as an assembler with
+ *                     lane_transfer_inst_apply false does, else unturned. Default none.
  */
 class GnssProjBoardTestPub : public kotekan::Stage {
 public:
