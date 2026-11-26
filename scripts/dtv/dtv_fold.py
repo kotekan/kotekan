@@ -6,7 +6,10 @@
 
 An F-engine start can move inputs by whole ADC samples (11-25 18:23Z: 51 inputs by -4..+4). Input i's response then
 turns by exp(+i 2 pi f n_i Ts) (n_i > 0 = later), so a state made before the start subtracts with stale weights. The
-fold gives each source the weights it would have had: w e^{-i 2 pi f n Ts}, g e^{+i 2 pi f n Ts}.
+fold gives each source the weights it would have had, w e^{-i 2 pi f n Ts}, and g e^{+i 2 pi f n Ts} when the state
+was saved before the start. A state saved after it has a g the rolling fit refitted for the new inputs against the
+stale weights: that g is zeroed, and the rolling fit refits it for the folded weights within seconds (as after an
+eigen start), where turning it would turn the moved inputs twice and trip the channel.
 
 Steps: STEPS (fixtures/obs/fengine_steps/sample_steps.json, one row per F-engine start, keyed on frame0_int; positive =
 later). A state's .json beside it (dtv_roll.py save) gives the start each source's weights were made under ("epochs",
@@ -75,9 +78,9 @@ def steps_between(rows, e, d, halves=True):
     return sign * n
 
 
-def fold(st, epochs, d, doc):
-    """Fold the sources of st (dtv_state.read_state) made before the start d, in place. (epochs after, [(source,
-    why not folded)])."""
+def fold(st, epochs, d, doc, g_refit=False):
+    """Fold the sources of st (dtv_state.read_state) made before the start d, in place; g_refit: st was saved
+    under d, so its g is zeroed rather than turned. (epochs after, [(source, why not folded)])."""
     ts = doc.get("adc_sample_ns", 0.3125) * 1e-9
     out, skipped = dict(epochs), []
     for fid, r in st["recs"].items():
@@ -108,7 +111,10 @@ def fold(st, epochs, d, doc):
             n[u] = 0
             ph = np.exp(2j * np.pi * fid_hz(fid) * n * ts).astype(np.complex64)
             r["w"][k] *= np.conj(ph)
-            r["g"][k] *= ph[None, :]
+            if g_refit:
+                r["g"][k] = 0
+            else:
+                r["g"][k] *= ph[None, :]
             out[kk] = d
     return out, skipped
 
@@ -117,7 +123,9 @@ def fold_file(p, q, d, doc=None):
     """Fold the state p (and its .json) into q for the start d; (number folded, skipped)."""
     side = json.load(open(p[:-4] + ".json"))
     st = dtv_state.read_state(p)
-    epochs, skipped = fold(st, side.get("epochs", {}), d, doc or load_steps())
+    epochs, skipped = fold(
+        st, side.get("epochs", {}), d, doc or load_steps(), side.get("frame0_int") == d
+    )
     n = sum(1 for kk, e in epochs.items() if e != side.get("epochs", {}).get(kk))
     dtv_state.write_state(q, st)
     with open(q[:-4] + ".json", "w") as fh:
