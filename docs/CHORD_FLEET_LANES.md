@@ -193,14 +193,29 @@ nearest knot's value outside them; `gnss::InstPhaseTable` in gnssFleetLane.hpp, 
 `inst_phase_table.phase_at`); an element no knot holds has none. A lane carried from f_src to f
 is multiplied, per station in the N^2 frame, by exp(i(phi(f) - phi(f_src))) where the element has
 both, and by the pooled delay where it does not (as before). This applies to the relay's copies
-(in place of the pooled delay in `fleet_lane_direction`) and to the board's own transfers: a
-transferred `ProjEntry` records the channel it was measured on (`fid_src`), and the stage applies
-the same factor to it. So every GPU carries a satellite's lane the same way, whichever GPU
-measured it.
+(in place of the pooled delay in `fleet_lane_direction`) and to the board's own transfers, which
+record the channel they were measured on (`ProjEntry::fid_src`). So every GPU carries a
+satellite's lane the same way, whichever GPU measured it.
+- The board's transfers are carried once, where they are published, so every reader of the board
+  sees the same lanes: GnssN2Project and the assemblers' own subspace projection
+  (`elem_proj_mode`), which reads the same board group. The stage hands its table and delays,
+  with its `lane_conj`, to the process-wide `gnss::InstCarryBoard` (gnssFleetLane.hpp); an
+  assembler carries each transfer by it before publishing it, in its raw frame (the N^2-frame
+  factor conjugated with `lane_conj`), and marks it `carried` (`ProjEntry::carried`). The stage
+  carries only the board's transfers that are not marked: those published before the holder had
+  a table or delays. The beam dump reads measured lanes only.
+- The stage sets the holder when it takes a table or delays, on `{}`, and when the table ages
+  out; with neither a table nor delays it holds nothing, and the transfers are published
+  geometric only. The GnssN2Project stages of one process (one per GPU) are posted the same table
+  and delays, and the last set wins. A change reaches the board at each assembler's next publish
+  (`elem_dir_every` records); entries carried by the previous content are read for at most
+  `lane_max_age_s`.
 - The assemblers then must not apply their own delays to their transfers: `lane_transfer_inst_apply:
   false` (the generator's `--lane-inst-phase`, the fleet yaml's `lane-inst-phase: true`, sets it
-  for every assembler and `lane_inst_phase` on the stage, so one regeneration switches both);
-  their `InstDelay` keeps estimating, for `get_lane_inst` and the relay's pooled fallback.
+  for every assembler and `lane_inst_phase` on the stage, so one regeneration switches both); it
+  is what makes them carry by the holder. Their `InstDelay` keeps estimating, for
+  `get_lane_inst` and the relay's pooled fallback. With `lane_transfer_inst_apply: true` an
+  assembler applies its own delays and marks nothing, and the stage carries its transfers on top.
 - With no table (none posted, or cleared after a start), a transfer on the board gets the pooled
   delay, as a relay copy does, so turning the assemblers' own delays off loses nothing.
 - Whether the table holds an element does not depend on the channel, so each element takes the
@@ -210,12 +225,13 @@ measured it.
   delay is a raw-frame slope (InstDelay::apply turns q by exp(+i 2 pi df tau)), so with
   `lane_conj` it turns the N^2-frame lane by exp(-i 2 pi df tau).
 - `lane_inst_phase: false` (the default): a posted table is kept and shows in the gauges, and
-  nothing else changes.
+  nothing else changes: the holder stays empty and no transfer is marked.
 - The table ages out: when the last post that carried it is older than
   `lane_inst_phase_max_age_s` (900 s, three of the relay's reposts; 0 = never) the stage clears
-  it as `{}` does and logs a WARN, so a dead relay cannot leave a table from before an F-engine
-  start. The pooled `inst_delay_ns` does not age out (unchanged): with the relay dead the board's
-  transfers keep the last delays.
+  it as `{}` does, in the holder too, and logs a WARN, so a dead relay cannot leave a table from
+  before an F-engine start. The pooled `inst_delay_ns` does not age out (unchanged): with the
+  relay dead the board's transfers keep the last delays. The stage takes posts and ages the table
+  out as it processes N^2 frames, so while its input stalls the holder keeps what it last took.
 - Gauges: `kotekan_gnss_n2project_inst_phase_knots` (0 = no table), `..._inst_phase_age_s` (since
   the table was last posted; -1 with none).
 

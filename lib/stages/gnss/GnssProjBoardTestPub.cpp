@@ -1,6 +1,7 @@
 #include "GnssProjBoardTestPub.hpp"
 
 #include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "gnssFleetLane.hpp"    // for InstCarryCache
 #include "gnssProjSubspace.hpp" // for ProjBoard, ProjEntry
 #include "kotekanLogging.hpp"   // for INFO
 
@@ -35,11 +36,13 @@ GnssProjBoardTestPub::GnssProjBoardTestPub(Config& config, const std::string& un
 
 void GnssProjBoardTestPub::main_thread() {
     gnss::ProjBoard& board = gnss::ProjBoard::instance();
+    gnss::InstCarryCache carry;
     const float inv = 1.0f / std::sqrt((float)n_elem);
     while (!stop_thread) {
         const double now_s =
             std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
                 .count();
+        carry.refresh();
         for (int j = 0; j < n_dirs; ++j) {
             gnss::ProjEntry e;
             e.owner = unique_name + "/lane/" + std::to_string(j);
@@ -64,8 +67,11 @@ void GnssProjBoardTestPub::main_thread() {
                 board.publish(board_group, fid, e);
             e.xfer = 1;
             e.fid_src = freq_ids.back();
-            for (const int fid : xfer_freq_ids)
-                board.publish(board_group, fid, e);
+            for (const int fid : xfer_freq_ids) {
+                gnss::ProjEntry x = e;
+                carry.carry(x, fid);
+                board.publish(board_group, fid, x);
+            }
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(period_ms));
     }

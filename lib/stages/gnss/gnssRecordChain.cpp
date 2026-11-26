@@ -1094,6 +1094,8 @@ int64_t RecordChain::assemble_record(int r, float* out) {
                 have_los = _steer.direction((int)p, utc, los);
             }
             if (have_los) {
+                if (!_inst_apply)
+                    _inst_carry.refresh();
                 for (const int fid : _lane_xfer_fids) {
                     int src = -1;
                     for (int ch = 0; ch < n_chan; ++ch)
@@ -1132,6 +1134,8 @@ int64_t RecordChain::assemble_record(int r, float* out) {
                     std::copy(lane_los_rate, lane_los_rate + 3, e.los_rate);
                     e.xfer = 1;
                     e.fid_src = _lane_fids[(size_t)src];
+                    if (!_inst_apply)
+                        _inst_carry.carry(e, fid);
                     board.publish(_lane_group, fid, e);
                 }
             }

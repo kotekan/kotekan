@@ -158,9 +158,13 @@
  *                             from fid_src) and the relay's, through the instrumental phase
  *                             table set_lanes posts (inst_phase), per element where the table
  *                             holds it and through the pooled delays (inst_delay_ns) where it
- *                             does not (false). The assemblers must then not apply their own
- *                             delays (lane_transfer_inst_apply false). Needs fleet_lanes. Off,
- *                             a posted table is kept and reported but not used.
+ *                             does not (false). The stage hands the table and the delays to the
+ *                             assemblers (gnss::InstCarryBoard), which then carry their
+ *                             transfers before publishing them (ProjEntry carried), so their
+ *                             own projection reads the same lanes; they must apply no delays of
+ *                             their own (lane_transfer_inst_apply false). A transfer that is not
+ *                             carried is carried here. Needs fleet_lanes. Off, a posted table
+ *                             is kept and reported but not used.
  * @conf lane_inst_phase_max_age_s Double. The table is cleared when the last post that carried
  *                             it is older than this, s (900, three of the relay's reposts; 0 =
  *                             never): a dead relay must not leave a table from before an
@@ -286,6 +290,7 @@ private:
         double rank = 0.0;         ///< lane_rank_min_rel: the block power it explains, if ranked
         int src = 0;               ///< 0 board, 1 fleet
         int xfer = 0, fid_src = 0; ///< the board entry's (ProjEntry)
+        bool carried = false;      ///< ... and whether its publisher carried it
         // Kept only for the lane dump
         double held_s = 0.0, t_utc = 0.0;
         double los[3] = {0.0, 0.0, 0.0}, los_rate[3] = {0.0, 0.0, 0.0};

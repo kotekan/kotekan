@@ -284,6 +284,7 @@ int GnssN2Project::build_lanes(Scratch& w, int f, int freq_id, const cd* V, doub
             std::copy(e.los_rate, e.los_rate + 3, c.los_rate);
             c.xfer = e.xfer;
             c.fid_src = e.fid_src;
+            c.carried = e.carried;
             if (dump)
                 c.owner = e.owner;
             c.v.assign((size_t)n, cd(0.0, 0.0));
@@ -295,12 +296,13 @@ int GnssN2Project::build_lanes(Scratch& w, int f, int freq_id, const cd* V, doub
                 c.v[(size_t)a] = lane_conj ? std::conj(x) : x;
             }
         });
-    // lane_inst_phase: a transfer is carried here from the channel it was measured on, as
-    // build_fleet carries the relay's lanes (the assemblers apply no delays then).
+    // lane_inst_phase: a transfer its publisher did not carry (published before the table and
+    // delays reached InstCarryBoard) is carried here from the channel it was measured on, as
+    // build_fleet carries the relay's lanes.
     if (lane_inst_phase) {
         const cd* uf = inst_u_at(freq_id, w.inst_uf);
         for (LaneCand& c : cand) {
-            if (!c.xfer || c.fid_src <= 0)
+            if (!c.xfer || c.fid_src <= 0 || c.carried)
                 continue;
             const cd* us = inst_u_at(c.fid_src, w.inst_us);
             for (size_t el = 0; el < e2a.size(); ++el) {
@@ -468,6 +470,7 @@ void GnssN2Project::write_basis_slot(uint8_t* slot, int freq_id, int k, const cd
 
 void GnssN2Project::take_fleet(double now_s) {
     std::lock_guard<std::mutex> lk(fleet_mtx);
+    bool carry_changed = false;
     if (fleet_pending_set) {
         fleet.swap(fleet_pending);
         fleet_pending.clear();
@@ -481,6 +484,7 @@ void GnssN2Project::take_fleet(double now_s) {
         inst_pending_set = false;
         fleet_t_built = 0.0;
         inst_u_stale = true;
+        carry_changed = true;
     }
     if (inst_phase_pending_set) {
         if (inst_phase_pending.made_frame0 != inst_phase.made_frame0
@@ -494,6 +498,7 @@ void GnssN2Project::take_fleet(double now_s) {
         if (lane_inst_phase)
             fleet_t_built = 0.0;
         inst_u_stale = true;
+        carry_changed = true;
     }
     // Not reposted: the relay is gone, and a start since may have moved every phase.
     if (lane_inst_phase_max_age_s > 0.0 && !inst_phase.empty()
@@ -504,6 +509,15 @@ void GnssN2Project::take_fleet(double now_s) {
         if (lane_inst_phase)
             fleet_t_built = 0.0;
         inst_u_stale = true;
+        carry_changed = true;
+    }
+    // The assemblers carry their transfers by the same table and delays.
+    if (lane_inst_phase && carry_changed) {
+        std::shared_ptr<gnss::InstCarry> c;
+        if (!inst_phase.empty() || !inst_delay_s.empty())
+            c = std::make_shared<gnss::InstCarry>(
+                gnss::InstCarry{inst_phase, inst_delay_s, lane_conj});
+        gnss::InstCarryBoard::instance().set(std::move(c));
     }
 }
 

@@ -6,6 +6,7 @@
 #include "gnssChanPower.hpp"
 #include "gnssElemCal.hpp"
 #include "gnssElemSteer.hpp"
+#include "gnssFleetLane.hpp"     // for InstCarryCache (#246)
 #include "gnssGpuChain.hpp"      // for FrameHdr, PrnCtl
 #include "gnssHostRows.hpp"      // for RestVerb, RestQuery
 #include "gnssLaneDirection.hpp" // for LaneDirection, InstDelay (#190)
@@ -426,8 +427,10 @@ private:
     // instrumental delay (gnss::InstDelay), measured from adjacent published channels of every
     // slot and forgotten over lane_transfer_inst_tau_s (300 s); until that has averaged for
     // tau_s the transfer is geometric only. With lane_transfer_inst_apply false (GnssN2Project
-    // lane_inst_phase: the stage turns the transfers itself) the delays are still estimated and
-    // served (get_lane_inst) but not applied. A transfer records its source channel (fid_src).
+    // lane_inst_phase) the delays are still estimated and served (get_lane_inst) but not applied:
+    // the transfer is carried by the instrumental phase table and the pooled delays GnssN2Project
+    // holds (gnss::InstCarryBoard) and marked carried, or, while it holds none, published geometric
+    // only for the stage to carry. A transfer records its source channel (fid_src).
     std::vector<int> _lane_xfer_fids;
     std::vector<char> _lane_ok; ///< [n_chan] published this round: 1 live, 2 held
     std::vector<std::complex<double>> _lane_pubdir; ///< [n_chan][n_elem]
@@ -436,6 +439,8 @@ private:
     bool _inst_apply = true; ///< lane_transfer_inst_apply
     int _inst_df_fid = 0;    ///< the channel spacing the estimate is fed at, freq_ids
     gnss::InstDelay _inst;
+    /// !_inst_apply: the transfers' carry by InstCarryBoard
+    gnss::InstCarryCache _inst_carry;
     double _inst_gauge_t = 0.0; ///< utc of the last gauge update
     kotekan::prometheus::Gauge* _m_inst_rms_ns = nullptr;
     kotekan::prometheus::Gauge* _m_inst_weight = nullptr;
