@@ -407,7 +407,11 @@ common:
     # re-took ten bands at 18:45-20:15Z and turned the four L1 bands by the steps
     # (fengine_steps.py). The same fourteen bands. QZSS L5 has no entry: the watch takes one
     # when its assemblers agree.
-    elem-shared-ref: config/elem_shared_ref_20261126.json
+    # 2026-11-27: auto_ref.json as it stood at 22:35:01Z 11-26, copied unchanged. Every entry is
+    # of the 11-26 17:59:48Z start: the watch turned B1I and L2OC by its steps and re-took the
+    # rest at 18:20-22:35Z. QZSS L5 and QZSS L2C have entries now (sixteen bands); GuoWang 1202
+    # and GLONASS L2 FDMA stay held.
+    elem-shared-ref: config/elem_shared_ref_20261127.json
     elem-shared-ref-mode: live
     # The gnss VM, which runs the search aggregator, the telemetry gather and the broker.
     # 127.0.0.1, the generator default, would point every node at itself. Moving the aggregator
