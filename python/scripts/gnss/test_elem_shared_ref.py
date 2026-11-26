@@ -16,9 +16,12 @@ each hold their own pin. The watch takes its first reference from the fleet cons
 band has gone without one for MIN_RUN_S, unless the band is held.
 
 The F-engine starts with some inputs whole samples earlier or later than before. The watch gives
-a start in the frame0 file a row in the step table, measures its steps from the pass kept before
-it and a pass after it, and turns a reference entry made under an earlier start by them, unless
-the models then fit the entry worse. An entry it replaces is kept in DIR/replaced.
+a start in the frame0 file a row in the step table, measures its steps from the last quiet pass
+kept before it and the bands whose models have settled after it (retrying every pass), and turns
+a reference entry made under an earlier start by them, unless the models then fit the entry
+worse. A pass with a frozen instance (a boresight transit) is not used for a band. Until the row
+is measured, re-posts of entries made under an earlier start, and re-takes, are held. An entry it
+replaces is kept in DIR/replaced.
 """
 import argparse
 import contextlib
@@ -601,8 +604,9 @@ class TestWatchSteps(unittest.TestCase):
             table["rows"][-1]["steps"] = steps
         fengine_steps.save(table, self.steps)
 
-    def fleet(self, shapes):
-        """A poll of ten assemblers per band that all hold the band's shape."""
+    def fleet(self, shapes, fleet_ref=None):
+        """A poll of ten assemblers per band that all hold the band's shape; fleet_ref, the
+        node's own block, on every instance."""
         res = {}
         for chain, band in self.BANDS.items():
             v = shapes[band]
@@ -611,7 +615,14 @@ class TestWatchSteps(unittest.TestCase):
                 for _ in range(10)
             ]
             res.update(poll(halves, band=chain))
+        if fleet_ref is not None:
+            for d in res.values():
+                d["fleet_ref"] = dict(fleet_ref)
         return res
+
+    def keep(self, t, shapes):
+        """A pass kept at unix time t with the fleet holding `shapes`."""
+        esr.save_models(self.out, t, utc(t), self.fleet(shapes))
 
     def set_fleet(self, shapes):
         res = self.fleet(shapes)
@@ -666,14 +677,16 @@ class TestWatchSteps(unittest.TestCase):
 
     def test_steps_are_measured_and_the_reference_turned(self):
         self.set_table("no row")
-        before = self.start - 60
-        esr.save_models(self.out, before, utc(before), self.fleet(self.shape))
+        self.keep(self.start - 60, self.shape)
         after = self.stepped(self.moved)
+        # two passes after the start; the watch's own pass makes the third
+        self.keep(self.start + esr.AFTER_START_S + 10, after)
+        self.keep(self.start + esr.AFTER_START_S + 40, after)
         self.set_fleet(after)
         cur = self.watch()
         row = fengine_steps.load(self.steps)["rows"][-1]
         self.assertEqual(row["steps"], self.read)
-        self.assertIn("element models of b3i l1ca l2c l2oc l5", row["source"])
+        self.assertIn("element models of b3i l1ca l2c l2oc l5 (settled)", row["source"])
         self.assertTrue(
             any("the steps of the F-engine start" in n for n in cur["acted"])
         )
@@ -693,6 +706,70 @@ class TestWatchSteps(unittest.TestCase):
         del self.node.posts[:]
         self.watch()
         self.assertEqual(self.node.posts, [])
+
+    def test_steps_wait_until_the_models_settle(self):
+        """A band whose models still move across its last passes is not used; the watch tries
+        again at its next pass, with no pass latched."""
+        self.set_table("no row")
+        self.keep(self.start - 60, self.shape)
+        after = self.stepped(self.moved)
+        self.keep(self.start + esr.AFTER_START_S + 5, self.shape)  # not turned yet
+        self.keep(self.start + esr.AFTER_START_S + 20, after)
+        self.set_fleet(after)
+        cur = self.watch()
+        self.assertIsNone(fengine_steps.load(self.steps)["rows"][-1]["steps"])
+        self.assertIn("waiting for", cur["alerts"][0])
+        self.assertIn("moved", cur["alerts"][0])
+        self.keep(self.start + esr.AFTER_START_S + 60, after)
+        self.watch()
+        self.assertEqual(fengine_steps.load(self.steps)["rows"][-1]["steps"], self.read)
+
+    def test_a_pass_with_a_frozen_instance_is_not_used(self):
+        res = self.fleet(self.shape)
+        frozen = [k for k in sorted(res) if "gps_l5" in k[1]][:2]
+        for k in frozen:
+            res[k]["shared_frozen"] = True
+        esr.save_models(self.out, self.start, utc(self.start), res)
+        ((t, bands),) = esr.kept_passes(self.out, self.start, self.start + 1)
+        self.assertEqual(sorted(bands), sorted(set(self.BANDS.values()) - {"l5"}))
+        with open(os.path.join(self.out, "models", "%d.json" % t)) as fh:
+            kept = json.load(fh)
+        self.assertIn("l5", kept["bands"])  # the consensus of the others is kept
+        self.assertEqual(kept["frozen"]["l5"], 2)
+
+    def test_retakes_are_held_until_the_steps_are_measured(self):
+        self.set_table("no row")
+        self.set_fleet(self.stepped(self.moved))
+        self.watch()
+        path = os.path.join(self.out, "state.json")
+        with open(path) as fh:
+            st = json.load(fh)
+        # the L1 band hardly sees these steps (one sample is ~177 deg there), so it is not stale
+        self.assertEqual(sorted(st["stale"]), ["b3i", "l2c", "l2oc", "l5"])
+        for band in st["stale"]:
+            st["stale"][band] -= esr.MIN_RUN_S + 1.0
+        with open(path, "w") as fh:
+            json.dump(st, fh)
+        cur = self.watch()
+        self.assertEqual((self.node.posts, self.auto()), ([], None))
+        held = [ln for ln in cur["alerts"] if "the re-take is held" in ln]
+        self.assertEqual(len(held), 4)
+
+    def test_reposts_are_held_until_the_steps_are_measured(self):
+        fr = {"present": True, "mode": "live", "sim": [0.1, 0.1]}
+        after = self.stepped(self.moved)
+        res = self.fleet(after, fleet_ref=fr)
+        esr.poll = lambda: res
+        self.set_table("no row")
+        cur = self.watch()
+        self.assertEqual(self.node.posts, [])
+        self.assertTrue(
+            any("re-posts of entries made under" in ln for ln in cur["alerts"])
+        )
+        # once the start is measured the same instances are re-posted
+        self.set_table(self.read)
+        self.watch()
+        self.assertGreater(len(self.node.posts), 0)
 
     def test_without_act_the_turn_is_reported(self):
         self.set_table(self.read)

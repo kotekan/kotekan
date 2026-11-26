@@ -15,7 +15,9 @@ beamforming weights, an element reference) can be used on data from another:
     prev_frame0_int   the frame0_int of the row before; null in the first row
     steps             per input, the ADC samples the input arrives later (+) or earlier (-)
                       than under the start before, within its pol half (inputs 0-63, 64-127)
-                      against the largest group of inputs that moved together. null for an
+                      against the largest group of inputs that moved together. That zero is a
+                      convention (two groups can be near equal: 2026-11-26 pol 0, 23 and 22-24
+                      inputs); half_step is measured against the row as written. null for an
                       input no measurement read; null in place of the list for a start that
                       was not measured.
     half_step         the same for inputs 64-127 as a whole against inputs 0-63; null if not
@@ -27,7 +29,8 @@ A step of n samples turns an input's phase at sky frequency f by 2 pi f n Ts. Me
 entry in the tracker's element model (get_elem_cal g_shared) by exp(-2 pi i f n Ts).
 
 The watchdog of the element reference (elem_shared_ref.py watch) adds a row when the frame0
-file shows a new start and fills its steps from the trackers' element models (fit_steps).
+file shows a new start and fills its steps from the trackers' element models (fit_steps) once
+the models have settled after it.
 
   show [TABLE]                           the rows, steps as input ranges
   set-steps FRAME0 FILE SOURCE [TABLE]   set a row's steps from FILE, a JSON list with one
@@ -44,10 +47,16 @@ import numpy as np
 
 TABLE = "/home/kvand/gnss/fixtures/obs/fengine_steps/sample_steps.json"
 MAX_STEP = 16  # fit_steps tries steps up to this many samples either way
-# fit_steps: inputs this close to one of them in every band moved together
+# fit_steps: inputs this close to one of them moved together, in at least GROUP_FRAC of the
+# bands that read both (one band whose models are off does not split the group)
 GROUP_DEG = 30.0
+GROUP_FRAC = 0.75
 MIN_BANDS = 3  # fit_steps: bands an input's step is fitted from, at least
-MAX_BAND_RMS_DEG = 20.0  # fit_steps: a band with a larger rms residual is left out
+# fit_steps: a band whose rms residual is above both is left out (a band off the others; on
+# 2026-11-26 every pol-0 band read 12-34 deg, and leaving out all above 20 left the L5 and E5b
+# bands alone, which cannot tell the steps apart)
+MAX_BAND_RMS_DEG = 20.0
+BAND_RMS_FACTOR = 1.5  # x the median band's
 MIN_SCORE = 0.8  # fit_steps: mean cosine of an input's residuals at its step, at least
 # fit_steps: by how much that beats the next best step, at least. In the GNSS bands a step and
 # the step 8 samples off differ by 0.1 to 0.15, and across the L1 bands alone steps 2 samples
@@ -130,23 +139,34 @@ def phase(steps, freq_hz, sample_ns):
     return 2.0 * np.pi * freq_hz * sample_ns * 1e-9 * n
 
 
+def _group(phases):
+    """The largest group of inputs that moved together: around each input read by the most
+    bands, the inputs read by MIN_BANDS or more that sit within GROUP_DEG of it in at least
+    GROUP_FRAC of the bands that read both. An input no band reads is never a member, so dark
+    inputs cannot make up the group."""
+    read = np.isfinite(phases)
+    n_read = read.sum(axis=0)
+    best = np.zeros(phases.shape[1], dtype=bool)
+    for q in np.flatnonzero(n_read == n_read.max()):
+        both = read & read[:, [q]]
+        with np.errstate(invalid="ignore"):
+            d = np.abs(np.angle(np.exp(1j * (phases - phases[:, [q]]))))
+        n = both.sum(axis=0)
+        close = (both & (d <= np.radians(GROUP_DEG))).sum(axis=0)
+        near = (n >= MIN_BANDS) & (close >= GROUP_FRAC * n)
+        if near.sum() > best.sum():
+            best = near
+    return best
+
+
 def _fit(phases, turn):
     """One pass of fit_steps over the bands given: (steps, residuals). steps holds None where
     too few bands read the input or no step fits. residuals[b][i] is input i's phase in band b
     less the band's constant and the input's best step, in radians, NaN where the input was not
     read."""
     n_in = phases.shape[1]
-    # The inputs that stay together in every band give each band its constant.
-    group = np.ones(n_in, dtype=bool)
-    for p in phases:
-        best = np.zeros(n_in, dtype=bool)
-        for q in np.flatnonzero(group & np.isfinite(p)):
-            near = group & (
-                np.abs(np.angle(np.exp(1j * (p - p[q])))) <= np.radians(GROUP_DEG)
-            )
-            if near.sum() > best.sum():
-                best = near
-        group = best | (group & ~np.isfinite(p))
+    # The inputs that moved together give each band its constant.
+    group = _group(phases)
     const = np.array([np.angle(np.nansum(np.exp(1j * p[group]))) for p in phases])
     lags = np.arange(-MAX_STEP, MAX_STEP + 1)
     steps, resid = [None] * n_in, np.full(phases.shape, np.nan)
@@ -168,18 +188,23 @@ def fit_steps(phases, freqs_hz, sample_ns):
     bands.
 
     phases[b][i] is the gain of input i in band b: radians, in the sense of 2 pi f n Ts, NaN
-    where the band does not read the input. Each band carries a constant of its own. A band
-    whose residuals come out above MAX_BAND_RMS_DEG is left out and the rest fitted again.
+    where the band does not read the input. Each band carries a constant of its own.
     Returns (steps, rms): per input the step against the largest group of inputs that moved
     together, None where fewer than MIN_BANDS bands read the input or no step fits them clear
-    of the next best; and the rms residual of the fitted inputs in degrees.
+    of the next best; and the rms residual of the fitted inputs in degrees. A band whose
+    residuals are well above the other bands' (MAX_BAND_RMS_DEG, BAND_RMS_FACTOR) is left out
+    and the rest fitted again.
 
     Raises ValueError when fewer than MIN_FIT of the inputs read by enough bands get a step."""
     phases = np.asarray(phases, dtype=float)
     turn = 2.0 * np.pi * np.asarray(freqs_hz, dtype=float) * sample_ns * 1e-9
     steps, resid = _fit(phases, turn)
     with np.errstate(invalid="ignore"):
-        good = ~(np.sqrt(np.nanmean(resid ** 2, axis=1)) > np.radians(MAX_BAND_RMS_DEG))
+        band_rms = np.sqrt(np.nanmean(resid ** 2, axis=1))
+        limit = max(
+            np.radians(MAX_BAND_RMS_DEG), BAND_RMS_FACTOR * np.nanmedian(band_rms)
+        )
+        good = ~(band_rms > limit)
     if MIN_BANDS <= good.sum() < len(good):
         steps, resid = _fit(phases[good], turn[good])
     fitted = [s for s in steps if s is not None]

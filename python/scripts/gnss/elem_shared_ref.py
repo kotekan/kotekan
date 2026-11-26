@@ -45,9 +45,12 @@
                       --steps "" leaves this out). With or without --act, a start that the frame0
                       file (--frame0) shows gets a row in the step table, each pass's consensus of
                       every band is kept in DIR/models for MODELS_KEEP_S, and a start's steps are
-                      measured from the last pass before it and the first pass AFTER_START_S
-                      after it. An entry made under an earlier start is turned by the steps since
-                      and POSTed (--act), unless the models then fit it worse.
+                      measured from the last quiet pass before it and the bands whose models have
+                      settled after it (no frozen instance, so no boresight transit, and still
+                      across SETTLE_PASSES passes), tried again at every pass until they are. Until
+                      then --act holds the re-posts and re-takes the start would otherwise trigger
+                      (at most HOLD_MAX_S). An entry made under an earlier start is turned by the
+                      steps since and POSTed (--act), unless the models then fit it worse.
 
 Instances are read from config/generated/chord_gnss_<node>_multi.yaml (port 12048). Band names:
 the shared-ref-band of the assembler's chain in the chains table (config/gnss_fleet_chord.yaml
@@ -90,8 +93,17 @@ RETAKE_EVERY_S = 7200.0  # --act re-takes one band's reference at most this ofte
 FRAME0 = "/home/kvand/gnss/builds/gw1202/frame0.json"
 MODELS_KEEP_S = 6 * 3600.0  # watch keeps each pass's consensus (DIR/models) this long
 # A model this long after an F-engine start holds little of what it learned before it (three
-# elem_sum_shared_tau_s).
+# elem_sum_shared_tau_s): the earliest pass a start's steps are measured from.
 AFTER_START_S = 900.0
+# A band's models have settled after a start when its consensus moves less than SETTLE_DEG (rms
+# over the inputs read, each pol half's common phase off) between each of its last SETTLE_PASSES
+# kept passes; the steps are measured from the bands that have, as soon as enough have. On the
+# 2026-11-26 start the L5 and E5b bands settled in 15-20 min and the L1 bands in ~25.
+SETTLE_DEG = 10.0
+SETTLE_PASSES = 3
+# While the newest start's steps are not measured, --act holds its re-posts of an entry made under
+# an earlier start, and its re-takes, for at most this long after the start.
+HOLD_MAX_S = 3600.0
 MIN_AMP = 0.3  # an input below this share of its half's median amplitude is not read for steps
 # An entry is not turned if that lowers the models' median similarity by more.
 FOLD_SIM = 0.02
@@ -606,9 +618,15 @@ def model_times(d):
 
 def save_models(d, now, stamp, res):
     """Keep this pass's consensus of every band that has one as DIR/models/<unix time>.json,
-    and drop the passes older than MODELS_KEEP_S."""
-    bands = {}
+    with the number of the band's instances that were frozen (a boresight transit), and drop
+    the passes older than MODELS_KEEP_S."""
+    bands, frozen = {}, {}
     for band in sorted({band_of(stage) for _node, stage in res}):
+        frozen[band] = sum(
+            1
+            for (_node, stage), v in res.items()
+            if band_of(stage) == band and "error" not in v and v.get("shared_frozen")
+        )
         try:
             bands[band] = band_consensus(res, band, EXCLUDE_DEG, MIN_SIM)["ref"]
         except ValueError:
@@ -619,18 +637,32 @@ def save_models(d, now, stamp, res):
             os.remove(os.path.join(d, "models", "%d.json" % t))
     path = os.path.join(d, "models", "%d.json" % now)
     with open(path + ".tmp", "w") as f:
-        json.dump({"t": stamp, "bands": bands}, f)
+        json.dump({"t": stamp, "bands": bands, "frozen": frozen}, f)
     os.replace(path + ".tmp", path)
 
 
-def saved_models(d, lo, hi, newest):
-    """{band: reference vector} from the passes kept in DIR/models at lo <= unix time < hi: per
-    band from the newest pass that holds it (newest), or from the oldest."""
-    out = {}
-    for t in sorted((t for t in model_times(d) if lo <= t < hi), reverse=newest):
+def kept_passes(d, lo, hi):
+    """[(unix time, {band: reference vector})] of the passes kept in DIR/models at lo <= unix
+    time < hi, oldest first, each with the bands that had no frozen instance (a pass kept
+    before frozen counts were recorded counts as quiet)."""
+    out = []
+    for t in (t for t in model_times(d) if lo <= t < hi):
         with open(os.path.join(d, "models", "%d.json" % t)) as f:
-            for band, ref in json.load(f)["bands"].items():
-                out.setdefault(band, ref)
+            kept = json.load(f)
+        frozen = kept.get("frozen", {})
+        out.append(
+            (t, {b: v for b, v in kept["bands"].items() if not frozen.get(b, 0)})
+        )
+    return out
+
+
+def saved_models(d, lo, hi, newest):
+    """{band: reference vector} from the quiet passes kept in DIR/models at lo <= unix time
+    < hi: per band from the newest pass that holds it (newest), or from the oldest."""
+    out = {}
+    for _t, bands in sorted(kept_passes(d, lo, hi), reverse=newest):
+        for band, ref in bands.items():
+            out.setdefault(band, ref)
     return out
 
 
@@ -645,25 +677,79 @@ def weak_inputs(v):
     return weak
 
 
+def moved_deg(x, y):
+    """How far a band's consensus moved from x to y: rms over the inputs both read of the
+    phase change, each pol half's common phase taken off, in degrees."""
+    p = np.angle(y * np.conj(x))
+    p[weak_inputs(x) | weak_inputs(y)] = np.nan
+    h = len(p) // 2
+    for half in (slice(0, h), slice(h, None)):
+        ok = np.isfinite(p[half])
+        if ok.any():
+            c = np.angle(np.mean(np.exp(1j * p[half][ok])))
+            p[half] = np.angle(np.exp(1j * (p[half] - c)))
+    return float(np.degrees(np.sqrt(np.nanmean(p ** 2))))
+
+
+def settled_models(d, row, now):
+    """({band: vector}, {band: why not}) after the start of `row`: per band, its last
+    SETTLE_PASSES quiet passes at least AFTER_START_S after the start, when each moved less
+    than SETTLE_DEG from the one before; the vector is their mean, each pol half turned onto
+    the newest one's common phase."""
+    by_band = {}
+    for t, bands in kept_passes(d, row["frame0_int"] + AFTER_START_S, now + 1):
+        for band, ref in bands.items():
+            by_band.setdefault(band, []).append(
+                np.array([complex(x, y) for x, y in ref])
+            )
+    out, why = {}, {}
+    for band, vs in by_band.items():
+        vs = vs[-SETTLE_PASSES:]
+        if len(vs) < SETTLE_PASSES:
+            why[band] = "%d quiet passes" % len(vs)
+            continue
+        moved = [moved_deg(a, b) for a, b in zip(vs[:-1], vs[1:])]
+        if max(moved) >= SETTLE_DEG:
+            why[band] = "moved %.0f deg" % max(moved)
+            continue
+        h = len(vs[-1]) // 2
+        mean = np.zeros(len(vs[-1]), dtype=complex)
+        for v in vs:
+            v = v.copy()
+            for half in (slice(0, h), slice(h, None)):
+                c = np.vdot(v[half], vs[-1][half])
+                v[half] *= c / abs(c) if abs(c) > 0 else 1.0
+            mean += v
+        out[band] = mean / len(vs)
+    return out, why
+
+
 def measure_steps(d, row, now, sample_ns):
     """(steps, source) of the F-engine start of `row` (a row of the step table) from the
-    passes kept in DIR/models: each band's consensus at the last pass before the start against
-    its consensus at the first pass AFTER_START_S after it. Per pol half, fengine_steps.fit_steps
-    finds the whole-sample steps that explain the phase each input gained in every band. Raises
-    ValueError when the passes are not there or no steps explain them."""
+    passes kept in DIR/models: each band's consensus at the last quiet pass before the start
+    against its settled consensus after it (settled_models). Per pol half,
+    fengine_steps.fit_steps finds the whole-sample steps that explain the phase each input
+    gained in every band. Raises ValueError while too few bands have settled or no steps
+    explain them; the watch tries again at its next pass."""
     before = saved_models(d, row["prev_frame0_int"], row["frame0_int"], True)
-    after = saved_models(d, row["frame0_int"] + AFTER_START_S, now + 1, False)
+    after, why = settled_models(d, row, now)
     freqs = band_freqs()
     bands = sorted(set(before) & set(after) & set(freqs))
     if len(bands) < fengine_steps.MIN_BANDS:
+        waiting = sorted(b for b in set(why) & set(before) & set(freqs))
         raise ValueError(
-            "%d bands have a consensus before it and %.0f min after it"
-            % (len(bands), AFTER_START_S / 60.0)
+            "%d bands have a quiet pass before it and have settled after it%s"
+            % (
+                len(bands),
+                "; waiting for " + ", ".join("%s (%s)" % (b, why[b]) for b in waiting)
+                if waiting
+                else "",
+            )
         )
     gained = []
     for band in bands:
         b = np.array([complex(x, y) for x, y in before[band]])
-        f = np.array([complex(x, y) for x, y in after[band]])
+        f = after[band]
         # An element model turns against the delay of its input (fengine_steps.py).
         p = -np.angle(f * np.conj(b))
         p[weak_inputs(b) | weak_inputs(f)] = np.nan
@@ -680,7 +766,10 @@ def measure_steps(d, row, now, sample_ns):
             raise ValueError("pol %d: %s" % (pol, e))
         steps += st
         rms.append(r)
-    return steps, "element models of %s, rms %.0f/%.0f deg" % (" ".join(bands), *rms)
+    return (
+        steps,
+        "element models of %s (settled), rms %.0f/%.0f deg" % (" ".join(bands), *rms,),
+    )
 
 
 def follow_starts(a, now, stamp, lines, notes):
@@ -835,6 +924,19 @@ def watch(a):
         )
         if folded is not snap:
             snap, active, retook = folded, auto_path, True
+    # Until the newest start's steps are measured, an entry made under an earlier start is wrong
+    # on the inputs that moved, and so is a re-take from models still settling: hold both.
+    hold_why = None
+    if table is not None:
+        row = table["rows"][-1]
+        if (
+            row["steps"] is None
+            and row["prev_frame0_int"] is not None
+            and now - row["frame0_int"] < HOLD_MAX_S
+        ):
+            hold_why = "the steps of the F-engine start %s are not measured yet" % (
+                row["start_utc"]
+            )
 
     # A band whose reference describes at most half of its models (the F-engine's gains
     # changed) is re-taken from the fleet consensus, if two thirds of the fleet agree on one.
@@ -898,6 +1000,9 @@ def watch(a):
                 % (what, new["R"], new["n"])
             )
             continue
+        if hold_why and entry is not None:
+            lines.append("%s; the re-take is held: %s" % (what, hold_why))
+            continue
         if now - state["retaken"].get(band, 0) < RETAKE_EVERY_S:
             lines.append(
                 "%s, and it was re-taken less than %.0f h ago"
@@ -943,8 +1048,14 @@ def watch(a):
         "errors": {},
     }
     seen = set()
+    held = []
     for band, entry in sorted(snap["bands"].items()):
         F = np.array([complex(x, y) for x, y in entry["ref"]])
+        stale_entry = (
+            bool(hold_why)
+            and made_under(table, entry, snap.get("auto", {}).get(band, base_taken))
+            != table["rows"][-1]["frame0_int"]
+        )
         rows, ph = {}, {0: [], 1: []}
         for (node, stage), d in sorted(res.items()):
             if band_of(stage) != band:
@@ -1006,6 +1117,9 @@ def watch(a):
             act_key = "%s %s" % (name, band)
             if not why or not fr or frozen or a.mode == "off":
                 continue
+            if stale_entry and a.act:
+                held.append(act_key)
+                continue
             if not a.act:
                 lines.append("%s: %s; post the reference" % (act_key, "; ".join(why)))
             elif now - state["acted"].get(act_key, 0) >= ACT_EVERY_S:
@@ -1019,6 +1133,11 @@ def watch(a):
             ],
             "instances": rows,
         }
+    if held:
+        lines.append(
+            "%d re-posts of entries made under an earlier F-engine start are held (%s): %s"
+            % (len(held), ", ".join(sorted({k.split()[-1] for k in held})), hold_why)
+        )
     for key in list(state["bad"]):
         if key not in seen:
             del state["bad"][key]

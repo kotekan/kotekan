@@ -26,6 +26,12 @@ TS_NS = 0.3125
 # Carriers of bands the trackers hold element models for, Hz.
 GNSS_HZ = [1176.45e6, 1207.14e6, 1227.6e6, 1248.06e6, 1268.52e6, 1575.42e6]
 L1_HZ = [1561.098e6, 1575.42e6, 1575.42e6]
+# The bands whose models had settled half an hour after the 2026-11-26 start, Hz.
+SETTLED_1126_HZ = (
+    [1176.45e6] * 3
+    + [1202.025e6, 1207.14e6, 1207.14e6, 1246.0e6, 1268.52e6, 1278.75e6, 1561.098e6]
+    + [1575.42e6] * 3
+)
 
 
 def table():
@@ -166,6 +172,30 @@ class TestFitSteps(unittest.TestCase):
         steps, rms = fs.fit_steps(p, GNSS_HZ, TS_NS)
         self.assertEqual(steps, self.steps)
         self.assertLess(rms, 10.0)
+
+    def test_every_band_noisy_still_fits(self):
+        """2026-11-26, pol 0: every band's models read 12-34 deg; leaving out each band above
+        MAX_BAND_RMS_DEG would leave the L5 and E5b bands alone, which cannot tell the steps."""
+        p = gained(self.rng, self.steps, SETTLED_1126_HZ, noise_deg=22.0)
+        steps, _ = fs.fit_steps(p, SETTLED_1126_HZ, TS_NS)
+        got = [(i, s) for i, s in enumerate(steps) if s is not None]
+        self.assertGreaterEqual(len(got), 0.75 * len(steps))
+        for i, s in got:
+            self.assertEqual(s, self.steps[i])
+
+    def test_one_band_off_does_not_split_the_group(self):
+        """An input group must sit together in most bands, not in every one: one band off by
+        40-80 deg on random inputs would otherwise leave a handful of inputs as the group."""
+        p = gained(self.rng, self.steps, GNSS_HZ)
+        p[2] += np.radians(self.rng.uniform(40, 80, 32)) * self.rng.choice([-1, 1], 32)
+        self.assertGreaterEqual(fs._group(p).sum(), 16)
+        steps, _ = fs.fit_steps(p, GNSS_HZ, TS_NS)
+        self.assertEqual(steps, self.steps)
+
+    def test_dark_inputs_are_never_the_group(self):
+        p = gained(self.rng, self.steps, GNSS_HZ)
+        p[:, 16:30] = np.nan
+        self.assertFalse(fs._group(p)[16:30].any())
 
     def test_the_l1_bands_alone_cannot_tell_the_steps(self):
         with self.assertRaises(ValueError):
