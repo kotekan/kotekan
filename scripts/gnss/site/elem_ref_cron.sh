@@ -14,6 +14,11 @@
 # $OBS/elem_ref/auto_ref.json until that file is committed. A band that has assemblers and no
 # reference (a new chain) gets its first one the same way. Unset, it only reports.
 #
+# Set or unset, it follows the F-engine's whole-sample steps (fengine_steps.py): a start in
+# builds/gw1202/frame0.json gets a row in the step table, each pass's models are kept in
+# $OBS/elem_ref/models, and the start's steps are measured from them. With ELEM_REF_ACT=1 a
+# reference entry made under an earlier start is turned by the steps since.
+#
 # ELEM_REF_HOLD: bands that have no reference and are to stay without one (ALERT lists them,
 # nothing is taken). Default: GLONASS L2 FDMA and the GuoWang chain, which have never had one.
 set -u

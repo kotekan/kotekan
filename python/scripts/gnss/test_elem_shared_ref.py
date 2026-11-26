@@ -14,15 +14,22 @@ not put an input the generator took out back at full weight.
 A band that has assemblers and no entry in the reference (a new chain) is one whose instances
 each hold their own pin. The watch takes its first reference from the fleet consensus once the
 band has gone without one for MIN_RUN_S, unless the band is held.
+
+The F-engine starts with some inputs whole samples earlier or later than before. The watch gives
+a start in the frame0 file a row in the step table, measures its steps from the pass kept before
+it and a pass after it, and turns a reference entry made under an earlier start by them, unless
+the models then fit the entry worse. An entry it replaces is kept in DIR/replaced.
 """
 import argparse
 import contextlib
+import glob
 import io
 import json
 import os
 import shutil
 import sys
 import tempfile
+import time
 import unittest
 
 import numpy as np
@@ -30,6 +37,7 @@ import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import elem_shared_ref as esr  # noqa: E402
+import fengine_steps  # noqa: E402
 
 N_HALF = 16  # elements per pol
 NODES = ("cx19", "cx27", "cx42", "cx43", "cx44", "cx51")
@@ -486,6 +494,261 @@ class TestWatchFirstTake(unittest.TestCase):
         self.assertEqual((self.node.posts, self.auto()), ([], None))
         self.assertEqual(len(cur["alerts"]), 1)
         self.assertIn("the fleet has no consensus", cur["alerts"][0])
+
+
+def utc(t):
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
+
+
+class TestWatchSteps(unittest.TestCase):
+    """watch across an F-engine start that stepped some inputs by whole samples."""
+
+    BANDS = {
+        "gps_l5": "l5",
+        "gps_l2c": "l2c",
+        "glo_l2oc": "l2oc",
+        "bds_b3i": "b3i",
+        "gps_l1ca": "l1ca",
+    }
+    TS_NS = 0.3125
+    DARK = 7  # an input with no signal in any band: no step can be read for it
+
+    def setUp(self):
+        self.rng = np.random.default_rng(1126)
+        self.freqs = esr.band_freqs()
+        self.shape = {}
+        for band in self.BANDS.values():
+            pol0 = true_shape(self.rng)
+            pol0[self.DARK] = 0.0
+            self.shape[band] = np.concatenate(
+                [pol0 / np.linalg.norm(pol0), true_shape(self.rng)]
+            )
+        self.moved = [0] * (2 * N_HALF)
+        self.moved[2:6] = [4] * 4
+        self.moved[8:10] = [-8] * 2
+        self.moved[N_HALF + 3 : N_HALF + 7] = [-3] * 4
+        self.moved[N_HALF + 10] = 8
+        self.read = list(self.moved)
+        self.read[self.DARK] = None
+        # The start was long enough ago that the models hold nothing from before it.
+        self.start = int(time.time() - esr.AFTER_START_S) - 100
+        self.prev = self.start - 100000
+        self.d = tempfile.mkdtemp()
+        for n in NODES:
+            with open(os.path.join(self.d, "chord_gnss_%s_multi.yaml" % n), "w") as fh:
+                fh.write(
+                    "gnss0_gps_l5_n2assemble:\n  elem_positions_epoch: E\n"
+                    "  kotekan_stage: GnssGpuRecordAssemble\n"
+                )
+        self.snap = os.path.join(self.d, "ref.json")
+        self.frame0 = os.path.join(self.d, "frame0.json")
+        self.steps = os.path.join(self.d, "sample_steps.json")
+        self.out = os.path.join(self.d, "elem_ref")
+        with open(self.frame0, "w") as fh:
+            json.dump(
+                [
+                    {"frame0_int": t, "start_utc": utc(t)}
+                    for t in (self.prev, self.start)
+                ],
+                fh,
+            )
+        self.set_ref(self.shape, self.start - 3600)
+        self.real = (esr.GEN, esr.urllib.request.urlopen, esr.poll)
+        esr.GEN = os.path.join(self.d, "chord_gnss_%s_multi.yaml")
+        self.node = esr.urllib.request.urlopen = FakeNode()
+
+    def tearDown(self):
+        esr.GEN, esr.urllib.request.urlopen, esr.poll = self.real
+        shutil.rmtree(self.d)
+
+    def stepped(self, steps):
+        """Each band's shape with its inputs `steps` samples later."""
+        return {
+            band: v
+            * np.exp(-1j * fengine_steps.phase(steps, self.freqs[band], self.TS_NS))
+            for band, v in self.shape.items()
+        }
+
+    def set_ref(self, shapes, taken):
+        """The reference file: an entry per band, taken at `taken`."""
+        self.ref = {
+            band: [[float(x.real), float(x.imag)] for x in v]
+            for band, v in shapes.items()
+        }
+        bands = {band: {"ref": ref} for band, ref in self.ref.items()}
+        with open(self.snap, "w") as fh:
+            json.dump({"epoch": "E", "taken_utc": utc(taken), "bands": bands}, fh)
+
+    def set_table(self, steps):
+        """The step table: the start before, then this one with `steps`; with "no row", the
+        start before alone."""
+        table = {"adc_sample_ns": self.TS_NS, "n_inputs": 2 * N_HALF, "rows": []}
+        fengine_steps.add_start(table, self.prev, utc(self.prev))
+        if steps != "no row":
+            fengine_steps.add_start(table, self.start, utc(self.start))
+            table["rows"][-1]["steps"] = steps
+        fengine_steps.save(table, self.steps)
+
+    def fleet(self, shapes):
+        """A poll of ten assemblers per band that all hold the band's shape."""
+        res = {}
+        for chain, band in self.BANDS.items():
+            v = shapes[band]
+            halves = [
+                (model(self.rng, v[:N_HALF], 0.0), model(self.rng, v[N_HALF:], 0.0))
+                for _ in range(10)
+            ]
+            res.update(poll(halves, band=chain))
+        return res
+
+    def set_fleet(self, shapes):
+        res = self.fleet(shapes)
+        esr.poll = lambda: res
+
+    def watch(self, act=True):
+        a = argparse.Namespace(
+            file=self.snap,
+            dir=self.out,
+            mode="live",
+            act=act,
+            hold="",
+            frame0=self.frame0,
+            steps=self.steps,
+        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            esr.watch(a)
+        with open(os.path.join(self.out, "current.json")) as fh:
+            return json.load(fh)
+
+    def auto(self):
+        try:
+            with open(os.path.join(self.out, "auto_ref.json")) as fh:
+                return json.load(fh)
+        except OSError:
+            return None
+
+    def replaced(self):
+        out = {}
+        for path in glob.glob(os.path.join(self.out, "replaced", "*.json")):
+            with open(path) as fh:
+                kept = json.load(fh)
+            out[kept["band"]] = kept
+        return out
+
+    def test_a_new_start_gets_a_row(self):
+        self.set_table("no row")
+        self.set_fleet(self.stepped(self.moved))
+        cur = self.watch()
+        row = fengine_steps.load(self.steps)["rows"][-1]
+        self.assertEqual(
+            (row["frame0_int"], row["prev_frame0_int"], row["steps"]),
+            (self.start, self.prev, None),
+        )
+        # no pass was kept before the start, so its steps cannot be measured, and no entry
+        # can be turned by them
+        self.assertEqual((self.node.posts, self.auto()), ([], None))
+        self.assertEqual(len(cur["alerts"]), 2)
+        self.assertIn("are not measured: 0 bands", cur["alerts"][0])
+        self.assertIn("b3i, l1ca, l2c, l2oc, l5: made under", cur["alerts"][1])
+        self.assertIn("were not measured", cur["alerts"][1])
+
+    def test_steps_are_measured_and_the_reference_turned(self):
+        self.set_table("no row")
+        before = self.start - 60
+        esr.save_models(self.out, before, utc(before), self.fleet(self.shape))
+        after = self.stepped(self.moved)
+        self.set_fleet(after)
+        cur = self.watch()
+        row = fengine_steps.load(self.steps)["rows"][-1]
+        self.assertEqual(row["steps"], self.read)
+        self.assertIn("element models of b3i l1ca l2c l2oc l5", row["source"])
+        self.assertTrue(
+            any("the steps of the F-engine start" in n for n in cur["acted"])
+        )
+        self.assertEqual(len(self.node.posts), 50)
+        auto = self.auto()
+        self.assertEqual(sorted(auto["auto"]), sorted(self.BANDS.values()))
+        for band, entry in auto["bands"].items():
+            self.assertEqual(entry["frame0"], self.start)
+            for pol, f in enumerate(ref_halves(entry)):
+                want = after[band][pol * N_HALF : (pol + 1) * N_HALF]
+                self.assertGreater(abs(np.vdot(want, f)), 0.99)
+        kept = self.replaced()
+        self.assertEqual(sorted(kept), sorted(self.BANDS.values()))
+        self.assertEqual(kept["l5"]["entry"]["ref"], self.ref["l5"])
+        self.assertEqual(kept["l5"]["taken_utc"], utc(self.start - 3600))
+        # the entries are of this start now: the next pass turns nothing
+        del self.node.posts[:]
+        self.watch()
+        self.assertEqual(self.node.posts, [])
+
+    def test_without_act_the_turn_is_reported(self):
+        self.set_table(self.read)
+        self.set_fleet(self.stepped(self.moved))
+        cur = self.watch(act=False)
+        self.assertEqual((self.node.posts, self.auto()), ([], None))
+        self.assertEqual(len(cur["alerts"]), 5)
+        for line in cur["alerts"]:
+            self.assertIn("(--act turns it)", line)
+
+    def test_a_turn_the_models_fit_worse_is_refused(self):
+        self.set_table(self.read)
+        self.set_fleet(self.shape)  # the models did not move
+        cur = self.watch()
+        self.assertEqual((self.node.posts, self.auto()), ([], None))
+        self.assertEqual(len(cur["alerts"]), 5)
+        for line in cur["alerts"]:
+            self.assertIn("left as it is", line)
+
+    def test_an_entry_taken_after_the_start_is_left(self):
+        """The frame0 file can trail a start, so an entry is of the last start before the time
+        it was taken, whatever start it records."""
+        self.set_table(self.read)
+        after = self.stepped(self.moved)
+        self.set_ref(after, self.start + 60)
+        self.set_fleet(after)
+        cur = self.watch()
+        self.assertEqual((self.node.posts, self.auto()), ([], None))
+        self.assertEqual(cur["alerts"], [])
+
+    def test_made_under(self):
+        table = {"rows": [{"frame0_int": 1000}, {"frame0_int": 2000}]}
+        self.assertEqual(esr.made_under(table, {}, utc(1500)), 1000)
+        self.assertEqual(esr.made_under(table, {"frame0": 1000}, utc(2500)), 2000)
+        self.assertEqual(esr.made_under(table, {"frame0": 2000}, utc(2500)), 2000)
+        self.assertIsNone(esr.made_under(table, {}, utc(500)))
+
+    def test_a_retaken_entry_is_kept_and_the_new_one_records_the_start(self):
+        self.set_table([0] * (2 * N_HALF))
+        signs = np.where(np.arange(2 * N_HALF) % 2, 1.0, -1.0)
+        self.set_ref(
+            {band: v * signs for band, v in self.shape.items()}, self.prev - 60
+        )
+        self.set_fleet(self.shape)
+        self.watch()
+        path = os.path.join(self.out, "state.json")
+        with open(path) as fh:
+            st = json.load(fh)
+        for band in st["stale"]:
+            st["stale"][band] -= esr.MIN_RUN_S + 1.0
+        with open(path, "w") as fh:
+            json.dump(st, fh)
+        self.watch()
+        self.assertEqual(len(self.node.posts), 50)
+        kept = self.replaced()
+        self.assertEqual(sorted(kept), sorted(self.BANDS.values()))
+        self.assertEqual(kept["l5"]["entry"]["ref"], self.ref["l5"])
+        for entry in self.auto()["bands"].values():
+            self.assertEqual(entry["frame0"], self.start)
+
+    def test_snapshot_records_the_start(self):
+        self.set_fleet(self.stepped(self.moved))
+        out = os.path.join(self.d, "new.json")
+        with contextlib.redirect_stdout(io.StringIO()):
+            esr.snapshot(argparse.Namespace(out=out, frame0=self.frame0))
+        with open(out) as fh:
+            for entry in json.load(fh)["bands"].values():
+                self.assertEqual(entry["frame0"], self.start)
 
 
 class TestActMode(unittest.TestCase):
