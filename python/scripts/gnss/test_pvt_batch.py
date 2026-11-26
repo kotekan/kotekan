@@ -8,7 +8,8 @@ constellation.
   * A satellite whose clock is off by a constant through its pass is excluded, and the others
     give the position; good satellites are not excluded.
   * Under 120 s or one satellite: no answer.
-  * rows_from_obs de-wraps a residual across a code-period boundary.
+  * rows_from_obs de-wraps a residual across a code-period boundary, and finds a window late
+    in a large log (bisected) with the rows a full read finds.
 """
 
 import json
@@ -133,6 +134,19 @@ class TestBatch(unittest.TestCase):
                 [os.path.join(d, "*.jsonl")], 900.0, 1100.0, "W"
             )
         self.assertEqual([round(r["resid_m"] - L / 2) for r in rows], [-10, 10, -5])
+
+    def test_rows_window_in_large_log(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "gw_1202_x.jsonl")
+            with open(p, "w") as f:
+                for i in range(30000):
+                    row = {"t": 1000.0 + i, "t_gps": 0.0, "sys": "WG"[i % 2], "prn": 7}
+                    row.update(
+                        band="gw_1202", az=10.0, el=40.0, code_resid_m=float(i % 7)
+                    )
+                    f.write(json.dumps(row, separators=(",", ":")) + "\n")
+            rows = gnss_pvt.rows_from_obs([p], 26000.0, 26600.0, "W")
+        self.assertEqual([r["t"] for r in rows], [26000.0 + 10 * k for k in range(61)])
 
 
 if __name__ == "__main__":

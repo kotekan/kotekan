@@ -513,6 +513,30 @@ def measurements_from_obs(globs, max_age_s, t_now, smooth_s=90.0):
     return out
 
 
+def _seek_rows(f, t0, margin_s=60.0):
+    """Leave binary file f, rows appended in time order each starting '{"t":', at a line start
+    no later than the first row at t0 - margin_s (the writers' rows interleave by seconds), by
+    bisecting on byte offsets: a day's log is gigabytes and a window its last minutes.
+    """
+    lo, hi = 0, os.fstat(f.fileno()).st_size
+    while hi - lo > 1 << 16:
+        mid = (lo + hi) // 2
+        f.seek(mid)
+        f.readline()
+        line = f.readline()
+        try:
+            t = float(line[5 : line.index(b",", 5)])
+        except ValueError:
+            t = None
+        if not line.startswith(b'{"t":') or t is None or t >= t0 - margin_s:
+            hi = mid
+        else:
+            lo = mid
+    f.seek(lo)
+    if lo:
+        f.readline()
+
+
 def rows_from_obs(globs, t0, t1, sysid, every_s=10.0):
     """Every code observation of one constellation in [t0, t1] from the obs logs, one per
     satellite per every_s (the rows are smoothed and correlated over seconds): a list of
@@ -520,20 +544,31 @@ def rows_from_obs(globs, t0, t1, sysid, every_s=10.0):
     clock-dominated ranges; each is de-wrapped to within half a code period of the median of
     the 20 before it, so the receiver clock stays continuous across the window."""
     rows, last = [], {}
+    tag = ('"sys":"%s"' % sysid).encode()
     for pat in globs:
         for path in glob.glob(pat):
             try:
                 if os.path.getmtime(path) < t0:
                     continue
-                with open(path) as f:
+                with open(path, "rb") as f:
+                    _seek_rows(f, t0)
                     for line in f:
-                        if line.startswith('{"t":'):
+                        if line.startswith(b'{"t":'):
                             try:
-                                t = float(line[5 : line.index(",", 5)])
-                                if t < t0 or t > t1:
+                                t = float(line[5 : line.index(b",", 5)])
+                                if t < t0:
+                                    continue
+                                if t > t1 + 60.0:
+                                    break
+                                if t > t1:
                                     continue
                             except ValueError:
                                 pass
+                        if (
+                            tag not in line[:120]
+                            and tag.replace(b":", b": ") not in line[:120]
+                        ):
+                            continue
                         try:
                             d = json.loads(line)
                         except ValueError:
