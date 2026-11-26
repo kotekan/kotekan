@@ -1087,6 +1087,41 @@ and the cube leg's unit. Until this is understood, stop the broker and gather by
 
 ## Open — the fix is in the NODE BINARY (queue for the next cycle)
 
+### #246 — a lane carried to another channel gets a different instrumental phase on each GPU: make it one fleet-wide phase per element and channel (2026-11-26, KV: "yes, let's rework the per-element delay so it's fleet-wide. It's one number per element, *per frequency*, isn't it?")
+**What [code, 11-26]:** lanes travel fleet-wide (`lane_relay.py`), but the instrumental phase a transfer applies depends
+on where it runs. A transfer on the measuring GPU uses that chain's own `InstDelay`, which needs two or more of its
+channels on the GPU (`gnssRecordChain.cpp` `_inst_df_fid`): gps_l5 has 7 per GPU, gps_l2c has 1, so L2C transfers are
+geometric only. A fleet copy uses the relay's pool (`pool_inst()`, the element-wise median of the gps_l5 assemblers).
+A GPU that tracks the satellite keeps its local copy and drops the fleet copy as a duplicate. So the result depends on
+the freq_id -> GPU map. G03, 11-25 (`fixtures/deproj_1125/G03_LANE_DUMP.md` sections 5-7): local L2C lane 2.2 ns rms off
+(the true delays), fleet copy 12.6 ns rms off (the pool takes in geometry during a bright pass).
+**One delay or a phase per channel [cal_1126, 11-26, `fixtures/deproj_1125/bandpass_vs_delay.py`]:** geometry toward
+Tau A off, one delay per element over 1160-1295 MHz is 1.8 / 1.5 ns rms and leaves 6-10 deg rms of smooth phase
+(adjacent channels agree to ~1 deg, so it is not noise). Median overlap^2 of a vector carried df away:
+| df (MHz) | 8-16 | 16-32 | 32-64 | 64-140 |
+|---|---|---|---|---|
+| geometry only (gps_l2c today) | 0.969 | 0.922 | 0.776 | 0.512 |
+| one delay per element | 0.986 | 0.980 | 0.971 | 0.981 |
+The calibration's own phase per channel would leave its noise only (~1-2 deg).
+**Fix:** one fleet-wide instrumental phase per element and channel (geometry off, turned by the F-engine step table at
+each start), posted by the relay with the lanes; every transfer, local and fleet copy alike, applies phase(f) -
+phase(f_src) in place of a chain's own estimate. To choose: its source (the Tau A calibration, which needs a current
+transit and the step table, or a live estimate pooled over every chain with bright passes gated out); and per channel
+against a delay plus a smooth fit. Node binary, relay and generator; KV's go and a node cycle.
+**Check:** a lane dump at a bright pass: the carried lane's overlap with the top mode against df (G03 table, section 6);
+sat_fit.py at 1216.8 / 1238.7 MHz: GPS L2C satellites keep 9-12% there today (11-26 05-07Z, `l2_who.py`).
+
+### #248 — QZSS L2C has no chain: QZS PRN 194 keeps 74% of its L2 power in the projected channels (2026-11-26, KV: "we need to roll a chain for that out on L2 as well!")
+**What [archive, 11-26 05-07Z, `fixtures/deproj_1125/sat_fit.py` + `l2_who.py`, cx43 projected vs cx19 control]:** at
+1227.93 MHz QZS PRN 194 (el 8-15) holds 0.0014 per input projected against 0.0019 in the control: the largest single
+leftover in that channel (all GPS leftovers together 0.0010). It is narrow (1226.17 / 1229.30 MHz: 0.0001), as L2C is.
+The QZSS L5 chain went live 11-25 19:09Z; nothing tracks QZSS at L2.
+**Fix:** a qzss_l2c chain, as gps_l2c with QZSS PRNs 193-202 (same CM/CL structure and carrier), rolled out like
+qzss_l5: descriptors in `signal_by_name`, the chain table row with its own shared-ref band, generator, the relay's
+transfer table. Node cycle.
+**Check:** sat_fit.py at 1227.73 / 1227.93 MHz: PRN 194 (and 201 when up) projected / control from 0.74 to the GPS level.
+
+
 ### #234 — gw_1202's telem_pack drops PRNs beyond its 14 wire rows (2026-11-21, review)
 Every node logs a WARNING that gw_1202 holds more PRNs than telem_pack's 14 wire rows; the rest are not published.
 Size the rows from the chain's PRN count, or cap the chain's PRN list at the row count.
@@ -1189,6 +1224,18 @@ rho² exceeds 0.99 is dropped, so a very bright satellite's own cal can end with
 ---
 
 ## Open — bench or offline, no deployment at all
+
+### #247 — G31 near the horizon keeps 12-31% of its L2 power in the projected channels (2026-11-26, KV: "I'm a little worried about that G31 remnant, we should be tracking it still ... Let's add a buglist entry and dig into it after the delay rework.")
+**What [archive, 11-26 05-07Z, `fixtures/deproj_1125/sat_fit.py` + `l2_who.py`]:** power per input toward G31 (IIR-M,
+has L2C; el 5-14), projected / control: 1227.93 MHz (where gps_l2c measures) 0.0006 / 0.0052 = 12%; 1226.17 MHz 0.0009 /
+0.0029 = 31%; 1229.30 MHz 0.0006 / 0.0030 = 21%. The GPS L2C satellites as a whole keep 0.26% at 1227.93 and
+1.2-1.7% at 1226.17 / 1229.30.
+**Not yet known:** whether gps_l2c held G31 over the window (lock, C/N0, lane coherence, held or aged lanes), whether its
+lane lost the basis (`lane_rank_min_rel`, `k_lanes_max`), or whether at low elevation multipath or blockage by
+neighbouring dishes makes its response differ from the plane wave sat_fit.py fits (a lane would still null the true
+response, so the fit could overstate what is left).
+**Next (after #246):** G31 in the gps_l2c records over 05-07Z; then a lane dump at a low pass (arming needs KV's go).
+
 
 ### #243 — the node's lane projection leaves ~8x the imprint of an ideal MEO projector in the fully laned stretch (2026-11-24, KV: "I would like to dig into the 8x expectations, but let's file that a buglist item and we'll come back to it")
 **What [archive, 11-20 N2]:** in 1212.3-1218 MHz the beam statistic's negative eigen-part (the unrecorded projector's
