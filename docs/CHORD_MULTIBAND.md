@@ -395,3 +395,28 @@ code index = slot as for L3OC, the 1248.06 MHz carrier (an airspy-era note doubt
 1248.0; 60 kHz is outside the +-5 kHz Doppler window, so a wrong carrier reads as absent
 everywhere), and the OC2 epoch: a wrong one leaves q and the prompt normal but the deep,
 KCOH and coherence numbers low, since only the sign sequence across periods would be wrong.
+
+## 7. QZSS L2C: qzss_l2c (2026-11-26, #248)
+
+QZS PRN 194's L2C kept 74% of its power in the projected channels at 1227.93 MHz on 11-26
+(#248): qzss_l5 tracks QZSS at L5 only, so nothing built a lane for it at L2. `qzss_l2c`
+(QZSS_L2C_CM, chains-table id 19) is gps_l2c on the QZSS rows of the L2C tables: the same CM/CL
+multiplex, carrier and covering channels (6283-6288, at most one per node), and the same derived
+DLL spacing (`fleet`: 0.33 on six channels). The CM and CL initial states are IS-QZSS-PNT-006
+Table 3.2.4-1; test_gps_l2c_code checks every chip of every PRN, 193-202, against the table's
+final states.
+
+- **Only the Block II satellites send L2C** (Table 3.2.1-1): 194 (QZS-2), 195 (QZS-4) and 196
+  (QZS-1R), inclined, which rise to el ~17 in the north-west, and 199 (QZS-3), geostationary
+  at el -23 here. QZS-5/6/7 (197, 200, 201) send no L2 signal at all, so QZS-7, qzss_l5's
+  satellite, has nothing for this chain.
+- **Model-primary, as qzss_l5**, with its probes (199, 200 and 193, a code no satellite
+  sends). The ephemeris health gate reads the L2C bit of the QZSS word for an L2C signal, and
+  the clock takes -gamma_12 * TGD, exact for these satellites (IS-QZSS-PNT 5.8.1). No streamed
+  data symbols: the CNAV signs stay in the records.
+- **Lanes**: the relay carries them over the main lobe, 1226.6-1228.6 MHz
+  (`fleet-lane-transfer`). QZSS sends no P(Y) or M-code, so there is no transfer beyond it.
+  A band of its own in the shared reference (`qzss_l2c`, no entry until the watch takes one).
+
+To verify on the sky: 194/195/196 present while up, and `sat_fit.py` at 1227.93 MHz, where
+PRN 194 should fall from 0.74 of its control power to the GPS L2C level.
