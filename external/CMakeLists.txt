@@ -38,10 +38,9 @@ if(CUDAToolkit_FOUND)
         endif()
     endforeach()
 
-    # Release builds add the "-fvisibility=hidden" flag (see
-    # kotekan:cmake/Toolchain.cmake) which removes all symbols from
-    # the .so file unless they are explicitly marked public; that is
-    # not done in some of our vendored code, so override that flag.
+    # Release builds add the "-fvisibility=hidden" flag (see kotekan:cmake/Toolchain.cmake) which
+    # removes all symbols from the .so file unless they are explicitly marked public; that is not
+    # done in some of our vendored code, so override that flag.
     foreach(tgt pirate)
         set_property(
             TARGET ${tgt}
