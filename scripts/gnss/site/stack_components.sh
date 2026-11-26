@@ -175,8 +175,10 @@ gnss_component() {
         # projecting GPU's get_lanes to every other's set_lanes. Standalone: reads the fleet
         # files, the generated configs and the nodes' REST and nothing else, so it can never
         # touch the control path; if it dies the nodes fall back to their local lanes.
+        # GNSS_LANE_INST_PHASE: the instrumental phase table the relay sends along (#246).
         GNSS_EXEC=(/usr/bin/python3 -u "$GNSS_K/scripts/gnss/site/lane_relay.py" run
-                   --status "$GNSS_OBS_OUT/lane_relay")
+                   --status "$GNSS_OBS_OUT/lane_relay"
+                   ${GNSS_LANE_INST_PHASE:+--inst-phase "$GNSS_LANE_INST_PHASE"})
         ;;
 
     navrelay)
