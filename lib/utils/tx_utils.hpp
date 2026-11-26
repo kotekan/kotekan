@@ -10,16 +10,25 @@
 #include <chrono> // for clockid_t
 #endif
 
+#include <arpa/inet.h>
 
-/** @brief parse the gethostname() return string to the IP address of the node
+
+/** @brief get primary IPv4 address from gethostname()
  *
- *  @param my_rack rack number of the node
- *  @param my_node node number on the rack
- *  @param my_nos  north hut or south hut
- *  @param my_node_id ID of the node derived from the rack, node and nos.
+ *  @return scokaddr_in IPv4 address of node
  **/
 
-void parse_chime_host_name(int& my_rack, int& my_node, int& my_nos, int& my_node_id);
+struct sockaddr_in get_my_addr(const in_addr_t netaddr, const in_addr_t netmask);
+
+/** @brief compute the location of this node in the racks
+ *
+ *  @param my_addr IPv4 address of node
+ *  @param my_rack rack number of the node
+ *  @param my_node node number on the rack
+ *  @param my_node_id ID of the node
+ **/
+
+void get_chime_rack_location(const in_addr_t my_addr, int& my_rack, int& my_node, int& my_node_id);
 
 
 /** @brief adds nsec to a give timespec structure.

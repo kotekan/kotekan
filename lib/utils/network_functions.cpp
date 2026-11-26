@@ -20,7 +20,7 @@ bool send_ping(int s, const sockaddr_in& dst, const uint16_t seq_no) {
     icp->icmp_type = ICMP_ECHO;
     icp->icmp_code = 0;
     icp->icmp_cksum = 0;
-    icp->icmp_id = getpid();
+    icp->icmp_id = htons(getpid());
 
     icp->icmp_seq = htons(seq_no);
     icp->icmp_cksum = in_cksum((uint16_t*)icp, cc);
@@ -44,7 +44,7 @@ int receive_ping(int s, sockaddr_in& from) {
     // Now the icmp part
     struct icmp* icp = (struct icmp*)(packet + hlen);
     if (icp->icmp_type == ICMP_ECHOREPLY) {
-        if (icp->icmp_id != getpid()) {
+        if (icp->icmp_id != htons(getpid())) {
             DEBUG_NON_OO("Wrong ICMP id: {}", icp->icmp_id);
             return -1;
         }

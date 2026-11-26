@@ -52,7 +52,7 @@ rfiBroadcast::rfiBroadcast(Config& config, const std::string& unique_name,
     rfi_second_downsampling_factor =
         config.get<size_t>(unique_name, "rfi_second_downsampling_factor");
     // Packet/network config params
-    frames_per_packet = config.get_default<size_t>(unique_name, "frames_per_packet", 1);
+    frames_per_packet = config.get_default<size_t>(unique_name, "frames_per_packet", 10);
     dest_port = config.get<size_t>(unique_name, "destination_port");
     dest_ip = config.get<std::string>(unique_name, "destination_ip");
 
@@ -173,6 +173,8 @@ void rfiBroadcast::main_thread() {
     // Directly track frames since `buffer_depth` for the incoming
     // buffers could be less than `frames_per_packet`
     uint32_t _packet_num_frame_counter = 0;
+    // True once a valid, synchronized frame is found
+    bool do_start = false;
 
     while (!stop_thread) {
         // Wait for frames to become available
@@ -184,8 +186,33 @@ void rfiBroadcast::main_thread() {
 
         std::shared_ptr<chordMetadata> meta = get_chord_metadata(rfi_mask_buf, rfi_mask_frame_id);
 
+        // try to synchronize the first FPGA sequence number across independent processes
+        if (!do_start) {
+            auto seq_num = meta->get_fpga_seq_num();
+            if (seq_num % (frames_per_packet * samples_per_data_set) == 0) {
+                do_start = true;
+            } else {
+                // Release all input frames and continue
+                rfi_mask_buf->mark_frame_empty(unique_name, rfi_mask_frame_id);
+                // Pass through the other input buffers as well
+                if (sk_tilde_buf->wait_for_full_frame(unique_name, sktilde_frame_id) == nullptr)
+                    break;
+                sk_tilde_buf->mark_frame_empty(unique_name, sktilde_frame_id);
+
+                if (sk_bar_buf->wait_for_full_frame(unique_name, skbar_frame_id) == nullptr)
+                    break;
+                sk_bar_buf->mark_frame_empty(unique_name, skbar_frame_id);
+
+                rfi_mask_frame_id++;
+                sktilde_frame_id++;
+                skbar_frame_id++;
+
+                continue;
+            }
+        }
+
         // Set additional header metadata, just once per packet
-        if (rfi_mask_frame_id % frames_per_packet == 0) {
+        if (_packet_num_frame_counter % frames_per_packet == 0) {
             header.seq_num = meta->get_fpga_seq_num();
             auto coarse_freq = meta->get_coarse_freq();
             std::copy_n(coarse_freq.begin(), num_local_freq, payload.freq_ids.begin());

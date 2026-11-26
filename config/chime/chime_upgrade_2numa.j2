@@ -40,7 +40,7 @@
 # The config holds no frequency list: the DPDK handlers record the frequency
 # of each link (from the F-engine stream id) in the buffer metadata, and every
 # stage that needs the frequencies of its domain reads them from there through
-# metadata_source (setUpchanGain, cudaCalcFRB2Weights, n2FrameToVisFrame).
+# metadata_source (setUpchanGain, cudaCalcFRB2Weights).
 #
 # Author: Andre Renard, Roland Haas, Erik Schnetter
 #
@@ -135,16 +135,17 @@ use_hugepages: false
 # Single source of truth for the upstream FPGA controller's REST interface.
 # Referenced by /telescope/{gps,frequency_map}_host_info.
 fpga_controller:
-  host: 10.1.13.1
+  host: 10.0.0.2
   port: 54321
 
 # Telescope
 telescope:
   name: CHIMETelescope
   require_gps: true
-  query_gps: true # Set to false when coco is used
+  query_gps: false # Set to false when coco is used
   gps_host_info: /fpga_controller
-  query_frequency_map: true # Set to false when coco is used
+  frequency_map_host: 10.0.0.2
+  query_frequency_map: false # Set to false when coco is used
   require_frequency_map: true # Make sure we have the full frequency map
   allow_default_frequency_map: false # Don't fall back on default map
   eop_updatable_config: /earth_rotation_data
@@ -192,8 +193,7 @@ frb:
 
 dataset_manager:
   use_dataset_broker: {{ not disable_output }}
-  <!-- ds_broker_host: 10.1.50.11 # cv0r1/recv1 -->
-  ds_broker_host: 10.5.60.1 # vm-steelpan-recv1 - used for testing only
+  ds_broker_host: 10.1.50.11 # cv0r1/recv1
   ds_broker_port: 12050
 
 ################################################################################
@@ -367,15 +367,17 @@ dpdk:
   using_switch: true
   # align to the same granularity as 2018 CHIME since the backends rely on this
   alignment: 3*samples_per_data_set
-  alignment_startup_delay: 30.0
+  alignment_startup_delay: 40.0
   lcore_start_delay: 1.0
   # PCIe devices DPDK must not attach to: the ConnectX 6 Lx output NICs (one
   # pair per NUMA node), listed by their PCIe address.  Host specific.
   pcie_block_list:
     - 0d:00.0
     - 0d:00.1
-    - 9f:00.0
-    - 9f:00.1
+    - 9f:00.0 # on upgrade-gpu[12]
+    - 9f:00.1 # on upgrade-gpu[12]
+    - a0:00.0 # on cx0g3
+    - a0:00.1 # on cx0g3
   # Format is index = lcore, value = array of port IDs
   # so [[0,1],[2,3]] maps lcore 0 to service ports 0 and 1,
   # and lcore 1 to service ports 2 and 3.
@@ -440,11 +442,11 @@ numa_{{ numa }}:
 
     n2_pool{{ numa_sfx }}:
         kotekan_metadata_pool: N2Metadata
-        num_metadata_objects: num_freq_gpu_buf * host_buffer_depth
+        num_metadata_objects: 2 * num_freq_gpu_buf * host_buffer_depth
 
     vis_pool{{ numa_sfx }}:
         kotekan_metadata_pool: VisMetadata
-        num_metadata_objects: num_freq_gpu_buf * gpu_buffer_depth # same as n2_pool
+        num_metadata_objects: 2 * num_freq_gpu_buf * gpu_buffer_depth # same as n2_pool
 
     ############################################################################
     # Packet intake
@@ -1066,6 +1068,13 @@ numa_{{ numa }}:
         num_frames: gpu_buffer_depth * num_freq_gpu_buf
         metadata_pool: n2_pool{{ numa_sfx }}
 
+    vis_10s_valved_buffer{{ numa_sfx }}:
+        kotekan_buffer: N2
+        num_ev: 0
+        n2_layout: "FullUpperTri"
+        num_frames: gpu_buffer_depth * num_freq_gpu_buf
+        metadata_pool: n2_pool{{ numa_sfx }}
+
     eig_10s_buffer{{ numa_sfx }}:
         kotekan_buffer: N2
         num_ev: num_ev_to_calculate
@@ -1125,13 +1134,18 @@ numa_{{ numa }}:
         num_ev: 0 # only allowed value
         variance_mode: CHIMEv1
 
+    vis_valve:
+        kotekan_stage: Valve
+        in_buf: vis_10s_buffer{{ numa_sfx }}
+        out_buf: vis_10s_valved_buffer{{ numa_sfx }}
+
     eigencalc:
         kotekan_stage: EigenN2Iter
         # dedicated cores of this NUMA domain, one per blaze worker
         cpu_affinity: {{ cpus(numa, eigen_cores) }}
         num_blaze_workers: {{ eigen_cores | length }}
         num_ev: num_ev_to_calculate
-        in_buf: vis_10s_buffer{{ numa_sfx }}
+        in_buf: vis_10s_valved_buffer{{ numa_sfx }}
         out_buf: eig_10s_buffer{{ numa_sfx }}
         # Convergence config from chime science run
         tol_eval: 0.00001
@@ -1150,10 +1164,8 @@ numa_{{ numa }}:
         kotekan_stage: n2FrameToVisFrame
         n2_buf: eig_10s_buffer{{ numa_sfx }}
         vis_buf: vis_buffer{{ numa_sfx }}
-        # frequencies of this stream, from the metadata of the first frame
-        metadata_source: host_n2k_correlation_buffer{{ numa_sfx }}
         # must match the git hash of the receiver, which is currently 2021.11_hotfix
-        fake_git_tag: "f97998b79bb057668de62ced820273c3f5a5fd27"
+        fake_git_tag: "3f2198ea1c3f45135123a5e7f355342a88d51f45"
 
     ############################################################################
     # FRB beamforming
@@ -1360,6 +1372,8 @@ numa_{{ numa }}:
         default_gains: [1.0, 0.0] # 1.0 + 0.0j ie unit gain
         gain_buffers:
           - host_frb1_phase_buffer{{ numa_sfx }}
+        # these are only used to extract the list of coarse freuqencies at
+        # startup, no data is read from them
         in_buf: host_rfi_RFImask_buffer{{ numa_sfx }}
         updatable_config:
           frb_gain: /updatable_config/frb_gain
@@ -1370,7 +1384,8 @@ numa_{{ numa }}:
         upchan_factor: factor_upchan_out
         frb1_swap_MN: true
         conjugate_gains: true
-        scaling_factor: 1.0
+        # empirically, 1/32 made CYG_A have an intermediate intesity2 of 37000;
+        scaling_factor: 1.0 / 32.
         gain_buffers:
           - host_frb1_phase_buffer{{ numa_sfx }}
         # This reads the mask on the host side, as a flat array of num_elements
@@ -1564,19 +1579,14 @@ numa_{{ numa }}:
         kotekan_stage: frbNetworkSend
         in_buf: host_frb3_beams_buffer{{ numa_sfx }}
         offsetscale_buf: host_frb3_beams_offsetscale_buffer{{ numa_sfx }}
-        udp_frb_port_number: 1314 # change to 1313 (the L1 port) at deployment
+        udp_frb_port_number: 1313
         num_frequencies: num_local_freq # total number of *coarse* frequencies
         # The L1 nodes are on the VLANs 10.6.0.0/16 to 10.9.0.0/16; this node
         # needs an address on each of them.
         number_of_subnets: 4
         beam_offset: 0
-        # This node's addresses on the L1 VLANs, in VLAN order. Without this list
-        # they are derived from the CHIME GPU node name (cnXgY), which this node
-        # does not follow.
-        local_ips: [10.6.200.10, 10.7.200.10, 10.8.200.10, 10.9.200.10]
         ping_dead_threshold: 30
         updatable_config: /frb/update_beam_offset
-        # From the legacy CHIME config
         L1_node_ips:
             # Rack 1
             - 10.6.201.10

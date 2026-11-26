@@ -180,10 +180,15 @@ bool frbNetworkSend::update_offset_callback(nlohmann::json& json_request) {
 void frbNetworkSend::main_thread() {
     DEBUG("number of subnets {:d}\n", number_of_subnets);
 
-    int my_sequence_id = initialize_source_sockets();
+    const int my_node_id = initialize_source_sockets();
     // check for errors initializing
-    if (my_sequence_id < 0)
+    if (my_node_id < 0)
         return;
+    const int numa_node = in_buf->numa_node;
+    assert(numa_node < 2);
+    // 32 GPUs, 2 NUMA per node with a sender each, 256 L1 receivers IPs
+    const int my_sequence_id = (my_node_id * 2 + numa_node) * (256 / (32 * 2));
+    assert(my_sequence_id < 256); // nothing really breaks, but this would be at least unexpected
 
     int number_of_l1_links = initialize_destinations();
     INFO("number_of_l1_links: {:d}", number_of_l1_links);
@@ -527,7 +532,11 @@ void frbNetworkSend::main_thread() {
                                 }
                             }
                         }
-                        // TODO: this may need adjustment since we are sending more data
+                        // TODO: this number is not fully explained. At 4272
+                        // bytes, 8/10 Ethernet encoding, 10Gb/s a packet takes
+                        // ~4.7us (ignoring packet overhead) or 4700ns, about
+                        // 1/10 of the wait time here, but more or less matching
+                        // a 1Gb/s link as used pre-upgrade.
                         long wait_per_packet = (long)(50000);
 
                         // 61521.25 is the theoretical seperation of packets in ns
@@ -550,20 +559,43 @@ void frbNetworkSend::main_thread() {
 }
 
 int frbNetworkSend::initialize_source_sockets() {
-    // One local address per VLAN 10.6.0.0/16..10.9.0.0/16: from local_ips if given, otherwise
-    // derived from the CHIME GPU node name. The loopback test mode (number_of_subnets == 0) uses
-    // 127.0.0.1 and needs neither.
-    int rack = 0, node = 0, nos = 0, my_node_id = 0;
-    if (local_ips.empty() && number_of_subnets > 0)
-        parse_chime_host_name(rack, node, nos, my_node_id);
+    /* every node is introducing packets to the network. To achive load balancing a sequece_id is
+       computed for each node this will make sure none of the catalyst switches are overloaded with
+       traffic at a given point of time of course this will be usefull when chrony is sufficuently
+       synchronized across all nodes..
+    */
+    int my_node_id = -1;
+
     for (int i = 0; i < (number_of_subnets > 0 ? number_of_subnets : 1); i++) {
         std::string ip_addr;
-        if (number_of_subnets == 0)
+        if (number_of_subnets == 0) {
             ip_addr = "127.0.0.1";
-        else if (!local_ips.empty())
+            my_node_id = 0;
+        } else if (!local_ips.empty()) {
             ip_addr = local_ips.at(i);
-        else
-            ip_addr = fmt::format("10.{:d}.{:d}.1{:d}", i + 6, nos + rack, node);
+            if (in_addr my_in_addr; inet_aton(ip_addr.c_str(), &my_in_addr)) {
+                unsigned char my_addr_octets[sizeof(uint32_t)];
+                memcpy(my_addr_octets, &my_in_addr.s_addr, sizeof(my_addr_octets));
+                // TODO: actually come up with a useful sequence number
+                my_node_id = my_addr_octets[2] * 256 + my_addr_octets[3];
+            } else {
+                FATAL_ERROR("Address {:s} is not a IPv4 dotted form", ip_addr);
+            }
+        } else {
+            // One local address per VLAN 10.6.0.0/16..10.9.0.0/16: from
+            // local_ips if given, otherwise derived from the CHIME GPU IP
+            // addres. The loopback test mode (number_of_subnets == 0) uses
+            // 127.0.0.1 and needs neither.
+            // This gets the node IP on 10.1.X.Y network
+            const sockaddr_in my_addr =
+                get_my_addr(inet_addr("10.1.0.0"), inet_addr("255.255.0.0"));
+            // these are in network ie big-endian order
+            unsigned char my_addr_octets[sizeof(uint32_t)];
+            memcpy(my_addr_octets, &my_addr.sin_addr, sizeof(my_addr_octets));
+            int my_rack, my_node; // unused
+            get_chime_rack_location(my_addr.sin_addr.s_addr, my_rack, my_node, my_node_id);
+            ip_addr = fmt::format("10.{:d}.{:d}.{:d}", i + 6, my_addr_octets[2], my_addr_octets[3]);
+        }
         DEBUG("{} ", ip_addr);
 
         // parse the local address into a `sockaddr` struct; the OS assigns the source port, so
@@ -596,16 +628,9 @@ int frbNetworkSend::initialize_source_sockets() {
 
         src_sockets.push_back({addr, sock_fd});
     }
+    assert(my_node_id != -1);
 
-    /* every node is introducing packets to the network. To achive load balancing a sequece_id is
-       computed for each node this will make sure none of the catalyst switches are overloaded with
-       traffic at a given point of time ofcourse this will be usefull when chrony is sufficuently
-       synchronized across all nodes..
-    */
-
-    int my_sequence_id =
-        (int)(my_node_id / 128) + 2 * ((my_node_id % 128) / 8) + 32 * (my_node_id % 8);
-    return my_sequence_id;
+    return my_node_id;
 }
 
 
@@ -702,7 +727,7 @@ void frbNetworkSend::ping_destinations() {
         DestIpSocketTime& dest_ping_info = std::get<1>(ipaddr_dst);
         dest_by_time.push(dest_ping_info);
     }
-    const auto startup_time = dest_by_time.top().get().last_responded;
+    const auto startup_time = std::chrono::steady_clock::now();
     bool startup_phase = true;
 
     // it's silly to have a mutex local to a thread, but we need it for the condition variable used
