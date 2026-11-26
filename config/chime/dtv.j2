@@ -139,6 +139,9 @@
             kotekan_stage: rawFileWrite
             in_buf: host_dtv_{{ product }}_buffer{{ numa_sfx }}
             base_dir: {{ dtv_output_dir }}
+            # A restart numbers on from the last file instead of overwriting the previous run.
+            create_base_dir: true
+            continue_numbering: true
             file_name: dtv_{{ product }}{{ numa_sfx }}
             file_ext: raw
             num_frames_per_file: 1024
@@ -151,6 +154,8 @@
             log_level: warn
             in_buf: host_dtv_fine_powers_buffer{{ numa_sfx }}
             base_dir: {{ dtv_output_dir }}
+            # One acq_<start time> directory per run, so a restart keeps the previous files.
+            acq_dir: true
             file_name: dtv_fine_powers{{ numa_sfx }}
             frames_per_file: 1024
 {% endif %}
