@@ -268,6 +268,40 @@ inline constexpr SignalDescriptor QZSS_L5_Q_NH = {
     /*tdm_phase=*/0,
 };
 
+/// QZSS L2C CM (1227.6 MHz), the data component of the QZSS satellites that send L2C (PRNs
+/// 193..202; IS-QZSS-PNT): GPS L2C's structure with QZSS initial states, so GPS_L2C_CM's
+/// numbers. A descriptor of its own: a chain's tag and the broker's constellation come from the
+/// name. Code: gpsL2CCode (the QZSS rows).
+inline constexpr SignalDescriptor QZSS_L2C_CM = {
+    "QZSS_L2C_CM",
+    1227.6e6,
+    511.5e3,
+    10230,
+    20e-3,
+    Modulation::BPSK,
+    0,
+    0,
+    /*secondary_length=*/0,
+    /*time_multiplexed=*/true,
+    /*tdm_phase=*/0,
+};
+
+/// QZSS L2C CL (1227.6 MHz), the dataless pilot, as GPS_L2C_CL on the QZSS rows. The broker
+/// pairs it with QZSS_L2C_CM as gps_l2c pairs the GPS two (gnss_broker/signals.py).
+inline constexpr SignalDescriptor QZSS_L2C_CL = {
+    "QZSS_L2C_CL",
+    1227.6e6,
+    511.5e3,
+    767250,
+    1.5,
+    Modulation::BPSK,
+    0,
+    0,
+    /*secondary_length=*/0,
+    /*time_multiplexed=*/true,
+    /*tdm_phase=*/1,
+};
+
 /// SBAS L5 (1176.45 MHz) of the WAAS/EGNOS/MSAS/GAGAN GEOs (PRNs 120..158): ONE in-phase BPSK(10)
 /// component, data only, with no pilot. ICAO Annex 10 (DFMC SBAS, 3.7.3.4.6): 250 bps through
 /// rate-1/2 FEC to 500 sps, each 2 ms symbol bi-binary (Manchester) encoded as two 1 ms halves
@@ -915,7 +949,8 @@ inline constexpr const SignalDescriptor* ALL_SIGNALS[] = {
     &BDS_B1I,      &BDS_B3I,     &BDS_B3I_NH,   &BDS_B2I,       &GLO_L3OC_P,    &GLO_L3OC_D,
     &GLO_L2OF,     &GLO_L2OC_P,  &GAL_E6_C_CS,  &GLO_L3OC_P_NH, &GLO_L2OC_P_OC, &SBAS_L5_I,
     &SBAS_L5_I_MC, &GLO_L2OF_MC, &GW_1202,      &BDS_B1I_NH,    &GPS_L1CA_BIT,  &SBAS_L1,
-    &SBAS_L1_SYM,  &GAL_E1C_CS,  &GPS_L5_I_NH,  &QZSS_L5_Q,     &QZSS_L5_Q_NH};
+    &SBAS_L1_SYM,  &GAL_E1C_CS,  &GPS_L5_I_NH,  &QZSS_L5_Q,     &QZSS_L5_Q_NH,  &QZSS_L2C_CM,
+    &QZSS_L2C_CL};
 
 /// Look up a descriptor by its @c name (the config string); nullptr if unknown.
 inline const SignalDescriptor* signal_by_name(const std::string& name) {
@@ -943,8 +978,8 @@ inline int min_prn(const SignalDescriptor& s) {
 }
 
 /// The highest PRN /set_prns takes for a signal. SBAS signals take 120..158, the SBAS rows of
-/// the C/A and L5 code tables, and QZSS signals 193..202, the QZSS rows of the L5 table (its
-/// other rows are GPS satellites). GW_1202 numbers its satellites by G2' phase, 1..2047. The
+/// the C/A and L5 code tables, and QZSS signals 193..202, the QZSS rows of the L5 and L2C tables
+/// (their other rows are GPS satellites). GW_1202 numbers its satellites by G2' phase, 1..2047. The
 /// other signals take 1..63, BeiDou's range and the widest GNSS table; a PRN outside a narrower
 /// generator's range is refused when the swap applies.
 inline int max_prn(const SignalDescriptor& s) {
