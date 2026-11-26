@@ -122,6 +122,8 @@ def fold(st, epochs, d, doc, g_refit=False):
 def fold_file(p, q, d, doc=None):
     """Fold the state p (and its .json) into q for the start d; (number folded, skipped)."""
     side = json.load(open(p[:-4] + ".json"))
+    if side.get("frame0_int") is None:
+        return 0, [("*", "saved while the frame0 file did not match the frames")]
     st = dtv_state.read_state(p)
     epochs, skipped = fold(
         st, side.get("epochs", {}), d, doc or load_steps(), side.get("frame0_int") == d
@@ -139,7 +141,7 @@ def fold_file(p, q, d, doc=None):
 
 
 def stale(side, d):
-    return sorted({e for e in side.get("epochs", {}).values() if e != d})
+    return sorted({e for e in side.get("epochs", {}).values() if e not in (None, d)})
 
 
 def main():

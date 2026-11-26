@@ -141,7 +141,8 @@ def line(node, g, s, prev=None):
 def save_steer(node, g, p, prev):
     """Beside the save p: the satellite of each steered source and the time its weights are valid for, and the
     F-engine start (frame0_int) each source's weights were made under: the restore's or the previous save's (prev)
-    while its anchor is the same, else the current one."""
+    while its anchor is the same, else the current one. None while the frame0 file does not match the node's frames
+    (it can trail a start by an hour): the fold leaves such a save and source alone."""
     import dtv_fold
     import dtv_steer  # skyfield: only where the steering runs
 
@@ -153,7 +154,8 @@ def save_steer(node, g, p, prev):
         if "error" not in st
         else {}
     )
-    d = dtv_fold.frame0_now(FRAME0)
+    clock = dtv_steer.Clock(FRAME0)
+    d = int(clock.f0) if clock.ok(st.get("seq", -1)) else None
     rec = dtv_steer.restored(node, g)
     epochs, anchor = {}, {}
     for c in st.get("channels", []):
@@ -199,7 +201,8 @@ def fold_for_load(p):
     why = "; %d left (%s)" % (len(skipped), skipped[0][1]) if skipped else ""
     if not n:
         for f in (out, out[:-4] + ".json"):
-            os.remove(f)
+            if os.path.exists(f):
+                os.remove(f)
         return p, "nothing folded to %d%s" % (d, why)
     return out, "folded %d sources to %d%s" % (n, d, why)
 
@@ -338,7 +341,10 @@ def save(node, gpus):
         d = json.load(open(FRAME0))[-1]["frame0_int"]
         for p0 in old:
             # the last saves of an earlier F-engine start stay: the next start's steps are measured against them
-            if side(node, 0, os.path.basename(p0)[6:-4]).get("frame0_int", d) != d:
+            if side(node, 0, os.path.basename(p0)[6:-4]).get("frame0_int") not in (
+                None,
+                d,
+            ):
                 continue
             for g in (0, 1):
                 q = p0.replace("st_g0_", "st_g%d_" % g)
