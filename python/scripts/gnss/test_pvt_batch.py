@@ -5,6 +5,8 @@ constellation.
   * Two low satellites sweeping across the sky for 10 min recover a known offset and the
     clock's offset and rate, within their reported errors, with no epoch holding 4 satellites.
   * A gross outlier is rejected.
+  * A satellite whose clock is off by a constant through its pass is excluded, and the others
+    give the position; good satellites are not excluded.
   * Under 120 s or one satellite: no answer.
   * rows_from_obs de-wraps a residual across a code-period boundary.
 """
@@ -61,6 +63,39 @@ class TestBatch(unittest.TestCase):
         r = gnss_pvt.batch_solve(rows, LAT, LON, ALT)
         self.assertGreaterEqual(r["n_rejected"], 1)
         self.assertLess(abs(r["d_u"] - 1.0), 3 * r["sigma_u"] + 0.5)
+
+    def _four(self, rng, dx, bias):
+        rows = _pass(1, 200, 20, 70, 0, 600, dx, 0.0, 0.0, rng)
+        rows += _pass(2, 120, 300, 40, 0, 600, dx, 0.0, 0.0, rng)
+        rows += _pass(3, 330, 160, 30, 100, 400, dx, 0.0, 0.0, rng)
+        bad = _pass(4, 60, 250, 55, 50, 500, dx, 0.0, 0.0, rng)
+        for r in bad:
+            r["resid_m"] += bias
+        return rows + bad
+
+    def test_biased_satellite(self):
+        dx = np.array([2.0, -3.0, 4.0])
+        for seed, bias in ((7, 1280.0), (8, -440.0)):
+            r = gnss_pvt.batch_solve(
+                self._four(np.random.default_rng(seed), dx, bias), LAT, LON, ALT
+            )
+            self.assertEqual(list(r["excluded"]), [4], (bias, r["excluded"]))
+            json.dumps(r["excluded"])
+            self.assertAlmostEqual(r["excluded"][4], bias, delta=30.0)
+            self.assertEqual(r["n_sats"], 3)
+            for k, v in zip(("d_e", "d_n", "d_u"), dx):
+                self.assertLess(
+                    abs(r[k] - v), 3 * r["sigma_" + k[-1]] + 0.5, (k, r[k], r)
+                )
+
+    def test_no_false_exclusion(self):
+        for seed in range(9, 15):
+            rows = self._four(
+                np.random.default_rng(seed), np.array([1.0, 1.0, 1.0]), 0.0
+            )
+            r = gnss_pvt.batch_solve(rows, LAT, LON, ALT)
+            self.assertEqual(r["excluded"], {}, seed)
+            self.assertEqual(r["n_sats"], 4)
 
     def test_refusals(self):
         rng = np.random.default_rng(6)

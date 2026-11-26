@@ -579,32 +579,11 @@ def rows_from_obs(globs, t0, t1, sysid, every_s=10.0):
     return rows
 
 
-def batch_solve(rows, lat0, lon0, alt0, min_el_deg=10.0, sigma_m=5.0, reject_k=5.0):
-    """A stationary receiver's position from code observations spread over a window, for a
-    constellation too sparse to solve at one epoch (GuoWang). rows: {t, az, el, resid_m}. The
-    model is resid = -los . dx + c0 + c1 (t - t_mid): one receiver clock offset and rate over the
-    window, which a disciplined oscillator holds, so the directions a low satellite sweeps through
-    in minutes stand in for simultaneous satellites. Rows whose post-fit residual exceeds
-    max(60 m, reject_k x the median) are dropped and the fit repeated. Valid only for a receiver
-    that did not move over the window; the caller must check that. Returns solve's result fields
-    plus n_rows, n_sats, span_s and clock_rate_m_s, or None when the window cannot determine the
-    position (under 2 satellites or 120 s, no redundancy, or a degenerate geometry)."""
-    use = [r for r in rows if r.get("el") is not None and r["el"] >= min_el_deg]
-    if len(use) < 8 or len({r.get("prn") for r in use}) < 2:
-        return None
-    ts = np.array([r["t"] for r in use], dtype=float)
-    span = float(ts.max() - ts.min())
-    if span < 120.0:
-        return None
-    t_mid = 0.5 * (ts.max() + ts.min())
-    H = np.zeros((len(use), 5))
-    y = np.zeros(len(use))
-    for i, r in enumerate(use):
-        H[i, 0:3] = -_los_enu(r["az"], r["el"])
-        H[i, 3] = 1.0
-        H[i, 4] = r["t"] - t_mid
-        y[i] = r["resid_m"]
-    keep = np.ones(len(use), dtype=bool)
+def _batch_fit(H, y, keep, reject_k):
+    """batch_solve's fit over the rows in `keep`, dropping rows whose post-fit residual exceeds
+    max(60 m, reject_k x the median) until none does: (x, post over every row, Ninv, keep) or
+    None when under 8 rows remain or the geometry is singular."""
+    keep = keep.copy()
     for _ in range(10):
         if keep.sum() < 8:
             return None
@@ -620,6 +599,74 @@ def batch_solve(rows, lat0, lon0, alt0, min_el_deg=10.0, sigma_m=5.0, reject_k=5
         if not bad.any():
             break
         keep &= ~bad
+    return x, post, Ninv, keep
+
+
+def batch_solve(rows, lat0, lon0, alt0, min_el_deg=10.0, sigma_m=5.0, reject_k=5.0):
+    """A stationary receiver's position from code observations spread over a window, for a
+    constellation too sparse to solve at one epoch (GuoWang). rows: {t, prn, az, el, resid_m}.
+    The model is resid = -los . dx + c0 + c1 (t - t_mid): one receiver clock offset and rate over
+    the window, which a disciplined oscillator holds, so the directions a low satellite sweeps
+    through in minutes stand in for simultaneous satellites. A satellite whose broadcast clock is
+    off sits at one offset through its pass, and a few satellites' fit absorbs much of it, which
+    also inflates the median the row cut scales with. So with 3 or more satellites, each is first
+    tested against the fit of the others: the one whose median residual there exceeds
+    max(60 m, reject_k x that fit's median, reject_k x the error of its prediction) by the largest
+    factor is excluded, and the test repeats. Then rows whose post-fit residual exceeds max(60 m, reject_k x the median) are
+    dropped and the fit repeated. Valid only for a receiver that did not move over the window;
+    the caller must check that. Returns solve's result fields plus n_rows, n_sats, span_s,
+    clock_rate_m_s and excluded ({prn: median residual m against the others}), or None when the
+    window cannot determine the position (under 2 satellites or 120 s, no redundancy, or a
+    degenerate geometry)."""
+    use = [r for r in rows if r.get("el") is not None and r["el"] >= min_el_deg]
+    if len(use) < 8 or len({r.get("prn") for r in use}) < 2:
+        return None
+    ts = np.array([r["t"] for r in use], dtype=float)
+    span = float(ts.max() - ts.min())
+    if span < 120.0:
+        return None
+    t_mid = 0.5 * (ts.max() + ts.min())
+    H = np.zeros((len(use), 5))
+    y = np.zeros(len(use))
+    for i, r in enumerate(use):
+        H[i, 0:3] = -_los_enu(r["az"], r["el"])
+        H[i, 3] = 1.0
+        H[i, 4] = r["t"] - t_mid
+        y[i] = r["resid_m"]
+    prn = np.array([r.get("prn") for r in use])
+    keep = np.ones(len(use), dtype=bool)
+    excluded = {}
+    while len(set(prn[keep].tolist())) >= 3:
+        worst = None
+        for s in sorted(set(prn[keep].tolist())):
+            f = _batch_fit(H, y, keep & (prn != s), reject_k)
+            if f is None or math.sqrt(max(0.0, float(np.trace(f[2][0:3, 0:3])))) > 30.0:
+                continue
+            x, post, Ninv, k = f
+            med = float(np.median(np.abs(post[k])))
+            # the others' fit predicts this satellite only as well as their geometry allows:
+            # its prediction error, with rows counted as in the reported errors below
+            Hs = H[prn == s]
+            corr = math.sqrt(max(1.0, k.sum() / (3.0 * len(set(prn[k])))))
+            pred = (
+                math.sqrt(float(np.median(np.einsum("ij,jk,ik->i", Hs, Ninv, Hs))))
+                * med
+                * corr
+            )
+            off = float(np.median(post[prn == s]))
+            ratio = abs(off) / max(60.0, reject_k * med, reject_k * pred)
+            if ratio > 1.0 and (worst is None or ratio > worst[0]):
+                worst = (ratio, s, off)
+        if worst is None:
+            break
+        excluded[worst[1]] = round(worst[2], 1)
+        keep &= prn != worst[1]
+    f = _batch_fit(H, y, keep, reject_k)
+    if f is None:
+        return None
+    x, post, Ninv, kept = f
+    n_rejected = int((keep & ~kept).sum())
+    keep = kept
     dof = max(1, int(keep.sum()) - 5)
     pk = post[keep]
     rms = math.sqrt(float(pk @ pk) / dof)
@@ -639,7 +686,8 @@ def batch_solve(rows, lat0, lon0, alt0, min_el_deg=10.0, sigma_m=5.0, reject_k=5
     lat, lon, alt = _ecef_to_llh(pos)
     return dict(
         n_sats=n_sats,
-        n_rejected=int((~keep).sum()),
+        n_rejected=n_rejected,
+        excluded=excluded,
         n_rows=int(keep.sum()),
         span_s=span,
         lat=lat,
