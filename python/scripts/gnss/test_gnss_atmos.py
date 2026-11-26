@@ -1,4 +1,5 @@
 """gnss_atmos: the troposphere's size and shape, the Klobuchar structure and its header parse."""
+
 import math
 import os
 import sys
@@ -214,6 +215,101 @@ if navs:
         "predict_all: tropo larger at the lowest satellite than at zenith value",
         lo["tropo_m"] > A.tropo_zenith_m(lat, alt),
     )
+
+# BeiDou's Klobuchar (B1I ICD 5.2.4.7): the night floor is 5 ns at B1I on the zenith, scaled
+# to the carrier; day above night; the period clamped to 172800 s.
+pt = (45.0, -75.0)
+ba = [2.42e-08, -1.49e-08, -4.77e-07, 1.01e-06]
+bb = [139264.0, -393216.0, 720896.0, -65536.0]
+noon = (12.0 - pt[1] / 15.0) * 3600.0  # BDT seconds of the day at local noon
+bn = A.klobuchar_bds_delay_m(ba, bb, *pt, 90.0, 0.0, noon + 12 * 3600.0)
+check(
+    "BDS Klobuchar: night floor 5 ns at B1I",
+    abs(bn - A.C_LIGHT * 5e-9) < 1e-6,
+    "%.4f" % bn,
+)
+bd = A.klobuchar_bds_delay_m(ba, bb, *pt, 90.0, 0.0, noon + 7200.0)
+check("BDS Klobuchar: day above night", bd > bn + 0.5, "%.2f" % bd)
+b5 = A.klobuchar_bds_delay_m(ba, bb, *pt, 90.0, 0.0, noon + 7200.0, f_hz=1176.45e6)
+check(
+    "BDS Klobuchar: (f_B1I/f)^2 at B2a",
+    abs(b5 / bd - (A.F_B1I / 1176.45e6) ** 2) < 1e-9,
+)
+big = A.klobuchar_bds_delay_m(ba, [9e5, 0, 0, 0], *pt, 90.0, 0.0, noon + 7200.0)
+cap = A.klobuchar_bds_delay_m(ba, [172800.0, 0, 0, 0], *pt, 90.0, 0.0, noon + 7200.0)
+check("BDS Klobuchar: period capped at 172800 s", abs(big - cap) < 1e-9)
+
+# BDGIM (B1C ICD 7.8.2): the normalised Legendre functions against their closed forms; each
+# broadcast coefficient adds its own term (alpha1's is 1 TECu at the zenith); the day peaks in
+# the local afternoon.
+x = 0.3
+for (n, m), want in (
+    ((1, 0), math.sqrt(3) * x),
+    ((1, 1), math.sqrt(3) * math.sqrt(1 - x * x)),
+    ((2, 0), math.sqrt(5) * (3 * x * x - 1) / 2),
+    ((2, 1), math.sqrt(5.0 / 3.0) * 3 * x * math.sqrt(1 - x * x)),
+    ((3, 0), math.sqrt(7) * (5 * x**3 - 3 * x) / 2),
+):
+    got = A._legendre_norm(n, m, x)
+    check("BDGIM: P~(%d,%d)" % (n, m), abs(got - want) < 1e-12, "%.6f" % got)
+al = [19.875, -3.625, 7.375, 4.625, -7.25, 0.25, -0.5, 1.75, 0.5]
+t0 = 1795651200.0  # 2026-11-26 00:00 UTC
+f5 = 1176.45e6
+d0 = A.bdgim_delay_m(al, *pt, 90.0, 0.0, t0 + noon, f5)
+d1 = A.bdgim_delay_m([al[0] + 1.0] + al[1:], *pt, 90.0, 0.0, t0 + noon, f5)
+check(
+    "BDGIM: alpha1 + 1 TECu adds 1 TECu at the zenith",
+    abs((d1 - d0) - 40.28e16 / f5**2) < 1e-9,
+)
+day = [
+    (A.bdgim_delay_m(al, *pt, 90.0, 0.0, t0 + h * 1800.0, f5), h / 2.0)
+    for h in range(48)
+]
+peak_lt = (max(day)[1] + pt[1] / 15.0) % 24.0
+check(
+    "BDGIM: the day peaks in the local afternoon",
+    11.0 < peak_lt < 17.0,
+    "%.1f h" % peak_lt,
+)
+lo = A.bdgim_delay_m(al, *pt, 15.0, 0.0, t0 + noon, f5)
+check("BDGIM: slant above zenith at 15 deg", lo > 1.5 * d0)
+
+# decoded_iono: the newest complete decode of each model's first source
+import json  # noqa: E402
+import tempfile  # noqa: E402
+
+with tempfile.TemporaryDirectory() as dd:
+
+    def row(t, vals, labels):
+        return {
+            "msgs": {
+                "type 30": [None, t, "x", [[k, v, ""] for k, v in zip(labels, vals)]]
+            }
+        }
+
+    lab = ["α%d" % i for i in range(1, 10)]
+    with open(os.path.join(dd, "nav_payload_bcnav2.json"), "w") as f:
+        json.dump(
+            {
+                "signals": {
+                    "BDS_B2A_BCNAV2": {
+                        "prns": {
+                            "19": row(100.0, al, lab),
+                            "20": row(200.0, [1.0] * 9, lab),
+                            "21": row(300.0, [2.0] * 8, lab[:8]),  # incomplete: skipped
+                        }
+                    }
+                }
+            },
+            f,
+        )
+    dec = A.decoded_iono(dd)
+check(
+    "decoded_iono: newest complete BDGIM",
+    dec.get("bdgim", {}).get("c") == [1.0] * 9,
+    str(dec),
+)
+check("decoded_iono: nothing for absent files", set(dec) == {"bdgim"})
 
 if FAIL:
     print("FAILED (%d): %s" % (len(FAIL), ", ".join(FAIL)))
