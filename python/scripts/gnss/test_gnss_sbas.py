@@ -5,6 +5,8 @@
 * With the broker's own issue, a clock correction moves the residual by itself, and a position
   correction by its projection on the line of sight; the rates act from t_D.
 * The issue is the one whose LNAV IODC the IODN names; a correction past MAX_AGE_S is not used.
+* Corrector.apply names the satellites it has corrections for, and those waiting for an issue
+  the BRDC does not hold yet, which it leaves out.
 """
 
 import json
@@ -73,6 +75,21 @@ class TestSbas(unittest.TestCase):
         self.assertIsNone(gnss_sbas.correction_m(self.m, _mt32(iodn=301), self.eph, RX))
         old = dict(_mt32(), t=T0 - gnss_sbas.MAX_AGE_S - 1.0)
         self.assertIsNone(gnss_sbas.correction_m(self.m, old, self.eph, RX))
+
+    def test_waiting(self):
+        c = gnss_sbas.Corrector("unused")
+        c.eph = lambda: self.eph
+        corr = {5: _mt32(iodn=300), 7: _mt32(iodn=999)}
+        meas = [self.m, dict(self.m, prn=7), dict(self.m, prn=9)]
+        self.eph[("G", 7)] = [_record(300, G0 - 600.0)]
+        orig = gnss_sbas.corrections
+        gnss_sbas.corrections = lambda glob: corr
+        try:
+            out = c.apply(meas, 45.0, -75.0, 100.0)
+        finally:
+            gnss_sbas.corrections = orig
+        self.assertEqual([m["prn"] for m in out], [5])
+        self.assertEqual((c.named, c.waiting), ({"G05", "G07"}, {"G07"}))
 
     def test_corrections_newest_slot(self):
         def entry(t, slot, iodn):

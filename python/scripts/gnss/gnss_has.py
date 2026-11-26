@@ -189,6 +189,9 @@ class Corrector:
         self._has = (None, None, {})  # (path, mtime, corrections)
         self._eph = (None, {})  # (cache files and mtimes, parsed)
         self.decoded = decoded_eph.Reader(decoded_paths)
+        # after apply: the satellites among the measurements with current corrections, and
+        # those whose corrections name an issue not held yet (for GPS, the BRDC lags uploads)
+        self.named, self.waiting = set(), set()
 
     def corrections(self):
         import glob
@@ -217,6 +220,7 @@ class Corrector:
     def apply(self, meas, lat, lon, alt):
         """The measurements HAS corrects, each a copy with resid_m moved to the HAS model and
         the change in has_m; the rest left out."""
+        self.named, self.waiting = set(), set()
         has = self.corrections()
         if not has:
             return []
@@ -233,4 +237,21 @@ class Corrector:
                 d = None
             if d is not None:
                 out.append(dict(m, resid_m=m["resid_m"] + d, has_m=d))
+            self._note(m, has, eph, decoded)
         return out
+
+    def _note(self, m, has, eph, decoded):
+        """Add m's satellite to `named` when HAS has current corrections for it, and to
+        `waiting` when their issue is not held."""
+        key = "%s%02d" % (m["sys"], int(m["prn"]))
+        t = ge.gpst_of_utc(m["t"])
+        got = terms(has, key, HAS_SIGNAL.get(m["group"]), t)
+        if got is None:
+            return
+        self.named.add(key)
+        try:
+            held = issue_state(m["sys"], int(m["prn"]), got[0]["iod"], t, eph, decoded)
+        except (KeyError, TypeError, ValueError):
+            held = None
+        if held is None:
+            self.waiting.add(key)

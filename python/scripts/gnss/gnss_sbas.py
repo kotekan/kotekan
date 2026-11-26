@@ -52,6 +52,18 @@ def corrections(payload_glob):
     return out
 
 
+def issue(recs, iodc, t):
+    """The BRDC record of the LNAV issue with this IODC near t (GPST), or None: an IODC
+    repeats within days."""
+    near = [
+        e
+        for e in recs or ()
+        if int(e.get("iodc", -1)) == int(iodc)
+        and abs(t - e["toe_gpst"]) < ISSUE_WINDOW_S
+    ]
+    return min(near, key=lambda e: abs(t - e["toe_gpst"])) if near else None
+
+
 def correction_m(m, c, eph, rx):
     """Metres to add to GPS measurement m's resid_m to put it against the WAAS model, or None
     when its correction is stale or its issue is not in the BRDC."""
@@ -60,15 +72,9 @@ def correction_m(m, c, eph, rx):
         return None
     t = ge.gpst_of_utc(m["t"])
     e_b = ge.best_eph(recs, t)
-    issue = [
-        e
-        for e in recs
-        if int(e.get("iodc", -1)) == int(c["IODN"])
-        and abs(t - e["toe_gpst"]) < ISSUE_WINDOW_S
-    ]
-    if e_b is None or not issue:
+    e_w = issue(recs, c["IODN"], t)
+    if e_b is None or e_w is None:
         return None
-    e_w = min(issue, key=lambda e: abs(t - e["toe_gpst"]))
     dt = (t - c["t_D"] + 43200.0) % 86400.0 - 43200.0
     rng_b, clk_b, _, _, _ = _geometry(_brdc_state(e_b), rx, t, "G")
     model_b = rng_b - C_LIGHT * (clk_b + ge.group_delay_s(e_b, m["group"], None))
@@ -86,11 +92,15 @@ def correction_m(m, c, eph, rx):
 
 class Corrector:
     """The newest WAAS corrections from the nav_decode payload files matching payload_glob,
-    against the cached BRDC the broker merges (re-read when it changes)."""
+    against the cached BRDC the broker merges (re-read when it changes). After apply, `named`
+    holds the satellites among the measurements with a current correction, and `waiting` those
+    whose correction names an issue the BRDC does not hold yet (it lags each GPS upload).
+    """
 
     def __init__(self, payload_glob):
         self.glob = payload_glob
         self._eph = (None, {})  # (cache files and mtimes, parsed)
+        self.named, self.waiting = set(), set()
 
     def eph(self):
         paths = cached_brdc()
@@ -102,6 +112,7 @@ class Corrector:
     def apply(self, meas, lat, lon, alt):
         """The GPS measurements WAAS corrects, each a copy with resid_m moved to the WAAS model
         and the change in sbas_m; the rest left out."""
+        self.named, self.waiting = set(), set()
         corr = corrections(self.glob)
         if not corr:
             return []
@@ -110,7 +121,13 @@ class Corrector:
         out = []
         for m in meas:
             c = corr.get(int(m["prn"])) if m["sys"] == "G" else None
-            if c is None:
+            if c is None or m["t"] - c["t"] > MAX_AGE_S:
+                continue
+            key = "G%02d" % int(m["prn"])
+            self.named.add(key)
+            recs = eph.get(("G", int(m["prn"])))
+            if issue(recs, c["IODN"], ge.gpst_of_utc(m["t"])) is None:
+                self.waiting.add(key)
                 continue
             try:
                 d = correction_m(m, c, eph, rx)
