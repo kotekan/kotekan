@@ -90,6 +90,9 @@ common:
     # Fleet lanes (docs/CHORD_FLEET_LANES.md): GnssN2Project takes lanes the relay carries from the
     # other nodes; fleet-lane-transfer is the relay's table (site-only, not a generator flag).
     fleet-lanes: true
+    # #246: GnssN2Project carries every transferred lane by the instrumental phase table the
+    # relay posts (lane_relay.py --inst-phase), and the assemblers apply no delays of their own.
+    lane-inst-phase: false
     # GuoWang lanes move ~0.3 deg/s: GnssN2Project turns them along their tracks to each
     # integration's time (a lane is used up to 1 s after its geometry's instant).
     lane-resteer: true

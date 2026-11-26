@@ -1911,6 +1911,43 @@ def test_chain_names_and_lane_transfer():
         )
 
 
+def test_lane_inst_phase():
+    """--lane-inst-phase: GnssN2Project carries the transfers by the instrumental phase table
+    and every assembler leaves its delays off its transfers; without it neither key is set, and
+    without --fleet-lanes it is refused."""
+    if kotekan_src.SRC is None:
+        print("  [SKIP] node config: no kotekan tree to render the base from")
+        return
+    xfer = "gps_l5:1160.0-1166.2"
+    exc, on = _lane_transfer_node(xfer, flags=["--fleet-lanes", "--lane-inst-phase"])
+    exc_off, off = _lane_transfer_node(xfer, flags=["--fleet-lanes"])
+    check(
+        exc is None and exc_off is None,
+        "the node configs generate (%s, %s)" % (exc, exc_off),
+    )
+    if exc is not None or exc_off is not None:
+        return
+    for g_ in (0, 1):
+        asm = [k for k in on if re.fullmatch(r"gnss%d_\w+_n2assemble" % g_, k)]
+        check(
+            on["gnss_n2_project"]["proj_%d" % g_].get("lane_inst_phase") is True
+            and asm
+            and all(on[k].get("lane_transfer_inst_apply") is False for k in asm),
+            "gpu%d: the stage carries the transfers, %d assemblers apply no delays"
+            % (g_, len(asm)),
+        )
+        check(
+            "lane_inst_phase" not in off["gnss_n2_project"]["proj_%d" % g_]
+            and not any("lane_transfer_inst_apply" in off[k] for k in asm),
+            "gpu%d: without --lane-inst-phase neither key" % g_,
+        )
+    exc, _ = _lane_transfer_node(xfer, flags=["--lane-inst-phase"])
+    check(
+        exc is not None and "--lane-inst-phase needs --fleet-lanes" in exc,
+        "--lane-inst-phase without --fleet-lanes refused (%s)" % exc,
+    )
+
+
 def test_combiner_out_buf():
     """--no-combiner-out-buf drops each chain's n2cmb_buf and n2sink and the combiner's out_buf,
     and changes nothing else; --combiner-out-buf is the default."""

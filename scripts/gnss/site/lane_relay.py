@@ -12,7 +12,12 @@
        goes to the fleet-lane-transfer-bright targets (a close pass's sidelobes), on every
        GPU including its own.
        Every inst-period the instrumental delays (get_lane_inst) of one transferring
-       assembler per GPU (inst_stage) are pooled and sent along. --to limits the receivers (a canary), --from the sources.
+       assembler per GPU (inst_stage) are pooled and sent along. With --inst-phase, the
+       instrumental phase table (inst_phase_table.py) turned to the current F-engine start by
+       the step table goes along too, when it changes and every PHASE_REPOST_S; while the
+       steps since the table's start are not measured an empty one clears it on the nodes,
+       which fall back to the pooled delays. --to limits the receivers (a canary), --from the
+       sources.
   show One cycle, printed: per GPU what it serves and what it would receive. Nothing posted.
 
 Reads config/gnss_fleet_chord.yaml (fleet-lane-transfer), config/chord_gnss_node.yaml
@@ -40,6 +45,8 @@ K = os.path.normpath(
 sys.path.insert(0, os.path.join(K, "config"))
 sys.path.insert(0, os.path.join(K, "python", "scripts", "gnss"))
 import gnss_fleet  # noqa: E402
+import fengine_steps  # noqa: E402
+import inst_phase_table  # noqa: E402
 from gnss_broker import node_api  # noqa: E402
 
 FLEET = "config/gnss_fleet_chord.yaml"
@@ -50,6 +57,7 @@ CH_MHZ = 0.1953125
 OWNER = re.compile(r"^(/?gnss\d+_\w+)/lane/(\d+)$")
 LOG_EVERY_S = 60.0
 ERR_EVERY_S = 300.0
+PHASE_REPOST_S = 300.0  # an unchanged phase table is posted again this often
 
 
 def log(msg):
@@ -251,6 +259,11 @@ class Relay:
         )
         self.inst_t = -1e9
         self.inst_n = 0
+        self.phase = (
+            None  # the turned table's set_lanes field; {} clears; None = not read
+        )
+        self.phase_why = ""
+        self.phase_sent = {}  # receiver name -> (table key, monotonic time of the post)
         self.pool = concurrent.futures.ThreadPoolExecutor(max(4, 2 * len(self.units)))
         log(
             "lane relay: %d GPU(s), %d source(s), %d receiver(s); transfers %s"
@@ -331,7 +344,36 @@ class Relay:
                     best[key] = (L, u)
         return best, status, powers
 
-    def body_for(self, u, best, inst, bright=()):
+    def read_phase(self):
+        """The inst_phase field for set_lanes: the table turned to the newest F-engine start,
+        or {} (clear) with the reason in phase_why."""
+        try:
+            with open(self.a.inst_phase) as fh:
+                tab = json.load(fh)
+            with open(self.a.frame0) as fh:
+                start = json.load(fh)[-1]["frame0_int"]
+            tab = inst_phase_table.turned(tab, fengine_steps.load(self.a.steps), start)
+        except (OSError, ValueError, KeyError, IndexError, TypeError) as e:
+            self.phase_why = repr(e)[:160]
+            return {}
+        self.phase_why = ""
+        return {
+            "made_frame0": tab["made_frame0"],
+            "fids": tab["fids"],
+            "phase_deg": tab["phase_deg"],
+        }
+
+    def phase_due(self, u):
+        """The phase field to send u this cycle, or None."""
+        if self.phase is None:
+            return None
+        key = json.dumps(self.phase, sort_keys=True)
+        last = self.phase_sent.get(u.name)
+        if last and last[0] == key and time.monotonic() - last[1] < PHASE_REPOST_S:
+            return None
+        return self.phase
+
+    def body_for(self, u, best, inst, bright=(), phase=None):
         lanes = []
         for (tag, prn), (L, src) in sorted(best.items()):
             fids = []
@@ -360,6 +402,8 @@ class Relay:
         body = {"t_utc": time.time(), "lanes": lanes}
         if inst is not None:
             body["inst_delay_ns"] = inst
+        if phase is not None:
+            body["inst_phase"] = phase
         return body
 
     def cycle(self, post=True):
@@ -382,15 +426,29 @@ class Relay:
                 replies.append(r)
             self.inst, self.inst_n = pool_inst(replies)
             inst = self.inst
+            if self.a.inst_phase:
+                self.phase = self.read_phase()
+                if self.phase_why:
+                    self.rl(
+                        "phase",
+                        "no instrumental phase table: %s" % self.phase_why,
+                        ERR_EVERY_S,
+                    )
         rx_status = {}
         if post:
             jobs = [
-                (u, self.body_for(u, best, inst, bright))
+                (u, self.body_for(u, best, inst, bright, self.phase_due(u)))
                 for u in self.units
                 if u.receiver
             ]
             for u, r in self.pool.map(lambda j: self.post(*j), jobs):
-                n_sent = len(next(b for v, b in jobs if v is u)["lanes"])
+                body = next(b for v, b in jobs if v is u)
+                n_sent = len(body["lanes"])
+                if "error" not in r and "inst_phase" in body:
+                    self.phase_sent[u.name] = (
+                        json.dumps(body["inst_phase"], sort_keys=True),
+                        time.monotonic(),
+                    )
                 if "error" in r:
                     rx_status[u.name] = {"error": r["error"], "sent": n_sent}
                     self.rl(
@@ -417,6 +475,13 @@ class Relay:
             ],
             "receivers": rx_status,
             "inst": {"instances": self.inst_n, "sent": inst is not None},
+            "inst_phase": None
+            if self.phase is None
+            else {
+                "made_frame0": self.phase.get("made_frame0"),
+                "knots": len(self.phase.get("fids", [])),
+                "why_none": self.phase_why,
+            },
         }
         return status
 
@@ -518,6 +583,15 @@ def main():
         "--from",
         dest="only_from",
         help="sources: NODE,NODE (default every projecting GPU)",
+    )
+    ap.add_argument(
+        "--inst-phase",
+        default="",
+        help="instrumental phase table to send along (inst_phase_table.py; default none)",
+    )
+    ap.add_argument("--steps", default=fengine_steps.TABLE, help="the step table")
+    ap.add_argument(
+        "--frame0", default=inst_phase_table.FRAME0, help="the F-engine starts"
     )
     ap.add_argument("--status", help="directory for current.json")
     ap.add_argument("--once", action="store_true", help="run: one cycle")

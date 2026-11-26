@@ -253,6 +253,7 @@ RecordChain::RecordChain(Config& config, const std::string& cfg_path, const std:
         _inst_df_fid = _lane_fids.size() >= 2 ? _lane_fids[1] - _lane_fids[0] : 0;
         _inst_on = _lane_on && !_lane_xfer_fids.empty() && _inst_df_fid != 0
                    && config.get_default<bool>(cfg_path, "lane_transfer_inst_slope", true);
+        _inst_apply = config.get_default<bool>(cfg_path, "lane_transfer_inst_apply", true);
         if (_inst_on) {
             _inst = gnss::InstDelay(
                 _n_elements, _inst_df_fid * 0.1953125e6,
@@ -272,7 +273,10 @@ RecordChain::RecordChain(Config& config, const std::string& cfg_path, const std:
                  "instrumental delay {:s}",
                  _lane_group, tau, _lane_every, _lane_coh_min, _lane_hold_s, _lane_hold_frac,
                  _lane_hold_coh_min, _lane_capture_gain, _lane_capture_cos2,
-                 (int)_lane_xfer_fids.size(), _inst_on ? "on" : "off");
+                 (int)_lane_xfer_fids.size(),
+                 !_inst_on     ? "off"
+                 : _inst_apply ? "on"
+                               : "estimated, not applied");
         if (_lane_on) {
             auto& m = kotekan::prometheus::Metrics::instance();
             _m_lane_pub =
@@ -1108,7 +1112,7 @@ int64_t RecordChain::assemble_record(int r, float* out) {
                         const gnss::ElemSteer::cf sh = _lane_shift[(size_t)el];
                         v[el] = dir[el] * std::complex<double>(sh.real(), -sh.imag());
                     }
-                    if (_inst_on && _inst.warm())
+                    if (_inst_on && _inst_apply && _inst.warm())
                         _inst.apply(df_hz, v);
                     const bool held = _lane_ok[(size_t)src] == 2;
                     gnss::ProjEntry e;
@@ -1127,6 +1131,7 @@ int64_t RecordChain::assemble_record(int r, float* out) {
                     std::copy(lane_los, lane_los + 3, e.los);
                     std::copy(lane_los_rate, lane_los_rate + 3, e.los_rate);
                     e.xfer = 1;
+                    e.fid_src = _lane_fids[(size_t)src];
                     board.publish(_lane_group, fid, e);
                 }
             }

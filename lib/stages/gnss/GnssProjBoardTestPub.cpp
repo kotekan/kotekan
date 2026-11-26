@@ -21,6 +21,7 @@ GnssProjBoardTestPub::GnssProjBoardTestPub(Config& config, const std::string& un
           std::bind(&GnssProjBoardTestPub::main_thread, this)),
     board_group(config.get<std::string>(unique_name, "board_group")),
     freq_ids(config.get<std::vector<int>>(unique_name, "freq_ids")),
+    xfer_freq_ids(config.get_default<std::vector<int>>(unique_name, "xfer_freq_ids", {})),
     n_elem(config.get<int>(unique_name, "n_elem")),
     n_dirs(config.get_default<int>(unique_name, "n_dirs", 2)),
     period_ms(config.get_default<int>(unique_name, "period_ms", 20)),
@@ -60,6 +61,10 @@ void GnssProjBoardTestPub::main_thread() {
                 e.q.emplace_back(inv * std::cos(ph), inv * std::sin(ph));
             }
             for (const int fid : freq_ids)
+                board.publish(board_group, fid, e);
+            e.xfer = 1;
+            e.fid_src = freq_ids.back();
+            for (const int fid : xfer_freq_ids)
                 board.publish(board_group, fid, e);
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(period_ms));
