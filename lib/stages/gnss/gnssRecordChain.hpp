@@ -425,13 +425,16 @@ private:
     // With lane_transfer_inst_slope (default true) the transfer also turns each element by its
     // instrumental delay (gnss::InstDelay), measured from adjacent published channels of every
     // slot and forgotten over lane_transfer_inst_tau_s (300 s); until that has averaged for
-    // tau_s the transfer is geometric only.
+    // tau_s the transfer is geometric only. With lane_transfer_inst_apply false (GnssN2Project
+    // lane_inst_phase: the stage turns the transfers itself) the delays are still estimated and
+    // served (get_lane_inst) but not applied. A transfer records its source channel (fid_src).
     std::vector<int> _lane_xfer_fids;
     std::vector<char> _lane_ok; ///< [n_chan] published this round: 1 live, 2 held
     std::vector<std::complex<double>> _lane_pubdir; ///< [n_chan][n_elem]
     std::vector<gnss::ElemSteer::cf> _lane_shift;   ///< [n_elem]
     bool _inst_on = false;
-    int _inst_df_fid = 0; ///< the channel spacing the estimate is fed at, freq_ids
+    bool _inst_apply = true; ///< lane_transfer_inst_apply
+    int _inst_df_fid = 0;    ///< the channel spacing the estimate is fed at, freq_ids
     gnss::InstDelay _inst;
     double _inst_gauge_t = 0.0; ///< utc of the last gauge update
     kotekan::prometheus::Gauge* _m_inst_rms_ns = nullptr;

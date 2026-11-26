@@ -58,7 +58,8 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
     fleet_lane_max_age_s(config.get_default<double>(unique_name, "fleet_lane_max_age_s", 10.0)),
     fleet_lane_rebuild_s(config.get_default<double>(unique_name, "fleet_lane_rebuild_s", 0.25)),
     lane_resteer(config.get_default<bool>(unique_name, "lane_resteer", false)),
-    lane_rank_min_rel(config.get_default<double>(unique_name, "lane_rank_min_rel", 0.0)) {
+    lane_rank_min_rel(config.get_default<double>(unique_name, "lane_rank_min_rel", 0.0)),
+    lane_inst_phase(config.get_default<bool>(unique_name, "lane_inst_phase", false)) {
     if (source != "eigen" && source != "lanes" && source != "lanes+residual")
         FATAL_ERROR("GnssN2Project: source '{:s}' must be eigen, lanes or lanes+residual", source);
     eigen_channels = config.get_default<std::string>(unique_name, "eigen_channels", "all");
@@ -187,6 +188,12 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
              "{:.1f} s, re-evaluated every {:.2f} s",
              (int)tracker_stations.size(), sign, fleet_lane_max_age_s, fleet_lane_rebuild_s);
     }
+    if (lane_inst_phase && !fleet_lanes)
+        FATAL_ERROR("GnssN2Project: lane_inst_phase needs fleet_lanes: the table and the delays "
+                    "arrive at set_lanes");
+    if (lane_inst_phase)
+        INFO("GnssN2Project: transferred lanes are carried by the instrumental phase table, the "
+             "pooled delays where it does not hold an element");
     if (lane_resteer)
         INFO("GnssN2Project: lanes moving faster than {:g} rad/s are turned to each "
              "integration's time",
@@ -273,10 +280,10 @@ int GnssN2Project::build_lanes(Scratch& w, int f, int freq_id, const cd* V, doub
             c.t_utc = e.t_utc;
             std::copy(e.los, e.los + 3, c.los);
             std::copy(e.los_rate, e.los_rate + 3, c.los_rate);
-            if (dump) {
+            c.xfer = e.xfer;
+            c.fid_src = e.fid_src;
+            if (dump)
                 c.owner = e.owner;
-                c.xfer = e.xfer;
-            }
             c.v.assign((size_t)n, cd(0.0, 0.0));
             for (int el = 0; el < e.n; ++el) {
                 const int a = e2a[(size_t)el];
@@ -286,6 +293,21 @@ int GnssN2Project::build_lanes(Scratch& w, int f, int freq_id, const cd* V, doub
                 c.v[(size_t)a] = lane_conj ? std::conj(x) : x;
             }
         });
+    // lane_inst_phase: a transfer is carried here from the channel it was measured on, as
+    // build_fleet carries the relay's lanes (the assemblers apply no delays then).
+    if (lane_inst_phase) {
+        const cd* uf = inst_u_at(freq_id, w.inst_uf);
+        for (LaneCand& c : cand) {
+            if (!c.xfer || c.fid_src <= 0)
+                continue;
+            const cd* us = inst_u_at(c.fid_src, w.inst_us);
+            for (size_t el = 0; el < e2a.size(); ++el) {
+                const int a = e2a[el];
+                if (a >= 0)
+                    c.v[(size_t)a] *= uf[el] * std::conj(us[el]);
+            }
+        }
+    }
     // A fast mover's lane is turned along its track from the instant its los describes to this
     // integration's time (the factor is in the raw frame; conjugated with the lane).
     if (lane_resteer && t_utc > 0.0)
@@ -456,18 +478,58 @@ void GnssN2Project::take_fleet(double now_s) {
         inst_pending.clear();
         inst_pending_set = false;
         fleet_t_built = 0.0;
+        inst_u_stale = true;
     }
+    if (inst_phase_pending_set) {
+        if (inst_phase_pending.made_frame0 != inst_phase.made_frame0
+            || inst_phase_pending.fids.size() != inst_phase.fids.size())
+            INFO("GnssN2Project: instrumental phase table of {:d} knots, F-engine start {:d}",
+                 (int)inst_phase_pending.fids.size(), inst_phase_pending.made_frame0);
+        inst_phase = std::move(inst_phase_pending);
+        inst_phase_pending = gnss::InstPhaseTable();
+        inst_phase_pending_set = false;
+        inst_phase_t_rx = now_s;
+        if (lane_inst_phase)
+            fleet_t_built = 0.0;
+        inst_u_stale = true;
+    }
+}
+
+const GnssN2Project::cd* GnssN2Project::inst_u_at(int fid, std::vector<cd>& scratch) const {
+    const auto it = inst_u.find(fid);
+    if (it != inst_u.end())
+        return it->second.data();
+    const int n_e = (int)tracker_stations.size();
+    scratch.resize((size_t)n_e);
+    gnss::inst_carry_phasors(inst_phase,
+                             inst_delay_s.size() == (size_t)n_e ? inst_delay_s.data() : nullptr,
+                             lane_conj, n_e, fid, scratch.data());
+    return scratch.data();
+}
+
+const GnssN2Project::cd* GnssN2Project::inst_u_row(int fid) {
+    auto it = inst_u.find(fid);
+    if (it == inst_u.end()) {
+        std::vector<cd> u;
+        inst_u_at(fid, u);
+        it = inst_u.emplace(fid, std::move(u)).first;
+    }
+    return it->second.data();
 }
 
 void GnssN2Project::build_fleet(double t_utc) {
     const int n = (int)stations.size();
     const int n_e = (int)tracker_stations.size();
-    const double* inst = inst_delay_s.size() == (size_t)n_e ? inst_delay_s.data() : nullptr;
+    // lane_inst_phase: the instrumental turn is applied below, in the N^2 frame.
+    const double* inst =
+        inst_delay_s.size() == (size_t)n_e && !lane_inst_phase ? inst_delay_s.data() : nullptr;
     fleet_v.resize(fleet.size());
     fleet_tmp.resize((size_t)n_e);
     for (size_t l = 0; l < fleet.size(); ++l) {
         std::vector<std::vector<cd>>& vf = fleet_v[l];
         vf.resize((size_t)num_local_freq);
+        const cd* us =
+            lane_inst_phase ? inst_u_row((int)std::lround(fleet[l].f_src_hz / 195312.5)) : nullptr;
         for (int f = 0; f < num_local_freq; ++f) {
             std::vector<cd>& v = vf[(size_t)f];
             if (!live_ch[f] || !fleet[l].covers(freq_ids[f])
@@ -476,12 +538,15 @@ void GnssN2Project::build_fleet(double t_utc) {
                 v.clear();
                 continue;
             }
+            const cd* uf = us ? inst_u_row(freq_ids[f]) : nullptr;
             v.assign((size_t)n, cd(0.0, 0.0));
             for (int el = 0; el < n_e; ++el) {
                 const int a = e2a[(size_t)el];
-                if (a >= 0)
-                    v[(size_t)a] =
-                        lane_conj ? std::conj(fleet_tmp[(size_t)el]) : fleet_tmp[(size_t)el];
+                if (a < 0)
+                    continue;
+                v[(size_t)a] = lane_conj ? std::conj(fleet_tmp[(size_t)el]) : fleet_tmp[(size_t)el];
+                if (us)
+                    v[(size_t)a] *= uf[el] * std::conj(us[el]);
             }
         }
     }
@@ -544,6 +609,8 @@ void GnssN2Project::set_lanes_callback(kotekan::connectionInstance& conn, nlohma
     std::vector<gnss::FleetLane> in;
     std::vector<double> inst;
     bool inst_given = false;
+    gnss::InstPhaseTable tab;
+    bool tab_given = false;
     try {
         auto di = request.find("inst_delay_ns");
         if (di != request.end()) {
@@ -556,6 +623,41 @@ void GnssN2Project::set_lanes_callback(kotekan::connectionInstance& conn, nlohma
                 inst.reserve((size_t)n_e);
                 for (auto& x : *di)
                     inst.push_back(x.get<double>() * 1e-9);
+            }
+        }
+        // The instrumental phase table: {} clears it.
+        auto ip = request.find("inst_phase");
+        if (ip != request.end()) {
+            if (!ip->is_object())
+                throw std::runtime_error("'inst_phase' must be an object");
+            tab_given = true;
+            if (!ip->empty()) {
+                if (!ip->at("made_frame0").is_number_integer())
+                    throw std::runtime_error("'inst_phase' made_frame0 must be an integer");
+                tab.made_frame0 = ip->at("made_frame0").get<int64_t>();
+                auto& fids = ip->at("fids");
+                auto& rows = ip->at("phase_deg");
+                if (!fids.is_array() || !rows.is_array() || fids.empty()
+                    || fids.size() != rows.size())
+                    throw std::runtime_error("'inst_phase' needs a phase_deg row per fid");
+                tab.n = n_e;
+                for (auto& x : fids) {
+                    if (!x.is_number_integer()
+                        || (!tab.fids.empty() && x.get<int>() <= tab.fids.back()))
+                        throw std::runtime_error("'inst_phase' fids must be ascending integers");
+                    tab.fids.push_back(x.get<int>());
+                }
+                tab.phase.reserve(rows.size() * (size_t)n_e);
+                for (auto& r : rows) {
+                    if (!r.is_array() || (int)r.size() != n_e)
+                        throw std::runtime_error("'inst_phase' row length != tracker elements");
+                    for (auto& x : r) {
+                        if (!x.is_null() && !x.is_number())
+                            throw std::runtime_error("'inst_phase' phases must be numbers or null");
+                        tab.phase.push_back(x.is_null() ? std::nan("")
+                                                        : x.get<double>() * M_PI / 180.0);
+                    }
+                }
             }
         }
         auto& arr = request.at("lanes");
@@ -606,6 +708,10 @@ void GnssN2Project::set_lanes_callback(kotekan::connectionInstance& conn, nlohma
         if (inst_given) {
             inst_pending.swap(inst);
             inst_pending_set = true;
+        }
+        if (tab_given) {
+            inst_phase_pending = std::move(tab);
+            inst_phase_pending_set = true;
         }
     }
     conn.send_json_reply(nlohmann::json{{"lanes", n_in}, {"ready", labelled_pub.load()}});
@@ -671,6 +777,10 @@ void GnssN2Project::main_thread() {
         Metrics::instance().add_gauge("kotekan_gnss_n2project_fleet_lanes", unique_name);
     auto& g_fleet_age =
         Metrics::instance().add_gauge("kotekan_gnss_n2project_fleet_lane_age_s", unique_name);
+    auto& g_inst_knots =
+        Metrics::instance().add_gauge("kotekan_gnss_n2project_inst_phase_knots", unique_name);
+    auto& g_inst_age =
+        Metrics::instance().add_gauge("kotekan_gnss_n2project_inst_phase_age_s", unique_name);
     auto& c_dump_drop = Metrics::instance().add_counter(
         "kotekan_gnss_n2project_lane_dump_dropped_total", unique_name);
     auto& g_frame_ms =
@@ -779,6 +889,14 @@ void GnssN2Project::main_thread() {
             t_frame = Telescope::instance().to_time_ns((uint64_t)meta->get_fpga_seq_num()) * 1e-9;
         if (use_lanes) {
             take_fleet(now_s);
+            // The workers read inst_u and add nothing to it.
+            if (lane_inst_phase && inst_u_stale) {
+                inst_u.clear();
+                for (int f = 0; f < num_local_freq; ++f)
+                    if (live_ch[f])
+                        inst_u_row(freq_ids[f]);
+                inst_u_stale = false;
+            }
             fleet_on = !fleet.empty() && now_s - fleet_t_rx <= fleet_lane_max_age_s;
             if (fleet_on) {
                 // The tracks are evaluated at the frame's own time.
@@ -1030,6 +1148,8 @@ void GnssN2Project::main_thread() {
                 g_lane_dup.set((double)lane_dup);
                 g_fleet_lanes.set(fleet_on ? (double)fleet.size() : 0.0);
                 g_fleet_age.set(fleet.empty() ? -1.0 : now_s - fleet_t_rx);
+                g_inst_knots.set((double)inst_phase.fids.size());
+                g_inst_age.set(inst_phase.empty() ? -1.0 : now_s - inst_phase_t_rx);
             }
         }
         out_buf->allocate_new_metadata_object(out_id);

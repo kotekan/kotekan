@@ -22,6 +22,7 @@
 #include <atomic>
 #include <complex>
 #include <cstdint>
+#include <map>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -135,7 +136,10 @@
  * with the line of sight moved along its track, every fleet_lane_rebuild_s) and appended to
  * build_lanes' candidates after the board's, so a local lane always wins the duplicate test
  * and the budget. A set older than fleet_lane_max_age_s is not used: a dead relay leaves the
- * local lanes.
+ * local lanes. The body may carry the instrumental phase table (inst_phase: made_frame0, fids
+ * ascending, phase_deg [knot][tracker element] with null where a knot does not hold the
+ * element; {} clears it, absent keeps it); inst_phase_knots (0 = none) and inst_phase_age_s
+ * report it.
  *
  * @conf fleet_lanes           Bool. Accept posted lanes (false).
  * @conf elem_positions_enu    Double list, [n][3]. The tracker elements' positions, metres
@@ -150,6 +154,13 @@
  *                             used up to lane_max_age_s after the instant its track
  *                             describes, ~0.3 deg for a GuoWang satellite. Needs
  *                             elem_positions_enu.
+ * @conf lane_inst_phase       Bool. Carry every transferred lane, the board's (ProjEntry xfer,
+ *                             from fid_src) and the relay's, through the instrumental phase
+ *                             table set_lanes posts (inst_phase), per element where the table
+ *                             holds it and through the pooled delays (inst_delay_ns) where it
+ *                             does not (false). The assemblers must then not apply their own
+ *                             delays (lane_transfer_inst_apply false). Needs fleet_lanes. Off,
+ *                             a posted table is kept and reported but not used.
  * @conf lane_rank_min_rel     Double. Where the raw block holds a mode of at least this many
  *                             mean autos, the board lanes that explain at least as much of it
  *                             go first, in order of the power they explain, and the rest
@@ -268,9 +279,10 @@ private:
         std::vector<cd> v; ///< on the stations axis, conjugated per lane_conj
         int verdict = -1;  ///< 1 added, 0 duplicate, -1 not tested
         double new_frac = -1.0;
-        double rank = 0.0; ///< lane_rank_min_rel: the block power it explains, if ranked
+        double rank = 0.0;         ///< lane_rank_min_rel: the block power it explains, if ranked
+        int src = 0;               ///< 0 board, 1 fleet
+        int xfer = 0, fid_src = 0; ///< the board entry's (ProjEntry)
         // Kept only for the lane dump
-        int src = 0, xfer = 0;
         double held_s = 0.0, t_utc = 0.0;
         double los[3] = {0.0, 0.0, 0.0}, los_rate[3] = {0.0, 0.0, 0.0};
         std::string owner;
@@ -282,6 +294,7 @@ private:
         std::vector<LaneCand> cand;
         size_t cand_n_local = 0; ///< build_lanes: the board's candidates (the fleet's follow)
         std::vector<gnss::ElemSteer::cf> lane_sh; ///< lane_resteer scratch [n_elem]
+        std::vector<cd> inst_uf, inst_us;         ///< inst_u_at scratch [n_elem]
         std::vector<double> rank_y;
         uint64_t lane_dup = 0, lane_used = 0, proj = 0;
     };
@@ -344,6 +357,20 @@ private:
     std::vector<cd> fleet_tmp;                         ///< scratch [n_elem]
     std::vector<int> fleet_k;                          ///< per channel: fleet lanes in the basis
     std::vector<int> held_k; ///< per channel: held local lanes in the basis
+    // The instrumental phase table (#246)
+    const bool lane_inst_phase;
+    gnss::InstPhaseTable inst_phase; ///< main_thread's; empty = none
+    gnss::InstPhaseTable inst_phase_pending;
+    bool inst_phase_pending_set = false;
+    double inst_phase_t_rx = 0.0; ///< steady seconds the table was taken
+    bool inst_u_stale = true;
+    /// lane_inst_phase: gnss::inst_carry_phasors per freq_id, for the live channels and the
+    /// relay's sources; rebuilt in main_thread when the table or the delays change
+    std::map<int, std::vector<cd>> inst_u;
+    /// inst_u's row for @p fid; a channel it does not hold is computed into @p scratch.
+    const cd* inst_u_at(int fid, std::vector<cd>& scratch) const;
+    /// inst_u's row for @p fid, added if missing. main_thread only.
+    const cd* inst_u_row(int fid);
     void take_fleet(double now_s);
     void build_fleet(double t_utc);
     void get_lanes_callback(kotekan::connectionInstance& conn);
