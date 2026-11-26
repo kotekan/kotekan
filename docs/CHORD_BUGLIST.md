@@ -10,6 +10,9 @@ reviewers read every open entry and a third tried to refute each proposed closur
 #169, #192** closed with a residual line kept below. Kept open on the check: **#204**. Opened: **#232-#235**. Previous
 passes: 2026-10-13 after the dead-code merge, 2026-10-11 at `0011cf3b1`, 2026-09-12 at `b45949144`.
 
+**⚠️ Start the day gx10's bladeRF copy is at DRAO: #245** (QZSS L6 for J09; J09 is below gx10's horizon where it
+is now).
+
 **Fleet state (11-21):** six GNSS X-engines (cx19 cx27 cx43 cx44 cx51 cx52) on the R1+R2 binary `437d6a9cd` with
 config/generated; cx42 and cx47 back on stock kotekan under choco since 11-21 02:05Z. Broker stack on the gnss VM from
 gnss-broker `fcf2f1bd` (per-half trim targets), the gather on `gather-e4a01a357`. recv1 on chord `a22ff0da41`.
@@ -1296,6 +1299,27 @@ rate-limited to one per PRN per minute); the offsets are now +1 (209), +2 (213),
 **Next: the per-detection `(nh, cp_long, snr)` stream against injection.** A node-side dig.
 
 ## Open — blocked upstream
+
+### #245 — QZSS L6: J09's L6 has no lane; build the qzss_l6 chain on gx10's CSK symbols as soon as gx10's bladeRF copy is at site (2026-11-26, KV: "let's add a prominent buglist entry to deal with this as soon as it gets to site, but set it aside for now")
+**What [archive, 11-26 N2]:** J09 (QZSS PRN 201, near the geostationary arc at 175.5 W; el 10-16 at DRAO) is the
+dominant static mode in the projected channels at 1277.9 and 1279.3 MHz: 0.010-0.024 per input against 0.0005-0.012
+for the second, polarisation 0 (polarisation 1 ~5x weaker). In every 14-minute block of 04:46-08:59 UTC its vector
+fits a calibrated plane wave toward J09's broadcast position at coherence 0.97-0.99. Write-up and tools:
+`~/gnss/fixtures/qzss_l6/README.md`.
+**Why a plain chain cannot do it [IS-QZSS-L6-008]:** L6 is two chip-interleaved 2.5575 Mcps codes, 10230 chips / 4 ms
+(L6D PRN 193-202, L6E 203-212; J09 = 201 / 211 by the (Q)GEO slots, not yet seen on sky). Both are code-shift
+keyed: each 4 ms symbol rotates the code by N = 0..255 chips. There is no pilot. The trackers despread one replica
+per record, and the nav wipe (`gnssNavSymbolRing.hpp`, psi synth) multiplies signs; neither follows a code rotation.
+**Blocked on:** a symbol feed for J09. From gx10's current site J09 is at el -11 to -15 all day, so the feed can start
+only when the bladeRF copy is at DRAO.
+**Fix:** (1) gx10 decodes L6 CSK for J09 and streams the 8-bit symbols (a new NSYM sig id; 4 ms symbols);
+(2) node: QZSS_L6 descriptors and code generator (`fixtures/qzss_l6/l6code.py` reproduces all 20 published end
+states), a CSK wipe = a per-symbol code rotation in the replica (not a sign), chain qzss_l6; (3) relay: the new sig.
+**Interim, not built:** a lane from the Tau A calibration and J09's broadcast position catches overlap^2
+0.92-0.95 of the mode offline, and nulling it leaves the second mode's level (0.0195 -> 0.0016 per input). It could go
+in through the relay's fleet-lane POST, broker only; it needs a current calibration and the F-engine step table.
+**Check:** the static mode of the projected L6 channels per 14-minute block (`fixtures/qzss_l6/l6_track.py`) falls to
+the second mode's level.
 
 
 
