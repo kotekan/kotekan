@@ -29,18 +29,6 @@ frb2_num_beams_y: 16
 frb2_beam_separation_x: 0.0020 * frb_rad2deg
 frb2_beam_separation_y: 0.0015 * frb_rad2deg
 
-host_frb2_beam_positions_buffer:
-    kotekan_buffer: standard
-    num_frames: 1
-    frame_size: sizeof_float32 * 2 * frb2_num_beams
-    metadata_pool: main_pool
-
-host_frb2_beam_ids_buffer:
-    kotekan_buffer: standard
-    num_frames: 1
-    frame_size: sizeof_int16 * frb2_num_beams
-    metadata_pool: main_pool
-
 # The FRB2 beamforming weights are valid for this many input samples. This must be a multiple of
 # frb_num_output_times * frb_downsampling_factor, the number of input samples the FRB2 beamformer
 # processes per kernel invocation. The weights matrices are large and are recalculated on the GPU, so
