@@ -17,7 +17,7 @@ namespace n2k {
 
 Array<complex<int>> make_random_unpacked_e_array(int T, int F, int S)
 {
-    std::mt19937 &rng = ksgpu::default_rng;
+    std::mt19937 &rng = ksgpu::default_rng();
     auto dist = std::uniform_int_distribution<int> (-7, 7);
 
     Array<complex<int>> ret({T,F,S}, af_uhost);

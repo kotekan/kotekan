@@ -10,11 +10,24 @@ frb_num_output_times: 256
 frb1_num_beams_P: 2 * num_dishes_x
 frb1_num_beams_Q: 2 * num_dishes_y
 
+### ???
+frb1_input_scale: 1.0 / 16
+
+# dustin hack placeholder for calcFRB2Weights_Seth FRB beam distribution
+frb2_num_beams: 1024
+frb2_beam_max_radius: 0.6
+# radians: ~129 deg
+frb2_beam_angle_step: 2.2514
+frb2_n_per_node: 200
+
+# old grid FRB beam layouts for calcFRB2Weights
+frb_rad2deg: 57.29577951308232  # 180/pi
 frb2_num_beams_x: 16
 frb2_num_beams_y: 16
-frb2_num_beams: frb2_num_beams_x * frb2_num_beams_y
-frb2_beam_separation_x: 5.0 / 16
-frb2_beam_separation_y: 5.0 / 16
+#
+#frb2_num_beams: frb2_num_beams_x * frb2_num_beams_y
+frb2_beam_separation_x: 0.0020 * frb_rad2deg
+frb2_beam_separation_y: 0.0015 * frb_rad2deg
 
 # The FRB2 beamforming weights are valid for this many input samples. This must be a multiple of
 # frb_num_output_times * frb_downsampling_factor, the number of input samples the FRB2 beamformer
@@ -35,6 +48,39 @@ frb_chunk_size: 256
 frb1_phase_lifetime_in_samples: bf_mask_lifetime_in_samples
 
 ################################################################################
+
+# FRB Search node targets
+
+# frb_search_nodes: [
+#   {'ip': '10.0.0.42',
+#    'port': 9000,
+#    'beamset': 0,
+#    'beam_index_min': 0,
+#    'beam_index_max': 200,
+#   },
+#   {'ip': '10.0.0.43',
+#    'port': 9000,
+#    'beamset': 1,
+#    'beam_index_min': 200,
+#    'beam_index_max': 400,
+#   }
+# ]
+frb_search_nodes: [
+  {'ip': '127.0.0.1',
+   'port': 5000,
+   'beamset': 42,
+   'beam_index_min': 0,
+   'beam_index_max': 200,
+  },
+  {'ip': '127.0.0.1',
+   'port': 5001,
+   'beamset': 43,
+   'beam_index_min': 200,
+   'beam_index_max': 400,
+  },
+]
+################################################################################
+
 
 # Buffers
 
@@ -77,6 +123,41 @@ host_frb2_beam_ids_buffer:
     dimnames: ["R"]
     dimscalings: [1]
     metadata_pool: main_pool
+
+# host_frb1_U4_phase_buffer:
+#     kotekan_buffer: standard
+#     num_frames: 1
+#     frame_size: sizeof_float16 * num_components * num_dishes_y * num_dishes_x * upchan_U4_max_num_channels * 4 * num_polarizations
+#     metadata_pool: main_pool
+# 
+# host_frb1_U8_phase_buffer:
+#     kotekan_buffer: standard
+#     num_frames: 1
+#     frame_size: sizeof_float16 * num_components * num_dishes_y * num_dishes_x * upchan_U8_max_num_channels * 8 * num_polarizations
+#     metadata_pool: main_pool
+# 
+# host_frb1_U16_phase_buffer:
+#     kotekan_buffer: standard
+#     num_frames: 1
+#     frame_size: sizeof_float16 * num_components * num_dishes_y * num_dishes_x * upchan_U16_max_num_channels * 16 * num_polarizations
+#     metadata_pool: main_pool
+# 
+# host_frb1_U32_phase_buffer:
+#     kotekan_buffer: standard
+#     num_frames: 1
+#     frame_size: sizeof_float16 * num_components * num_dishes_y * num_dishes_x * upchan_U32_max_num_channels * 32 * num_polarizations
+#     metadata_pool: main_pool
+# 
+# host_frb1_U64_phase_buffer:
+#     kotekan_buffer: standard
+#     num_frames: 1
+#     frame_size: sizeof_float16 * num_components * num_dishes_y * num_dishes_x * upchan_U64_max_num_channels * 64 * num_polarizations
+#     metadata_pool: main_pool
+#
+# host_frb2_weights_buffer:
+#     kotekan_buffer: standard
+#     num_frames: 1
+#     frame_size: sizeof_float16 * (2 * num_dishes_y) * (2 * num_dishes_x) * (frb2_num_beams) * (upchan_all_max_output_channel - upchan_all_min_output_channel)
 
 # The weights are calculated on the GPU, directly into this ring buffer, one matrix
 # [Fbar, R, beamQ, beamP] per frb2_weights_lifetime_in_samples input samples. There is no host copy.
@@ -270,6 +351,13 @@ run_set_frb2_beams:
 # frb2_weights_lifetime_in_samples, so a single command instance suffices. The frequencies come
 # from the voltage buffer's metadata.
 run_calc_frb2_weights:
+    # # kotekan_stage: calcFRB2Weights
+    # kotekan_stage: calcFRB2Weights_Seth
+    # frb2_num_frequencies: upchan_all_max_output_channel - upchan_all_min_output_channel
+    # frb2_beam_positions: host_frb2_beam_positions_buffer
+    # frb2_beam_ids: host_frb2_beam_ids_buffer
+    # frb2_weights: host_frb2_weights_buffer
+    # num_threads: 32
     gpu_0:
         kotekan_stage: cudaProcess
         gpu_id: 0
@@ -345,3 +433,13 @@ run_frb23:
         - name: cudaOutputData
           gpu_mem: frb3_beams_offsetscale_buffer
           out_buf: host_frb3_beams_offsetscale_buffer
+
+# Network send
+
+send_frb:
+    kotekan_stage: pirateFrbSend
+    intensity: host_frb3_beams_buffer
+    offset_scale: host_frb3_beams_offsetscale_buffer
+    beam_positions: host_frb2_beam_positions_buffer
+    beam_ids: host_frb2_beam_ids_buffer
+

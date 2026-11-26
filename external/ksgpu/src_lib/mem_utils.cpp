@@ -3,7 +3,10 @@
 #include "../include/ksgpu/string_utils.hpp"          // nbytes_to_str()
 #include "../include/ksgpu/constexpr_functions.hpp"   // constexpr_is_pow2()
 
+#include <algorithm>
 #include <cassert>
+#include <cstdio>
+#include <cstdlib>
 #include <sstream>
 #include <iostream>
 #include <sys/mman.h>
@@ -193,7 +196,7 @@ struct alloc_helper {
             // Note: this->_mmap() initializes this->base, and updates the value of this->nbytes_allocated.
             this->_mmap(nbytes_allocated);
             if (flags & af_rhost)
-                CUDA_CALL(cudaHostRegister(base, nbytes_allocated, cudaHostRegisterDefault));
+                safe_cuda_host_register(base, nbytes_allocated, cudaHostRegisterDefault);
         }
         else if (flags & af_gpu) {
             // Set this->free_device, to create a constraint that the current cuda device must
@@ -204,8 +207,17 @@ struct alloc_helper {
         }
         else if (flags & af_unified)
             CUDA_CALL(cudaMallocManaged((void **) &this->base, this->nbytes_allocated, cudaMemAttachGlobal));
-        else if (flags & af_rhost)
+        else if (flags & af_rhost) {
+            // Note: cudaHostAlloc() atomically allocates and registers pinned
+            // memory, so it is subject to the same undocumented per-call size
+            // ceiling as cudaHostRegister() (somewhere in the 300-700 GiB
+            // range, machine-dependent). Unlike the af_mmap_* path above we
+            // can't trivially chunk this -- cudaHostAlloc returns a single
+            // pointer and splitting would yield N disjoint allocations. If
+            // you need a large pinned host buffer, use (af_rhost | af_mmap_*)
+            // instead, which goes through the chunked safe_cuda_host_register().
             CUDA_CALL(cudaHostAlloc((void **) &this->base, this->nbytes_allocated, 0));
+        }
         else if (posix_memalign((void **) &this->base, 128, this->nbytes_allocated))
             throw std::runtime_error("ksgpu::alloc(): couldn't allocate " + to_string(nbytes_allocated) + " bytes");
         
@@ -238,7 +250,7 @@ struct alloc_helper {
 
             ss << ")";
             if ((flags & af_mmap_flags) && (flags & af_rhost))
-                ss << " -> cudaHostRegister()";
+                ss << " -> safe_cuda_host_register()";
 
             ss << ": " << ((void *) base);
             if (base != data)
@@ -326,7 +338,7 @@ struct alloc_helper {
             stringstream ss;
 
             if ((flags & af_mmap_flags) && (flags & af_rhost))
-                ss << "cudaHostUnregister() -> munmap";
+                ss << "safe_cuda_host_unregister_abort() -> munmap";
             else if (flags & af_mmap_flags)
                 ss << "munmap";
             else if (flags & (af_gpu | af_unified))
@@ -352,7 +364,7 @@ struct alloc_helper {
         
         if (flags & af_mmap_flags) {
             if (flags & af_rhost)
-                CUDA_CALL_ABORT(cudaHostUnregister(base));
+                safe_cuda_host_unregister_abort(base, nbytes_allocated);
             int munmap_err = munmap(base, nbytes_allocated);
             assert(munmap_err == 0);
         }
@@ -445,6 +457,101 @@ void _af_copy(void *dst, int dst_flags, const void *src, int src_flags, long nby
         memcpy(dst, src, nbytes);
     else
         CUDA_CALL(cudaMemcpy(dst, src, nbytes, cudaMemcpyDefault));
+}
+
+
+// -------------------------------------------------------------------------------------------------
+//
+// safe_cuda_host_register() and friends.
+// See comment in mem_utils.hpp for why these exist.
+
+
+void safe_cuda_host_register(void *ptr, long size, unsigned int flags)
+{
+    if (_unlikely(size < 0))
+        throw runtime_error("ksgpu::safe_cuda_host_register: size < 0");
+    if (size == 0)
+        return;
+    if (_unlikely(ptr == nullptr))
+        throw runtime_error("ksgpu::safe_cuda_host_register: ptr is null but size > 0");
+
+    char *base = static_cast<char *>(ptr);
+    long offset = 0;
+    cudaError_t err = cudaSuccess;
+
+    while (offset < size) {
+        long this_chunk = min(size - offset, safe_cuda_host_register_chunk_size);
+        err = cudaHostRegister(base + offset, this_chunk, flags);
+        if (_unlikely(err != cudaSuccess))
+            break;
+        offset += this_chunk;
+    }
+
+    if (_unlikely(err != cudaSuccess)) {
+        // Roll back successfully-registered chunks on a best-effort basis,
+        // so a failed registration doesn't leak driver-side state.
+        for (long roll = 0; roll < offset; roll += safe_cuda_host_register_chunk_size)
+            (void) cudaHostUnregister(base + roll);
+        throw make_cuda_exception(err, "cudaHostRegister", __FILE__, __LINE__);
+    }
+}
+
+
+void safe_cuda_host_unregister(void *ptr, long size)
+{
+    if (_unlikely(size < 0))
+        throw runtime_error("ksgpu::safe_cuda_host_unregister: size < 0");
+    if (size == 0)
+        return;
+    if (_unlikely(ptr == nullptr))
+        throw runtime_error("ksgpu::safe_cuda_host_unregister: ptr is null but size > 0");
+
+    char *base = static_cast<char *>(ptr);
+    cudaError_t first_err = cudaSuccess;
+    long first_err_offset = 0;
+
+    // Best-effort: keep unregistering remaining chunks even after a failure,
+    // to avoid leaving the driver registry in a partially-cleaned state.
+    for (long offset = 0; offset < size; offset += safe_cuda_host_register_chunk_size) {
+        cudaError_t err = cudaHostUnregister(base + offset);
+        if (_unlikely(err != cudaSuccess) && first_err == cudaSuccess) {
+            first_err = err;
+            first_err_offset = offset;
+        }
+    }
+
+    if (_unlikely(first_err != cudaSuccess)) {
+        stringstream ss;
+        ss << "cudaHostUnregister (chunk at offset " << first_err_offset << ")";
+        throw make_cuda_exception(first_err, ss.str().c_str(), __FILE__, __LINE__);
+    }
+}
+
+
+void safe_cuda_host_unregister_abort(void *ptr, long size) noexcept
+{
+    if (size < 0) {
+        fprintf(stderr, "ksgpu::safe_cuda_host_unregister_abort: size < 0\n");
+        exit(1);
+    }
+    if (size == 0)
+        return;
+    if (ptr == nullptr) {
+        fprintf(stderr, "ksgpu::safe_cuda_host_unregister_abort: ptr is null but size > 0\n");
+        exit(1);
+    }
+
+    char *base = static_cast<char *>(ptr);
+
+    for (long offset = 0; offset < size; offset += safe_cuda_host_register_chunk_size) {
+        cudaError_t err = cudaHostUnregister(base + offset);
+        if (err != cudaSuccess) {
+            fprintf(stderr,
+                    "CUDA call 'cudaHostUnregister' returned %d (%s) [%s:%d] (chunk at offset %ld)\n",
+                    int(err), cudaGetErrorString(err), __FILE__, __LINE__, offset);
+            exit(1);
+        }
+    }
 }
 
 

@@ -10,6 +10,7 @@
 #include "Stage.hpp"             // for Stage
 #include "buffer.hpp"            // for Buffer
 #include "bufferContainer.hpp"   // for bufferContainer
+#include "kotekanLogging.hpp"    // for kotekanLogging
 #include "prometheusMetrics.hpp" // for Counter
 
 #include <atomic>             // for atomic
@@ -43,6 +44,59 @@ struct bufferFrameHeader : public bufferFrameHeaderNoConfigTracker {
     // TODO: use other bits for versioning info, other features?
 };
 static_assert(sizeof(bufferFrameHeader) == 12, "bufferFrameHeader should be 12 bytes");
+
+/**
+ * @brief Holds details for one target of a bufferSend. Also used by
+ * other stages (eg, pirateFrbSend).
+ */
+class networkDestination : public kotekan::kotekanLogging {
+public:
+    networkDestination(const std::string& server_ip = "", uint16_t server_port = 0,
+                       uint32_t reconnect_timeout = 0, uint32_t send_timeout = 0);
+
+    /// The connection file handle
+    int socket_fd;
+    /// The server port to connect to.
+    uint32_t server_port;
+    /// The server IP address to connect to.
+    std::string server_ip;
+    /// Set to true if there is an active connection
+    std::atomic<bool> connected;
+    /// Internal server address struct
+    struct sockaddr_in server_addr;
+    /// The number of seconds between connection attempts
+    uint32_t reconnect_time;
+    /// The number of seconds before send() times outs and returns and error.
+    uint32_t send_timeout;
+    /// Prevent the sending thread and connection thread from contension
+    std::mutex connection_state_mutex;
+    /// Used to wakeup the connect thread after a change to the connection state
+    std::condition_variable connection_state_cv;
+    /// The thread we're using to connect
+    std::thread connect_thread;
+
+    /// Set to true if this is the first transmission
+    std::atomic<bool> first_transmission_sent;
+
+    /// Set once the frame descriptor has been sent on the current connection.
+    /// Read and set by the send thread, and reset by the connect thread when a
+    /// new connection is established, so it is atomic (like first_transmission_sent).
+    std::atomic<bool> desc_sent;
+
+    /// Tracker hash as last signalled to the receiver. A differing current
+    /// hash, or the first frame of a connection, sets config_tracker_update.
+    std::string config_tracker_combined_hash;
+
+    void start_connect_thread(const std::string& name, const std::atomic_bool& stop_thread);
+
+    /// Thread for connecting to the remote server
+    void connect_to_server(const std::string& name, const std::atomic_bool& stop_thread);
+
+    /// Closes the open connection and starts the process of trying to reconnect
+    void close_connection();
+
+    bool send_data(const uint8_t* data, int32_t len);
+};
 
 /**
  * @brief Sends a buffer, metadata, and flag for whether config data was updated over TCP.
@@ -88,7 +142,7 @@ class bufferSend : public kotekan::Stage {
 public:
     /// Standard constructor
     bufferSend(kotekan::Config& config, const std::string& unique_name,
-               kotekan::bufferContainer& buffer_container);
+               kotekan::bufferContainer& buffer_container, std::string buffer_name = "buf");
 
     /// Destructor
     ~bufferSend();
@@ -99,24 +153,12 @@ public:
     /// Adds the target server to the pipeline graph
     void add_graph_details(kotekan::PipelineGraph& graph) const override;
 
-private:
+protected:
     /// The input buffer to send frames from.
     Buffer* buf;
 
-    /// The server port to connect to.
-    uint32_t server_port;
-
-    /// The server IP address to connect to.
-    std::string server_ip;
-
-    /// The number of seconds before send() times outs and returns and error.
-    uint32_t send_timeout;
-
-    /// The number of seconds between connection attempts
-    uint32_t reconnect_time;
-
-    /// Whether to drop frames or block if buffer is full
-    bool drop_frames;
+    /// Where we're sending stuff
+    networkDestination dest;
 
     /// Threshold to drop frames
     float drop_threshold;
@@ -128,10 +170,6 @@ private:
     /// (once per connection). Must match use_frame_desc on the receiver.
     bool use_frame_desc;
 
-    /// Tracker hash as last signalled to the receiver. A differing current
-    /// hash, or the first frame of a connection, sets config_tracker_update.
-    std::string config_tracker_combined_hash;
-
     /**
      * @brief Number of frame dropped because the send is too slow.
      * Only counts dropped data from caused by the send being too slow,
@@ -139,34 +177,22 @@ private:
      */
     kotekan::prometheus::Counter& dropped_frame_counter;
 
-    /// Set to true if there is an active connection
-    std::atomic<bool> connected;
+    /// Called when a frame has been received -- just after it has been claimed from
+    /// kotekan.  If false is returned, the sending will end.
+    virtual bool got_frame(uint8_t* frame, int frame_id);
 
-    /// Set to true if this is the first transmission
-    std::atomic<bool> first_transmission_sent;
+    /// Called when a frame has been sent -- just before the buffer frame is released
+    /// back to kotekan.
+    virtual void done_with_frame(int frame_id);
 
-    /// Set once the frame descriptor has been sent on the current connection.
-    /// Read and set by the send thread, and reset by the connect thread when a
-    /// new connection is established, so it is atomic (like first_transmission_sent).
-    std::atomic<bool> desc_sent;
+    /// The input buffer name to grab.
+    std::string buffer_name;
 
-    /// Internal server address struct
-    struct sockaddr_in server_addr;
+    /// Whether to drop frames or block if buffer is full
+    bool drop_frames;
 
-    /// The connection file handle
-    int socket_fd;
-
-    /// Prevent the sending thread and connection thread from contension
-    std::mutex connection_state_mutex;
-
-    /// Used to wakeup the connect thread after a change to the connection state
-    std::condition_variable connection_state_cv;
-
-    /// Closes the open connection and starts the process of trying to reconnect
-    void close_connection();
-
-    /// Thread for connecting to the remote server
-    void connect_to_server();
+    /// Send a frame
+    bool send_frame(uint8_t* frame, int frame_id, networkDestination& dest);
 };
 
 #endif

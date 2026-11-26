@@ -78,6 +78,30 @@ extern void check_aflags(int aflags, const char *where = nullptr);
 // Utility function for printing flags.
 extern std::string aflag_str(int flags);
 
+
+// -------------------------------------------------------------------------------------------------
+//
+// Chunked wrappers around cudaHostRegister() and cudaHostUnregister().
+// Called by af_alloc(af_mmap_huge | af_rhost), but not plain af_alloc(af_rhost).
+// These wrappers split large requests into chunks of 64 GiB.
+//
+// We've observed that cudaHostRegister() fails with cudaErrorMemoryAllocation
+// on large single-call registrations -- somewhere between 300 GiB and 700 GiB
+// on the CHORD FRB notes, but searching the web suggests that the ceiling
+// may be machine-dependent.
+//
+// The (ptr, size) passed to safe_cuda_host_unregister[_abort]() must match
+// the (ptr, size) passed to the prior safe_cuda_host_register().
+// safe_cuda_host_unregister_abort() aborts on error (for use in shared_ptr
+// deleters and other contexts where exceptions must not propagate);
+// safe_cuda_host_unregister() throws.
+
+static constexpr long safe_cuda_host_register_chunk_size = 64L << 30;
+
+extern void safe_cuda_host_register(void *ptr, long size, unsigned int flags);
+extern void safe_cuda_host_unregister(void *ptr, long size);
+extern void safe_cuda_host_unregister_abort(void *ptr, long size) noexcept;
+
 // Is memory addressable on GPU? On host?
 inline bool af_on_gpu(int flags) { return (flags & (af_gpu | af_unified)) != 0; }
 inline bool af_on_host(int flags) { return (flags & af_gpu) == 0; }
