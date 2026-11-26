@@ -2,11 +2,12 @@
 """QZSS records through parse_rinex_nav and predict_all, on the IGS BRDC records of 2026-11-25
 10:00 and 11:00Z for J02 (QZS-2, health 1) and J09 (QZS-7, health 55).
 
-Why each check exists: the qzss_l5 chain seeds from this sky with no search, so the records must
-be keyed by the PRN its code table uses (J09 = 201), J09 must sit where the array saw its L5
-signal that night (az 243, el 13-16 from DRAO), and the health gate must read the L5 bit alone:
-every QZSS word is non-zero (J02's 1 is the L1C/B bit of a satellite that sends L1C/A), and J09
-has the L5 bit set while it transmits, so only the exemption keeps it.
+Why each check exists: the qzss_l5 and qzss_l2c chains seed from this sky with no search, so the
+records must be keyed by the PRN their code tables use (J09 = 201), J09 must sit where the array
+saw its L5 signal that night (az 243, el 13-16 from DRAO), and the health gate must read the bit
+of the chain's signal alone: every QZSS word is non-zero (J02's 1 is the L1C/B bit of a
+satellite that sends L1C/A), and J09 has the L5 bit set while it transmits, so only the
+exemption keeps it.
 """
 import copy
 import os
@@ -69,6 +70,30 @@ class TestQzssEph(unittest.TestCase):
             e["health"] = 59.0  # every bit but L5
         self.assertIn(QZS2, ge.predict_all(eph, *DRAO, T, mask_deg=-90.0))
 
+    def test_an_l2c_gate_reads_the_l2c_bit(self):
+        for e in self.eph[QZS2]:
+            self.assertEqual(int(e["health"]) & ge.QZSS_HEALTH_L2, 0)
+        pa = ge.predict_all(self.eph, *DRAO, T, mask_deg=-90.0, signal="qzss_l2c")
+        self.assertIn(QZS2, pa)
+        eph = copy.deepcopy(self.eph)
+        for e in eph[QZS2]:
+            e["health"] = 1.0 + ge.QZSS_HEALTH_L2
+        self.assertNotIn(
+            QZS2, ge.predict_all(eph, *DRAO, T, mask_deg=-90.0, signal="qzss_l2c")
+        )
+        for sig in ("qzss_l5", None):
+            self.assertIn(
+                QZS2, ge.predict_all(eph, *DRAO, T, mask_deg=-90.0, signal=sig)
+            )
+        for e in eph[QZS2]:
+            e["health"] = 1.0 + ge.QZSS_HEALTH_L5
+        self.assertIn(
+            QZS2, ge.predict_all(eph, *DRAO, T, mask_deg=-90.0, signal="qzss_l2c")
+        )
+        self.assertNotIn(
+            QZS2, ge.predict_all(eph, *DRAO, T, mask_deg=-90.0, signal="qzss_l5")
+        )
+
     def test_j09_passes_by_the_exemption_only(self):
         self.assertTrue(
             all(int(e["health"]) & ge.QZSS_HEALTH_L5 for e in self.eph[QZS7])
@@ -93,6 +118,17 @@ class TestQzssEph(unittest.TestCase):
             self.assertAlmostEqual(
                 l5[key]["sat_clk_s"] - bare[key]["sat_clk_s"], -tgd, delta=1e-13
             )
+
+    def test_l2c_clock_takes_gamma_tgd(self):
+        # IS-QZSS-PNT 5.8.1: ISC_L2C = (1 - gamma_12) TGD on the satellites that send L2C.
+        bare = ge.predict_all(self.eph, *DRAO, T, mask_deg=-90.0)
+        l2c = ge.predict_all(self.eph, *DRAO, T, mask_deg=-90.0, signal="qzss_l2c")
+        tgd = ge.best_eph(self.eph[QZS2], ge.gpst_of_utc(T))["tgd"]
+        want = -ge.GAMMA_L1L2 * tgd
+        self.assertAlmostEqual(l2c[QZS2]["tgd_s"], want, delta=1e-15)
+        self.assertAlmostEqual(
+            l2c[QZS2]["sat_clk_s"] - bare[QZS2]["sat_clk_s"], want, delta=1e-13
+        )
 
 
 if __name__ == "__main__":

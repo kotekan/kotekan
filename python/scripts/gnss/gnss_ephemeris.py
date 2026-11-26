@@ -55,9 +55,10 @@ OMEGA_E = {
 # RINEX numbers QZSS satellites Jnn = PRN - 192 (J09 = PRN 201, QZS-7). The records are keyed by
 # the PRN, the number the L5 code table and the chains use, as SBAS is.
 QZSS_PRN_OFFSET = 192
-# The L5 bit of the QZSS health word (IS-QZSS-PNT 4.1.2.3: of the 6-bit word in RINEX, 32 is
-# L1, 16 L1C/A, 8 L2C, 4 L5, 2 L1C, 1 L1C/B).
+# The L5 and L2C bits of the QZSS health word (IS-QZSS-PNT 4.1.2.3: of the 6-bit word in RINEX,
+# 32 is L1, 16 L1C/A, 8 L2C, 4 L5, 2 L1C, 1 L1C/B).
 QZSS_HEALTH_L5 = 4
+QZSS_HEALTH_L2 = 8
 # PZ-90.11 (GLONASS ICD): the oblateness term of the equations of motion. PZ-90.11 and ITRF
 # agree to centimetres, so no frame transform is applied to the result.
 A_E_PZ90 = 6378136.0
@@ -730,6 +731,9 @@ def group_delay_s(e, signal, dcb=None):
         # defined on L1P/L2P, so -gamma_12 * TGD is the L2P term exactly, and L2C on the same
         # carrier differs from it only by its code bias against P(Y). Per satellite it fits the
         # CAS product's L2C biases to about 1 ns rms, where -TGD leaves about 5 ns.
+        # QZSS: the LNAV clock of the satellites that send L2C is the L1C/A-L2C iono-free
+        # clock, so ISC_L2C = (1 - gamma_12) * TGD and -gamma_12 * TGD is the L2C term exactly
+        # (IS-QZSS-PNT 5.8.1).
         if "l2c" in sig:
             return -GAMMA_L1L2 * tgd
         if "l1" in sig:
@@ -1025,8 +1029,11 @@ def predict_all(
         if key[0] == "J":
             # QZSS health is per signal, and the L1C/A and L1C/B bits are never both clear
             # (one satellite sends only one of the two), so the whole word is non-zero on a
-            # healthy satellite. L5 is the QZSS signal the chains track.
-            health = int(health) & QZSS_HEALTH_L5
+            # healthy satellite. The gate reads the bit of the signal the chains track: L2C
+            # for an L2C signal, otherwise L5.
+            health = int(health) & (
+                QZSS_HEALTH_L2 if "l2c" in str(signal or "").lower() else QZSS_HEALTH_L5
+            )
         if (
             health_gate
             and health not in (0, 0.0)
