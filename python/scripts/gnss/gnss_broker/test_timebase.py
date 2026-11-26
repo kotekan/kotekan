@@ -118,17 +118,22 @@ class TimeBaseTests(unittest.TestCase):
         real_now, real_det = timebase.now_utc_s, timebase.DETECTOR
         timebase.now_utc_s = lambda ctx: 1000.0
         try:
-            for alm_sys, src, votes in (
-                ("W", "brdc", False),
-                ("G", "tle", False),
-                ("G", "brdc", True),
+            for alm_sys, src, votes, no_vote in (
+                ("W", "brdc", False, False),
+                ("G", "tle", False, False),
+                ("G", "brdc", True, False),
+                ("R", "brdc", True, False),
+                ("R", "brdc", False, True),
             ):
                 timebase.VERDICT.clear()
                 timebase.DETECTOR = timebase.TimeBaseDetector()
                 ctx = types.SimpleNamespace(
                     alm_sys=alm_sys,
                     args=types.SimpleNamespace(
-                        almanac_source=src, bias_min_snr=0.0, bias_det_fresh_s=30.0
+                        almanac_source=src,
+                        bias_min_snr=0.0,
+                        bias_det_fresh_s=30.0,
+                        no_timebase_vote=no_vote,
                     ),
                     best=best,
                     pred=pred,
@@ -141,7 +146,8 @@ class TimeBaseTests(unittest.TestCase):
                 self.assertEqual(
                     timebase.VERDICT.suspect,
                     votes,
-                    "a 400 Hz spread on a %s chain from %s" % (alm_sys, src),
+                    "a 400 Hz spread on a %s chain from %s, no-vote %s"
+                    % (alm_sys, src, no_vote),
                 )
         finally:
             timebase.now_utc_s, timebase.DETECTOR = real_now, real_det

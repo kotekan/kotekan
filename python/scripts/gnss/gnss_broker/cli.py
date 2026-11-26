@@ -1471,6 +1471,16 @@ def build_parser(description):
         "%(default)s.",
     )
     ap.add_argument(
+        "--no-timebase-vote",
+        action="store_true",
+        help="this chain's search detections do not vote in the time-base detector "
+        "(gnss_broker/timebase.py), whose verdict is shared by every chain in the process and "
+        "withholds every chain's geometry while it stands. For a chain whose Doppler residuals "
+        "spread for reasons other than the epoch: GLONASS L2OF's FDMA search (near-horizon "
+        "detections, twin slots on one carrier) raised 42 of the 43 verdicts on 11-25. Off by "
+        "default.",
+    )
+    ap.add_argument(
         "--joint-no-feed",
         action="store_true",
         help="run this chain's --joint-consume consumers without its detections feeding the "
