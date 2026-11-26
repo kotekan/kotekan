@@ -6,9 +6,10 @@
 The step table (dtv_fold.STEPS) gives each input's whole-sample step within its pol half; half_step, the step of
 inputs 64-127 as a whole against inputs 0-63, is DTV's to measure. Across the start, with w unchanged, the rolling
 fit turns g: g_after / g_before = exp(+i 2 pi f n_i Ts) / c, c one constant per channel and source. With the inputs'
-steps taken out, the two halves differ by 2 pi f h Ts. Each ATSC channel-source (static emitters, 470-610 MHz) gives
-one such phase, and h is the integer step that fits them best (score: the mean cosine of the residuals; the aliases
-sit near +-6 samples, where 6 steps come to about one turn).
+steps taken out, the two halves differ by 2 pi f h Ts. Each ATSC channel's first source (the station; static,
+470-610 MHz) gives one such phase, and h is the integer step that fits them best (score: the mean cosine of the residuals; the aliases
+sit near +-6 samples, where 6 steps come to about one turn). The later sources are left out: on the 11-26 start most of
+their g did not turn with the inputs, and they pull h towards 0.
 
 Pairs: per node directory and GPU, the newest save in BEFORE made before the start (FRAME0_INT is its unix time) and
 the newest in AFTER made AFTER_S or more after it (and before --until); a source counts when its w is the same in both.
@@ -54,29 +55,23 @@ def pick(d, g, lo, hi):
 
 
 def ratios(before, after):
-    """[(freq Hz, per-input sum over lags of g_after conj(g_before), NaN where either is dark)] of the ATSC sources
-    whose w is the same in both."""
+    """[(freq Hz, per-input sum over lags of g_after conj(g_before), NaN where either is dark)] of the ATSC channels'
+    first source, where its w is the same in both."""
     a, b = dtv_state.read_state(before)["recs"], dtv_state.read_state(after)["recs"]
     out = []
     for fid in sorted(set(a) & set(b)):
         f = dtv_fold.fid_hz(fid)
         if not F_LO <= f <= F_HI:
             continue
-        for k in range(min(len(a[fid]["w"]), len(b[fid]["w"]))):
-            wa, wb, ga, gb = (
-                a[fid]["w"][k],
-                b[fid]["w"][k],
-                a[fid]["g"][k],
-                b[fid]["g"][k],
-            )
-            if not wa.any() or ga.shape != gb.shape or not np.allclose(wa, wb):
-                continue
-            q = (gb * np.conj(ga)).sum(axis=0).astype(complex)
-            m = np.abs(q)
-            if not (m > 0).sum() > NI // 2:
-                continue
-            q[m < 0.1 * np.median(m[m > 0])] = np.nan
-            out.append((f, q))
+        wa, wb, ga, gb = a[fid]["w"][0], b[fid]["w"][0], a[fid]["g"][0], b[fid]["g"][0]
+        if not wa.any() or ga.shape != gb.shape or not np.allclose(wa, wb):
+            continue
+        q = (gb * np.conj(ga)).sum(axis=0).astype(complex)
+        m = np.abs(q)
+        if not (m > 0).sum() > NI // 2:
+            continue
+        q[m < 0.1 * np.median(m[m > 0])] = np.nan
+        out.append((f, q))
     return out
 
 
@@ -98,7 +93,7 @@ def fit(bands, n, ts):
         coh.append((abs(a) / np.abs(u[lo]).sum(), abs(b) / np.abs(u[hi]).sum()))
     turn, d = np.array(turn), np.array(d)
     if not len(d):
-        raise SystemExit("no ATSC source with the same w on both sides")
+        raise SystemExit("no ATSC channel with the same w on both sides")
     score = np.cos(d[None, :] - hs[:, None] * turn[None, :]).mean(axis=1)
     h = int(hs[np.argmax(score)])
     return (
@@ -147,7 +142,7 @@ def main():
             r = ratios(p, q)
             if not r:
                 print(
-                    "%s g%d: no ATSC source with the same w in %s and %s"
+                    "%s g%d: no ATSC channel with the same w in %s and %s"
                     % (node, g, p, q)
                 )
                 continue
@@ -156,7 +151,7 @@ def main():
             c1, c0 = np.median(coh), np.median(fit(r, n0, ts)[3])
             use = c1 > c0 or not moved
             print(
-                "%s g%d: %d ATSC sources, %s -> %s; half coherence %.3f with the steps, %.3f without; %+d (%.3f)%s"
+                "%s g%d: %d ATSC channels, %s -> %s; half coherence %.3f with the steps, %.3f without; %+d (%.3f)%s"
                 % (
                     node,
                     g,
@@ -178,7 +173,7 @@ def main():
     second = max((s, k) for k, s in score.items() if k != h)
     clear = score[h] >= MIN_SCORE and score[h] - second[0] >= MIN_MARGIN
     print(
-        "half_step %+d: score %.3f, next %+d at %.3f; residual %+.0f deg, rms %.0f deg; %d channel-sources; "
+        "half_step %+d: score %.3f, next %+d at %.3f; residual %+.0f deg, rms %.0f deg; %d channels; "
         "coherence within the halves %.3f / %.3f (median); %s"
         % (
             h,
