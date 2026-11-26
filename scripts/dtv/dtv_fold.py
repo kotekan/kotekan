@@ -104,7 +104,7 @@ def fold(st, epochs, d, doc, g_refit=False):
                     (
                         kk,
                         "inputs %s not read carry %.0f%%"
-                        % (list(np.where(u & (p > 0))[0]), 100 * share),
+                        % ([int(i) for i in np.where(u & (p > 0))[0]], 100 * share),
                     )
                 )
                 continue
