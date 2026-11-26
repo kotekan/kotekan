@@ -13,7 +13,8 @@ symbols apart, then kept: the pair phase per PRN, the G2 convention for all (a l
 
 No ephemeris is decoded yet: the per-type counts show the stream (31 satellite mask,
 32 clock-ephemeris corrections, 34-36 integrity, 37 OBAD/DFREI, 39-40 the GEO's own orbit,
-42 time offsets, 47 almanac, 62 test, 63 null).
+42 time offsets, 47 almanac, 62 test, 63 null). The newest message of each type, and of MT32
+for each satellite slot, is kept for the payload file (nav_fields reads MT31 and MT32).
 """
 
 import collections
@@ -83,6 +84,10 @@ class _PrnState(HistoryState):
         self.next_try = 0.0
         self.seen = set()  # message start slots counted
         self.types = {}  # message type -> count
+        self.newest = {}  # message type -> (host time, bits) of its newest message
+        self.mt32 = (
+            {}
+        )  # MT32 satellite slot -> (host time, bits) of its newest correction
         self.n_msg = 0
         self.last_type = None
 
@@ -186,6 +191,10 @@ class SbasL5Predictor(SymbolHistory):
                 mt = int("".join(str(int(b)) for b in m[4:10]), 2)
                 st.types[mt] = st.types.get(mt, 0) + 1
                 st.last_type = mt
+                bits_m = [int(b) for b in m]
+                st.newest[mt] = (time.time(), bits_m)
+                if mt == 32:
+                    st.mt32[int("".join(map(str, bits_m[11:19])), 2)] = st.newest[mt]
         if len(st.seen) > 4096:
             st.seen = {s for s in st.seen if s >= st.s0}
         return found

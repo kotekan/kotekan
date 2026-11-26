@@ -179,9 +179,10 @@ def note_progress(src, prn, now):
 def message_types(signal, st, dec=None, prn=None):
     """{message type: [count or None, newest decode time or None, title, fields]} from a
     decoder's per-PRN state: I/NAV words, F/NAV pages, B-CNAV2/3 message types, D1 subframes
-    (subframe 5's time-offset pages on their own), GLONASS strings, SBAS message types (counts),
-    CNAV message types (counts), the newest C/NAV page and the HAS corrections for the satellite
-    (from dec); fields as nav_fields.parse reads the newest of each."""
+    (subframe 5's time-offset pages on their own), GLONASS strings, SBAS message types (counts,
+    and the newest MT32 of each satellite slot), CNAV message types (counts), the newest C/NAV
+    page and the HAS corrections for the satellite (from dec); fields as nav_fields.parse reads
+    the newest of each."""
     out = {}
 
     def put(key, kind, num, n, t, bits, frame=None):
@@ -218,7 +219,10 @@ def message_types(signal, st, dec=None, prn=None):
             put("string %d" % m, "string", m, None, t, b, int(ts % 150 // 30) + 1)
     elif signal == "SBAS_L5_DFMC":
         for k, n in st.types.items():
-            put("type %d" % k, "type", k, n, None, None)
+            t, bits = st.newest.get(k, (None, None))
+            put("type %d" % k, "type", k, n, t, bits)
+        for slot, (t, bits) in sorted(st.mt32.items()):
+            put("type 32 slot %d" % slot, "type", 32, None, t, bits)
     elif signal == "GAL_E6B_CNAV":
         if st.page is not None:
             put("page", "page", 0, st.n_pages, st.page[1], st.page[0])

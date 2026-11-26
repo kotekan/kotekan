@@ -18,7 +18,7 @@ live messages (11-23) against a RINEX 4 broadcast file's ION, STO and EOP record
 -tau_c and -tau_GPS). B-CNAV2's EOP (type 32) and almanacs (31, 40), and B-CNAV3's BDGIM and
 dUT1 (type 30), were placed by finding the reference values in live frames; the GLONASS almanac
 by its slots and frequency channels against BRDC. B-CNAV2 type 33's time offset, B-CNAV3's other
-fields, PPP-B2b and SBAS are titled only.
+fields, PPP-B2b and SBAS other than MT31 and MT32's corrections are titled only.
 """
 
 P = lambda n: 2.0**n  # noqa: E731
@@ -490,6 +490,25 @@ BCNAV3 = {
     4: ("PPP-B2b clock corrections", []),
 }
 
+# DFMC MT32, 0-based in the 250-bit message: the field widths and scales of the SouthPAN SDD
+# (SBAS-STN-0001 rev 04, Table 7). The slot starts at bit 11, not 10: placed on live WAAS messages
+# (11-26), where IODN then equals the LNAV IODC of the slot's GPS satellite and t_D runs ~40 s
+# behind reception. The covariance, DFREI and dRcorr after t_D are not placed.
+SBAS_MT32 = [
+    ("slot", 11, 8, "u", 1, ""),
+    ("IODN", 19, 10, "u", 1, ""),
+    ("δx", 29, 11, "s", P(-4), "m"),
+    ("δy", 40, 11, "s", P(-4), "m"),
+    ("δz", 51, 11, "s", P(-4), "m"),
+    ("δB", 62, 12, "s", P(-5), "m"),
+    ("δx rate", 74, 8, "s", P(-11), "m/s"),
+    ("δy rate", 82, 8, "s", P(-11), "m/s"),
+    ("δz rate", 90, 8, "s", P(-11), "m/s"),
+    ("δB rate", 98, 9, "s", P(-12), "m/s"),
+    ("t_D", 107, 13, "u", 16, "s of day"),
+]
+SBAS_MT31_IODM = ("IODM", 224, 2, "u", 1, "")
+
 SBAS = {
     0: "test (do not use)",
     31: "satellite mask",
@@ -752,5 +771,12 @@ def parse(signal, kind, num, bits, frame=None):
             return "", []
         return title, _rows(bits, lay, glo=True)
     if signal == "SBAS_L5_DFMC":
+        if num == 32:
+            return SBAS[32], _rows(bits, SBAS_MT32)
+        if num == 31 and len(bits) >= 226:
+            slots = [str(k + 1) for k in range(214) if bits[10 + k]]
+            return SBAS[31], _rows(bits, [SBAS_MT31_IODM]) + [
+                ["slots", " ".join(slots), ""]
+            ]
         return SBAS.get(num, ""), []
     return "", []
