@@ -535,10 +535,11 @@ def test_l2c_spacing_follows_the_fleet():
         % (live.chain_channels(l2c), live.dll_spacing(l2c)),
     )
     table = {r.key: r.dll_spacing_chips for r in live.table()}
+    l2c_keys = ("gps_l2c", "qzss_l2c")
     check(
-        table["gps_l2c"] == 0.33
-        and all(table[k] == raw[k].dll_spacing_chips for k in raw if k != "gps_l2c"),
-        "Fleet.table resolves L2C and leaves every written row as it is",
+        all(table[k] == 0.33 for k in l2c_keys)
+        and all(table[k] == raw[k].dll_spacing_chips for k in raw if k not in l2c_keys),
+        "Fleet.table resolves GPS and QZSS L2C and leaves every written row as it is",
     )
     fl = gf.Fleet(off("cx42", "cx47"), site())
     check(
@@ -642,6 +643,8 @@ def test_stage_chain():
         ("gnss1_sbas_l5_n2assemble", "n2assemble", "sbas_l5"),
         ("gnss1_l5_n2assemble", "n2assemble", "sbas_l5"),
         ("gnss1_qzss_l5_n2assemble", "n2assemble", "qzss_l5"),
+        ("gnss1_qzss_l2c_n2assemble", "n2assemble", "qzss_l2c"),
+        ("gnss1_l2c_n2assemble", "n2assemble", "gps_l2c"),
         ("gnss1_gw_1202_n2combine", "n2combine", "gw_1202"),
         ("gnss1_1202_n2combine", "n2combine", "gw_1202"),
         ("/gnss1_glo_l2of_n2assemble", "n2assemble", "glo_l2of"),
@@ -675,6 +678,7 @@ def test_stage_chain():
         gf.signal_tag("GAL_E5A_Q_CS") == "_gal_e5a"
         and gf.signal_tag("SBAS_L5_I_MC") == "_sbas_l5"
         and gf.signal_tag("QZSS_L5_Q_NH") == "_qzss_l5"
+        and gf.signal_tag("QZSS_L2C_CM") == "_qzss_l2c"
         and gf.signal_tag("GPS_L5_Q") == "_gps_l5",
         "signal_tag is _ and the broker chain key",
     )

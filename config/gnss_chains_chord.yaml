@@ -1029,3 +1029,32 @@ chains:
         combiner: fleet
         spectrum-endpoints: fleet
         dll-combiners: fleet
+
+  # -- 1227.60 MHz: qzss_l2c --
+  # QZSS L2C CM: GPS L2C's structure on PRNs 193..202 (QZSS_L2C_CM), gps_l2c's channels and
+  # code-phase units (CM chips, comb_mult 2). Sent by the Block II satellites only: 194/195/196,
+  # inclined, which rise to el ~17 in the north-west, and 199 (QZS-3, geostationary below the
+  # horizon); QZS-5/6/7 (197, 200, 201) send no L2 signal. Orbits from the BRDC's J records;
+  # the health gate reads the L2C bit (gnss_ephemeris QZSS_HEALTH_L2). Model-primary, with
+  # qzss_l5's key set: no search, the dead-reckon seed from the ephemeris, the joint clock
+  # adopted, which takes the clock mod 20 ms from gps_l5's NH joint fit as gps_l2c's does. No
+  # streamed data symbols (the CNAV signs stay in the records, as on gps_l2c before the wipe)
+  # and no signal-capability: prn-reconfig-prns, the manifest's PRN list, is the capable set.
+  # The probes: 199 and 200 (QZS-6, el -41, no L2C), and 193, a code no satellite sends, at
+  # el -90. Like gps_l2c, the chain exists only on a GPU that holds an L2C channel (`fleet`).
+    qzss_l2c:
+        signal: qzss_l2c
+        prn-reconfig-prns: "194,195,196,199,200,193"
+        probe-dark: true
+        probe-dark-prns: "199,200,193"
+        presence-admit-displaced: true
+        seed-phase-transport: true
+        dr-clock-adopt: true
+        joint-consume: clk,rate
+        fleet-trim-url: "http://127.0.0.1:12051/fleet_trim"
+        fleet-trim-bandwidth: 2.5
+        fleet-trim-readback: 1
+        trackers: fleet
+        combiner: fleet
+        spectrum-endpoints: fleet
+        dll-combiners: fleet
