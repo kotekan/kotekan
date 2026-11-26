@@ -2,8 +2,10 @@
 
 #include "Config.hpp" // for Config
 #include "N2Util.hpp"
+#include "Stage.hpp"        // for get_buffer_or_array
 #include "StageFactory.hpp" // for REGISTER_KOTEKAN_STAGE
 #include "Telescope.hpp"    // for Telescope, FREQ_ID_NOT_SET
+#include "UpchannelizationSchedule.hpp" // for wait_for_coarse_freq
 #include "buffer.hpp"       // for Buffer
 #include "bufferContainer.hpp"
 #include "chordMetadata.hpp"  // for get_chord_metadata, chordMetadata
@@ -56,8 +58,11 @@ loadFeedGains::loadFeedGains(Config& config, const std::string& unique_name,
     default_gains =
         config.get_default<std::vector<float>>(unique_name, "default_gains", {0.0, 0.0});
 
-    metadata_buf = get_buffer("in_buf");
-    metadata_buf->register_consumer(unique_name);
+    metadata_sources = get_buffer_or_array("metadata_source");
+    if (metadata_sources.empty())
+        FATAL_ERROR("metadata_source must name at least one buffer");
+    for(auto metadata_buf : metadata_sources)
+	metadata_buf->register_consumer(unique_name);
     // Initialize the vector holding freq ID
     freq_id.resize(num_local_freq, FREQ_ID_NOT_SET);
 
@@ -233,24 +238,19 @@ void loadFeedGains::main_thread() {
     // grab frequency information from the metadata buffer.
     // don't need to track metadata buffer ID here - they just get used
     // once at startup
-    uint8_t* meta_frame = metadata_buf->wait_for_full_frame(unique_name, 0);
-    if (meta_frame == nullptr)
+    const auto meta_freq_idx = wait_for_coarse_freq(metadata_sources, unique_name);
+    if (!meta_freq_idx)
         return;
-
-    auto meta_freq_idx = get_chord_metadata(metadata_buf, 0)->get_coarse_freq();
-    if (freq_id.size() != meta_freq_idx.size()) {
+    if (freq_id.size() != meta_freq_idx->size()) {
         FATAL_ERROR("Number of frequencies received does not match expectation: {:d} != {:d}",
-                    meta_freq_idx.size(), freq_id.size());
+                    meta_freq_idx->size(), freq_id.size());
     };
 
     // Assign the frequency indices and MHz values
     for (size_t f = 0; f < freq_id.size(); ++f) {
-        freq_id_t fid = meta_freq_idx[f];
+        freq_id_t fid = meta_freq_idx->at(f);
         freq_id[f] = fid;
     }
-
-    metadata_buf->mark_frame_empty(unique_name, 0);
-    metadata_buf->unregister_consumer(unique_name);
 
     while (!stop_thread) {
         // wait until there's something to update
@@ -275,7 +275,7 @@ void loadFeedGains::main_thread() {
         auto meta = get_chord_metadata(buf, frame_id);
         meta->set_from_frame_desc(buf->get_frame_desc<kotekan::GenericNDArray>());
         meta->set_name("gain");
-        meta->set_coarse_freq(meta_freq_idx);
+        meta->set_coarse_freq(*meta_freq_idx);
         // Verify that frame desc and metadata match
         meta->check_frame_desc(buf->get_frame_desc<kotekan::GenericNDArray>());
 
