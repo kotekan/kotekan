@@ -53,7 +53,7 @@ vis_buffer:
         kotekan_buffer: vis
     visbuf_10s_flags:
         kotekan_buffer: vis
-        buffer_depth: 4096 # Before slow stage
+        buffer_depth: 5120 # Before slow stage
     visbuf_10s_flags_delay:
         kotekan_buffer: vis
         buffer_depth: 384 # Before slow stage
