@@ -20,7 +20,9 @@ satellite's burst and trip when it ends (CHUANGXIN 1-03/1-04 at 369 MHz); with -
 --restore, first loads the node's current state on a GPU in pass-through 600..30000 frames after a restart,
 and records which satellite each loaded source follows and when its weights are valid for (from the save's
 .json beside it, written at each save from dtv_steer's assignments) in dtv_steer's WORK/restored/, so
-dtv_steer run steers them again without an identify;
+dtv_steer run steers them again without an identify; a save folded to the current F-engine start first when its
+weights were made under an earlier one (dtv_fold.py: the start's sample steps), and a running GPU is saved, folded
+and loaded again once the steps of its start are measured;
 with --min-explained, sets the rolling fit's hold on a GPU that reports another value (a node restart brings
 back its config's). Saves go through the node's local /tmp/gnss/dtvroll (kotekan cannot write /home).
 REST calls only: safe on the VM.
@@ -136,8 +138,11 @@ def line(node, g, s, prev=None):
     )
 
 
-def save_steer(node, g, p):
-    """Beside the save p: the satellite of each steered source and the time its weights are valid for."""
+def save_steer(node, g, p, prev):
+    """Beside the save p: the satellite of each steered source and the time its weights are valid for, and the
+    F-engine start (frame0_int) each source's weights were made under: the restore's or the previous save's (prev)
+    while its anchor is the same, else the current one."""
+    import dtv_fold
     import dtv_steer  # skyfield: only where the steering runs
 
     st = get(node, g)
@@ -148,8 +153,102 @@ def save_steer(node, g, p):
         if "error" not in st
         else {}
     )
+    d = dtv_fold.frame0_now(FRAME0)
+    rec = dtv_steer.restored(node, g)
+    epochs, anchor = {}, {}
+    for c in st.get("channels", []):
+        for k in range(c["sources"]):
+            kk = "%d:%d" % (c["freq_id"], k)
+            a = anchor[kk] = c["anchor_seq"][k]
+            if rec.get("anchor", {}).get(kk) == a and kk in rec.get("epochs", {}):
+                epochs[kk] = rec["epochs"][kk]
+            elif prev.get("anchor", {}).get(kk) == a and kk in prev.get("epochs", {}):
+                epochs[kk] = prev["epochs"][kk]
+            else:
+                epochs[kk] = d
     with open(p[:-4] + ".json", "w") as fh:
-        json.dump(dict(seq=st.get("seq"), sources=src), fh, indent=1, sort_keys=True)
+        json.dump(
+            dict(
+                seq=st.get("seq"),
+                frame0_int=d,
+                sources=src,
+                epochs=epochs,
+                anchor=anchor,
+            ),
+            fh,
+            indent=1,
+            sort_keys=True,
+        )
+
+
+def side(node, g, tag):
+    q = os.path.join(STATES, node, "st_g%d_%s.json" % (g, tag))
+    return json.load(open(q)) if os.path.exists(q) else {}
+
+
+def fold_for_load(p):
+    """(p, or a copy of it folded to the current F-engine start, what was done)."""
+    import dtv_fold
+
+    q = p[:-4] + ".json"
+    d = dtv_fold.frame0_now(FRAME0)
+    if not os.path.exists(q) or not dtv_fold.stale(json.load(open(q)), d):
+        return p, ""
+    out = "%s_f%d.bin" % (p[:-4], d)
+    n, skipped = dtv_fold.fold_file(p, out, d)
+    why = "; %d left (%s)" % (len(skipped), skipped[0][1]) if skipped else ""
+    if not n:
+        for f in (out, out[:-4] + ".json"):
+            os.remove(f)
+        return p, "nothing folded to %d%s" % (d, why)
+    return out, "folded %d sources to %d%s" % (n, d, why)
+
+
+def refold(node, g, tried):
+    """A subtracting GPU whose weights were made under an earlier F-engine start: once that start's steps are
+    measured, save what runs, fold it and load it (at most once per start and steps file)."""
+    import dtv_fold
+
+    try:
+        tag = open(os.path.join(STATES, node, "current")).read().strip()
+    except OSError:
+        return
+    d = dtv_fold.frame0_now(FRAME0)
+    if not dtv_fold.stale(side(node, g, tag), d):
+        return
+    m = os.path.getmtime(dtv_fold.STEPS) if os.path.exists(dtv_fold.STEPS) else 0
+    if (node, g, d, m) in tried:
+        return
+    tried.add((node, g, d, m))
+    t = save(node, [g])
+    if not t:
+        return
+    p, why = fold_for_load(os.path.join(STATES, node, "st_g%d_%s.bin" % (g, t)))
+    print(
+        stamp(),
+        node,
+        "g%d" % g,
+        "weights from an earlier F-engine start:",
+        why,
+        flush=True,
+    )
+    if p.endswith("_f%d.bin" % d):
+        print(
+            stamp(),
+            node,
+            "g%d" % g,
+            "load ->",
+            post(node, g, "load", {"file": p}),
+            flush=True,
+        )
+        time.sleep(2)
+        print(
+            stamp(),
+            node,
+            "g%d" % g,
+            "steering kept for %d sources" % note_restore(node, g, p, get(node, g)),
+            flush=True,
+        )
 
 
 def note_restore(node, g, p, st):
@@ -157,7 +256,8 @@ def note_restore(node, g, p, st):
     import dtv_steer
 
     q = p[:-4] + ".json"
-    src = json.load(open(q))["sources"] if os.path.exists(q) else {}
+    sd = json.load(open(q)) if os.path.exists(q) else {}
+    src = sd.get("sources", {})
     anchors = {
         "%d:%d" % (c["freq_id"], k): c["anchor_seq"][k]
         for c in st.get("channels", [])
@@ -170,7 +270,20 @@ def note_restore(node, g, p, st):
     os.makedirs(d, exist_ok=True)
     f = os.path.join(d, "%s_g%d.json" % (node, g))
     with open(f + ".tmp", "w") as fh:
-        json.dump(dict(file=p, when=stamp(), sources=out), fh, indent=1, sort_keys=True)
+        json.dump(
+            dict(
+                file=p,
+                when=stamp(),
+                sources=out,
+                anchor=anchors,
+                epochs={
+                    kk: e for kk, e in sd.get("epochs", {}).items() if kk in anchors
+                },
+            ),
+            fh,
+            indent=1,
+            sort_keys=True,
+        )
     os.replace(f + ".tmp", f)
     return len(out)
 
@@ -180,6 +293,10 @@ def save(node, gpus):
     # world-writable so either account works, and we pull the file.
     tag = "roll" + time.strftime("%H%M%S", time.gmtime())
     ok = True
+    try:
+        last = open(os.path.join(STATES, node, "current")).read().strip()
+    except OSError:
+        last = None
     subprocess.run(
         SSH + [node, "mkdir -p %s; chmod 0777 %s" % (NODE_DIR, NODE_DIR)], check=False
     )
@@ -202,7 +319,7 @@ def save(node, gpus):
             subprocess.run(SSH + [node, "rm -f %s/%s" % (NODE_DIR, name)], check=False)
             if os.path.exists(p):
                 try:
-                    save_steer(node, g, p)
+                    save_steer(node, g, p, side(node, g, last) if last else {})
                 except Exception as e:  # noqa: BLE001 - the save stands without it; a restore then needs an identify
                     print(
                         "%s %s g%d steering note failed: %s" % (stamp(), node, g, e),
@@ -218,7 +335,11 @@ def save(node, gpus):
             glob.glob(os.path.join(STATES, node, "st_g0_roll*.bin")),
             key=os.path.getmtime,
         )[:-3]
+        d = json.load(open(FRAME0))[-1]["frame0_int"]
         for p0 in old:
+            # the last saves of an earlier F-engine start stay: the next start's steps are measured against them
+            if side(node, 0, os.path.basename(p0)[6:-4]).get("frame0_int", d) != d:
+                continue
             for g in (0, 1):
                 q = p0.replace("st_g0_", "st_g%d_" % g)
                 for f in (q, q[:-4] + ".json"):
@@ -351,7 +472,7 @@ def main():
         for n in a.nodes:
             print(stamp(), n, "saved", save(n, a.gpus))
     elif a.cmd == "watch":
-        prev, last_save = {}, time.time()
+        prev, last_save, tried = {}, time.time(), set()
         sky = None
         if a.pass_tle:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -404,6 +525,12 @@ def main():
                         # a node that restarted minutes ago (a deliberate /clear on a long-running node is left alone)
                         tag = open(os.path.join(STATES, n, "current")).read().strip()
                         p = os.path.join(STATES, n, "st_g%d_%s.bin" % (g, tag))
+                        try:
+                            p, why = fold_for_load(p)
+                            if why:
+                                print(stamp(), n, "g%d" % g, why, flush=True)
+                        except Exception as e:  # noqa: BLE001 - the unfolded save still beats pass-through
+                            print(stamp(), n, "g%d" % g, "fold failed:", e, flush=True)
                         print(
                             stamp(),
                             n,
@@ -436,6 +563,13 @@ def main():
                                 flush=True,
                             )
                     subtracting = any(2 in c["act"] for c in s["channels"])
+                    if a.restore and subtracting:
+                        try:
+                            refold(n, g, tried)
+                        except Exception as e:  # noqa: BLE001 - the weights in use stay
+                            print(
+                                stamp(), n, "g%d" % g, "refold failed:", e, flush=True
+                            )
                     if a.rearm and subtracting and not r["enable"]:
                         print(
                             stamp(),
