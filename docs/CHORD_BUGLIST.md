@@ -1119,7 +1119,9 @@ The QZSS L5 chain went live 11-25 19:09Z; nothing tracks QZSS at L2.
 **Fix:** a qzss_l2c chain, as gps_l2c with QZSS PRNs 193-202 (same CM/CL structure and carrier), rolled out like
 qzss_l5: descriptors in `signal_by_name`, the chain table row with its own shared-ref band, generator, the relay's
 transfer table. Node cycle.
-**Check:** sat_fit.py at 1227.73 / 1227.93 MHz: PRN 194 (and 201 when up) projected / control from 0.74 to the GPS level.
+**Check:** sat_fit.py at 1227.73 / 1227.93 MHz: PRN 194 (195, 196 on their passes) projected / control from 0.74 to
+the GPS level. QZS-7 (201) and the other Block III satellites send nothing at L2 (IS-QZSS-PNT-006 Table 3.2.1-1).
+**Built 2026-11-26:** branch kv/qzss-l2c 900bd5fa4 (local), codes checked against the spec's end states.
 
 
 ### #234 — gw_1202's telem_pack drops PRNs beyond its 14 wire rows (2026-11-21, review)
