@@ -84,6 +84,18 @@ class TestRinex(unittest.TestCase):
             ox.records([self.d.name], self.sats), self.sats, self.now + 60
         )
         self.assertEqual(ox.write_changed(self.outbox, again), [])
+        # a later copy of the same issue (t_k one frame on) is not a new record
+        later = {(k[0], k[1], k[2]): dict(e, frame_time=e["frame_time"] + 30.0)
+                 for k, e in ox.records([self.d.name], self.sats).items()}  # fmt: skip
+        self.assertEqual(
+            ox.write_changed(self.outbox, ox.day_files(later, self.sats, self.now)), []
+        )
+        newer = dict(EPH, toe_gpst=EPH["toe_gpst"] + 1800.0)
+        recs = dict(later, **{("R", 25, newer["toe_gpst"]): newer})
+        self.assertEqual(
+            ox.write_changed(self.outbox, ox.day_files(recs, self.sats, self.now)),
+            ["gx10_decoded_2026331.rnx"],
+        )
 
 
 if __name__ == "__main__":

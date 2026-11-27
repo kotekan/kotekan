@@ -133,8 +133,16 @@ def day_files(recs, sats, now):
     return {name: header(sats) + "".join(body) for name, body in by_day.items()}
 
 
+def _epochs(text):
+    """Each record's satellite and epoch: its first line up to the clock fields."""
+    body = text.split("END OF HEADER")[-1]
+    return [ln[:23] for ln in body.splitlines() if ln[:1] in ("R", "C")]
+
+
 def write_changed(outbox, files):
-    """Write each file whose records changed (the header's date aside); the names written."""
+    """Write each file that gained or lost a record; the names written. A record already in
+    the file is not rewritten for a later copy of the same issue: the decoder's cache keeps
+    the newest, whose frame time t_k moves every 30 s frame."""
     os.makedirs(outbox, exist_ok=True)
     changed = []
     for name, text in files.items():
@@ -144,10 +152,7 @@ def write_changed(outbox, files):
                 old = f.read()
         except OSError:
             old = None
-        if (
-            old is not None
-            and old.split("END OF HEADER")[-1] == text.split("END OF HEADER")[-1]
-        ):
+        if old is not None and _epochs(old) == _epochs(text):
             continue
         tmp = os.path.join(outbox, "." + name + ".tmp")
         with open(tmp, "w") as f:
@@ -185,7 +190,12 @@ def main(argv=None):
             "--sats: a GLONASS satellite needs its frequency channel (R25:8)"
         )
     paths = [p for p in a.decoded.split(",") if p]
-    unsent = set()
+    # Everything already in the outbox goes once at start: a restart or a new --dest must not
+    # wait for the next record to bring the destination up to date.
+    unsent = {
+        os.path.basename(p)
+        for p in glob.glob(os.path.join(a.outbox, "gx10_decoded_*.rnx"))
+    }
     while True:
         try:
             now = time.time()
