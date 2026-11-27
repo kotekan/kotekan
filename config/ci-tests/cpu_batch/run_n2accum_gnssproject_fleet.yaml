@@ -1,5 +1,7 @@
 # run_n2accum_gnssproject_fleet.yaml -- run_n2accum_gnssproject_lanes.yaml with fleet_lanes
-# (docs/CHORD_FLEET_LANES.md): the stage takes a posted set at set_lanes and serves get_lanes.
+# (docs/CHORD_FLEET_LANES.md): the stage takes a posted set at set_lanes and serves get_lanes,
+# and with lane_inst_phase hands a posted table to GnssProjBoardTestPub, which carries its
+# transfers by it as the assemblers do.
 # Smoke test: it constructs with the element positions and runs to the writer's exit; the
 # evaluation is covered by tests/boost/test_gnss_lane_direction.cpp.
 # run_n2accum_gnssproject_live.yaml -- run_n2accum.yaml with GnssN2Project (phase 3a) between the
@@ -291,16 +293,10 @@ gnss_board_pub:
         - 3
         - 4
         - 5
+    # Transfers from freq_id 5, for lane_inst_phase below.
+    xfer_freq_ids:
         - 6
         - 7
-        - 8
-        - 9
-        - 10
-        - 11
-        - 12
-        - 13
-        - 14
-        - 15
 
 log_config_usage: fatal_error
 gnss_n2_proj_buffer:
@@ -335,6 +331,9 @@ gnss_n2_project:
         # The board's tracks move like a GuoWang satellite's (los_rate below).
         lane_resteer: true
         lane_rank_min_rel: 10.0
+        # The board's transfers (6 and 7) are carried by a posted table and delays, by the
+        # publisher (InstCarryBoard) or else here; with none posted they are left as they are.
+        lane_inst_phase: true
         elem_steer_sign: 1.0
         elem_positions_enu:
             - -22.00

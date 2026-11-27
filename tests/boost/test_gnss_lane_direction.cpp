@@ -3,10 +3,13 @@
 #include "gnssLaneDirection.hpp" // for LaneDirection, InstDelay
 
 #include <algorithm> // for max
+#include <atomic>    // for atomic
 #include <boost/test/included/unit_test.hpp>
 #include <cmath>   // for exp, sqrt
 #include <complex> // for complex, conj, norm
+#include <memory>  // for shared_ptr, make_shared
 #include <random>  // for mt19937, normal_distribution
+#include <thread>  // for thread
 #include <vector>
 using cd = std::complex<double>;
 using gnss::ElemSteer;
@@ -700,4 +703,410 @@ BOOST_AUTO_TEST_CASE(lane_turn_follows_the_track) {
     for (int i = 0; i < n; ++i)
         diff = std::max(diff, std::abs(fl[i] - turned[i]));
     BOOST_CHECK_LT(diff, 1e-5);
+}
+
+// The instrumental phase table (#246): per element, linear in freq_id between the nearest knots
+// that hold the element, wrapped, the nearest knot's value outside them, none where no knot holds
+// it; the carry phasors fall back to the pooled delay in the N^2 frame, then to 1.
+BOOST_AUTO_TEST_CASE(inst_phase_table_interpolates_per_element) {
+    const double nan = std::nan("");
+    gnss::InstPhaseTable tab;
+    tab.n = 5;
+    tab.fids = {100, 104, 108};
+    // elements: all knots; the middle missing; none; across +-pi; only the last knot
+    tab.phase = {0.0, 0.5, nan, 3.0,  nan, //
+                 0.4, nan, nan, -3.0, nan, //
+                 1.2, 1.5, nan, -2.0, 2.0};
+    BOOST_CHECK_CLOSE(tab.phase_at(102, 0), 0.2, 1e-9);
+    BOOST_CHECK_CLOSE(tab.phase_at(104, 0), 0.4, 1e-9);
+    BOOST_CHECK_CLOSE(tab.phase_at(106.5, 0), 0.4 + 0.8 * 2.5 / 4, 1e-9);
+    BOOST_CHECK_EQUAL(tab.phase_at(90, 0), 0.0);
+    BOOST_CHECK_EQUAL(tab.phase_at(130, 0), 1.2);
+    BOOST_CHECK_CLOSE(tab.phase_at(101, 1), 0.5 + 1.0 / 8, 1e-9);
+    BOOST_CHECK_CLOSE(tab.phase_at(104, 1), 1.0, 1e-9);
+    BOOST_CHECK(std::isnan(tab.phase_at(104, 2)));
+    // 3.0 -> -3.0 is +0.283 rad, not -6
+    const double d = 2.0 * M_PI - 6.0;
+    BOOST_CHECK_CLOSE(tab.phase_at(102, 3), 3.0 + d / 2, 1e-9);
+    BOOST_CHECK_LT(std::abs(std::arg(std::polar(1.0, tab.phase_at(104, 3) + 3.0))), 1e-12);
+    BOOST_CHECK_EQUAL(tab.phase_at(90, 4), 2.0);
+    BOOST_CHECK_EQUAL(tab.phase_at(106, 4), 2.0);
+    gnss::InstPhaseTable none;
+    BOOST_CHECK(none.empty() && !tab.empty());
+
+    // u(f) conj(u(f_src)): the table's carry where it holds the element, else the pooled delay
+    // as the N^2 frame sees it (the conjugate of InstDelay::apply's raw-frame turn), else 1.
+    const std::vector<double> tau = {1e-9, 2e-9, -3e-9, 4e-9, 5e-9};
+    std::vector<cd> uf(5), us(5), uf0(5), us0(5), ufr(5), usr(5);
+    gnss::inst_carry_phasors(tab, tau.data(), true, 5, 106, uf.data());
+    gnss::inst_carry_phasors(tab, tau.data(), true, 5, 101, us.data());
+    gnss::inst_carry_phasors(tab, nullptr, true, 5, 106, uf0.data());
+    gnss::inst_carry_phasors(tab, nullptr, true, 5, 101, us0.data());
+    gnss::inst_carry_phasors(tab, tau.data(), false, 5, 106, ufr.data());
+    gnss::inst_carry_phasors(tab, tau.data(), false, 5, 101, usr.data());
+    const double df = 5 * 195312.5;
+    for (int el = 0; el < 5; ++el) {
+        const cd c = uf[el] * std::conj(us[el]);
+        if (el == 2) {
+            BOOST_CHECK_LT(std::abs(c - std::polar(1.0, -2.0 * M_PI * df * tau[2])), 1e-9);
+            BOOST_CHECK_LT(
+                std::abs(ufr[el] * std::conj(usr[el]) - std::polar(1.0, 2.0 * M_PI * df * tau[2])),
+                1e-9);
+            BOOST_CHECK_LT(std::abs(uf0[el] - 1.0) + std::abs(us0[el] - 1.0), 1e-15);
+        } else {
+            const double want = tab.phase_at(106, el) - tab.phase_at(101, el);
+            BOOST_CHECK_LT(std::abs(c - std::polar(1.0, want)), 1e-12);
+            BOOST_CHECK_LT(std::abs(uf0[el] * std::conj(us0[el]) - c), 1e-12);
+            BOOST_CHECK_LT(std::abs(ufr[el] * std::conj(usr[el]) - c), 1e-12);
+        }
+    }
+    // a table of another element count is not used
+    gnss::inst_carry_phasors(tab, nullptr, true, 4, 106, uf.data());
+    for (int el = 0; el < 4; ++el)
+        BOOST_CHECK_EQUAL(uf[el], cd(1.0, 0.0));
+}
+
+namespace {
+// A synthetic instrument in the N^2 frame, as python/scripts/gnss/test_inst_phase_table.py: a
+// delay per element plus a slow ripple, and an offset.
+struct SynthInst {
+    int n;
+    std::vector<double> tau, rip, ph0;
+    SynthInst(int n_elem, unsigned seed) : n(n_elem), tau(n_elem), rip(n_elem), ph0(n_elem) {
+        std::mt19937 rng(seed);
+        std::uniform_real_distribution<double> u(-1.0, 1.0);
+        for (int i = 0; i < n; ++i) {
+            tau[i] = 5e-9 * u(rng);
+            rip[i] = M_PI * u(rng);
+            ph0[i] = M_PI * u(rng);
+        }
+    }
+    double phase(double fid, int el) const {
+        const double f = fid * 195312.5;
+        return ph0[el] + 2.0 * M_PI * f * tau[el]
+               + 8.0 * M_PI / 180.0 * std::sin(2.0 * M_PI * f / 40e6 + rip[el]);
+    }
+    // the table: knots every fid_step channels from fid_lo to fid_hi, wrapped as the calibration
+    // reads them; every element in every drop-th knot (offset by the element) left out
+    gnss::InstPhaseTable table(int fid_lo, int fid_hi, int fid_step, int drop) const {
+        gnss::InstPhaseTable t;
+        t.n = n;
+        for (int fid = fid_lo, k = 0; fid <= fid_hi; fid += fid_step, ++k) {
+            t.fids.push_back(fid);
+            for (int el = 0; el < n; ++el)
+                t.phase.push_back(drop > 0 && (k + el) % drop == 0
+                                      ? std::nan("")
+                                      : std::arg(std::polar(1.0, phase(fid, el))));
+        }
+        return t;
+    }
+};
+
+// Largest element phase error of x against want after aligning their common phase, degrees.
+double max_err_deg(const std::vector<cd>& x, const std::vector<cd>& want) {
+    cd ip(0.0, 0.0);
+    for (size_t i = 0; i < x.size(); ++i)
+        ip += std::conj(x[i]) * want[i];
+    const cd rot = ip / std::abs(ip);
+    double m = 0.0;
+    for (size_t i = 0; i < x.size(); ++i)
+        m = std::max(m, std::abs(std::arg(x[i] * rot * std::conj(want[i]))));
+    return m * 180.0 / M_PI;
+}
+} // namespace
+
+// Knots ~1 MHz apart (some missing per element) across 1160-1300 MHz carry an element vector
+// measured on one channel to the instrument's own on another, near and far.
+BOOST_AUTO_TEST_CASE(inst_phase_table_carries_the_instrument) {
+    const int n = 32;
+    const SynthInst inst(n, 246);
+    const gnss::InstPhaseTable tab = inst.table(5940, 6655, 5, 7);
+    std::vector<cd> us(n), uf(n), v(n), want(n), geo(n);
+    const int pairs[4][2] = {{6233, 6300}, {6400, 5980}, {5946, 6650}, {6270, 6271}};
+    for (const auto& p : pairs) {
+        gnss::inst_carry_phasors(tab, nullptr, true, n, p[0], us.data());
+        gnss::inst_carry_phasors(tab, nullptr, true, n, p[1], uf.data());
+        for (int el = 0; el < n; ++el) {
+            geo[el] = std::polar(1.0, inst.phase(p[0], el));
+            v[el] = geo[el] * uf[el] * std::conj(us[el]);
+            want[el] = std::polar(1.0, inst.phase(p[1], el));
+        }
+        BOOST_TEST_MESSAGE("carried " << p[0] << " -> " << p[1] << ": max error "
+                                      << max_err_deg(v, want) << " deg, uncarried "
+                                      << max_err_deg(geo, want) << " deg");
+        BOOST_CHECK_LT(max_err_deg(v, want), 1.0);
+        if (std::abs(p[1] - p[0]) > 10)
+            BOOST_CHECK_GT(max_err_deg(geo, want), 10.0);
+    }
+}
+
+// The build paths with lane_inst_phase (GnssN2Project::build_fleet and build_lanes): the lane in
+// the N^2 frame (after lane_conj) times u(f) conj(u(f_src)). With the table it is the truth at
+// the target; with no table it is today's path, the pooled delay in fleet_lane_direction; with a
+// table that holds some elements, each element takes its own.
+BOOST_AUTO_TEST_CASE(fleet_lane_carried_by_the_table_or_the_pooled_delay) {
+    const int n = 24;
+    std::vector<double> pos((size_t)n * 3);
+    for (int i = 0; i < n; ++i) {
+        pos[(size_t)i * 3] = 6.3 * (i % 6) - 15.0;
+        pos[(size_t)i * 3 + 1] = 8.5 * (i / 6) - 12.0;
+        pos[(size_t)i * 3 + 2] = 0.05 * i;
+    }
+    const SynthInst inst(n, 11);
+    const int fid1 = 6285, fid2 = 6346; // L2C's centre carried 11.9 MHz up
+    const double f1 = fid1 * 0.1953125, f2 = fid2 * 0.1953125;
+    ElemSteer S(pos, {f1, f2}, 1, 1.0, 120.0);
+    const double t0 = 1.7e9;
+    S.update(0, 141.0, 37.0, 0.0, 0.01, -0.004, t0);
+    std::vector<ElemSteer::cf> tab((size_t)2 * n), sh((size_t)n);
+    S.copy_slot(0, tab.data());
+    // The raw-frame lane at each channel is conj(D) times the instrument's raw response, the
+    // conjugate of its N^2-frame phase.
+    auto raw = [&](int ch, std::vector<cd>& q) {
+        for (int i = 0; i < n; ++i) {
+            const ElemSteer::cf D = tab[(size_t)ch * n + i];
+            q[i] = std::conj(cd(D.real(), D.imag()))
+                   * std::polar(1.0 / std::sqrt((double)n), -inst.phase(ch ? fid2 : fid1, i));
+        }
+    };
+    gnss::FleetLane L;
+    L.f_src_hz = f1 * 1e6;
+    BOOST_REQUIRE(S.track(0, L.los, L.los_rate, &L.t_utc));
+    L.q.resize(n);
+    raw(0, L.q);
+    std::vector<cd> want(n);
+    raw(1, want);
+    for (cd& x : want)
+        x = std::conj(x);
+
+    ElemSteer geo(pos, {}, 0, 1.0, 0.0);
+    std::vector<ElemSteer::cf> scratch;
+    std::vector<cd> out(n), us(n), uf(n);
+    auto carried = [&](const gnss::InstPhaseTable& t, const double* tau) {
+        // build_fleet: no delay in fleet_lane_direction, conj, then the carry
+        BOOST_REQUIRE(
+            gnss::fleet_lane_direction(L, geo, f2 * 1e6, t0, nullptr, scratch, out.data()));
+        gnss::inst_carry_phasors(t, tau, true, n, fid1, us.data());
+        gnss::inst_carry_phasors(t, tau, true, n, fid2, uf.data());
+        std::vector<cd> v(n);
+        for (int i = 0; i < n; ++i)
+            v[i] = std::conj(out[i]) * uf[i] * std::conj(us[i]);
+        return v;
+    };
+    // today's path: the pooled delay in the raw frame, then conj
+    auto pooled = [&](const double* tau) {
+        BOOST_REQUIRE(gnss::fleet_lane_direction(L, geo, f2 * 1e6, t0, tau, scratch, out.data()));
+        std::vector<cd> v(n);
+        for (int i = 0; i < n; ++i)
+            v[i] = std::conj(out[i]);
+        return v;
+    };
+    // The pooled delay is the raw-frame slope: the N^2 phase falls with f.
+    std::vector<double> tau(n);
+    for (int i = 0; i < n; ++i)
+        tau[i] = -inst.tau[i];
+
+    const gnss::InstPhaseTable full = inst.table(6200, 6400, 5, 0);
+    const std::vector<cd> v_tab = carried(full, tau.data());
+    const std::vector<cd> v_pool = pooled(tau.data());
+    const std::vector<cd> v_geo = pooled(nullptr);
+    BOOST_TEST_MESSAGE("carried 11.9 MHz: table "
+                       << max_err_deg(v_tab, want) << " deg, pooled delay "
+                       << max_err_deg(v_pool, want) << " deg, geometry " << max_err_deg(v_geo, want)
+                       << " deg");
+    BOOST_CHECK_LT(max_err_deg(v_tab, want), 0.5);
+    BOOST_CHECK_GT(max_err_deg(v_pool, want), 2.0);
+    BOOST_CHECK_GT(max_err_deg(v_geo, want), 10.0);
+
+    // No table: exactly today's path; neither: geometry only.
+    const gnss::InstPhaseTable empty;
+    double d = 0.0;
+    const std::vector<cd> v_none = carried(empty, tau.data()), v_zero = carried(empty, nullptr);
+    for (int i = 0; i < n; ++i)
+        d = std::max(d, std::abs(v_none[i] - v_pool[i]) + std::abs(v_zero[i] - v_geo[i]));
+    BOOST_CHECK_LT(d, 1e-9);
+
+    // A table holding the even elements only: those take the table, the odd ones the delay.
+    gnss::InstPhaseTable half = full;
+    for (size_t k = 0; k < half.fids.size(); ++k)
+        for (int i = 1; i < n; i += 2)
+            half.phase[k * n + i] = std::nan("");
+    const std::vector<cd> v_half = carried(half, tau.data());
+    d = 0.0;
+    for (int i = 0; i < n; ++i)
+        d = std::max(d, std::abs(v_half[i] - (i % 2 ? v_pool[i] : v_tab[i])));
+    BOOST_CHECK_LT(d, 1e-9);
+
+    // build_lanes: the board's transfer, the assembler's geometric shift with no delays of its
+    // own, carried the same way, is the relay's copy at the source's instant.
+    double e0[3];
+    BOOST_REQUIRE(S.direction(0, t0, e0));
+    S.shift(e0, (f2 - f1) * 1e6, sh.data());
+    gnss::inst_carry_phasors(full, tau.data(), true, n, fid1, us.data());
+    gnss::inst_carry_phasors(full, tau.data(), true, n, fid2, uf.data());
+    d = 0.0;
+    for (int i = 0; i < n; ++i) {
+        const cd board = std::conj(L.q[i] * std::conj(cd(sh[i].real(), sh[i].imag()))) * uf[i]
+                         * std::conj(us[i]);
+        d = std::max(d, std::abs(board - v_tab[i]));
+    }
+    BOOST_CHECK_LT(d, 1e-5);
+}
+
+namespace {
+// A table over 6200-6400 with a few elements no knot holds (they take the delay), pooled delays,
+// and the given lane_conj.
+gnss::InstCarry synth_carry(int n, bool lane_conj) {
+    const SynthInst inst(n, 7);
+    gnss::InstCarry c;
+    c.tab = inst.table(6200, 6400, 5, 7);
+    for (int el = 3; el < n; el += 9)
+        for (size_t k = 0; k < c.tab.fids.size(); ++k)
+            c.tab.phase[k * n + el] = std::nan("");
+    for (int el = 0; el < n; ++el)
+        c.delay_s.push_back(-inst.tau[el]);
+    c.lane_conj = lane_conj;
+    return c;
+}
+
+// The N^2-frame lane GnssN2Project reads from a raw-frame entry: conj with lane_conj.
+cd to_n2(cd x, bool lane_conj) {
+    return lane_conj ? std::conj(x) : x;
+}
+} // namespace
+
+// The assemblers carry a transfer in the raw frame; read into the N^2 frame it must be what
+// GnssN2Project's own carry, u(f) conj(u(f_src)) after lane_conj, gives, for either lane_conj.
+BOOST_AUTO_TEST_CASE(inst_carry_raw_is_the_n2_carry) {
+    const int n = 32;
+    std::mt19937 rng(246);
+    std::uniform_real_distribution<double> u(-M_PI, M_PI);
+    std::vector<cd> x(n), raw(n), uf(n), us(n);
+    for (const bool conj : {true, false}) {
+        const gnss::InstCarry c = synth_carry(n, conj);
+        const int pairs[4][2] = {{6233, 6300}, {6400, 6210}, {6150, 6450}, {6270, 6271}};
+        double d = 0.0, moved = 0.0;
+        for (const auto& p : pairs) {
+            gnss::inst_carry_raw(c, n, p[0], p[1], raw.data());
+            gnss::inst_carry_phasors(c.tab, c.delay_s.data(), conj, n, p[1], uf.data());
+            gnss::inst_carry_phasors(c.tab, c.delay_s.data(), conj, n, p[0], us.data());
+            for (int el = 0; el < n; ++el) {
+                x[el] = std::polar(1.0 / std::sqrt((double)n), u(rng));
+                const cd n2 = to_n2(x[el], conj) * uf[el] * std::conj(us[el]);
+                d = std::max(d, std::abs(to_n2(x[el] * raw[el], conj) - n2));
+                moved = std::max(moved, std::abs(raw[el] - 1.0));
+            }
+        }
+        BOOST_TEST_MESSAGE("lane_conj " << conj << ": raw-frame carry against the N^2 one " << d);
+        BOOST_CHECK_LT(d, 1e-9);
+        BOOST_CHECK_GT(moved, 0.1);
+    }
+    // Delays of another element count are not used: those elements are not turned.
+    gnss::InstCarry c = synth_carry(n, true);
+    c.delay_s.pop_back();
+    gnss::inst_carry_raw(c, n, 6233, 6300, raw.data());
+    for (int el = 3; el < n; el += 9)
+        BOOST_CHECK_EQUAL(raw[el], cd(1.0, 0.0));
+}
+
+// The process-wide holder: set, clear, and readers that always see one whole content while it
+// is replaced.
+BOOST_AUTO_TEST_CASE(inst_carry_board_holds_one_content) {
+    gnss::InstCarryBoard& b = gnss::InstCarryBoard::instance();
+    BOOST_CHECK(!b.get());
+    auto a = std::make_shared<gnss::InstCarry>(synth_carry(16, true));
+    b.set(a);
+    BOOST_CHECK(b.get() == a);
+    b.set(nullptr);
+    BOOST_CHECK(!b.get());
+
+    // Content k holds k + 1 knots and delay k on every element.
+    std::atomic<bool> stop{false};
+    std::atomic<int> bad{0}, seen{0};
+    std::vector<std::thread> readers;
+    for (int r = 0; r < 4; ++r)
+        readers.emplace_back([&] {
+            while (!stop.load()) {
+                const std::shared_ptr<const gnss::InstCarry> c = b.get();
+                if (!c)
+                    continue;
+                const double k = c->delay_s[0];
+                if ((double)c->tab.fids.size() != k + 1 || c->delay_s.back() != k)
+                    ++bad;
+                ++seen;
+            }
+        });
+    for (int k = 0; k < 2000; ++k) {
+        auto c = std::make_shared<gnss::InstCarry>();
+        c->tab.n = 4;
+        for (int j = 0; j <= k % 50; ++j)
+            c->tab.fids.push_back(j);
+        c->tab.phase.assign(c->tab.fids.size() * 4, 0.0);
+        c->delay_s.assign(4, (double)(k % 50));
+        b.set(std::move(c));
+    }
+    stop = true;
+    for (std::thread& t : readers)
+        t.join();
+    BOOST_TEST_MESSAGE("snapshots read: " << seen.load());
+    BOOST_CHECK_EQUAL(bad.load(), 0);
+    b.set(nullptr);
+}
+
+// A transfer published while the holder has content is carried and marked; GnssN2Project skips
+// the carried one (build_lanes), so the lane it reads is the geometric transfer carried once,
+// whoever carried it. With no content nothing is touched.
+BOOST_AUTO_TEST_CASE(carried_transfer_is_not_carried_twice) {
+    const int n = 32, fid_src = 6233, fid = 6300;
+    gnss::ProjEntry geo;
+    geo.src = 2;
+    geo.n = n;
+    geo.k = 1;
+    geo.xfer = 1;
+    geo.fid_src = fid_src;
+    for (int el = 0; el < n; ++el)
+        geo.q.push_back(std::polar(1.0f, 0.37f * el * el));
+
+    gnss::InstCarryCache cache;
+    gnss::ProjEntry e = geo;
+    BOOST_CHECK(!cache.refresh());
+    cache.carry(e, fid);
+    BOOST_CHECK(!e.carried);
+    BOOST_CHECK(e.q == geo.q);
+
+    for (const bool conj : {true, false}) {
+        auto c = std::make_shared<gnss::InstCarry>(synth_carry(n, conj));
+        gnss::InstCarryBoard::instance().set(c);
+        BOOST_REQUIRE(cache.refresh());
+        e = geo;
+        cache.carry(e, fid);
+        BOOST_CHECK(e.carried);
+        // build_lanes' read: the N^2 frame, carried by the stage unless the entry is.
+        std::vector<cd> uf(n), us(n);
+        gnss::inst_carry_phasors(c->tab, c->delay_s.data(), conj, n, fid, uf.data());
+        gnss::inst_carry_phasors(c->tab, c->delay_s.data(), conj, n, fid_src, us.data());
+        double d_once = 0.0, d_twice = 0.0;
+        for (int el = 0; el < n; ++el) {
+            const cd want = to_n2(cd(geo.q[el]), conj) * uf[el] * std::conj(us[el]);
+            const cd got = to_n2(cd(e.q[el]), conj);
+            d_once = std::max(d_once, std::abs(got - want));
+            d_twice = std::max(d_twice, std::abs(got * uf[el] * std::conj(us[el]) - want));
+        }
+        BOOST_CHECK_LT(d_once, 1e-6);
+        BOOST_CHECK_GT(d_twice, 0.05);
+        // The cache is rebuilt when the content changes: the same pair, another table.
+        auto c2 = std::make_shared<gnss::InstCarry>(*c);
+        for (double& ph : c2->tab.phase)
+            ph = -ph;
+        gnss::InstCarryBoard::instance().set(c2);
+        BOOST_REQUIRE(cache.refresh());
+        gnss::ProjEntry e2 = geo;
+        cache.carry(e2, fid);
+        BOOST_CHECK(e2.q != e.q);
+    }
+    gnss::InstCarryBoard::instance().set(nullptr);
+    BOOST_CHECK(!cache.refresh());
+    e = geo;
+    cache.carry(e, fid);
+    BOOST_CHECK(!e.carried && e.q == geo.q);
 }

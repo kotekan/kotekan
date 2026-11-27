@@ -1,6 +1,7 @@
 #include "GnssProjBoardTestPub.hpp"
 
 #include "StageFactory.hpp"     // for REGISTER_KOTEKAN_STAGE
+#include "gnssFleetLane.hpp"    // for InstCarryCache
 #include "gnssProjSubspace.hpp" // for ProjBoard, ProjEntry
 #include "kotekanLogging.hpp"   // for INFO
 
@@ -21,6 +22,7 @@ GnssProjBoardTestPub::GnssProjBoardTestPub(Config& config, const std::string& un
           std::bind(&GnssProjBoardTestPub::main_thread, this)),
     board_group(config.get<std::string>(unique_name, "board_group")),
     freq_ids(config.get<std::vector<int>>(unique_name, "freq_ids")),
+    xfer_freq_ids(config.get_default<std::vector<int>>(unique_name, "xfer_freq_ids", {})),
     n_elem(config.get<int>(unique_name, "n_elem")),
     n_dirs(config.get_default<int>(unique_name, "n_dirs", 2)),
     period_ms(config.get_default<int>(unique_name, "period_ms", 20)),
@@ -34,11 +36,13 @@ GnssProjBoardTestPub::GnssProjBoardTestPub(Config& config, const std::string& un
 
 void GnssProjBoardTestPub::main_thread() {
     gnss::ProjBoard& board = gnss::ProjBoard::instance();
+    gnss::InstCarryCache carry;
     const float inv = 1.0f / std::sqrt((float)n_elem);
     while (!stop_thread) {
         const double now_s =
             std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
                 .count();
+        carry.refresh();
         for (int j = 0; j < n_dirs; ++j) {
             gnss::ProjEntry e;
             e.owner = unique_name + "/lane/" + std::to_string(j);
@@ -61,6 +65,13 @@ void GnssProjBoardTestPub::main_thread() {
             }
             for (const int fid : freq_ids)
                 board.publish(board_group, fid, e);
+            e.xfer = 1;
+            e.fid_src = freq_ids.back();
+            for (const int fid : xfer_freq_ids) {
+                gnss::ProjEntry x = e;
+                carry.carry(x, fid);
+                board.publish(board_group, fid, x);
+            }
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(period_ms));
     }

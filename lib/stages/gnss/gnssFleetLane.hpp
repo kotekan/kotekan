@@ -1,15 +1,23 @@
 /**
  * @file
  * @brief A lane direction received from another node and its evaluation on a channel of this
- *        GPU (docs/CHORD_FLEET_LANES.md). Header-only, no CUDA.
+ *        GPU, and the instrumental phase table that carries a lane across channels
+ *        (docs/CHORD_FLEET_LANES.md). Header-only, no CUDA.
  */
 #ifndef GNSS_FLEET_LANE_HPP
 #define GNSS_FLEET_LANE_HPP
 
 #include "gnssElemSteer.hpp"
+#include "gnssProjSubspace.hpp" // for ProjEntry
 
+#include <algorithm>
 #include <cmath>
 #include <complex>
+#include <cstdint>
+#include <limits>
+#include <map>
+#include <memory>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -109,6 +117,165 @@ inline bool fleet_lane_direction(const FleetLane& L, const ElemSteer& geo, doubl
     }
     return true;
 }
+
+/**
+ * @struct InstPhaseTable
+ * @brief Each element's instrumental phase at knots in freq_id, from a Tau A calibration
+ *        (python/scripts/gnss/inst_phase_table.py; docs/CHORD_FLEET_LANES.md "The instrumental
+ *        phase table").
+ *
+ * The phases are in the science N^2's frame, a lane's after lane_conj: a lane carried there from
+ * channel f_src to f is turned per element by exp(i(phi(f) - phi(f_src))).
+ */
+struct InstPhaseTable {
+    int64_t made_frame0 = 0;   ///< the F-engine start the phases hold for
+    int n = 0;                 ///< elements
+    std::vector<int> fids;     ///< knots, ascending
+    std::vector<double> phase; ///< [knot][n], radians; NaN where the knot does not hold the element
+
+    bool empty() const {
+        return fids.empty();
+    }
+
+    /// Element @p el's phase at @p fid: linear in freq_id between the two nearest knots that hold
+    /// it, their difference wrapped into (-pi, pi] (the knots are ~1 MHz apart), and the nearest
+    /// one's value outside them. NaN if no knot holds it.
+    double phase_at(double fid, int el) const {
+        const int nk = (int)fids.size();
+        const int j = (int)(std::lower_bound(fids.begin(), fids.end(), fid) - fids.begin());
+        int lo = j - 1, hi = j;
+        while (lo >= 0 && std::isnan(phase[(size_t)lo * n + el]))
+            --lo;
+        while (hi < nk && std::isnan(phase[(size_t)hi * n + el]))
+            ++hi;
+        if (lo < 0 && hi >= nk)
+            return std::numeric_limits<double>::quiet_NaN();
+        if (lo < 0)
+            return phase[(size_t)hi * n + el];
+        if (hi >= nk)
+            return phase[(size_t)lo * n + el];
+        const double p0 = phase[(size_t)lo * n + el];
+        double d = phase[(size_t)hi * n + el] - p0;
+        d -= 2.0 * M_PI * std::ceil((d - M_PI) / (2.0 * M_PI));
+        return p0 + d * (fid - fids[(size_t)lo]) / (fids[(size_t)hi] - fids[(size_t)lo]);
+    }
+};
+
+/// Per element, the phasor u(fid) whose ratio u(f) conj(u(f_src)) carries a lane in the science
+/// N^2's frame from channel f_src to f: exp(i phi(fid)) where @p tab holds the element (the
+/// table's carry, exp(i(phi(f) - phi(f_src)))); else the pooled delay @p inst_delay_s (null for
+/// none), exp(i 2 pi f tau) in the raw frame that InstDelay::apply and fleet_lane_direction turn,
+/// conjugated with @p lane_conj; else 1. Whether the table holds an element does not depend on
+/// the channel, so u(f) and u(f_src) always take the same branch.
+inline void inst_carry_phasors(const InstPhaseTable& tab, const double* inst_delay_s,
+                               bool lane_conj, int n, double fid, std::complex<double>* out) {
+    const double w = (lane_conj ? -2.0 : 2.0) * M_PI * fid * 195312.5;
+    for (int el = 0; el < n; ++el) {
+        const double ph =
+            tab.n == n ? tab.phase_at(fid, el) : std::numeric_limits<double>::quiet_NaN();
+        if (!std::isnan(ph))
+            out[el] = std::polar(1.0, ph);
+        else if (inst_delay_s)
+            out[el] = std::polar(1.0, w * inst_delay_s[el]);
+        else
+            out[el] = 1.0;
+    }
+}
+
+/// What GnssN2Project (lane_inst_phase) carries the transfers by: its table and pooled delays,
+/// and its lane_conj, which sets their frame.
+struct InstCarry {
+    InstPhaseTable tab;
+    std::vector<double> delay_s; ///< the pooled per-element delay, s; empty = none
+    bool lane_conj = true;
+};
+
+/// Per element, the raw-frame factor that carries a lane by @p c from channel @p fid_src to
+/// @p fid: the N^2-frame carry u(fid) conj(u(fid_src)) of inst_carry_phasors, conjugated with
+/// lane_conj. @p n is the element count; the table and the delays apply only at their own.
+inline void inst_carry_raw(const InstCarry& c, int n, int fid_src, int fid,
+                           std::complex<double>* out) {
+    const double* tau = c.delay_s.size() == (size_t)n ? c.delay_s.data() : nullptr;
+    std::vector<std::complex<double>> us((size_t)n);
+    inst_carry_phasors(c.tab, tau, c.lane_conj, n, fid, out);
+    inst_carry_phasors(c.tab, tau, c.lane_conj, n, fid_src, us.data());
+    for (int el = 0; el < n; ++el) {
+        out[el] *= std::conj(us[(size_t)el]);
+        if (c.lane_conj)
+            out[el] = std::conj(out[el]);
+    }
+}
+
+/**
+ * @class InstCarryBoard
+ * @brief The process-wide InstCarry, so the board's transfers are carried once, where they are
+ *        published, for every reader of the ProjBoard.
+ *
+ * GnssN2Project (lane_inst_phase) sets it when it takes a table or delays and when the table is
+ * cleared; the assemblers (lane_transfer_inst_apply false) carry their transfers by it through
+ * InstCarryCache. The GnssN2Project stages of one process are posted the same table and delays;
+ * the last set wins. Content is never changed in place: set() replaces it.
+ */
+class InstCarryBoard {
+public:
+    static InstCarryBoard& instance() {
+        static InstCarryBoard b;
+        return b;
+    }
+    /// Replace the content; null clears it.
+    void set(std::shared_ptr<const InstCarry> c) {
+        std::lock_guard<std::mutex> lk(_m);
+        _c = std::move(c);
+    }
+    /// The content, null if none.
+    std::shared_ptr<const InstCarry> get() const {
+        std::lock_guard<std::mutex> lk(_m);
+        return _c;
+    }
+
+private:
+    mutable std::mutex _m;
+    std::shared_ptr<const InstCarry> _c;
+};
+
+/**
+ * @class InstCarryCache
+ * @brief One publisher's carry of its transfers by InstCarryBoard: the raw-frame factor per
+ *        (fid_src, fid), kept until the board's content changes. Not thread-safe.
+ */
+class InstCarryCache {
+public:
+    /// Take InstCarryBoard's current content. False if there is none.
+    bool refresh() {
+        std::shared_ptr<const InstCarry> c = InstCarryBoard::instance().get();
+        if (c != _c) {
+            _c = std::move(c);
+            _rows.clear();
+        }
+        return (bool)_c;
+    }
+    /// Carry transfer @p e (xfer 1, measured on e.fid_src), published for @p fid, by the content
+    /// refresh() took, and mark it carried. Nothing if there is none.
+    void carry(ProjEntry& e, int fid) {
+        if (!_c || e.n <= 0 || e.q.size() < (size_t)e.k * e.n)
+            return;
+        std::vector<std::complex<double>>& r = _rows[std::make_pair(e.fid_src, fid)];
+        if (r.size() != (size_t)e.n) {
+            r.resize((size_t)e.n);
+            inst_carry_raw(*_c, e.n, e.fid_src, fid, r.data());
+        }
+        for (int j = 0; j < e.k; ++j)
+            for (int el = 0; el < e.n; ++el) {
+                std::complex<float>& x = e.q[(size_t)j * e.n + el];
+                x = std::complex<float>(std::complex<double>(x) * r[(size_t)el]);
+            }
+        e.carried = true;
+    }
+
+private:
+    std::shared_ptr<const InstCarry> _c;
+    std::map<std::pair<int, int>, std::vector<std::complex<double>>> _rows;
+};
 
 } // namespace gnss
 

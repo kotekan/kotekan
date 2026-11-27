@@ -31,7 +31,15 @@ from . import iface
 
 # name prefix -> the single-letter constellation the broker and RINEX both use
 # (W: GuoWang, no RINEX letter; transit_windows.py uses it too)
-_SYS = {"GPS": "G", "GAL": "E", "BDS": "C", "GLO": "R", "SBAS": "S", "GW": "W"}
+_SYS = {
+    "GPS": "G",
+    "GAL": "E",
+    "BDS": "C",
+    "GLO": "R",
+    "SBAS": "S",
+    "QZSS": "J",
+    "GW": "W",
+}
 
 
 def _load_descriptors(doc=None):
@@ -77,6 +85,12 @@ _CHAINS = {
     # SBAS L1: the same GEOs on the C/A code family, data only, 500 sps. The tracker code tiles
     # two periods into one 2 ms symbol, as SBAS_L5_I_MC's pair does on L5.
     "sbas_l1": ("SBAS_L1", "SBAS_L1_SYM", None),
+    # QZSS L5: the Q5 pilot of the QZSS satellites (PRNs 193..202), GPS L5's structure with the
+    # NH20 tiled into the tracker code; RINEX J records, keyed by PRN (Jnn + 192).
+    "qzss_l5": ("QZSS_L5_Q", "QZSS_L5_Q_NH", None),
+    # QZSS L2C: GPS L2C's structure on the QZSS rows of the L2C tables (PRNs 193..202), the
+    # same CM/CL pair as gps_l2c. Block III (QZS-5/6/7) sends no L2 signal.
+    "qzss_l2c": ("QZSS_L2C_CM", "QZSS_L2C_CL", None),
     # E1-C is the dataless OS pilot under the shared CS25; the tracker code bakes it into one
     # 100 ms code, as the E5a-Q CS100, and the model places it from absolute time.
     "gal_e1c": ("GAL_E1C", "GAL_E1C_CS", None),
@@ -146,7 +160,7 @@ def prn_carrier_hz(args, prn):
 # takes the (carrier, name) pairs it returns.
 RF_BAND_BY_CARRIER = {
     1575.42: "L1",  # GPS L1 C/A + L1C, Galileo E1, BeiDou B1C
-    1227.60: "L2",  # GPS L2C
+    1227.60: "L2",  # GPS and QZSS L2C
     1176.45: "L5",  # GPS L5, Galileo E5a, BeiDou B2a
     1207.14: "E5b",  # Galileo E5b, BeiDou B2b/B2I
     1278.75: "E6",  # Galileo E6
@@ -283,6 +297,7 @@ class SignalDef(object):
         "BDS": "BeiDou",
         "GLO": "GLONASS",
         "SBAS": "SBAS",
+        "QZSS": "QZSS",
         "GW": "GuoWang",
     }
 

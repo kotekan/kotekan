@@ -37,9 +37,11 @@ POINTING_MARK = "NOT BROADCAST DATA"
 POINTING_CLK_SIGMA_S = 1e-3
 GPS_EPOCH = datetime(1980, 1, 6, tzinfo=timezone.utc)
 
-# Gravitational parameter / earth rotation per constellation ICD (S: WGS84, the MT9 frame).
+# Gravitational parameter / earth rotation per constellation ICD (S: WGS84, the MT9 frame;
+# J: IS-QZSS-PNT gives the GPS values).
 MU = {
     "G": 3.986005e14,
+    "J": 3.986005e14,
     "E": 3.986004418e14,
     "C": 3.986004418e14,
     "R": 3.986004418e14,
@@ -47,12 +49,20 @@ MU = {
 }
 OMEGA_E = {
     "G": 7.2921151467e-5,
+    "J": 7.2921151467e-5,
     "E": 7.2921151467e-5,
     "C": 7.292115e-5,
     "R": 7.292115e-5,
     "S": 7.2921151467e-5,
     "W": 7.2921151467e-5,  # GuoWang: TLE tables in ITRS (load_gw_table)
 }
+# RINEX numbers QZSS satellites Jnn = PRN - 192 (J09 = PRN 201, QZS-7). The records are keyed by
+# the PRN, the number the L5 code table and the chains use, as SBAS is.
+QZSS_PRN_OFFSET = 192
+# The L5 and L2C bits of the QZSS health word (IS-QZSS-PNT 4.1.2.3: of the 6-bit word in RINEX,
+# 32 is L1, 16 L1C/A, 8 L2C, 4 L5, 2 L1C, 1 L1C/B).
+QZSS_HEALTH_L5 = 4
+QZSS_HEALTH_L2 = 8
 # PZ-90.11 (GLONASS ICD): the oblateness term of the equations of motion. PZ-90.11 and ITRF
 # agree to centimetres, so no frame transform is applied to the result.
 A_E_PZ90 = 6378136.0
@@ -245,11 +255,11 @@ def _parse_rinex_nav_file(path):
         i += 1
     i += 1
     out = {}
-    # broadcast orbit line counts per system (RINEX 3): G/E/C use 7 orbit lines, R uses 3.
+    # broadcast orbit line counts per system (RINEX 3): G/E/C/J use 7 orbit lines, R and S 3.
     while i < len(lines):
         line = lines[i]
         sysc = line[0] if line else ""
-        if sysc not in "GECRS":
+        if sysc not in "GECRSJ":
             i += 1
             continue
         norb = 3 if sysc in "RS" else 7
@@ -294,6 +304,8 @@ def _parse_rinex_nav_file(path):
                     e["clk_sigma_s"] = POINTING_CLK_SIGMA_S
                 out.setdefault((sysc, prn), []).append(e)
             continue
+        if sysc == "J":
+            prn += QZSS_PRN_OFFSET  # the GPS record layout; QZSST = GPST
         e = dict(
             sys=sysc,
             prn=prn,
@@ -315,7 +327,7 @@ def _parse_rinex_nav_file(path):
             crc=orb[13],
             omega=orb[14],
             omegadot=orb[15],
-            # health = BROADCAST ORBIT 6 field 2 (orb[21]): SV health (G/E), SatH1 (C).
+            # health = BROADCAST ORBIT 6 field 2 (orb[21]): SV health (G/E/J), SatH1 (C).
             # Field 2 of orbit line 7 (orb[25]) is a different quantity in every system
             # (GPS fit interval, BeiDou AODC), and predict_all's health gate reads this one.
             idot=orb[16],
@@ -335,9 +347,10 @@ def _parse_rinex_nav_file(path):
             tgd=orb[22],
             iodc=orb[23],
         )
-        # toe as absolute GPST: the RINEX week field is the system's own week count (GPS and
-        # Galileo: the GPS-aligned continuous week; BeiDou: the BDT week, epoch 2006-01-01).
-        if sysc in "GE":
+        # toe as absolute GPST: the RINEX week field is the system's own week count (GPS,
+        # Galileo and QZSS: the GPS-aligned continuous week; BeiDou: the BDT week, epoch
+        # 2006-01-01).
+        if sysc in "GEJ":
             e["toe_gpst"] = e["week"] * 604800.0 + e["toe_sow"]
         else:
             e["toe_gpst"] = (e["week"] + 1356.0) * 604800.0 + e["toe_sow"] - BDT_GPST
@@ -345,7 +358,7 @@ def _parse_rinex_nav_file(path):
             e["clk_sigma_s"] = POINTING_CLK_SIGMA_S
         if e["sqrta"] > 1000.0:  # sanity: reject empty/garbled records
             out.setdefault((sysc, prn), []).append(e)
-        # (SBAS, QZSS and NavIC records are skipped by the sysc filter.)
+        # (NavIC records are skipped by the sysc filter.)
     for k in out:
         out[k] = EphRecords(sorted(out[k], key=lambda e: e["toe_gpst"]))
     return out
@@ -719,18 +732,22 @@ def group_delay_s(e, signal, dcb=None):
                 return _v
         except Exception:
             pass
-    tgd = float(e.get("tgd") or 0.0)  # G: TGD | E: BGD(E1,E5a) | C: TGD1(B1I,B3I)
+    tgd = float(e.get("tgd") or 0.0)  # G, J: TGD | E: BGD(E1,E5a) | C: TGD1(B1I,B3I)
     tgd2 = float(e.get("iodc") or 0.0)  # E: BGD(E1,E5b) | C: TGD2(B2I,B3I) | G: IODC
-    if sysc == "G":
+    if sysc in ("G", "J"):
         # L5: IS-GPS-705's term is -TGD + ISC_L5I5 (the form the DCB path computes). ISC_L5I5
         # is CNAV-only and not in RINEX 3, so it is taken as 0. Scaling TGD as 1/f^2
         # (gamma_15 * TGD) would assume ISC_L5I5 = (1 - gamma_15) * TGD, which the ICD does not.
+        # QZSS L5 has the same term (IS-QZSS-PNT), with ISC_L5Q5 taken as 0 likewise.
         if "l5" in sig:
             return -tgd
         # L2C: IS-GPS-200's term is -TGD + ISC_L2C, and ISC_L2C is CNAV-only too. TGD is
         # defined on L1P/L2P, so -gamma_12 * TGD is the L2P term exactly, and L2C on the same
         # carrier differs from it only by its code bias against P(Y). Per satellite it fits the
         # CAS product's L2C biases to about 1 ns rms, where -TGD leaves about 5 ns.
+        # QZSS: the LNAV clock of the satellites that send L2C is the L1C/A-L2C iono-free
+        # clock, so ISC_L2C = (1 - gamma_12) * TGD and -gamma_12 * TGD is the L2C term exactly
+        # (IS-QZSS-PNT 5.8.1).
         if "l2c" in sig:
             return -GAMMA_L1L2 * tgd
         if "l1" in sig:
@@ -845,9 +862,9 @@ def gpst_of_utc(t_utc):
     return (t_utc - GPS_EPOCH).total_seconds() + GPS_UTC_LEAP
 
 
-# Satellites predict_all keeps through its health gate, keyed (sys, prn): they broadcast a
-# non-zero health word but transmit, and passing near boresight they need a lane (#190) like any
-# other. Each entry names the satellite and the evidence.
+# Satellites predict_all's health gate counts as healthy, keyed (sys, prn): they broadcast a
+# non-zero health word but transmit, and the chains track them and use their measurements like
+# any other's. Each entry names the satellite and the evidence.
 HEALTH_GATE_EXEMPT = {
     # Galileo GSAT0202, launched 2014 into an eccentric orbit. I/NAV health 130 (E1-B and E5b
     # "out of service"), F/NAV 16 (E5a), yet it passed 2.0 deg from boresight on 2026-10-31
@@ -855,6 +872,14 @@ HEALTH_GATE_EXEMPT = {
     ("E", 14): "GSAT0202",
     # Galileo GSAT0201, GSAT0202's twin: the same orbit type and the same health words.
     ("E", 18): "GSAT0201",
+    # Galileo GSAT0209: the same health words on 2026-11-25. Up 07:15-14:10Z and never within
+    # 29 deg of boresight, with no lane it raised the projected residual in the E5a, E5b and E6
+    # lobes by 4 dB.
+    ("E", 9): "GSAT0209",
+    # QZSS QZS-7 (J09, PRN 201) at 175 W, not yet in service: health 55, the L5 bit set.
+    # On 2026-11-25 its L5 signal was in the visibilities all night from az 243 el 11-16, a mode
+    # fixed in the array frame with the spectrum of a 10.23 Mcps code at 1176.45 MHz.
+    ("J", 201): "QZS-7",
 }
 
 
@@ -985,10 +1010,11 @@ def predict_all(
     `signal` (with `dcb`) refers sat_clk_s to that signal's code (group_delay_s; tgd_s is the
     correction applied). signal=None leaves the broadcast clock as it is.
 
-    health_gate=False keeps unhealthy records (BeiDou is never gated, see below), for geometry
-    only (sky.transit_sky): an unhealthy satellite still transmits and still captures the
-    array. Seeds never set it. The gate also keeps the HEALTH_GATE_EXEMPT satellites, so the
-    chains track and lane them.
+    health_gate=False keeps unhealthy records (BeiDou and SBAS are never gated, see below) and
+    marks their rows `unhealthy`: an unhealthy satellite still transmits and still captures the
+    array, so the chains' skies set it to track and lane the satellite, and keep a marked row
+    out of every shared estimate. The key is absent on a healthy row. Science callers keep the
+    gate. The HEALTH_GATE_EXEMPT satellites count as healthy.
 
     `sysc` predicts one constellation only, for a caller that reads no other: the rows are
     those of the full call. `memo` is a dict the caller owns and passes to several calls of one
@@ -1014,19 +1040,28 @@ def predict_all(
         )
         if e is None:
             continue
-        if (
-            health_gate
-            and e.get("health", 0) not in (0, 0.0)
+        health = e.get("health", 0)
+        if key[0] == "J":
+            # QZSS health is per signal, and the L1C/A and L1C/B bits are never both clear
+            # (one satellite sends only one of the two), so the whole word is non-zero on a
+            # healthy satellite. The gate reads the bit of the signal the chains track: L2C
+            # for an L2C signal, otherwise L5.
+            health = int(health) & (
+                QZSS_HEALTH_L2 if "l2c" in str(signal or "").lower() else QZSS_HEALTH_L5
+            )
+        # SBAS is exempt too: the RINEX S health is MT17's status bitmask (ranging /
+        # corrections / integrity flags; WAAS reads 31 with the signal on the air),
+        # and a lane direction (#190) needs the transmission, not a ranging licence.
+        # BeiDou is exempt: SatH1 describes B1I, so a BDS-3 satellite can carry SatH1 = 1
+        # while the signal a chain tracks is fine, and the gate would drop it.
+        # TODO: try the strict gate for C on sky; if no healthy satellite is lost, remove
+        # the exemption.
+        unhealthy = (
+            health not in (0, 0.0)
             and key[0] not in "CS"
             and key not in HEALTH_GATE_EXEMPT
-        ):
-            # SBAS is exempt too: the RINEX S health is MT17's status bitmask (ranging /
-            # corrections / integrity flags; WAAS reads 31 with the signal on the air),
-            # and a lane direction (#190) needs the transmission, not a ranging licence.
-            # BeiDou is exempt: SatH1 describes B1I, so a BDS-3 satellite can carry SatH1 = 1
-            # while the signal a chain tracks is fine, and the gate would drop it.
-            # TODO: try the strict gate for C on sky; if no healthy satellite is lost, remove
-            # the exemption.
+        )
+        if unhealthy and health_gate:
             continue
         if memo is None:
             geo = _sat_geometry(e, rx, lat, lon, t, mask_deg)
@@ -1067,4 +1102,6 @@ def predict_all(
         # record (POINTING_MARK) not at all.
         if "clk_sigma_s" in e:
             out[key]["clk_sigma_s"] = float(e["clk_sigma_s"])
+        if unhealthy:
+            out[key]["unhealthy"] = True
     return out

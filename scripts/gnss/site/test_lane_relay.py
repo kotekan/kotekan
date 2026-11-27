@@ -189,7 +189,8 @@ def test_inst_stage():
 def test_inst_errors_are_logged():
     """A failed get_lane_inst is logged, rate-limited, naming the url, as set_lanes is."""
     relay = lane_relay.Relay.__new__(lane_relay.Relay)
-    relay.a = types.SimpleNamespace(inst_period=0.0)
+    relay.a = types.SimpleNamespace(inst_period=0.0, inst_phase="")
+    relay.phase, relay.phase_why = None, ""
     relay.collect = lambda: ({}, {}, {})
     relay.bright = {}
     relay.inst_t = -1e9
@@ -277,6 +278,67 @@ def test_bright_transfer():
     check(
         body["lanes"][0]["fids"] == [[6234, 6338]], "its own GPU only the bright ones"
     )
+
+
+def test_inst_phase():
+    """The phase table goes along turned to the newest start, an empty one while the steps
+    since its start are not measured, and an unchanged one only every PHASE_REPOST_S."""
+    import json
+    import fengine_steps
+
+    d = tempfile.mkdtemp()
+    tab = {
+        "made_frame0": 100,
+        "adc_sample_ns": 0.3125,
+        "n_inputs": 4,
+        "fids": [6000, 6010],
+        "phase_deg": [[0.0, 10.0, None, -20.0], [5.0, 15.0, 30.0, -15.0]],
+        "t_tr_utc": "x",
+    }
+    paths = {k: os.path.join(d, k + ".json") for k in ("tab", "frame0", "steps")}
+    json.dump(tab, open(paths["tab"], "w"))
+    json.dump([{"frame0_int": 100}, {"frame0_int": 200}], open(paths["frame0"], "w"))
+    steps = {"adc_sample_ns": 0.3125, "n_inputs": 4, "rows": []}
+    fengine_steps.add_start(steps, 100, "a")
+    fengine_steps.add_start(steps, 200, "b")
+    fengine_steps.save(steps, paths["steps"])
+    r = lane_relay.Relay.__new__(lane_relay.Relay)
+    r.a = types.SimpleNamespace(
+        inst_phase=paths["tab"], frame0=paths["frame0"], steps=paths["steps"]
+    )
+    r.phase, r.phase_why, r.phase_sent = None, "", {}
+    u = types.SimpleNamespace(name="cx43/0")
+    check(r.phase_due(u) is None, "nothing read, nothing sent")
+    r.phase = r.read_phase()
+    check(
+        r.phase == {} and "not measured" in r.phase_why,
+        "an unmeasured start clears the table (%s)" % r.phase_why,
+    )
+    steps["rows"][-1]["steps"] = [0, 4, 0, -1]
+    steps["rows"][-1]["pol_step"] = 0
+    fengine_steps.save(steps, paths["steps"])
+    r.phase = r.read_phase()
+    check(
+        r.phase.get("made_frame0") == 200 and r.phase_why == "",
+        "turned to the newest start",
+    )
+    turn = 360.0 * 6000 * 195312.5 * 4 * 0.3125e-9
+    got = r.phase["phase_deg"][0][1]
+    check(
+        abs((got - 10.0 - turn + 180.0) % 360.0 - 180.0) < 0.01,
+        "input 1 turned by its 4 samples",
+    )
+    check(r.phase["phase_deg"][0][2] is None, "an empty entry stays empty")
+    body = r.body_for(u, {}, None, (), r.phase_due(u))
+    check(body.get("inst_phase") == r.phase, "the table goes in the body")
+    key = json.dumps(r.phase, sort_keys=True)
+    r.phase_sent[u.name] = (key, lane_relay.time.monotonic())
+    check(r.phase_due(u) is None, "an unchanged table is not sent again at once")
+    r.phase_sent[u.name] = (
+        key,
+        lane_relay.time.monotonic() - lane_relay.PHASE_REPOST_S,
+    )
+    check(r.phase_due(u) == r.phase, "but is after PHASE_REPOST_S")
 
 
 def main():

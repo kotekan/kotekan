@@ -248,7 +248,7 @@ def common_flags(man, negatable=()):
 #   DEAD     (slot, no active satellite)             -> wasted capacity: warns.
 #   DARK     (slot, active, cannot broadcast it)     -> a noise probe on a chain that sets
 #                                                       probe-dark: noted; elsewhere DEAD.
-SYS_OF = {"GPS": "G", "GAL": "E", "BDS": "C", "GLO": "R", "SBAS": "S"}
+SYS_OF = {"GPS": "G", "GAL": "E", "BDS": "C", "GLO": "R", "SBAS": "S", "QZSS": "J"}
 LAT, LON, ALT = 49.32075144444, -119.62081125, 545.0
 # Capability, not just activity: BeiDou B2a/B2b are BDS-3 signals the BDS-2 satellites do not
 # broadcast, and L2C/L5 are carried only by the newer GPS blocks, so leaving those satellites
@@ -258,6 +258,9 @@ LAT, LON, ALT = 49.32075144444, -119.62081125, 545.0
 # interspersed across the slots. A list that mirrors a sibling's (B3I and B1I follow B2a/B2b so
 # tau_band sees the same rays) is judged by the sibling's capability.
 MIRRORS = {"BDS_B3I_NH": "BDS_B2A_P_CS", "BDS_B1I_NH": "BDS_B2A_P_CS"}
+# The registry models no QZSS block. IS-QZSS-PNT-006 Table 3.2.1-1 gives the rule by PRN: the
+# Block III satellites, QZS-5/6/7 on 197, 200 and 201, send no L2 signal.
+QZSS_NO_L2C = {197, 200, 201}
 # Degrees: only a satellite whose peak elevation here exceeds this counts as excluded; one that
 # merely grazes the horizon has no claim on a boot slot. The manifest's BeiDou lists are cut at
 # the same threshold.
@@ -307,7 +310,7 @@ def check_prns(man, rise_deg=RISE_DEG, hours=24.0, step_min=10.0):
 
     eph = parse_rinex_nav(fetch_brdc(datetime.now(timezone.utc)))
     # Peak elevation over the sweep: a satellite that never rises here has no claim on a slot,
-    # however active it is.
+    # however active it is. The chains track an unhealthy satellite, so it counts.
     now = time.time()
     peak = {}
     for k in range(int(hours * 60 / step_min)):
@@ -319,6 +322,7 @@ def check_prns(man, rise_deg=RISE_DEG, hours=24.0, step_min=10.0):
             now + k * step_min * 60.0,
             mask_deg=-90.0,
             max_age=86400.0,
+            health_gate=False,
         )
         for key, v in pd.items():
             if v["el"] > peak.get(key, -90.0):
@@ -332,6 +336,8 @@ def check_prns(man, rise_deg=RISE_DEG, hours=24.0, step_min=10.0):
             continue
         cfg = set(lists[name])
         incap = signal_incapable_prns(MIRRORS.get(name, name))
+        if name.startswith("QZSS_L2C"):
+            incap = incap | QZSS_NO_L2C
         active = {p for (s, p) in peak if s == sysid and p not in incap}
         rises = {p for p in active if peak[(sysid, p)] > rise_deg}
         # A slot for an active satellite that cannot broadcast the signal: signal-free at any

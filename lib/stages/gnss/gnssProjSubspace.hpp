@@ -423,7 +423,11 @@ struct ProjEntry {
     double los[3] = {0.0, 0.0, 0.0};      ///< line of sight, ENU unit vector
     double los_rate[3] = {0.0, 0.0, 0.0}; ///< its rate per second
     int xfer = 0;
+    int fid_src = 0;     ///< xfer 1: the freq_id the lane was measured on
     double held_s = 0.0; ///< src 2: seconds since the row was last coherent (0 = live)
+    /// xfer 1: carried by the instrumental phase table from fid_src before publication
+    /// (gnssFleetLane.hpp InstCarryCache)
+    bool carried = false;
 };
 
 /// Process-wide board. The sibling assemblers of one GPU are threads of one kotekan process and

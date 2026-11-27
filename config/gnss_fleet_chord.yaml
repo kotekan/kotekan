@@ -55,9 +55,13 @@ aggregator:
         #                      since 10-18); drop it when that ends.
         #   GPS_L5_Q:131,...   gps_l5_search, the WAAS GEOs on the L5 Q code (10-20 SBAS test, KV's
         #                      call; sbas_l5 tracks SBAS_L5_I_MC from the model).
+        #   BDS_B2A_P          bds_b2a_search, a code test on BeiDou-3S M2-S (registry PRN C58, on
+        #                      no chain and not in BRDC), hinted from its TLE, the tracked PRNs as
+        #                      controls (11-27, KV's call); drop it when the test ends.
         aggregator-extra-search:
             - GAL_E5A_Q
             - "GPS_L5_Q:131,133,135"
+            - BDS_B2A_P
 
 common:
     # GnssN2Project's channel loop on two cpus per GPU, a hyperthread pair (#225): proj_0 15+47, proj_1 19+51,
@@ -90,6 +94,9 @@ common:
     # Fleet lanes (docs/CHORD_FLEET_LANES.md): GnssN2Project takes lanes the relay carries from the
     # other nodes; fleet-lane-transfer is the relay's table (site-only, not a generator flag).
     fleet-lanes: true
+    # #246: GnssN2Project carries every transferred lane by the instrumental phase table the
+    # relay posts (lane_relay.py --inst-phase), and the assemblers apply no delays of their own.
+    lane-inst-phase: true
     # GuoWang lanes move ~0.3 deg/s: GnssN2Project turns them along their tracks to each
     # integration's time (a lane is used up to 1 s after its geometry's instant).
     lane-resteer: true
@@ -103,8 +110,10 @@ common:
     # and the relay's copies of its own satellites passed the duplicate test (the re-steer
     # differs by the pooled delays' noise over 10-16 MHz) and filled the 40-lane budget on cx51
     # (2026-10-30), at ~n^2 per lane.
-    fleet-lane-transfer: [gps_l2c:1212.3-1242.9, gal_e6:1263.4-1273.6, gal_e6:1283.9-1294.1,
-                          glo_l2of:1237.9-1258.2]
+    # qzss_l2c: the L2C main lobe only (1.023 Mcps either side of 1227.6 MHz); QZSS sends no
+    # P(Y) or M-code.
+    fleet-lane-transfer: [gps_l2c:1207.1-1242.9, gal_e6:1263.4-1273.6, gal_e6:1283.9-1304.9,
+                          glo_l2of:1237.9-1258.2, qzss_l2c:1226.6-1228.6]
     # Channels exempt from first-stage (SK) RFI excision, absolute freq_id ranges
     # (freq_id = MHz / 0.1953125): the GNSS main lobes, one chip rate either side of each
     # carrier (10.23 MHz; E6-C's 5.115 MHz at the top), at 1176.45 (L5/E5a/B2a), 1202.025
@@ -121,6 +130,7 @@ common:
     # 1186.7-1191.8 gap (the E5/B2 AltBOC edges), 1237.9-1258.2 (GLONASS L2's P-code spill, up
     # to B3I's) and 1283.8-1294.1 (the E6 PRS upper lobe), one contiguous range, projected with
     # the lanes.
+    # Widened 2026-11-27 with the projection below to 1140.0-1304.9 MHz (5837-6681).
     # + the DTV subtraction's channels (dtv-targets below: ATSC 24, 30, 17, 19, 31, 33, 35 and
     # MUOS), which the SK flagger would otherwise excise, leaving nothing to judge the
     # subtraction by (docs/CHORD_DTV_SUBTRACTION_20261102.md, #226).
@@ -130,7 +140,7 @@ common:
     # low-pass the band is for GNSS only, and nothing there is recovered. Iridium (1616-1626 MHz)
     # aliases onto 1573.5-1584 MHz at ~-10 dB, over the L1 lobes: excised, those channels would
     # despread to zero.
-    rfi-excision-exempt-freq-ids: "5939-6626,7982-8144,2714-2744,2898-2928,2499-2529,2560-2590,\
+    rfi-excision-exempt-freq-ids: "5837-6681,7982-8144,2714-2744,2898-2928,2499-2529,2560-2590,\
       2929-2959,2991-3020,3052-3082,1844-1944"
     # Bright-satellite projection in each record assembler: off | shadow | live. live projects
     # the transiting satellite's element direction out of the other slots' record rows in
@@ -170,7 +180,16 @@ common:
     psi-synth: true
     n2-project: live
     # Pinned to the GNSS band: "exempt" would follow the exemption above into the DTV channels.
-    n2-project-live-freq-ids: "5939-6626"
+    # 1140.0-1304.9 MHz since 2026-11-27 (was 1160.0-1294.1): the satellites' outer lobes set the
+    # floor there (fixtures/hi21_feasibility: 1140-1160 at 2-21 mJy/MHz, 1294-1305 at 21-43,
+    # against 0.5 at 1135-1140 and 2.3 at 1305-1310). ~53 channels per GPU against 43: needs the
+    # GPU projection (n2-project-gpu) and an instrumental phase table built over 1135-1310 MHz.
+    n2-project-live-freq-ids: "5837-6681"
+    # The projection itself on the GPU (cudaGnssN2Project in run_n2k, FP32;
+    # docs/CHORD_GPU_PROJECTION.md) on both GPUs of every projecting node since 2026-11-27: the CPU
+    # path took 26-28 of the 42 ms frame at 43 channels and cannot carry the range above. The
+    # stage keeps the lane work and builds the basis on the host.
+    n2-project-gpu: "0,1"
     n2-project-stations: "0-6,8-127"
     # The eigen path's channels; read only with n2-project-source lanes+residual.
     n2-project-eigen-channels: "5971-6076,6102-6338,6361-6401,6442-6573"
@@ -277,7 +296,7 @@ common:
     # (gps_l5, gal_e6, ...); the generator refuses a chain it does not build.
     lane-transfer:
         - gal_e6:1263.4-1273.6
-        - gps_l2c:1212.3-1242.9
+        - gps_l2c:1207.1-1242.9
         - gal_e5b:1186.7-1196.9
         - bds_b2b:1186.7-1196.9
         - gps_l5:1186.7-1196.9
@@ -288,10 +307,34 @@ common:
     # B3I's), E6-B/C's over the PRS upper lobe (BOCcos(10,5) at 1288.98 +-5.1 MHz), and the
     # L5-band chains' over the lower AltBOC edge below E5a/B2a's null at 1166.2 MHz.
         - glo_l2of:1237.9-1258.2
-        - gal_e6:1283.9-1294.1
-        - gal_e5a:1160.0-1166.2
-        - bds_b2a:1160.0-1166.2
-        - gps_l5:1160.0-1166.2
+        - gal_e6:1283.9-1304.9
+        - gal_e5a:1140.0-1166.2
+        - bds_b2a:1140.0-1166.2
+        - gps_l5:1140.0-1166.2
+    # 2026-11-26: GPS L2 down to 1207.1 MHz (the P(Y) first lower sidelobe, 1207.1-1217.4, and the
+    # M-code's outer skirt, unlaned in 1208-1212.3 inside E5b); SBAS and QZSS L5 over the same
+    # skirts as GPS L5 (BPSK at 10.23 Mcps; J09 and the WAAS satellites hold one direction all
+    # day); BeiDou B3I's first sidelobes either side of its 1258.5-1278.5 MHz lobe (every GPU
+    # measures B3I on all its channels inside the lobe; above 1278.5 the B3 sidelobes were left
+    # in E6, 11-24).
+        - sbas_l5:1140.0-1166.2
+        - qzss_l5:1140.0-1166.2
+        - sbas_l5:1186.7-1196.9
+        - qzss_l5:1186.7-1196.9
+        - bds_b3i:1248.3-1258.4
+        - bds_b3i:1278.6-1304.9
+    # 2026-11-27: GLONASS L3OC's sidelobes (BPSK at 10.23 Mcps about 1202.025 MHz: nulls every
+    # 10.23 MHz, the lobe itself 1191.8-1212.3 is the chain's own). R08 at 5.9 deg from boresight
+    # (11-26 19:27Z) left its second lower sidelobe in the projected L5 centre at 1176 MHz, where
+    # no lane of it was; R23 at 5.1 deg (11-27 00:52Z) the same. Down to the projection's edge
+    # below (sidelobes 1-5) and up to GLONASS L2OF's range above (sidelobes 1-3).
+        - glo_l3oc:1140.0-1191.8
+        - glo_l3oc:1212.3-1242.9
+    # 2026-11-27, with the projection's widening to 1140.0-1304.9 MHz: the L5-band chains down to
+    # 1140 (BPSK at 10.23 Mcps: GPS, QZSS and SBAS L5's second and third lower sidelobes,
+    # 1145.8-1156.0 and 1135.5-1145.8; the E5/B2 AltBOC third-harmonic lower lobe on 1145.8),
+    # and B3I and E6 up to 1304.9 (B3I's second and third upper sidelobes, 1289.0-1299.2 and
+    # 1299.2-1309.4; the E6 PRS outer lobes). The ranges above are extended in place.
     # 2026-11-06: GuoWang's lanes over its whole 1202.025 MHz lobe (BPSK at 2.046 Mcps: main lobe
     # +-2.05 MHz, sidelobes to +-6.1). In the 11-06 Tau A window no gw_1202 lane reached
     # 1204.688 MHz, on the upper sidelobe past the null, during the tracked passes (cx27 lane
@@ -361,6 +404,13 @@ common:
     # out to elem-proj-deg the projection keeps the other satellites' rows clean, and inside
     # 2 deg a satellite in the bright one's beam is lost anyway.
     elem-freeze-deg: 2
+    # Only PRNs the fleet holds feed the shared model: a PRN's shadow counts while its lane is at
+    # least this coherent on one channel. Every warm shadow used to count with equal weight, and
+    # a shadow learns whatever its rows hold: on cx43 (2026-11-26) a third to two thirds of each
+    # chain's shadows were noise (unheld PRNs, the QZSS noise probes), and qzss_l2c, one
+    # satellite against three probes, learned noise and lost QZS-1R after the 23:03Z cycle.
+    # Held lanes read coherence 0.3-0.98, unheld 0.08-0.25 (probes publish none).
+    elem-shared-learn-coh-min: 0.3
     # Fleet reference for the shared model's phase pin: one vector per band, a snapshot of the
     # fleet consensus (python/scripts/gnss/elem_shared_ref.py snapshot), refused unless taken
     # against the epoch the positions came from. Without it each instance pins to its own first
@@ -385,7 +435,16 @@ common:
     # 30 min. Fourteen bands (the ten, plus B1I, E1-C, L1 C/A and SBAS L1), all instances,
     # R >= 0.99, similarity medians 0.85-1.00, phases within 2 deg of the pins in use. GuoWang
     # 1202 and GLONASS L2 FDMA have no consensus and stay out (elem_ref_cron.sh holds them).
-    elem-shared-ref: config/elem_shared_ref_20261113.json
+    # 2026-11-26: the watch's own file (auto_ref.json) as it stood at 03:15Z, copied unchanged.
+    # The F-engine start of 11-25 18:23Z stepped 51 inputs by whole ADC samples: the watch
+    # re-took ten bands at 18:45-20:15Z and turned the four L1 bands by the steps
+    # (fengine_steps.py). The same fourteen bands. QZSS L5 has no entry: the watch takes one
+    # when its assemblers agree.
+    # 2026-11-27: auto_ref.json as it stood at 22:35:01Z 11-26, copied unchanged. Every entry is
+    # of the 11-26 17:59:48Z start: the watch turned B1I and L2OC by its steps and re-took the
+    # rest at 18:20-22:35Z. QZSS L5 and QZSS L2C have entries now (sixteen bands); GuoWang 1202
+    # and GLONASS L2 FDMA stay held.
+    elem-shared-ref: config/elem_shared_ref_20261127.json
     elem-shared-ref-mode: live
     # The gnss VM, which runs the search aggregator, the telemetry gather and the broker.
     # 127.0.0.1, the generator default, would point every node at itself. Moving the aggregator
@@ -702,8 +761,8 @@ chains:
     # k is reassigned when a satellite is replaced. The tracker code tiles the 10 ms
     # Manchester halves of a 20 ms bit (GLO_L2OF_MC). The comb with Doppler, 1242.3-1249.1 MHz, is
     # 6361-6396 (exempt above), and each satellite's lobe about six of them, one per instance.
-    # Every assigned slot is pinned (25 of 32), so the chain needs no live PRN reconfig (FDMA
-    # refuses it); below-horizon slots serve as its noise probes. k from BRDC 2026-10-27.
+    # Every assigned slot is pinned (26 of 32), so the chain needs no live PRN reconfig (FDMA
+    # refuses it); below-horizon slots serve as its noise probes. k from BRDC 2026-11-27.
     # DLL spacing: L2C's geometry per satellite (511 kcps BPSK, each lobe about six channels,
     # one per instance, summed coherently by the fleet loop), so the six-channel 0.33; first
     # sky to confirm. Written, not derived as L2C's: a slot's channel count depends on its k
@@ -712,7 +771,7 @@ chains:
     - id: 13
       key: glo_l2of
       descriptor: GLO_L2OF_MC
-      prns: 1@1,2@-4,3@5,4@6,5@1,6@-4,7@5,8@6,9@-2,10@-7,11@0,12@-1,13@-2,14@-7,15@0,16@-1,17@4,18@-3,19@3,20@2,21@4,22@-3,23@3,24@2,27@-5
+      prns: 1@1,2@-4,3@5,4@6,5@1,6@-4,7@5,8@6,9@-2,10@-7,11@0,12@-1,13@-2,14@-7,15@0,16@-1,17@4,18@-3,19@3,20@2,21@4,22@-3,23@3,24@2,26@-6,27@-5
       dll-spacing-chips: 0.33
       telem-rows: 14
       proj-sys: R
@@ -778,6 +837,37 @@ chains:
       telem-rows: 14
       proj-sys: G
       shared-ref-band: l1
+
+    # QZSS L5-Q, the dataless pilot (GPS L5-Q's structure on PRNs 193..202, QZSS_L5_Q_NH), on
+    # gps_l5's channels. 201 is QZS-7 at 175 W, az 243 el 11-16 from DRAO all day, and
+    # 194/195/196 the inclined satellites, which rise to el ~17 in the north-west; RINEX J
+    # records (Jnn = PRN - 192). Model-primary, as SBAS L5. The noise probes: 199 and 200
+    # (QZS-3 and QZS-6, geostationary at el -23 and -41 here) and 193, a code no satellite
+    # sends: presence needs 3. A band of its own in the shared reference: GPS L5's entry does
+    # not describe its models (similarity 0.2 to 0.3).
+    - id: 18
+      key: qzss_l5
+      descriptor: QZSS_L5_Q_NH
+      prns: 194,195,196,201,199,200,193
+      dll-spacing-chips: 0.5
+      telem-rows: 14
+      proj-sys: G
+      shared-ref-band: qzss_l5
+
+    # QZSS L2C CM (GPS L2C's structure on PRNs 193..202, QZSS_L2C_CM), on gps_l2c's channels
+    # with its derived DLL spacing. Only the Block II satellites send L2C (IS-QZSS-PNT-006
+    # Table 3.2.1-1): 194/195/196, which rise to el ~17 in the north-west, and 199 (QZS-3),
+    # geostationary at el -23 here; QZS-5/6/7 (197, 200, 201) send no L2 signal. Model-primary,
+    # as qzss_l5. The noise probes are qzss_l5's: 199, 200 (el -41, no L2C) and 193, a code no
+    # satellite sends. A band of its own in the shared reference, as qzss_l5.
+    - id: 19
+      key: qzss_l2c
+      descriptor: QZSS_L2C_CM
+      prns: 194,195,196,199,200,193
+      dll-spacing-chips: fleet
+      telem-rows: 14
+      proj-sys: G
+      shared-ref-band: qzss_l2c
 
 nodes:
     # THE FLEET LIST: every host that runs the GNSS branch, and nothing else names one.

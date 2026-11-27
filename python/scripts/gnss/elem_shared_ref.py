@@ -9,8 +9,9 @@
                       EXCLUDE_DEG of one of them keeps its phase (a pinned band does not move);
                       instances further off are listed, and are slewed onto it when it is
                       posted. It is written with the array epoch the configs were generated
-                      for. The generator copies each band's entry into that band's assemblers
-                      (--elem-shared-ref).
+                      for, each entry with the F-engine start it was made under (--frame0; ""
+                      leaves that out). The generator copies each band's entry into that band's
+                      assemblers (--elem-shared-ref).
   post FILE           POST every band's reference to its instances (--mode), zeroed where
                       each instance's generated config holds it at 0 (as every POST here is).
                       --mode shape also makes the instances combine with the reference's shape
@@ -39,12 +40,24 @@
                         pin until then). --hold names bands to report and leave alone.
                       Without --act nothing is changed. A watch in live mode leaves an instance in
                       shape mode there: shape pins like live.
+                      An entry --act replaces is first copied to DIR/replaced.
+                      The watch also follows the F-engine's whole-sample steps (fengine_steps.py;
+                      --steps "" leaves this out). With or without --act, a start that the frame0
+                      file (--frame0) shows gets a row in the step table, each pass's consensus of
+                      every band is kept in DIR/models for MODELS_KEEP_S, and a start's steps are
+                      measured from the last quiet pass before it and the bands whose models have
+                      settled after it (no frozen instance, so no boresight transit, and still
+                      across SETTLE_PASSES passes), tried again at every pass until they are. Until
+                      then --act holds the re-posts and re-takes the start would otherwise trigger
+                      (at most HOLD_MAX_S). An entry made under an earlier start is turned by the
+                      steps since and POSTed (--act), unless the models then fit it worse.
 
 Instances are read from config/generated/chord_gnss_<node>_multi.yaml (port 12048). Band names:
 the shared-ref-band of the assembler's chain in the chains table (config/gnss_fleet_chord.yaml
 chains:), the band the generator copies into it, so GPS and SBAS L5 share l5.
 """
 import argparse
+import calendar
 import concurrent.futures
 import glob
 import hashlib
@@ -66,6 +79,7 @@ sys.path.insert(0, os.path.join(K, "config"))
 import gnss_chain_table  # noqa: E402
 import gnss_fleet  # noqa: E402
 from gnss_broker import node_api  # noqa: E402
+import fengine_steps  # noqa: E402
 
 GEN = os.path.join(K, "config", "generated", "chord_gnss_%s_multi.yaml")
 PORT = 12048
@@ -75,6 +89,24 @@ ALERT_DEG = 45.0  # watch: an instance this far off the reference starts an epis
 MIN_RUN_S = 900.0  # an episode (or a stale reference) counts once it lasts this long
 ACT_EVERY_S = 1800.0  # --act re-posts to one instance at most this often
 RETAKE_EVERY_S = 7200.0  # --act re-takes one band's reference at most this often
+# The F-engine's starts, one entry each (scripts/gnss/site/gw_frame0_sync.py).
+FRAME0 = "/home/kvand/gnss/builds/gw1202/frame0.json"
+MODELS_KEEP_S = 6 * 3600.0  # watch keeps each pass's consensus (DIR/models) this long
+# A model this long after an F-engine start holds little of what it learned before it (three
+# elem_sum_shared_tau_s): the earliest pass a start's steps are measured from.
+AFTER_START_S = 900.0
+# A band's models have settled after a start when its consensus moves less than SETTLE_DEG (rms
+# over the inputs read, each pol half's common phase off) between each of its last SETTLE_PASSES
+# kept passes; the steps are measured from the bands that have, as soon as enough have. On the
+# 2026-11-26 start the L5 and E5b bands settled in 15-20 min and the L1 bands in ~25.
+SETTLE_DEG = 10.0
+SETTLE_PASSES = 3
+# While the newest start's steps are not measured, --act holds its re-posts of an entry made under
+# an earlier start, and its re-takes, for at most this long after the start.
+HOLD_MAX_S = 3600.0
+MIN_AMP = 0.3  # an input below this share of its half's median amplitude is not read for steps
+# An entry is not turned if that lowers the models' median similarity by more.
+FOLD_SIM = 0.02
 
 
 def nodes():
@@ -153,10 +185,12 @@ def band_of(stage):
 
 
 def inst_name(node, stage):
-    """node/GPU, plus ":sbas" for the SBAS L5 assembler: GPS and SBAS L5 share the band, so one
-    GPU holds two of its assemblers and the bare node/GPU would name both the same."""
+    """node/GPU, plus ":sbas" or ":qzss" for an SBAS or QZSS assembler: GPS and SBAS L5 share a
+    band, so one GPU holds two of its assemblers and the bare node/GPU would name both the
+    same."""
     system = (gnss_fleet.stage_chain(stage, "n2assemble") or "").partition("_")[0]
-    return "%s/%s%s" % (node, stage[4], ":sbas" if system == "sbas" else "")
+    suffix = ":" + system if system in ("sbas", "qzss") else ""
+    return "%s/%s%s" % (node, stage[4], suffix)
 
 
 def epoch_of_configs():
@@ -305,6 +339,10 @@ def band_consensus(res, band, exclude_deg, min_sim):
 def snapshot(a):
     res = poll()
     epoch = epoch_of_configs()
+    frame0 = None
+    if a.frame0:
+        with open(a.frame0) as f:
+            frame0 = json.load(f)[-1]["frame0_int"]
     bands, n_elem = {}, None
     for (node, stage), d in sorted(res.items()):
         if "error" in d:
@@ -330,6 +368,8 @@ def snapshot(a):
                     entry["off"][pol] or "-",
                 )
             )
+        if frame0 is not None:
+            entry["frame0"] = frame0
         bands[band] = entry
         n_elem = len(entry["ref"])
     out = {
@@ -392,10 +432,12 @@ def post(a):
         band = band_of(stage)
         if band not in snap["bands"]:
             continue
+        entry = snap["bands"][band]
+        body = dict(body_extra, ref=entry["ref"])
+        if entry.get("frame0"):
+            body["frame0"] = int(entry["frame0"])
         try:
-            rep = post_one(
-                node, stage, dict(body_extra, ref=snap["bands"][band]["ref"])
-            )
+            rep = post_one(node, stage, body)
             print(
                 "  %-8s %-4s was %-4s staged %s"
                 % (
@@ -507,20 +549,355 @@ def act_mode(a, fr):
     return a.mode
 
 
-def post_note(node, stage, ref, mode, why):
-    """POST ref to one assembler for --act; (ok, log line)."""
+def post_note(node, stage, ref, mode, why, frame0=None):
+    """POST ref to one assembler for --act, with the F-engine start it was made under when known
+    (the node then re-seeds a model it no longer describes while that start lasts); (ok, log
+    line)."""
     name = "%s %s" % (inst_name(node, stage), band_of(stage))
+    body = {"ref": ref, "mode": mode}
+    if frame0:
+        body["frame0"] = int(frame0)
     try:
-        post_one(node, stage, {"ref": ref, "mode": mode})
+        post_one(node, stage, body)
         return True, "%s: reference posted, mode %s (%s)" % (name, mode, why)
     except Exception as e:  # noqa: BLE001
         return False, "%s: post FAILED %s (%s)" % (name, repr(e)[:80], why)
+
+
+def post_band(a, res, band, ref, why, now, state, lines, notes, frame0=None):
+    """--act: POST a band's new reference to each of its instances that answered the poll."""
+    for (node, stage), d in sorted(res.items()):
+        if band_of(stage) == band and "error" not in d:
+            mode = act_mode(a, d.get("fleet_ref"))
+            ok, note = post_note(node, stage, ref, mode, why, frame0)
+            (notes if ok else lines).append(note)
+            state["acted"]["%s %s" % (inst_name(node, stage), band)] = now
+
+
+def band_models(res, band):
+    """The band's models that answered the poll and are not frozen."""
+    return [
+        d
+        for (_node, stage), d in res.items()
+        if band_of(stage) == band and "error" not in d and not d.get("shared_frozen")
+    ]
+
+
+def band_sims(models, F):
+    """{pol: the similarity of each model that has that half to reference F}."""
+    sims = {0: [], 1: []}
+    for d in models:
+        for pol, o in enumerate(instance_offsets(d, F) or []):
+            if o is not None:
+                sims[pol].append(o[1])
+    return sims
+
+
+def keep_replaced(d, band, entry, taken, stamp):
+    """Copy a reference entry that is about to be replaced to DIR/replaced."""
+    os.makedirs(os.path.join(d, "replaced"), exist_ok=True)
+    name = "%s_%s.json" % (band, stamp.replace("-", "").replace(":", ""))
+    with open(os.path.join(d, "replaced", name), "w") as f:
+        json.dump(
+            {"band": band, "taken_utc": taken, "replaced_utc": stamp, "entry": entry},
+            f,
+            indent=1,
+        )
+
+
+def band_freqs():
+    """{band: carrier frequency in Hz} of the reference bands."""
+    # Imported here: chord_band_plan reads the interface golden, which only the steps need.
+    from chord_band_plan import signal_table
+
+    sig = signal_table()
+    return {
+        r.shared_ref_band: sig[r.descriptor]["carrier_hz"]
+        for r in gnss_chain_table.load()
+    }
+
+
+def model_times(d):
+    """The unix times of the passes kept in DIR/models, oldest first."""
+    names = glob.glob(os.path.join(d, "models", "*.json"))
+    return sorted(int(os.path.basename(p)[: -len(".json")]) for p in names)
+
+
+def save_models(d, now, stamp, res):
+    """Keep this pass's consensus of every band that has one as DIR/models/<unix time>.json,
+    with the number of the band's instances that were frozen (a boresight transit), and drop
+    the passes older than MODELS_KEEP_S."""
+    bands, frozen = {}, {}
+    for band in sorted({band_of(stage) for _node, stage in res}):
+        frozen[band] = sum(
+            1
+            for (_node, stage), v in res.items()
+            if band_of(stage) == band and "error" not in v and v.get("shared_frozen")
+        )
+        try:
+            bands[band] = band_consensus(res, band, EXCLUDE_DEG, MIN_SIM)["ref"]
+        except ValueError:
+            pass
+    os.makedirs(os.path.join(d, "models"), exist_ok=True)
+    for t in model_times(d):
+        if t < now - MODELS_KEEP_S:
+            os.remove(os.path.join(d, "models", "%d.json" % t))
+    path = os.path.join(d, "models", "%d.json" % now)
+    with open(path + ".tmp", "w") as f:
+        json.dump({"t": stamp, "bands": bands, "frozen": frozen}, f)
+    os.replace(path + ".tmp", path)
+
+
+def kept_passes(d, lo, hi):
+    """[(unix time, {band: reference vector})] of the passes kept in DIR/models at lo <= unix
+    time < hi, oldest first, each with the bands that had no frozen instance (a pass kept
+    before frozen counts were recorded counts as quiet)."""
+    out = []
+    for t in (t for t in model_times(d) if lo <= t < hi):
+        with open(os.path.join(d, "models", "%d.json" % t)) as f:
+            kept = json.load(f)
+        frozen = kept.get("frozen", {})
+        out.append(
+            (t, {b: v for b, v in kept["bands"].items() if not frozen.get(b, 0)})
+        )
+    return out
+
+
+def saved_models(d, lo, hi, newest):
+    """{band: reference vector} from the quiet passes kept in DIR/models at lo <= unix time
+    < hi: per band from the newest pass that holds it (newest), or from the oldest."""
+    out = {}
+    for _t, bands in sorted(kept_passes(d, lo, hi), reverse=newest):
+        for band, ref in bands.items():
+            out.setdefault(band, ref)
+    return out
+
+
+def weak_inputs(v):
+    """Per input: its amplitude is below MIN_AMP of the median of its pol half's live inputs."""
+    amp, h = np.abs(v), len(v) // 2
+    weak = np.ones(len(v), dtype=bool)
+    for half in (slice(0, h), slice(h, None)):
+        live = amp[half] > 0
+        if live.any():
+            weak[half] = amp[half] < MIN_AMP * np.median(amp[half][live])
+    return weak
+
+
+def moved_deg(x, y):
+    """How far a band's consensus moved from x to y: rms over the inputs both read of the
+    phase change, each pol half's common phase taken off, in degrees."""
+    p = np.angle(y * np.conj(x))
+    p[weak_inputs(x) | weak_inputs(y)] = np.nan
+    h = len(p) // 2
+    for half in (slice(0, h), slice(h, None)):
+        ok = np.isfinite(p[half])
+        if ok.any():
+            c = np.angle(np.mean(np.exp(1j * p[half][ok])))
+            p[half] = np.angle(np.exp(1j * (p[half] - c)))
+    return float(np.degrees(np.sqrt(np.nanmean(p ** 2))))
+
+
+def settled_models(d, row, now):
+    """({band: vector}, {band: why not}) after the start of `row`: per band, its last
+    SETTLE_PASSES quiet passes at least AFTER_START_S after the start, when each moved less
+    than SETTLE_DEG from the one before; the vector is their mean, each pol half turned onto
+    the newest one's common phase."""
+    by_band = {}
+    for t, bands in kept_passes(d, row["frame0_int"] + AFTER_START_S, now + 1):
+        for band, ref in bands.items():
+            by_band.setdefault(band, []).append(
+                np.array([complex(x, y) for x, y in ref])
+            )
+    out, why = {}, {}
+    for band, vs in by_band.items():
+        vs = vs[-SETTLE_PASSES:]
+        if len(vs) < SETTLE_PASSES:
+            why[band] = "%d quiet passes" % len(vs)
+            continue
+        moved = [moved_deg(a, b) for a, b in zip(vs[:-1], vs[1:])]
+        if max(moved) >= SETTLE_DEG:
+            why[band] = "moved %.0f deg" % max(moved)
+            continue
+        h = len(vs[-1]) // 2
+        mean = np.zeros(len(vs[-1]), dtype=complex)
+        for v in vs:
+            v = v.copy()
+            for half in (slice(0, h), slice(h, None)):
+                c = np.vdot(v[half], vs[-1][half])
+                v[half] *= c / abs(c) if abs(c) > 0 else 1.0
+            mean += v
+        out[band] = mean / len(vs)
+    return out, why
+
+
+def measure_steps(d, row, now, sample_ns):
+    """(steps, source) of the F-engine start of `row` (a row of the step table) from the
+    passes kept in DIR/models: each band's consensus at the last quiet pass before the start
+    against its settled consensus after it (settled_models). Per pol half,
+    fengine_steps.fit_steps finds the whole-sample steps that explain the phase each input
+    gained in every band. Raises ValueError while too few bands have settled or no steps
+    explain them; the watch tries again at its next pass."""
+    before = saved_models(d, row["prev_frame0_int"], row["frame0_int"], True)
+    after, why = settled_models(d, row, now)
+    freqs = band_freqs()
+    bands = sorted(set(before) & set(after) & set(freqs))
+    if len(bands) < fengine_steps.MIN_BANDS:
+        waiting = sorted(b for b in set(why) & set(before) & set(freqs))
+        raise ValueError(
+            "%d bands have a quiet pass before it and have settled after it%s"
+            % (
+                len(bands),
+                "; waiting for " + ", ".join("%s (%s)" % (b, why[b]) for b in waiting)
+                if waiting
+                else "",
+            )
+        )
+    gained = []
+    for band in bands:
+        b = np.array([complex(x, y) for x, y in before[band]])
+        f = after[band]
+        # An element model turns against the delay of its input (fengine_steps.py).
+        p = -np.angle(f * np.conj(b))
+        p[weak_inputs(b) | weak_inputs(f)] = np.nan
+        gained.append(p)
+    gained = np.array(gained)
+    h = gained.shape[1] // 2
+    steps, rms = [], []
+    for pol in (0, 1):
+        try:
+            st, r = fengine_steps.fit_steps(
+                gained[:, pol * h : (pol + 1) * h], [freqs[b] for b in bands], sample_ns
+            )
+        except ValueError as e:
+            raise ValueError("pol %d: %s" % (pol, e))
+        steps += st
+        rms.append(r)
+    return (
+        steps,
+        "element models of %s (settled), rms %.0f/%.0f deg" % (" ".join(bands), *rms,),
+    )
+
+
+def follow_starts(a, now, stamp, lines, notes):
+    """The step table for this pass, or None (and an alert line) if it or the frame0 file
+    cannot be read. A start in the frame0 file that is newer than the table's last row gets a
+    row, and the last row's steps are measured once the passes kept in DIR/models allow it."""
+    try:
+        table = fengine_steps.load(a.steps)
+        with open(a.frame0) as f:
+            starts = json.load(f)
+        added = False
+        for s in starts:
+            if s["frame0_int"] > table["rows"][-1]["frame0_int"]:
+                fengine_steps.add_start(table, s["frame0_int"], s["start_utc"])
+                added = True
+        if added:
+            fengine_steps.save(table, a.steps)
+    except (OSError, ValueError, KeyError, IndexError, TypeError) as e:
+        lines.append("the F-engine's sample steps are not followed: %s" % repr(e)[:120])
+        return None
+    row = table["rows"][-1]
+    if row["steps"] is not None or row["prev_frame0_int"] is None:
+        return table
+    try:
+        steps, source = measure_steps(a.dir, row, now, table["adc_sample_ns"])
+    except ValueError as e:
+        lines.append(
+            "the steps of the F-engine start %s are not measured: %s"
+            % (row["start_utc"], e)
+        )
+        return table
+    row["steps"], row["measured_utc"], row["source"] = steps, stamp, source
+    fengine_steps.save(table, a.steps)
+    notes.append(
+        "the steps of the F-engine start %s: %s"
+        % (row["start_utc"], fengine_steps.ranges(steps))
+    )
+    return table
+
+
+def made_under(table, entry, taken):
+    """The F-engine start (frame0_int) a reference entry was made under: the later of the one
+    it records and the last start at or before the time it was taken, since the frame0 file can
+    trail a start by hours. None for an entry older than the table that records none."""
+    t = calendar.timegm(time.strptime(taken, "%Y-%m-%dT%H:%M:%SZ"))
+    starts = [r["frame0_int"] for r in table["rows"] if r["frame0_int"] <= t]
+    return max(starts + [entry.get("frame0", 0)]) or None
+
+
+def fold_steps(a, table, snap, base_taken, res, now, stamp, state, lines, notes):
+    """Turn each reference entry made under an earlier F-engine start by the steps its inputs
+    took since (an element model turns by exp(-2 pi i f n Ts)), unless the band's models then
+    fit it worse. An input whose steps were not read is left as it is. With --act the entry is
+    replaced and POSTed like a re-taken one; without, it is reported. Returns the reference:
+    snap itself if no entry was turned."""
+    cur = table["rows"][-1]["frame0_int"]
+    old = {}
+    for band, entry in snap["bands"].items():
+        taken = snap.get("auto", {}).get(band, base_taken)
+        made = made_under(table, entry, taken)
+        if made is not None and made != cur:
+            old[band] = (made, taken)
+    if not old:
+        return snap
+    freqs, failed = band_freqs(), {}
+    for band, (made, taken) in sorted(old.items()):
+        if band not in freqs:
+            continue
+        try:
+            steps = fengine_steps.steps_between(table, made, cur)
+        except ValueError as e:
+            failed.setdefault(str(e), []).append(band)
+            continue
+        if not any(steps):
+            continue
+        entry = snap["bands"][band]
+        F = np.array([complex(x, y) for x, y in entry["ref"]])
+        turn = fengine_steps.phase(steps, freqs[band], table["adc_sample_ns"])
+        G = F * np.exp(-1j * np.nan_to_num(turn))
+        models = band_models(res, band)
+        was, new = band_sims(models, F), band_sims(models, G)
+        if min(len(v) for v in was.values()) < 4:
+            continue
+        was = [float(np.median(was[pol])) for pol in (0, 1)]
+        new = [float(np.median(new[pol])) for pol in (0, 1)]
+        what = (
+            "%s: made under an earlier F-engine start; turned by the steps since, "
+            % band
+        )
+        what += "the models' similarity goes %.2f/%.2f -> %.2f/%.2f" % (*was, *new)
+        if min(n - w for w, n in zip(was, new)) < -FOLD_SIM:
+            lines.append(what + ": left as it is")
+            continue
+        if not a.act:
+            lines.append(what + " (--act turns it)")
+            continue
+        keep_replaced(a.dir, band, entry, taken, stamp)
+        ref = [[round(float(x.real), 6), round(float(x.imag), 6)] for x in G]
+        snap = dict(
+            snap,
+            bands=dict(snap["bands"], **{band: dict(entry, ref=ref, frame0=cur)}),
+            taken_utc=stamp,
+            auto=dict(snap.get("auto", {}), **{band: stamp}),
+        )
+        notes.append(what)
+        post_band(
+            a, res, band, ref, "turned by the steps", now, state, lines, notes, cur
+        )
+    for why, bands in sorted(failed.items()):
+        lines.append(
+            "%s: made under an earlier F-engine start and not turned: %s"
+            % (", ".join(bands), why)
+        )
+    return snap
 
 
 def watch(a):
     if a.mode == "off":  # the fleet runs without a reference: nothing to hold it to
         a.act = False
     snap = load_ref(a.file)
+    base_taken = snap["taken_utc"]
     os.makedirs(a.dir, exist_ok=True)
     state_path = os.path.join(a.dir, "state.json")
     auto_path = os.path.join(a.dir, "auto_ref.json")
@@ -542,22 +919,42 @@ def watch(a):
     stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
     res = poll()
     lines, notes = [], []  # lines need a person (ALERT); notes are what --act did
+    stale, retook = set(), False
+
+    # The F-engine's sample steps: this pass's models are kept, a new start gets its row and
+    # its steps, and an entry made under an earlier start is turned by the steps since.
+    table = None
+    if getattr(a, "steps", ""):
+        save_models(a.dir, now, stamp, res)
+        table = follow_starts(a, now, stamp, lines, notes)
+    if table is not None:
+        folded = fold_steps(
+            a, table, snap, base_taken, res, now, stamp, state, lines, notes
+        )
+        if folded is not snap:
+            snap, active, retook = folded, auto_path, True
+    # Until the newest start's steps are measured, an entry made under an earlier start is wrong
+    # on the inputs that moved, and so is a re-take from models still settling: hold both.
+    hold_why = None
+    if table is not None:
+        row = table["rows"][-1]
+        if (
+            row["steps"] is None
+            and row["prev_frame0_int"] is not None
+            and now - row["frame0_int"] < HOLD_MAX_S
+        ):
+            hold_why = "the steps of the F-engine start %s are not measured yet" % (
+                row["start_utc"]
+            )
 
     # A band whose reference describes at most half of its models (the F-engine's gains
     # changed) is re-taken from the fleet consensus, if two thirds of the fleet agree on one.
     # A band with assemblers and no reference (a new chain) gets its first one the same way.
-    stale, retook = set(), False
     hold = set(filter(None, (getattr(a, "hold", "") or "").split(",")))
     polled = {band_of(stage) for (_node, stage), d in res.items() if "error" not in d}
     for band in sorted(set(snap["bands"]) | polled):
         entry = snap["bands"].get(band)
-        models = [
-            d
-            for (_node, stage), d in res.items()
-            if band_of(stage) == band
-            and "error" not in d
-            and not d.get("shared_frozen")
-        ]
+        models = band_models(res, band)
         if entry is None:
             if band in hold:
                 lines.append(
@@ -575,11 +972,7 @@ def watch(a):
             )
         else:
             F = np.array([complex(x, y) for x, y in entry["ref"]])
-            sims = {0: [], 1: []}
-            for d in models:
-                for pol, o in enumerate(instance_offsets(d, F) or []):
-                    if o is not None:
-                        sims[pol].append(o[1])
+            sims = band_sims(models, F)
             if not any(
                 len(v) >= 4 and 2 * sum(x < MIN_SIM for x in v) >= len(v)
                 for v in sims.values()
@@ -616,12 +1009,20 @@ def watch(a):
                 % (what, new["R"], new["n"])
             )
             continue
+        if hold_why and entry is not None:
+            lines.append("%s; the re-take is held: %s" % (what, hold_why))
+            continue
         if now - state["retaken"].get(band, 0) < RETAKE_EVERY_S:
             lines.append(
                 "%s, and it was re-taken less than %.0f h ago"
                 % (what, RETAKE_EVERY_S / 3600)
             )
             continue
+        if entry is not None:
+            taken = snap.get("auto", {}).get(band, base_taken)
+            keep_replaced(a.dir, band, entry, taken, stamp)
+        if table is not None:
+            new["frame0"] = table["rows"][-1]["frame0_int"]
         snap = dict(
             snap,
             bands=dict(snap["bands"], **{band: new}),
@@ -634,21 +1035,20 @@ def watch(a):
             "%s; %s from the fleet consensus (R %s, n %s)"
             % (what, verb, new["R"], new["n"])
         )
-        for (node, stage), d in sorted(res.items()):
-            if band_of(stage) == band and "error" not in d:
-                mode = act_mode(a, d.get("fleet_ref"))
-                ok, note = post_note(node, stage, new["ref"], mode, verb)
-                (notes if ok else lines).append(note)
-                state["acted"]["%s %s" % (inst_name(node, stage), band)] = now
+        post_band(
+            a, res, band, new["ref"], verb, now, state, lines, notes, new.get("frame0")
+        )
     if active == auto_path:
         if retook:
             with open(auto_path + ".tmp", "w") as f:
                 json.dump(snap, f, indent=1)
             os.replace(auto_path + ".tmp", auto_path)
+        # FILE can be a copy of an earlier auto_ref.json: its own entries are not listed.
+        since = sorted(b for b, t in snap.get("auto", {}).items() if t > base_taken)
         lines.append(
             "the reference in use is %s (re-taken: %s); the configs still carry %s: copy the "
             "file into config/, point the manifest's elem-shared-ref at it and regenerate"
-            % (auto_path, ", ".join(sorted(snap.get("auto", {}))), a.file)
+            % (auto_path, ", ".join(since), a.file)
         )
 
     cur = {
@@ -659,8 +1059,14 @@ def watch(a):
         "errors": {},
     }
     seen = set()
+    held = []
     for band, entry in sorted(snap["bands"].items()):
         F = np.array([complex(x, y) for x, y in entry["ref"]])
+        stale_entry = (
+            bool(hold_why)
+            and made_under(table, entry, snap.get("auto", {}).get(band, base_taken))
+            != table["rows"][-1]["frame0_int"]
+        )
         rows, ph = {}, {0: [], 1: []}
         for (node, stage), d in sorted(res.items()):
             if band_of(stage) != band:
@@ -722,11 +1128,16 @@ def watch(a):
             act_key = "%s %s" % (name, band)
             if not why or not fr or frozen or a.mode == "off":
                 continue
+            if stale_entry and a.act:
+                held.append(act_key)
+                continue
             if not a.act:
                 lines.append("%s: %s; post the reference" % (act_key, "; ".join(why)))
             elif now - state["acted"].get(act_key, 0) >= ACT_EVERY_S:
                 mode = act_mode(a, fr)
-                ok, note = post_note(node, stage, entry["ref"], mode, "; ".join(why))
+                ok, note = post_note(
+                    node, stage, entry["ref"], mode, "; ".join(why), entry.get("frame0")
+                )
                 (notes if ok else lines).append(note)
                 state["acted"][act_key] = now
         cur["bands"][band] = {
@@ -735,6 +1146,11 @@ def watch(a):
             ],
             "instances": rows,
         }
+    if held:
+        lines.append(
+            "%d re-posts of entries made under an earlier F-engine start are held (%s): %s"
+            % (len(held), ", ".join(sorted({k.split()[-1] for k in held})), hold_why)
+        )
     for key in list(state["bad"]):
         if key not in seen:
             del state["bad"][key]
@@ -776,6 +1192,7 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("snapshot")
     s.add_argument("out")
+    s.add_argument("--frame0", default=FRAME0)
     p = sub.add_parser("post")
     p.add_argument("file")
     p.add_argument("--mode", choices=("off", "live", "shape"))
@@ -797,6 +1214,8 @@ def main():
         help="comma list of bands that have no reference and are to stay that way: "
         "reported in ALERT, never taken",
     )
+    w.add_argument("--frame0", default=FRAME0)
+    w.add_argument("--steps", default=fengine_steps.TABLE)
     a = ap.parse_args()
     {
         "snapshot": snapshot,

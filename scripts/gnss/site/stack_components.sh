@@ -76,6 +76,8 @@ bds_b1i C 1561098000  2046000  2046
 gps_l1ca G 1575420000  1023000  1023
 gal_e1c E 1575420000  1023000  4092
 sbas_l1 S 1575420000  1023000  1023
+qzss_l5 J 1176450000 10230000 10230
+qzss_l2c J 1227600000   511500 10230
 "
 
 gnss_chains() { echo "$GNSS_CHAIN_RF" | awk 'NF {print $1}'; }
@@ -173,8 +175,10 @@ gnss_component() {
         # projecting GPU's get_lanes to every other's set_lanes. Standalone: reads the fleet
         # files, the generated configs and the nodes' REST and nothing else, so it can never
         # touch the control path; if it dies the nodes fall back to their local lanes.
-        GNSS_EXEC=(/usr/bin/python3 -u "$GNSS_K/scripts/gnss/site/lane_relay.py" run
-                   --status "$GNSS_OBS_OUT/lane_relay")
+        # GNSS_LANE_INST_PHASE: the instrumental phase table the relay sends along (#246).
+        GNSS_EXEC=("$GNSS_VENV/bin/python" -u "$GNSS_K/scripts/gnss/site/lane_relay.py" run
+                   --status "$GNSS_OBS_OUT/lane_relay"
+                   ${GNSS_LANE_INST_PHASE:+--inst-phase "$GNSS_LANE_INST_PHASE"})
         ;;
 
     navrelay)

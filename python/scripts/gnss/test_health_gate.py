@@ -5,7 +5,10 @@ for E14 (health 130 / 16, transmitting) and E15 (healthy).
 Why each check exists: E14 passed 2 deg from boresight that night with no chain tracking it, because
 the gate dropped it from the chains' sky; the exemption must keep it (and the fixture must place it
 where the array saw it, or the exemption is about another satellite); and the gate must still drop
-an unhealthy satellite that is not on the list.
+an unhealthy satellite that is not on the list. E09 carried the same health words on 2026-11-25 and
+the array saw it at 61 deg elevation at 10:30Z: its record of that epoch must pass the gate there.
+The chains' skies run with the gate off to track such a satellite, and read the `unhealthy` mark
+to keep it out of every shared estimate, so the mark must be on the kept row and on no other.
 """
 import copy
 import math
@@ -26,8 +29,10 @@ FIX = os.path.join(
     "fixtures",
     "brdc_gal_e14_20261031.rnx",
 )
+FIX_E09 = os.path.join(os.path.dirname(FIX), "brdc_gal_e09_20261125.rnx")
 DRAO = (49.32075144444, -119.62081125, 545.0)
 T_PASS = 1793407620.0  # 2026-10-31T00:47:00Z
+T_E09 = 1795602600.0  # 2026-11-25T10:30:00Z
 BORE = (180.0, 62.7)  # az, el: the Tau A pointing
 
 
@@ -71,6 +76,27 @@ class TestHealthGate(unittest.TestCase):
         self.assertIn(("E", 14), pa)
         pa = ge.predict_all(eph, *DRAO, T_PASS, mask_deg=-90.0, health_gate=False)
         self.assertIn(("E", 15), pa)
+
+    def test_a_kept_unhealthy_row_is_marked(self):
+        eph = copy.deepcopy(self.eph)
+        for e in eph[("E", 15)]:
+            e["health"] = 130.0
+        pa = ge.predict_all(eph, *DRAO, T_PASS, mask_deg=-90.0, health_gate=False)
+        self.assertIs(pa[("E", 15)].get("unhealthy"), True)
+        self.assertNotIn("unhealthy", pa[("E", 14)])  # exempt: counted healthy
+        healthy = ge.predict_all(
+            self.eph, *DRAO, T_PASS, mask_deg=-90.0, health_gate=False
+        )
+        self.assertNotIn("unhealthy", healthy[("E", 15)])
+        self.assertEqual(
+            healthy, ge.predict_all(self.eph, *DRAO, T_PASS, mask_deg=-90.0)
+        )
+
+    def test_e09_passes_the_gate(self):
+        eph = ge.parse_rinex_nav([FIX_E09])
+        self.assertTrue(all(e["health"] != 0 for e in eph[("E", 9)]))
+        pa = ge.predict_all(eph, *DRAO, T_E09, mask_deg=0.0)
+        self.assertAlmostEqual(pa[("E", 9)]["el"], 60.6, delta=0.5)
 
 
 if __name__ == "__main__":

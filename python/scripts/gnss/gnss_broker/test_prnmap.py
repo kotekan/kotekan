@@ -141,7 +141,7 @@ class FakeEphemeris(object):
     separation from the boresight is |x0 + v * (t - T0)| deg."""
 
     @staticmethod
-    def predict_all(eph, lat, lon, alt, t, mask_deg=0.0):
+    def predict_all(eph, lat, lon, alt, t, mask_deg=0.0, health_gate=True):
         out = {}
         for key, (t0, t1, x0, v) in eph.items():
             if t0 <= t <= t1:
@@ -385,6 +385,8 @@ def set_prns_range(desc):
     gnss::max_prn, gnssSignal.hpp)."""
     if desc == "GW_1202":
         return 1, 2047
+    if desc.startswith("QZSS_"):
+        return 193, 202
     return (120, 158) if desc.startswith("SBAS_") else (1, 63)
 
 

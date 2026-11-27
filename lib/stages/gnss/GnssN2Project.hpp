@@ -22,6 +22,7 @@
 #include <atomic>
 #include <complex>
 #include <cstdint>
+#include <map>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -60,8 +61,9 @@
  * projection relative to the first projected one (a second ProjSubspace tracks the projected
  * matrix).
  *
- * @buffer in_buf   int32 n2k_correlation [Tc][F][blocks][16][16][2] (host_correlation_buffer)
- * @buffer out_buf  same shape: the projected copy for N2Accumulate
+ * @buffer in_buf   int32 n2k_correlation [Tc][F][blocks][16][16][2] (host_correlation_buffer);
+ *                  with gpu, cudaGnssN2Project's live-block frames
+ * @buffer out_buf  same shape: the projected copy for N2Accumulate; not with gpu
  *
  * @conf num_elements, num_local_freq, samples_per_data_set, sub_integration_ntime  as the N^2
  * @conf stations         Int list. Live station indices (correlator order).
@@ -135,7 +137,10 @@
  * with the line of sight moved along its track, every fleet_lane_rebuild_s) and appended to
  * build_lanes' candidates after the board's, so a local lane always wins the duplicate test
  * and the budget. A set older than fleet_lane_max_age_s is not used: a dead relay leaves the
- * local lanes.
+ * local lanes. The body may carry the instrumental phase table (inst_phase: made_frame0, fids
+ * ascending, phase_deg [knot][tracker element] with null where a knot does not hold the
+ * element; {} clears it, absent keeps it); inst_phase_knots (0 = none) and inst_phase_age_s
+ * report it.
  *
  * @conf fleet_lanes           Bool. Accept posted lanes (false).
  * @conf elem_positions_enu    Double list, [n][3]. The tracker elements' positions, metres
@@ -150,6 +155,21 @@
  *                             used up to lane_max_age_s after the instant its track
  *                             describes, ~0.3 deg for a GuoWang satellite. Needs
  *                             elem_positions_enu.
+ * @conf lane_inst_phase       Bool. Carry every transferred lane, the board's (ProjEntry xfer,
+ *                             from fid_src) and the relay's, through the instrumental phase
+ *                             table set_lanes posts (inst_phase), per element where the table
+ *                             holds it and through the pooled delays (inst_delay_ns) where it
+ *                             does not (false). The stage hands the table and the delays to the
+ *                             assemblers (gnss::InstCarryBoard), which then carry their
+ *                             transfers before publishing them (ProjEntry carried), so their
+ *                             own projection reads the same lanes; they must apply no delays of
+ *                             their own (lane_transfer_inst_apply false). A transfer that is not
+ *                             carried is carried here. Needs fleet_lanes. Off, a posted table
+ *                             is kept and reported but not used.
+ * @conf lane_inst_phase_max_age_s Double. The table is cleared when the last post that carried
+ *                             it is older than this, s (900, three of the relay's reposts; 0 =
+ *                             never): a dead relay must not leave a table from before an
+ *                             F-engine start.
  * @conf lane_rank_min_rel     Double. Where the raw block holds a mode of at least this many
  *                             mean autos, the board lanes that explain at least as much of it
  *                             go first, in order of the power they explain, and the rest
@@ -191,17 +211,35 @@
  * Basis record. With basis_buf, every frame also carries the directions each live channel was
  * projected with, so N2Accumulate can average the projector over its bins (in_proj_basis_buf).
  * The output's live block is (I - Q Q^H) V (I - Q Q^H), Q the slot's k orthonormal columns
- * given row-wise (gnss_n2proj::project's layout).
+ * given row-wise (gnss_n2proj::project's layout). The basis is rounded to complex<float>
+ * before it is applied, so the record is exactly the basis used.
  * Source lanes+residual is refused: it projects twice in turn, which one basis cannot describe.
  * Layout, little-endian, version 1:
  *  - header, 64 bytes: int64 seq; int32 version, n (stations), n_integrations, n_slots (the
  *    live channels, in local channel order), k_slot (k_lanes_max with lanes, else k_max),
- *    slot_bytes, magic 0x53414250 ("PBAS");
+ *    slot_bytes, magic 0x53414250 ("PBAS"); int64 at byte 40, the frame the basis was built
+ *    from (seq here; cudaGnssN2Project's copy keeps it and sets seq to the frame it applied
+ *    the basis to);
  *  - int32 stations[n];
  *  - n_integrations x n_slots slots of slot_bytes = 16 + 8 k_slot n: int32 freq_id, k, two
  *    int32 unused; complex<float> q[k_slot][n] on the stations axis, the first k rows set.
  *
  * @buffer basis_buf  Optional. The basis record, one frame per input frame, no metadata.
+ *
+ * GPU (docs/CHORD_GPU_PROJECTION.md). With gpu, cudaGnssN2Project projects the correlation
+ * frame in place on the GPU, before it is copied out, and N2Accumulate reads that frame and the
+ * GPU's copy of the record it applied. This stage then reads, per frame, the live channels'
+ * raw and projected blocks (in_buf: the live-block frame, gnssN2ProjectMath.hpp; num_local_freq
+ * is the live channel count and every channel is live), builds each basis from the raw block as
+ * above, turned to the next frame's time, and writes it to basis_buf for the GPU, which applies
+ * the newest it has from the next frame on. Neither side waits for the other: a frame the GPU
+ * has no empty live-block frame for is not seen here, and a record with no empty basis_buf frame
+ * is dropped (kotekan_gnss_n2project_basis_dropped_total). auto_proj_db and null_db come from
+ * the GPU's projected blocks, so they describe the basis it applied; the lane gauges and the
+ * lane dump describe the basis built from the frame. Needs source lanes and one integration
+ * per frame; there is no output copy.
+ *
+ * @conf gpu  Bool. The GPU projects (false).
  */
 class GnssN2Project : public kotekan::Stage {
 public:
@@ -214,7 +252,7 @@ private:
     using cd = std::complex<double>;
 
     Buffer* in_buf;
-    Buffer* out_buf;
+    Buffer* out_buf = nullptr;
 
     const int num_elements;
     const int num_local_freq;
@@ -268,9 +306,11 @@ private:
         std::vector<cd> v; ///< on the stations axis, conjugated per lane_conj
         int verdict = -1;  ///< 1 added, 0 duplicate, -1 not tested
         double new_frac = -1.0;
-        double rank = 0.0; ///< lane_rank_min_rel: the block power it explains, if ranked
+        double rank = 0.0;         ///< lane_rank_min_rel: the block power it explains, if ranked
+        int src = 0;               ///< 0 board, 1 fleet
+        int xfer = 0, fid_src = 0; ///< the board entry's (ProjEntry)
+        bool carried = false;      ///< ... and whether its publisher carried it
         // Kept only for the lane dump
-        int src = 0, xfer = 0;
         double held_s = 0.0, t_utc = 0.0;
         double los[3] = {0.0, 0.0, 0.0}, los_rate[3] = {0.0, 0.0, 0.0};
         std::string owner;
@@ -282,6 +322,7 @@ private:
         std::vector<LaneCand> cand;
         size_t cand_n_local = 0; ///< build_lanes: the board's candidates (the fleet's follow)
         std::vector<gnss::ElemSteer::cf> lane_sh; ///< lane_resteer scratch [n_elem]
+        std::vector<cd> inst_uf, inst_us;         ///< inst_u_at scratch [n_elem]
         std::vector<double> rank_y;
         uint64_t lane_dup = 0, lane_used = 0, proj = 0;
     };
@@ -344,6 +385,23 @@ private:
     std::vector<cd> fleet_tmp;                         ///< scratch [n_elem]
     std::vector<int> fleet_k;                          ///< per channel: fleet lanes in the basis
     std::vector<int> held_k; ///< per channel: held local lanes in the basis
+    // The instrumental phase table (#246)
+    const bool lane_inst_phase;
+    const double lane_inst_phase_max_age_s;
+    /// cudaGnssN2Project projects the frame; this stage builds the bases from its live blocks.
+    const bool gpu;
+    gnss::InstPhaseTable inst_phase; ///< main_thread's; empty = none
+    gnss::InstPhaseTable inst_phase_pending;
+    bool inst_phase_pending_set = false;
+    double inst_phase_t_rx = 0.0; ///< steady seconds the table was taken
+    bool inst_u_stale = true;
+    /// lane_inst_phase: gnss::inst_carry_phasors per freq_id, for the live channels and the
+    /// relay's sources; rebuilt in main_thread when the table or the delays change
+    std::map<int, std::vector<cd>> inst_u;
+    /// inst_u's row for @p fid; a channel it does not hold is computed into @p scratch.
+    const cd* inst_u_at(int fid, std::vector<cd>& scratch) const;
+    /// inst_u's row for @p fid, added if missing. main_thread only.
+    const cd* inst_u_row(int fid);
     void take_fleet(double now_s);
     void build_fleet(double t_utc);
     void get_lanes_callback(kotekan::connectionInstance& conn);

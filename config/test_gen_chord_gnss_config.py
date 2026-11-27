@@ -1911,6 +1911,134 @@ def test_chain_names_and_lane_transfer():
         )
 
 
+def test_lane_inst_phase():
+    """--lane-inst-phase: GnssN2Project carries the transfers by the instrumental phase table
+    and every assembler leaves its delays off its transfers; without it neither key is set, and
+    without --fleet-lanes it is refused."""
+    if kotekan_src.SRC is None:
+        print("  [SKIP] node config: no kotekan tree to render the base from")
+        return
+    xfer = "gps_l5:1160.0-1166.2"
+    exc, on = _lane_transfer_node(xfer, flags=["--fleet-lanes", "--lane-inst-phase"])
+    exc_off, off = _lane_transfer_node(xfer, flags=["--fleet-lanes"])
+    check(
+        exc is None and exc_off is None,
+        "the node configs generate (%s, %s)" % (exc, exc_off),
+    )
+    if exc is not None or exc_off is not None:
+        return
+    for g_ in (0, 1):
+        asm = [k for k in on if re.fullmatch(r"gnss%d_\w+_n2assemble" % g_, k)]
+        check(
+            on["gnss_n2_project"]["proj_%d" % g_].get("lane_inst_phase") is True
+            and asm
+            and all(on[k].get("lane_transfer_inst_apply") is False for k in asm),
+            "gpu%d: the stage carries the transfers, %d assemblers apply no delays"
+            % (g_, len(asm)),
+        )
+        check(
+            "lane_inst_phase" not in off["gnss_n2_project"]["proj_%d" % g_]
+            and not any("lane_transfer_inst_apply" in off[k] for k in asm),
+            "gpu%d: without --lane-inst-phase neither key" % g_,
+        )
+    exc, _ = _lane_transfer_node(xfer, flags=["--lane-inst-phase"])
+    check(
+        exc is not None and "--lane-inst-phase needs --fleet-lanes" in exc,
+        "--lane-inst-phase without --fleet-lanes refused (%s)" % exc,
+    )
+
+
+def test_n2_project_gpu():
+    """--n2-project-gpu 0: GPU 0's projection runs in its run_n2k (cudaGnssN2Project after the
+    stock cudaCorrelator, the applied record copied out to N2Accumulate, which reads the stock
+    host_correlation_buffer_0), and its GnssN2Project reads the live blocks, one channel per live
+    channel, and writes its bases to the command; GPU 1 keeps the CPU path; stock_parity
+    declares the changes to the stock blocks; the flag is refused without source lanes or for a GPU 2."""
+    if kotekan_src.SRC is None:
+        print("  [SKIP] node config: no kotekan tree to render the base from")
+        return
+    lanes = ["--n2-project-source", "lanes", "--proj-mean"]
+    exc, cfg = _lane_transfer_node(flags=lanes + ["--n2-project-gpu", "0"])
+    check(exc is None, "the node config generates (%s)" % exc)
+    if exc is not None:
+        return
+    p0, p1 = cfg["gnss_n2_project"]["proj_0"], cfg["gnss_n2_project"]["proj_1"]
+    off = node_cfg()["nodes"]["cx51"]["gpu_offsets_mod16"][0]
+    n_live = len([f for f in p0["live_freq_ids"] if f % 16 == off])
+    n, k = len(p0["stations"]), p0["k_lanes_max"]
+    rec = 64 + 4 * n + n_live * (16 + 8 * k * n)
+    live = 64 + (4 * n_live + 63) // 64 * 64 + 2 * n_live * 36 * 16 * 16 * 2 * 4
+    check(
+        p0.get("gpu") is True
+        and p0["num_local_freq"] == n_live
+        and p0["in_buf"] == "gnss0_n2live"
+        and p0["basis_buf"] == "gnss0_lane_basis"
+        and "out_buf" not in p0
+        and "gnss_n2_proj_buffer" not in cfg
+        and cfg["gnss0_n2live"]["frame_size"] == live
+        and cfg["gnss0_lane_basis"]["frame_size"] == rec
+        and cfg["gnss0_proj_basis"]["frame_size"] == rec,
+        "gpu0's stage reads the live blocks of its %d live channels and writes its bases to "
+        "gnss0_lane_basis; no projected copy" % n_live,
+    )
+    run0, run1 = cfg["run_n2k"]["gpu_0"], cfg["run_n2k"]["gpu_1"]
+    names = [c["name"] for c in run0["commands"]]
+    cmd = run0["commands"][1]
+    check(
+        names
+        == [
+            "cudaCorrelator",
+            "cudaGnssN2Project",
+            "cudaSyncOutput",
+            "cudaOutputData",
+            "cudaOutputData",
+        ]
+        and cmd["stations"] == p0["stations"]
+        and cmd["live_freq_ids"] == p0["live_freq_ids"]
+        and cmd["k_lanes_max"] == k
+        and cmd["n2k_correlation_name"] == run0["commands"][0]["n2k_correlation_name"]
+        and run0["in_buffers"]["host_lane_basis"] == "gnss0_lane_basis"
+        and run0["out_buffers"]["host_n2live"] == "gnss0_n2live"
+        and run0["out_buffers"]["host_proj_basis"] == "gnss0_proj_basis"
+        and run0["commands"][4]["gpu_mem"] == cmd["gpu_mem_basis"],
+        "gpu0's run_n2k: the command after the correlator, the record copied out (%s)"
+        % names,
+    )
+    acc0, acc1 = cfg["n2_accumulate"]["accum_0"], cfg["n2_accumulate"]["accum_1"]
+    check(
+        acc0["in_buf"] == "host_correlation_buffer_0"
+        and acc0["in_proj_basis_buf"] == "gnss0_proj_basis"
+        and acc1["in_buf"] == "gnss_n2_proj_buffer_1"
+        and "gpu" not in p1
+        and p1["out_buf"] == "gnss_n2_proj_buffer_1"
+        and [c["name"] for c in run1["commands"]]
+        == ["cudaCorrelator", "cudaSyncOutput", "cudaOutputData"],
+        "N2Accumulate reads the stock frame on gpu0, the CPU path's copy on gpu1",
+    )
+    sys.path.insert(0, os.path.join(ROOT, "scripts", "gnss"))
+    import stock_parity
+
+    # (the test node sends no N2, so its bufferSend stages are gone: not this flag's)
+    _, undeclared = stock_parity.classify(
+        stock_parity.differences(stock_parity.render_stock(), cfg)
+    )
+    mine = [u for u in undeclared if u[1].startswith(("run_n2k", "n2_accumulate"))]
+    check(
+        not mine,
+        "stock_parity declares the run_n2k and N2Accumulate changes (%s)" % mine,
+    )
+    exc, _ = _lane_transfer_node(flags=["--n2-project-gpu", "0"])
+    check(
+        exc is not None and "needs --n2-project-source lanes" in exc,
+        "--n2-project-gpu with lanes+residual refused (%s)" % exc,
+    )
+    exc, _ = _lane_transfer_node(flags=lanes + ["--n2-project-gpu", "2"])
+    check(
+        exc is not None and "GPUs 0 and 1 only" in exc,
+        "--n2-project-gpu 2 refused (%s)" % exc,
+    )
+
+
 def test_combiner_out_buf():
     """--no-combiner-out-buf drops each chain's n2cmb_buf and n2sink and the combiner's out_buf,
     and changes nothing else; --combiner-out-buf is the default."""

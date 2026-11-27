@@ -13,6 +13,7 @@
 #define GNSS_SIGNAL_HPP
 
 #include "gpsCACode.hpp" // for SBAS_PRN_MIN, SBAS_PRN_MAX
+#include "gpsL5Code.hpp" // for QZSS_PRN_MIN, QZSS_PRN_MAX
 
 #include <string> // for string
 #include <vector> // for vector
@@ -232,6 +233,73 @@ inline constexpr SignalDescriptor GPS_L5_I_NH = {
     /*secondary_length=*/0,
     /*time_multiplexed=*/false,
     /*tdm_phase=*/0,
+};
+
+/// QZSS L5 Q5 (1176.45 MHz), the dataless pilot of the QZSS satellites (PRNs 193..202): the
+/// GPS L5 structure (IS-QZSS-PNT), so GPS_L5_Q's numbers and NH20 on the QZSS rows of gpsL5Code.
+/// A descriptor of its own: a chain's tag and the broker's constellation come from the name.
+inline constexpr SignalDescriptor QZSS_L5_Q = {
+    "QZSS_L5_Q",
+    1176.45e6,
+    10.23e6,
+    10230,
+    1e-3,
+    Modulation::BPSK,
+    0,
+    0,
+    /*secondary_length=*/20,
+    /*time_multiplexed=*/false,
+    /*tdm_phase=*/0,
+};
+
+/// QZSS L5 Q5 with NH20 tiled into the code, as GPS_L5_Q_NH: one 204600-chip, 20 ms code. The
+/// tracker code of the qzss_l5 chain; the broker pairs it with QZSS_L5_Q (gnss_broker/signals.py).
+inline constexpr SignalDescriptor QZSS_L5_Q_NH = {
+    "QZSS_L5_Q_NH",
+    1176.45e6,
+    10.23e6,
+    204600,
+    20e-3,
+    Modulation::BPSK,
+    0,
+    0,
+    /*secondary_length=*/0,
+    /*time_multiplexed=*/false,
+    /*tdm_phase=*/0,
+};
+
+/// QZSS L2C CM (1227.6 MHz), the data component of the QZSS satellites that send L2C (PRNs
+/// 193..202; IS-QZSS-PNT): GPS L2C's structure with QZSS initial states, so GPS_L2C_CM's
+/// numbers. A descriptor of its own: a chain's tag and the broker's constellation come from the
+/// name. Code: gpsL2CCode (the QZSS rows).
+inline constexpr SignalDescriptor QZSS_L2C_CM = {
+    "QZSS_L2C_CM",
+    1227.6e6,
+    511.5e3,
+    10230,
+    20e-3,
+    Modulation::BPSK,
+    0,
+    0,
+    /*secondary_length=*/0,
+    /*time_multiplexed=*/true,
+    /*tdm_phase=*/0,
+};
+
+/// QZSS L2C CL (1227.6 MHz), the dataless pilot, as GPS_L2C_CL on the QZSS rows. The broker
+/// pairs it with QZSS_L2C_CM as gps_l2c pairs the GPS two (gnss_broker/signals.py).
+inline constexpr SignalDescriptor QZSS_L2C_CL = {
+    "QZSS_L2C_CL",
+    1227.6e6,
+    511.5e3,
+    767250,
+    1.5,
+    Modulation::BPSK,
+    0,
+    0,
+    /*secondary_length=*/0,
+    /*time_multiplexed=*/true,
+    /*tdm_phase=*/1,
 };
 
 /// SBAS L5 (1176.45 MHz) of the WAAS/EGNOS/MSAS/GAGAN GEOs (PRNs 120..158): ONE in-phase BPSK(10)
@@ -930,7 +998,8 @@ inline constexpr const SignalDescriptor* ALL_SIGNALS[] = {
     &BDS_B1I,      &BDS_B3I,     &BDS_B3I_NH,   &BDS_B2I,       &GLO_L3OC_P,    &GLO_L3OC_D,
     &GLO_L2OF,     &GLO_L2OC_P,  &GAL_E6_C_CS,  &GLO_L3OC_P_NH, &GLO_L2OC_P_OC, &SBAS_L5_I,
     &SBAS_L5_I_MC, &GLO_L2OF_MC, &GW_1202,      &BDS_B1I_NH,    &GPS_L1CA_BIT,  &SBAS_L1,
-    &SBAS_L1_SYM,  &GAL_E1C_CS,  &GPS_L5_I_NH,  &GAL_E5A_I_CS,  &BDS_B2A_D_CS,  &GAL_E5B_I_CS};
+    &SBAS_L1_SYM,  &GAL_E1C_CS,  &GPS_L5_I_NH,  &GAL_E5A_I_CS,  &BDS_B2A_D_CS,  &GAL_E5B_I_CS,
+    &QZSS_L5_Q,    &QZSS_L5_Q_NH, &QZSS_L2C_CM,   &QZSS_L2C_CL};
 
 /// Look up a descriptor by its @c name (the config string); nullptr if unknown.
 inline const SignalDescriptor* signal_by_name(const std::string& name) {
@@ -945,18 +1014,28 @@ inline bool is_sbas(const SignalDescriptor& s) {
     return std::string(s.name).rfind("SBAS_", 0) == 0;
 }
 
+/// Whether @p s is a QZSS signal (a QZSS_* descriptor).
+inline bool is_qzss(const SignalDescriptor& s) {
+    return std::string(s.name).rfind("QZSS_", 0) == 0;
+}
+
 /// The lowest PRN /set_prns takes for a signal (see max_prn).
 inline int min_prn(const SignalDescriptor& s) {
+    if (is_qzss(s))
+        return gps::QZSS_PRN_MIN;
     return is_sbas(s) ? gps::SBAS_PRN_MIN : 1;
 }
 
 /// The highest PRN /set_prns takes for a signal. SBAS signals take 120..158, the SBAS rows of
-/// the C/A and L5 code tables (the L5 table's other rows are GPS satellites). GW_1202 numbers its
-/// satellites by G2' phase, 1..2047. The other signals take 1..63, BeiDou's range and the widest
-/// GNSS table; a PRN outside a narrower generator's range is refused when the swap applies.
+/// the C/A and L5 code tables, and QZSS signals 193..202, the QZSS rows of the L5 and L2C tables
+/// (their other rows are GPS satellites). GW_1202 numbers its satellites by G2' phase, 1..2047. The
+/// other signals take 1..63, BeiDou's range and the widest GNSS table; a PRN outside a narrower
+/// generator's range is refused when the swap applies.
 inline int max_prn(const SignalDescriptor& s) {
     if (std::string(s.name) == "GW_1202")
         return 2047;
+    if (is_qzss(s))
+        return gps::QZSS_PRN_MAX;
     return is_sbas(s) ? gps::SBAS_PRN_MAX : 63;
 }
 

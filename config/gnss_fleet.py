@@ -141,6 +141,8 @@ def signal_tag(name):
 
 
 _STAGE_CHAINS = {}  # tag -> broker chain, filled by stage_chain's first call
+# Chains named by their broker key from the start: no band-tagged name is theirs.
+_NO_BAND_TAG = {"qzss_l5", "qzss_l2c"}
 
 #: The per-chain stages whose untagged name, gnss<g>_<stage>, was the primary's before every
 #: chain was tagged. No host takes one of these names; a host's (gnss<g>_inject, _records,
@@ -175,7 +177,7 @@ def stage_chain(name, stage):
         prim = broker_chain_name(_load_yaml(NODE_FILE)["signals"]["primary"])
         chains = {broker_chain_name(n) for n in signal_table()}
         bands = {}
-        for c in chains - {prim}:
+        for c in chains - {prim} - _NO_BAND_TAG:
             bands.setdefault(c.partition("_")[2], []).append(c)
         _STAGE_CHAINS.update({b: cs[0] for b, cs in bands.items() if len(cs) == 1})
         _STAGE_CHAINS.update({c: c for c in chains})

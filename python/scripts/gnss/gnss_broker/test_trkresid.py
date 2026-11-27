@@ -197,6 +197,7 @@ class TestResidual(unittest.TestCase):
             ),
             cp_predicted=self.model,
             probe_set=set(),
+            unhealthy=set(),
             dllp=_Obj(
                 fleet={
                     1: {
@@ -251,6 +252,7 @@ class TestResidual(unittest.TestCase):
             ),
             cp_predicted=self.model,
             probe_set=set(),
+            unhealthy=set(),
             dllp=_Obj(
                 fleet={
                     1: {
@@ -276,6 +278,9 @@ class TestResidual(unittest.TestCase):
         res = tr.tracker_residuals(ctx)
         self.assertLess(abs(res[1]["chips"] - 0.17), 2e-3, res[1])
         self.assertLess(abs(res[1]["raw"] - (self.clk + 0.02 + 0.17)), 2e-3, res[1])
+        # An unhealthy satellite gets no residual: its model is suspect.
+        ctx.unhealthy = {1}
+        self.assertEqual(tr.tracker_residuals(ctx), {})
 
 
 if __name__ == "__main__":

@@ -82,6 +82,29 @@ DECLARED = [
         "and the projector averaged over each bin out, to a rawFileWrite",
     ),
     (
+        "run_n2k.gpu_*.commands",
+        "~",
+        "GPU lane projection (--n2-project-gpu, default off): after the stock cudaCorrelator, "
+        "cudaGnssN2Project projects the live GNSS channels of the frame in place with the lane "
+        "bases gnss_n2_project builds (so the frame copied out is the projected one), and with "
+        "--proj-mean a cudaOutputData copies out the basis record it applied",
+    ),
+    (
+        "run_n2k.gpu_*.in_buffers.host_lane_basis",
+        "+",
+        "its input: the bases gnss_n2_project builds",
+    ),
+    (
+        "run_n2k.gpu_*.out_buffers.host_n2live",
+        "+",
+        "its output: the live channels' raw and projected blocks, for gnss_n2_project",
+    ),
+    (
+        "run_n2k.gpu_*.out_buffers.host_proj_basis",
+        "+",
+        "the applied basis record, for N2Accumulate's mean projector",
+    ),
+    (
         "run_send_voltage.gpu_*.commands",
         "~",
         "DTV subtraction (--dtv-subtract-freq-ids, default off): after the stock "

@@ -148,7 +148,7 @@ def observe(ctx, log_rl):
     pairs = {}
     for p, b in ctx.best.items():
         q = ctx.pred.get(p)
-        if q is None or b[0] < ctx.args.bias_min_snr:
+        if q is None or b[0] < ctx.args.bias_min_snr or p in ctx.unhealthy:
             continue
         # Age on the hop axis (now_utc_s against the stamp's utc0_sample0 + ref_hop): under
         # the stale-epoch fault this detector exists for, every stamp is hours old against

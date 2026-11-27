@@ -63,11 +63,11 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
         auto a = gps::generate_l5i_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
     }
-    if (name == "GPS_L5_Q") {
+    if (name == "GPS_L5_Q" || name == "QZSS_L5_Q") { // QZSS: PRN 193..202 of the same table
         auto a = gps::generate_l5q_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
     }
-    if (name == "GPS_L5_Q_NH") {
+    if (name == "GPS_L5_Q_NH" || name == "QZSS_L5_Q_NH") {
         // Q5 primary tiled by the NH20 overlay, with overlay_sign()'s sign convention: a code
         // phase in this 204600-chip space is primary cp + 10230 * (period index mod 20).
         auto a = gps::generate_l5q_code(prn);
@@ -246,9 +246,9 @@ std::vector<int8_t> signal_code(const std::string& name, int prn) {
     }
     if (name == "GAL_E5B_I_CS") // the shared CS4 baked in: one I/NAV symbol
         return bake_secondary(galileo::generate_e5bi_code(prn), galileo::e5bi_secondary());
-    if (name == "GPS_L2C_CM")
+    if (name == "GPS_L2C_CM" || name == "QZSS_L2C_CM") // QZSS: PRN 193..202 of the same tables
         return gps::generate_l2cm_code(prn);
-    if (name == "GPS_L2C_CL")
+    if (name == "GPS_L2C_CL" || name == "QZSS_L2C_CL")
         return gps::generate_l2cl_code(prn);
     if (name == "GPS_L1CA_BIT") // twenty identical periods, one 20 ms LNAV bit
         return bake_secondary(gps::generate_ca_code(prn), std::vector<int8_t>(20, 1));
@@ -327,7 +327,7 @@ ChannelizedReplicaBank::ChannelizedReplicaBank(const SignalDescriptor& sig,
     // tiled into the code (the *_CS signals).
     if (_sig.secondary_length > 0) {
         const std::string name(_sig.name);
-        if (name == "GPS_L5_Q")
+        if (name == "GPS_L5_Q" || name == "QZSS_L5_Q")
             _secondary.assign(gps::L5_NH20.begin(), gps::L5_NH20.end());
         else if (name == "SBAS_L5_I")
             _secondary.assign({1, -1}); // the SBAS bi-binary (Manchester) pair, 2 ms

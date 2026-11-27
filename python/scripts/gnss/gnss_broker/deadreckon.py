@@ -3282,6 +3282,7 @@ def stage_dead_reckon(ctx):
                         tropo=_tropo,
                         iono=_iono,
                         memo=_memo,
+                        health_gate=False,
                     )
                     # Centred pair, +-2 s about the epoch: a forward difference over [t, t+4] would
                     # estimate the rate at now+2 and hand it to the seed as the rate at now, and the
@@ -3300,6 +3301,7 @@ def stage_dead_reckon(ctx):
                         tropo=_tropo,
                         iono=_iono,
                         sysc=ctx.drp.tag,
+                        health_gate=False,
                     )
                     pd0 = ctx.dr_eph_mod.predict_all(
                         ctx.dr_state["eph"],
@@ -3313,6 +3315,7 @@ def stage_dead_reckon(ctx):
                         tropo=_tropo,
                         iono=_iono,
                         sysc=ctx.drp.tag,
+                        health_gate=False,
                     )
                     # Every record of this constellation is past best_eph's window (BRDC offline
                     # for hours): predict from the decoded ephemerides instead, which the nav
@@ -3422,6 +3425,13 @@ def stage_dead_reckon(ctx):
             except Exception as e:
                 ctx.drp.pd, ctx.drp.pd2, pd0 = {}, {}, {}
                 _log("dead-reckon: predict failed: %s" % e)
+            # This sky reads the health word of the chain's own signal (QZSS health is per
+            # signal), which the almanac sky's marks do not.
+            ctx.unhealthy |= {
+                p
+                for (s, p), v in ctx.drp.pd.items()
+                if s == ctx.drp.tag and v.get("unhealthy")
+            }
             dr_gdv(ctx, ctx.drp.pd, ctx.drp.pd2, pd0)
             # The geometry-only sky (sky.transit_sky) for the transit freezes and the D3 transit
             # veto: health gate off, a day of toe validity, every constellation, and with
@@ -3476,6 +3486,9 @@ def stage_dead_reckon(ctx):
                 # GuoWang TLE record's library theta, clk_sigma_s) would pull the solve off; its
                 # detection still seeds it.
                 if _pv.get("clk_sigma_s", 0.0) * ctx.args.chip_rate_hz > 0.5:
+                    continue
+                # Nor does an unhealthy satellite's clock enter the solve.
+                if prn in ctx.unhealthy:
                     continue
                 d_i, cp_loc, t_i = _det_offset(ctx, prn, det)
                 det_age[prn] = ctx.drp.t_now_abs - t_i

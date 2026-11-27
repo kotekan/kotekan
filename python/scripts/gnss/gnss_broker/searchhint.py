@@ -148,7 +148,11 @@ def stage_narrow_search(ctx):
                         every_s=120.0,
                     )
                 for _p, (_nh, _rh) in ctx.nho.seen.items() if _learn else ():
-                    if _p not in ctx.pred or ctx.nho.last_rh.get(_p) == _rh:
+                    if (
+                        _p not in ctx.pred
+                        or _p in ctx.unhealthy
+                        or ctx.nho.last_rh.get(_p) == _rh
+                    ):
                         continue
                     ctx.nho.last_rh[_p] = _rh
                     _t = ctx.utc0_sample0 + _rh / ctx.args.hops_per_sec

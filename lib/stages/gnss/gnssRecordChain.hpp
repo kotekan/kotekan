@@ -6,6 +6,7 @@
 #include "gnssChanPower.hpp"
 #include "gnssElemCal.hpp"
 #include "gnssElemSteer.hpp"
+#include "gnssFleetLane.hpp"     // for InstCarryCache (#246)
 #include "gnssGpuChain.hpp"      // for FrameHdr, PrnCtl
 #include "gnssHostRows.hpp"      // for RestVerb, RestQuery
 #include "gnssLaneDirection.hpp" // for LaneDirection, InstDelay (#190)
@@ -133,7 +134,13 @@ private:
     /// barely moves the consensus. Shared implies held (_elem_adapt = false): the live weights
     /// are rebuilt from the model every record.
     std::atomic<bool> _elem_shared{false};
-    double _elem_shared_tau_s = 300.0;           ///< consensus EMA, s (slower than any transit)
+    double _elem_shared_tau_s = 300.0; ///< consensus EMA, s (slower than any transit)
+    /// A PRN's shadow feeds the shared model only while its lane is at least this coherent on
+    /// one channel (0: every warm shadow). A shadow learns whatever its rows hold, so one of a
+    /// PRN the fleet does not hold (a noise probe, a satellite below the horizon) is noise.
+    /// While no shadow qualifies the model holds.
+    double _elem_shared_learn_coh_min = 0.0;
+    bool shadow_held(size_t q) const;
     double _elem_pol_tau_s = 3.0;                ///< per-PRN inter-pol coefficient EMA, s
     std::vector<std::complex<double>> _g_shared; ///< [n_elem]: pol-0 half then pol-1 half
     bool _g_shared_warm = false;
@@ -189,18 +196,25 @@ private:
     bool _fleet_applied[2] = {false, false};
     bool _fleet_slewing[2] = {false, false}; ///< one WARN per slew episode, one when done
     /// A warm half below _fleet_min_sim for this long takes the reference's shape (live mode
-    /// only). Once per episode, at most once per interval.
+    /// only; config elem_sum_shared_reseed_s). Once per episode, at most once per interval.
     double _fleet_reseed_s = 600.0;
     /// ... and only while the sibling pol matches F at this similarity or better: both pols off
     /// F at once means F is the stale one.
     double _fleet_reseed_sib_sim = 0.8;
     gnss::ReseedState _fleet_reseed[2];
+    /// The F-engine start F was made under (frame0, integer second; config
+    /// elem_sum_shared_ref_frame0, POST frame0), 0 if not known. While it is the start of the
+    /// records in hand, both pols off F means the model failed, not F, and each pol re-seeds
+    /// without its sibling's agreement.
+    int64_t _fleet_ref_frame0 = 0;
+    std::atomic<double> _frame0_utc{0.0}; ///< utc0 of the newest records
     /// REST staging (under _gain_mtx), applied by fleet_ref_apply_pending in the next
     /// shared_consensus on the main thread, which runs only while elem_sum_shared is on.
     std::vector<std::complex<double>> _pending_fleet_ref;
     bool _pending_fleet_ref_set = false;
     int _pending_fleet_mode = -1;
     double _pending_fleet_slew_deg_s = -1.0;
+    int64_t _pending_fleet_ref_frame0 = -1;
     void fleet_ref_apply_pending();
     /// The weights in force for every PRN (pol 1 scaled by its _pol_c): the model, blended
     /// toward F's shape in shape mode by _shape_mix, which ramps over _shape_ramp_s.
@@ -217,6 +231,7 @@ private:
     std::vector<std::complex<double>> _w_scratch; ///< [n_elem] held weights being built
     void shared_reset_prn(size_t p);
     void shared_consensus(double now_s);
+    void shared_reseed_idle(double now_s);
     void shared_hold(size_t p);
     void shared_pol_update(size_t p, const std::complex<double>* g_prompt, double dt_s);
     std::vector<gnss::ElemSteer::cf>
@@ -425,14 +440,21 @@ private:
     // With lane_transfer_inst_slope (default true) the transfer also turns each element by its
     // instrumental delay (gnss::InstDelay), measured from adjacent published channels of every
     // slot and forgotten over lane_transfer_inst_tau_s (300 s); until that has averaged for
-    // tau_s the transfer is geometric only.
+    // tau_s the transfer is geometric only. With lane_transfer_inst_apply false (GnssN2Project
+    // lane_inst_phase) the delays are still estimated and served (get_lane_inst) but not applied:
+    // the transfer is carried by the instrumental phase table and the pooled delays GnssN2Project
+    // holds (gnss::InstCarryBoard) and marked carried, or, while it holds none, published geometric
+    // only for the stage to carry. A transfer records its source channel (fid_src).
     std::vector<int> _lane_xfer_fids;
     std::vector<char> _lane_ok; ///< [n_chan] published this round: 1 live, 2 held
     std::vector<std::complex<double>> _lane_pubdir; ///< [n_chan][n_elem]
     std::vector<gnss::ElemSteer::cf> _lane_shift;   ///< [n_elem]
     bool _inst_on = false;
-    int _inst_df_fid = 0; ///< the channel spacing the estimate is fed at, freq_ids
+    bool _inst_apply = true; ///< lane_transfer_inst_apply
+    int _inst_df_fid = 0;    ///< the channel spacing the estimate is fed at, freq_ids
     gnss::InstDelay _inst;
+    /// !_inst_apply: the transfers' carry by InstCarryBoard
+    gnss::InstCarryCache _inst_carry;
     double _inst_gauge_t = 0.0; ///< utc of the last gauge update
     kotekan::prometheus::Gauge* _m_inst_rms_ns = nullptr;
     kotekan::prometheus::Gauge* _m_inst_weight = nullptr;
