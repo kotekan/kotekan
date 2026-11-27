@@ -9,6 +9,7 @@
 
 #include "fmt.hpp" // for compile_string_to_view, format, fmt
 
+#include <algorithm>   // for max, min
 #include <chrono>      // for duration_cast, system_clock, duration, milliseconds
 #include <ctime>       // for localtime_r, time_t, tm, timespec
 #include <exception>   // for exception
@@ -196,8 +197,13 @@ basebandApiManager::translate_trigger(const int64_t fpga_time0, const int64_t fp
     int64_t min_delay_fpga = round(min_delay * fpga_frame_rate);
     int64_t max_delay_fpga = round(max_delay * fpga_frame_rate);
 
-    return {fpga_time0 >= 0 ? fpga_time0 + max_delay_fpga : fpga_time0,
-            fpga_width + (min_delay_fpga - max_delay_fpga)};
+    // The delay is negative above the reference frequency and positive below it, so either
+    // DM bound can be the one that arrives first.
+    const int64_t first_delay_fpga = std::min(min_delay_fpga, max_delay_fpga);
+    const int64_t last_delay_fpga = std::max(min_delay_fpga, max_delay_fpga);
+
+    return {fpga_time0 >= 0 ? fpga_time0 + first_delay_fpga : fpga_time0,
+            fpga_width + (last_delay_fpga - first_delay_fpga)};
 }
 
 

@@ -793,6 +793,19 @@ int dpdkCore::lcore_rx(void* args) {
     INFO_NON_OO("DPDK Sleeping for {} seconds before starting network handlers",
                 core->lcore_start_delay);
     sleep(core->lcore_start_delay);
+
+    // Discard what the ports took in before this lcore polled them. Those packets are as old
+    // as the start delay plus the stage constructors that ran after the port start, and the
+    // handlers take their start time from the first packets they see.
+    const uint64_t discard_end = rte_rdtsc() + rte_get_tsc_hz() / 10;
+    while (rte_rdtsc() < discard_end) {
+        for (uint32_t port : ports) {
+            const uint16_t num_rx = rte_eth_rx_burst(port, 0, mbufs, burst_size);
+            for (uint16_t j = 0; j < num_rx; ++j)
+                rte_pktmbuf_free(mbufs[j]);
+        }
+    }
+
     const uint32_t num_local_ports = ports.size();
 
     // Enforce that all handlers on this lcore are either all distributors or all

@@ -36,8 +36,9 @@ constexpr size_t TARGET_CHUNK_SIZE = 1024 * 1024;
  * @par Buffers
  * @buffer in_buf buffer to manage and read. Must be several frames larger than
  *                ``num_frames_buffer`` config parameter.
- *         @buffer_format DPDK baseband ``samples_per_data_set x num_elements`` bytes
- *         @buffer_metadata chimeMetadata
+ *         @buffer_format DPDK baseband ``samples_per_data_set x num_local_freq x num_elements``
+ *                        bytes
+ *         @buffer_metadata chordMetadata
  *
  * @buffer out_buf The extracted single frequency baseband output
  *         @buffer_format DPDK baseband ``samples_per_data_set x num_elements`` bytes
@@ -51,7 +52,9 @@ constexpr size_t TARGET_CHUNK_SIZE = 1024 * 1024;
  *                              3 x num_elements x this_number.
  * @conf  num_frames_buffer     Int. Number of buffer frames to simultaneously keep
  *                              full of data. Should be few less than in_buf length.
- * @conf  num_local_freq        UInt. Number of frequencies in each GPU frame.
+ * @conf  num_local_freq        UInt, default 1. Number of frequencies in each input frame.
+ *                              A request is read out one frequency at a time, highest
+ *                              frequency first.
  *
  * @par Metrics
  * @metric kotekan_baseband_readout_total
@@ -98,9 +101,14 @@ private:
 
     /**
      * @brief Process incoming requests by copying the baseband data from the ring buffer
+     *
+     * @param freq_ids channel frequency of each in-frame frequency index
+     * @param readout_manager request queue of each in-frame frequency index
+     * @param readout_order in-frame frequency indices in the order to read them out
      */
     void readout_thread(const uint32_t freq_ids[],
-                        const std::vector<kotekan::basebandReadoutManager*>& readout_manager);
+                        const std::vector<kotekan::basebandReadoutManager*>& readout_manager,
+                        const std::vector<uint32_t>& readout_order);
 
     //@{
     /// @brief convenience methods for updating request status and metrics */

@@ -200,7 +200,8 @@ private:
     };
 
     /// Utility function that adjusts the trigger times given for the reference
-    /// frequency to those for the frequency `freq_id`
+    /// frequency to those for the frequency `freq_id`, which can be above or
+    /// below the reference
     static basebandSlice translate_trigger(int64_t fpga_time0, int64_t fpga_width, const double dm,
                                            const double dm_error, const uint32_t freq_id,
                                            const double ref_freq_hz = L1_REFERERENCE_FREQ);

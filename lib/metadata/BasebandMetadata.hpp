@@ -44,7 +44,8 @@ public:
     double time0_ctime_offset;
     //@}
 
-    /// Time of arrival of the packet containing the first sample
+    /// Time of arrival of the packet containing the first sample, or 0 if the capture does
+    /// not record it
     double first_packet_recv_time;
 
     /// FPGA seq of the first sample in this frame
