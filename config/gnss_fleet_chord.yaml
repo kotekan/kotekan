@@ -319,6 +319,13 @@ common:
         - qzss_l5:1186.7-1196.9
         - bds_b3i:1248.3-1258.4
         - bds_b3i:1278.6-1304.9
+    # 2026-11-27: GLONASS L3OC's sidelobes (BPSK at 10.23 Mcps about 1202.025 MHz: nulls every
+    # 10.23 MHz, the lobe itself 1191.8-1212.3 is the chain's own). R08 at 5.9 deg from boresight
+    # (11-26 19:27Z) left its second lower sidelobe in the projected L5 centre at 1176 MHz, where
+    # no lane of it was; R23 at 5.1 deg (11-27 00:52Z) the same. Down to the projection's edge
+    # below (sidelobes 1-5) and up to GLONASS L2OF's range above (sidelobes 1-3).
+        - glo_l3oc:1140.0-1191.8
+        - glo_l3oc:1212.3-1242.9
     # 2026-11-27, with the projection's widening to 1140.0-1304.9 MHz: the L5-band chains down to
     # 1140 (BPSK at 10.23 Mcps: GPS, QZSS and SBAS L5's second and third lower sidelobes,
     # 1145.8-1156.0 and 1135.5-1145.8; the E5/B2 AltBOC third-harmonic lower lobe on 1145.8),
