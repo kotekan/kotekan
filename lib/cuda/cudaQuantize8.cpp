@@ -247,10 +247,14 @@ cudaEvent_t cudaQuantize8::execute(cudaPipelineState&, const std::vector<cudaEve
                     "begins at {:d}",
                     _gpu_mem_pl_mask, pl_mask_fpga_seq_num, _gpu_mem_input,
                     input_meta->get_fpga_seq_num());
+    // Each getter copies the whole vector, so fetch them once
+    const std::vector<int> pl_mask_coarse_freq = pl_mask_meta->get_coarse_freq();
+    const std::vector<int> pl_mask_freq_upchan_index = pl_mask_meta->get_freq_upchan_index();
+    const std::vector<int> input_coarse_freq = input_meta->get_coarse_freq();
+    const std::vector<int> input_freq_upchan_index = input_meta->get_freq_upchan_index();
     for (int freq = 0; freq < _num_frequencies; ++freq)
-        if (pl_mask_meta->get_coarse_freq().at(freq) != input_meta->get_coarse_freq().at(freq)
-            || pl_mask_meta->get_freq_upchan_index().at(freq)
-                   != input_meta->get_freq_upchan_index().at(freq))
+        if (pl_mask_coarse_freq.at(freq) != input_coarse_freq.at(freq)
+            || pl_mask_freq_upchan_index.at(freq) != input_freq_upchan_index.at(freq))
             FATAL_ERROR("The packet loss mask {:s} and the input {:s} describe different "
                         "frequencies at index {:d}",
                         _gpu_mem_pl_mask, _gpu_mem_input, freq);
