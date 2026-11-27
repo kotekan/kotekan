@@ -24,6 +24,8 @@ run:      every --every s, POST /steer for each assigned source: its turn since 
           restored them from a save (dtv_roll.py watch --restore: WORK/restored/<node>_g<g>.json), which
           carries each source's satellite and the time its weights are valid for. A frame0 that does not
           match the latest frame is read again from --frame0 (an F-engine re-base) before the GPU is skipped.
+          --tle is read again when it changes (tle_refresh.py replaces it), unless the new file lacks a
+          satellite a source is assigned to.
 
 Geometry: input i (pol * 64 + dish) sits at its dish's position (--positions, ENU m). An emitter at
 topocentric unit vector s(t) turns input i's response by psi_i = SIGN 2 pi f / c r_i . (s(t) - s(t_a)),
@@ -137,6 +139,7 @@ class Clock:
 
 class Sky:
     def __init__(self, tle):
+        self.tle, self.mtime = tle, os.stat(tle).st_mtime
         lines = [l.rstrip() for l in open(tle) if l.strip()]
         self.sats = {
             lines[i].strip(): EarthSatellite(
@@ -155,6 +158,36 @@ class Sky:
 
     def up(self, unix):
         return [n for n in self.sats if self.enu(n, unix)[2] > 0]
+
+    def epochs(self):
+        return ", ".join(
+            "%s %s" % (n, s.epoch.utc_strftime("%m-%d %H:%MZ"))
+            for n, s in sorted(self.sats.items())
+        )
+
+
+def reload(sky, asg):
+    """sky, or the Sky read again from its file when the file changed, unless the new one lacks a satellite a
+    source in asg is assigned to."""
+    try:
+        m = os.stat(sky.tle).st_mtime
+        if m == sky.mtime:
+            return sky
+        sky.mtime = m
+        new = Sky(sky.tle)
+    except (OSError, ValueError) as x:
+        print("%s %s: %s; the TLEs read before stay" % (stamp(), sky.tle, x), flush=True)
+        return sky
+    gone = sorted({e["sat"] for e in asg.values()} - set(new.sats))
+    if gone:
+        print(
+            "%s %s has no %s: the TLEs read before stay"
+            % (stamp(), sky.tle, ", ".join(gone)),
+            flush=True,
+        )
+        return sky
+    print("%s TLEs read again from %s: %s" % (stamp(), sky.tle, new.epochs()), flush=True)
+    return new
 
 
 def positions(path):
@@ -428,8 +461,10 @@ def cmd_identify(a, fids, clock, sky, r):
 
 
 def cmd_run(a, fids, clock, sky, r):
+    print("%s TLEs from %s: %s" % (stamp(), sky.tle, sky.epochs()), flush=True)
     while True:
         asg = load_assign()
+        sky = reload(sky, asg)
         changed = False
         for node in a.nodes:
             for g in (0, 1):
