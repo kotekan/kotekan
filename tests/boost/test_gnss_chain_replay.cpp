@@ -459,6 +459,10 @@ json build_config(const std::vector<ChainSpec>& cs, const Scenario& sc,
     for (size_t i = 0; i < cs.size(); ++i) {
         const ChainSpec& s = cs[i];
         json ad = s.adapter, as = s.assemble, cb = s.combine, tp = s.telem;
+        if (sc.learn_coh_min > 0.0)
+            as["elem_sum_shared_learn_coh_min"] = sc.learn_coh_min;
+        if (sc.ref_frame0 > 0)
+            as["elem_sum_shared_ref_frame0"] = sc.ref_frame0;
         ad["ctl_buf"] = buf_name(s, "n2ctl_buf");
         ad["tiles_buf"] = buf_name(s, "n2tiles_buf");
         ad["out_buf"] = buf_name(s, "n2epl_buf");
@@ -1116,8 +1120,10 @@ void fire_posts(ChainRun& R, const Sky& sky, unsigned short port, const std::str
             const std::complex<double> g = sky.gain_e[(size_t)e] * std::polar(1.0, 0.3);
             ref.push_back({g.real(), g.imag()});
         }
-        post_assembler(R, port, u, "set_elem_sum_shared_ref",
-                       {{"ref", ref}, {"mode", "live"}, {"slew_deg_s", 5.0}});
+        json body = {{"ref", ref}, {"mode", "live"}, {"slew_deg_s", 5.0}};
+        if (sc.ref_frame0 > 0)
+            body["frame0"] = sc.ref_frame0;
+        post_assembler(R, port, u, "set_elem_sum_shared_ref", body);
     }
     if (R.idx == 0 && k == sc.proj_live_frame)
         post_assembler(R, port, u, "set_elem_proj", {{"mode", "live"}});
@@ -1175,6 +1181,13 @@ void take_get(ChainRun& R, unsigned short port, const std::string& u, const std:
         for (const auto& r : j["prns"])
             rows.push_back({r["prn"], r["warm"], r["shadow_warm"]});
         L["elem_cal" + cp] = rows;
+        json held = json::array();
+        for (const auto& r : j["prns"])
+            held.push_back({r["prn"], r["shadow_warm"], r.value("held", true)});
+        L["held" + cp] = held;
+        L["shared" + cp] = json::array({j["shared_warm"], j["shared_n"]});
+        if (j.contains("fleet_ref"))
+            L["frame0_current" + cp] = j["fleet_ref"].value("frame0_current", false);
         if (j.contains("proj"))
             L["proj" + cp] = json::array({j["proj"]["mode"], j["proj"]["k"]});
     } else if (verb == "get_status" && j.is_array()) {
@@ -3643,6 +3656,64 @@ BOOST_AUTO_TEST_CASE(prefill) {
 }
 
 /// Behaviour that a fix changed (PIN_B1) or must change (PIN_B2).
+BOOST_AUTO_TEST_CASE(shared_model_learns_from_held_prns_only) {
+    // A shadow learns whatever its PRN's rows hold. Every running slot without a planted signal
+    // carries a weak source its code does not match (Scenario::probe_amp): the shadows of those
+    // PRNs warm on it while their lanes stay incoherent. Without elem_sum_shared_learn_coh_min the
+    // shared model averages them in, and on a sky with no satellite it forms from them alone;
+    // with it, only the PRNs with a coherent lane feed the model, and with none no model forms.
+    // A reference of the records' own start reads as current, from the config and from the POST.
+    Scenario lit = base_scenario(), lit_off = base_scenario(), dark = base_scenario(),
+             dark_off = base_scenario();
+    for (Scenario* sc : {&lit, &lit_off, &dark, &dark_off})
+        sc->probe_amp = 0.5;
+    lit.learn_coh_min = dark.learn_coh_min = 0.3;
+    lit.ref_frame0 = (int64_t)std::floor(UTC0);
+    dark.mut = dark_off.mut = Mutation::zero_amp;
+    const Digests dl = run_scenario(chains(), lit), dlo = run_scenario(chains(), lit_off),
+                  dd = run_scenario(chains(), dark), ddo = run_scenario(chains(), dark_off);
+    const std::set<int> planted = sky_for(lit).planted;
+    const std::string cp0 = "@" + std::to_string(lit.checkpoints.front()),
+                      cp = "@" + std::to_string(lit.checkpoints.back());
+    int n_learning = 0;
+    for (const ChainSpec& A : chains()) {
+        const json &L = dl.live.at(A.pre), &LO = dlo.live.at(A.pre), &D = dd.live.at(A.pre),
+                   &DO = ddo.live.at(A.pre);
+        BOOST_CHECK_MESSAGE(L.at("frame0_current" + cp0).get<bool>(),
+                            A.pre << ": the configured reference's start does not read as current");
+        BOOST_CHECK_MESSAGE(L.at("frame0_current" + cp).get<bool>(),
+                            A.pre << ": the posted reference's start does not read as current");
+        if (!LO.at("shared" + cp)[0].get<bool>())
+            continue; // this chain's shadows hold no model in the scenario
+        ++n_learning;
+        int n_held = 0, n_unheld_warm = 0;
+        for (const auto& h : L.at("held" + cp)) {
+            const int prn = h[0].get<int>();
+            const bool warm = h[1].get<bool>(), held = h[2].get<bool>();
+            BOOST_CHECK_MESSAGE(!held || planted.count(prn),
+                                A.pre << ": PRN " << prn << " has no signal and passed the gate");
+            n_held += warm && held;
+            n_unheld_warm += warm && !held;
+        }
+        BOOST_CHECK_MESSAGE(n_unheld_warm > 0, A.pre << ": no shadow warmed on the probe source");
+        BOOST_CHECK_MESSAGE(L.at("shared" + cp)[0].get<bool>() && L.at("shared" + cp)[1] == n_held,
+                            A.pre << ": the shared model is not of the " << n_held
+                                  << " held PRNs: " << L.at("shared" + cp));
+        BOOST_CHECK_MESSAGE(LO.at("shared" + cp)[1].get<int>() > n_held,
+                            A.pre << ": without the gate the model is of no more than the "
+                                  << n_held << " held PRNs: " << LO.at("shared" + cp));
+        for (const auto& h : D.at("held" + cp))
+            BOOST_CHECK_MESSAGE(!h[2].get<bool>(),
+                                A.pre << ": PRN " << h[0] << " of an empty sky passed the gate");
+        BOOST_CHECK_MESSAGE(
+            !D.at("shared" + cp)[0].get<bool>(),
+            A.pre << ": a shared model formed from the probe source behind the gate");
+        BOOST_CHECK_MESSAGE(DO.at("shared" + cp)[0].get<bool>(),
+                            A.pre << ": without the gate no model formed from the probe source");
+    }
+    BOOST_CHECK_MESSAGE(n_learning > 0, "no chain's shadows hold a shared model");
+}
+
 BOOST_AUTO_TEST_CASE(current_behaviour_pins) {
     const Digests& d = baseline();
     const Scenario sc = base_scenario();

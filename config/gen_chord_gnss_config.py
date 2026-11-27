@@ -1290,6 +1290,8 @@ def elem_shared_keys(args):
     }
     if getattr(args, "elem_freeze_deg", None) is not None:
         out["elem_sum_shared_freeze_deg"] = args.elem_freeze_deg
+    if getattr(args, "elem_shared_learn_coh_min", None) is not None:
+        out["elem_sum_shared_learn_coh_min"] = args.elem_shared_learn_coh_min
     return out
 
 
@@ -1330,7 +1332,7 @@ def elem_shared_ref_keys(args, band, steer, n_elem, bad=()):
             "--elem-shared-ref %s: band %s has %d elements, the assembler has %d"
             % (args.elem_shared_ref, band, len(entry["ref"]), n_elem)
         )
-    return {
+    out = {
         "elem_sum_shared_ref": [
             0.0 if e in bad else round(float(x), 6)
             for e, pair in enumerate(entry["ref"])
@@ -1338,6 +1340,11 @@ def elem_shared_ref_keys(args, band, steer, n_elem, bad=()):
         ],
         "elem_sum_shared_ref_mode": mode,
     }
+    # The F-engine start the entry was made under: while the node runs under it, a model the
+    # entry no longer describes is re-seeded from it.
+    if entry.get("frame0"):
+        out["elem_sum_shared_ref_frame0"] = int(entry["frame0"])
+    return out
 
 
 def elem_steer_keys(args, arr, n_elem):
@@ -4496,6 +4503,15 @@ def main():
         "form a first model inside a wider cone (8 deg) and re-seeds a half the fleet "
         "reference stops describing while its sibling pol still does (after 600 s, at "
         "sibling similarity 0.8); those are fixed in the stage, not config keys.",
+    )
+    ap.add_argument(
+        "--elem-shared-learn-coh-min",
+        type=float,
+        default=None,
+        help="shared model: a PRN's shadow feeds it only while that PRN's lane is at least "
+        "this coherent on one channel, so PRNs the fleet does not hold (noise probes, satellites "
+        "below the horizon) do not; the model holds while none qualifies. Emitted only when "
+        "given, with --elem-sum-shared (assembler default 0: every warm shadow).",
     )
     ap.add_argument(
         "--elem-shared-ref",

@@ -129,6 +129,17 @@ struct Scenario {
     /// true, with rows: the POSTs go to the hosts' paths by chain ({"chain": <c>, "body": <the
     /// request>}), and the checkpoint and per-slot GETs are read there, ?chain=<c>.
     bool by_chain = false;
+    /// > 0: the assemblers' elem_sum_shared_learn_coh_min (only shadows of PRNs with a lane at
+    /// least this coherent feed the shared model).
+    double learn_coh_min = 0.0;
+    /// > 0: the assemblers' elem_sum_shared_ref_frame0 (the start the fleet reference is of), also
+    /// sent with the shared_ref_frame POST.
+    int64_t ref_frame0 = 0;
+    /// > 0: every running slot without a planted signal carries a source its code does not
+    /// match, of this amplitude: probe_gain() over the elements, a random phase per record. At
+    /// 0.5 it is too weak per record and channel for a coherent lane, but its sum over the
+    /// channels warms the slot's shadow cal, as a noise probe's does on the band's sky.
+    double probe_amp = 0.0;
 };
 
 /// Record index of frame 0's first record: a multiple of every window length the chains use
@@ -341,6 +352,11 @@ struct Noise {
     }
 };
 
+/// The element pattern of Scenario::probe_amp's source, unlike any PRN's.
+inline std::complex<double> probe_gain(int e) {
+    return std::polar(1.0, 2.0 * M_PI * std::fmod(0.618 * e * e, 1.0));
+}
+
 /// Writes the gathered tiles of @p frame: every running slot's lanes carry V = sqrt(hops)
 /// (amp g_e conj(D_ce) f_t + n), quantized as lround(s V) by the slot's energy at its first
 /// running record of the frame, as cudaGnssInject's pack scales it. D is the
@@ -356,6 +372,7 @@ inline void write_tiles(int32_t* t, size_t n_i32, const ChainSpec& s, const Sky&
     for (int p = 0; p < s.n_prn; ++p) {
         const int prn = prn_at(s, sc, frame, p);
         const bool planted = sky.planted.count(prn) > 0 && sky.amp > 0.0;
+        const bool probe = !planted && sc.probe_amp > 0.0;
         std::vector<gnss::ElemSteer::cf> D;
         if (planted)
             D = steer_of(s, prn);
@@ -366,6 +383,10 @@ inline void write_tiles(int32_t* t, size_t n_i32, const ChainSpec& s, const Sky&
             if (r_scale < 0)
                 r_scale = r;
             const std::complex<double> car = std::polar(1.0, 2.0 * M_PI * carrier_cyc(p, rec0 + r));
+            std::complex<double> z(0.0, 0.0);
+            if (probe)
+                z = std::polar(sc.probe_amp,
+                               2.0 * M_PI * Noise(sky.seed, s.pre, p, rec0 + r, -1).uniform());
             for (int c = 0; c < s.n_chan; ++c) {
                 const double qs = pack_scale(s, energy_at(s, sc, frame, r_scale, p, c));
                 Noise nz(sky.seed, s.pre, p, rec0 + r, c);
@@ -382,6 +403,8 @@ inline void write_tiles(int32_t* t, size_t n_i32, const ChainSpec& s, const Sky&
                             v += sky.amp * f * sky.gain_e[(size_t)e]
                                  * std::conj(std::complex<double>(d.real(), d.imag())) * car;
                         }
+                        if (probe)
+                            v += z * probe_gain(e);
                         const size_t i = tile_index(s, r, c, lane, e);
                         t[i] = (int32_t)std::lround(qs * sq * v.real());
                         t[i + 1] = (int32_t)std::lround(qs * sq * v.imag());

@@ -432,10 +432,12 @@ def post(a):
         band = band_of(stage)
         if band not in snap["bands"]:
             continue
+        entry = snap["bands"][band]
+        body = dict(body_extra, ref=entry["ref"])
+        if entry.get("frame0"):
+            body["frame0"] = int(entry["frame0"])
         try:
-            rep = post_one(
-                node, stage, dict(body_extra, ref=snap["bands"][band]["ref"])
-            )
+            rep = post_one(node, stage, body)
             print(
                 "  %-8s %-4s was %-4s staged %s"
                 % (
@@ -547,22 +549,27 @@ def act_mode(a, fr):
     return a.mode
 
 
-def post_note(node, stage, ref, mode, why):
-    """POST ref to one assembler for --act; (ok, log line)."""
+def post_note(node, stage, ref, mode, why, frame0=None):
+    """POST ref to one assembler for --act, with the F-engine start it was made under when known
+    (the node then re-seeds a model it no longer describes while that start lasts); (ok, log
+    line)."""
     name = "%s %s" % (inst_name(node, stage), band_of(stage))
+    body = {"ref": ref, "mode": mode}
+    if frame0:
+        body["frame0"] = int(frame0)
     try:
-        post_one(node, stage, {"ref": ref, "mode": mode})
+        post_one(node, stage, body)
         return True, "%s: reference posted, mode %s (%s)" % (name, mode, why)
     except Exception as e:  # noqa: BLE001
         return False, "%s: post FAILED %s (%s)" % (name, repr(e)[:80], why)
 
 
-def post_band(a, res, band, ref, why, now, state, lines, notes):
+def post_band(a, res, band, ref, why, now, state, lines, notes, frame0=None):
     """--act: POST a band's new reference to each of its instances that answered the poll."""
     for (node, stage), d in sorted(res.items()):
         if band_of(stage) == band and "error" not in d:
             mode = act_mode(a, d.get("fleet_ref"))
-            ok, note = post_note(node, stage, ref, mode, why)
+            ok, note = post_note(node, stage, ref, mode, why, frame0)
             (notes if ok else lines).append(note)
             state["acted"]["%s %s" % (inst_name(node, stage), band)] = now
 
@@ -875,7 +882,9 @@ def fold_steps(a, table, snap, base_taken, res, now, stamp, state, lines, notes)
             auto=dict(snap.get("auto", {}), **{band: stamp}),
         )
         notes.append(what)
-        post_band(a, res, band, ref, "turned by the steps", now, state, lines, notes)
+        post_band(
+            a, res, band, ref, "turned by the steps", now, state, lines, notes, cur
+        )
     for why, bands in sorted(failed.items()):
         lines.append(
             "%s: made under an earlier F-engine start and not turned: %s"
@@ -1026,7 +1035,9 @@ def watch(a):
             "%s; %s from the fleet consensus (R %s, n %s)"
             % (what, verb, new["R"], new["n"])
         )
-        post_band(a, res, band, new["ref"], verb, now, state, lines, notes)
+        post_band(
+            a, res, band, new["ref"], verb, now, state, lines, notes, new.get("frame0")
+        )
     if active == auto_path:
         if retook:
             with open(auto_path + ".tmp", "w") as f:
@@ -1124,7 +1135,9 @@ def watch(a):
                 lines.append("%s: %s; post the reference" % (act_key, "; ".join(why)))
             elif now - state["acted"].get(act_key, 0) >= ACT_EVERY_S:
                 mode = act_mode(a, fr)
-                ok, note = post_note(node, stage, entry["ref"], mode, "; ".join(why))
+                ok, note = post_note(
+                    node, stage, entry["ref"], mode, "; ".join(why), entry.get("frame0")
+                )
                 (notes if ok else lines).append(note)
                 state["acted"][act_key] = now
         cur["bands"][band] = {

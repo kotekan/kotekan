@@ -134,7 +134,13 @@ private:
     /// barely moves the consensus. Shared implies held (_elem_adapt = false): the live weights
     /// are rebuilt from the model every record.
     std::atomic<bool> _elem_shared{false};
-    double _elem_shared_tau_s = 300.0;           ///< consensus EMA, s (slower than any transit)
+    double _elem_shared_tau_s = 300.0; ///< consensus EMA, s (slower than any transit)
+    /// A PRN's shadow feeds the shared model only while its lane is at least this coherent on
+    /// one channel (0: every warm shadow). A shadow learns whatever its rows hold, so one of a
+    /// PRN the fleet does not hold (a noise probe, a satellite below the horizon) is noise.
+    /// While no shadow qualifies the model holds.
+    double _elem_shared_learn_coh_min = 0.0;
+    bool shadow_held(size_t q) const;
     double _elem_pol_tau_s = 3.0;                ///< per-PRN inter-pol coefficient EMA, s
     std::vector<std::complex<double>> _g_shared; ///< [n_elem]: pol-0 half then pol-1 half
     bool _g_shared_warm = false;
@@ -196,12 +202,19 @@ private:
     /// F at once means F is the stale one.
     double _fleet_reseed_sib_sim = 0.8;
     gnss::ReseedState _fleet_reseed[2];
+    /// The F-engine start F was made under (frame0, integer second; config
+    /// elem_sum_shared_ref_frame0, POST frame0), 0 if not known. While it is the start of the
+    /// records in hand, both pols off F means the model failed, not F, and each pol re-seeds
+    /// without its sibling's agreement.
+    int64_t _fleet_ref_frame0 = 0;
+    std::atomic<double> _frame0_utc{0.0}; ///< utc0 of the newest records
     /// REST staging (under _gain_mtx), applied by fleet_ref_apply_pending in the next
     /// shared_consensus on the main thread, which runs only while elem_sum_shared is on.
     std::vector<std::complex<double>> _pending_fleet_ref;
     bool _pending_fleet_ref_set = false;
     int _pending_fleet_mode = -1;
     double _pending_fleet_slew_deg_s = -1.0;
+    int64_t _pending_fleet_ref_frame0 = -1;
     void fleet_ref_apply_pending();
     /// The weights in force for every PRN (pol 1 scaled by its _pol_c): the model, blended
     /// toward F's shape in shape mode by _shape_mix, which ramps over _shape_ramp_s.
@@ -218,6 +231,7 @@ private:
     std::vector<std::complex<double>> _w_scratch; ///< [n_elem] held weights being built
     void shared_reset_prn(size_t p);
     void shared_consensus(double now_s);
+    void shared_reseed_idle(double now_s);
     void shared_hold(size_t p);
     void shared_pol_update(size_t p, const std::complex<double>* g_prompt, double dt_s);
     std::vector<gnss::ElemSteer::cf>
