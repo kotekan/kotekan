@@ -601,6 +601,10 @@ def test_chime_detector_is_diagnostic_in_each_numa_domain():
             "write_dtv",
         }
         assert list(domain["write_dtv"]) == ["mask", "stat"]
+        # a restart numbers on, and a missing output directory is created
+        for name in ("mask", "stat"):
+            raw = domain["write_dtv"][name]
+            assert raw["continue_numbering"] is True and raw["create_base_dir"] is True
 
 
 def test_chime_calibration_mode_writes_every_product():
@@ -625,6 +629,11 @@ def test_chime_calibration_mode_writes_every_product():
         assert row["file_name"] == f"dtv_fine_powers_n{numa}"
         detector = domain["run_dtv_detector"]["commands"][0]
         assert detector["dtv_fine_powers_rows"] == "num_freq_gpu_buf"
+        # a restart keeps the previous run's files
+        assert row["acq_dir"] is True
+        for name in ("mask", "powers", "fine_support", "stat"):
+            raw = domain["write_dtv"][name]
+            assert raw["continue_numbering"] is True and raw["create_base_dir"] is True
 
 
 def test_chime_detector_mask_visibility_and_counts_across_ring_wrap(tmp_path, runtime):
