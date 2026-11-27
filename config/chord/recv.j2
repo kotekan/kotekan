@@ -292,6 +292,22 @@ incoherent_snr_buffer:
     dimscalings: [65536, 1]
     metadata_pool: incoherent_power_pool
 
+# For a live display: the samples of the last 20 s as the search saw them, after its masks, in
+# bins of 32 samples (42 ms) by 8 channels (1.6 MHz), the newest row last. A value is in units
+# of 1/16 sigma of its bin and -128 marks a bin with nothing in use. Nothing consumes it;
+# peek_hold keeps the newest image for choco's beam page, which asks about three times a second
+# and puts the frames together by their sequence numbers.
+incoherent_waterfall_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 4
+    peek_hold: true
+    value_type: int8
+    extents: [480, 832]
+    quantity_name: "incoherent_waterfall"
+    dimnames: ["Trfi", "F"]
+    dimscalings: [8192, 8]
+    metadata_pool: incoherent_power_pool
+
 # The samples around each candidate without a flag, as the search saw them and shifted by the
 # candidate's DM: 1.7 MB before compression, one file per candidate. A pulse is a column in
 # the middle. A file is cutouts/acq_<start of kotekan>/cutout.<UTC of its first sample>.<n>.h5
@@ -322,6 +338,7 @@ incoherent_beam_search:
     num_threads: 8
     in_buf: incoherent_power_buffer
     snr_buf: incoherent_snr_buffer
+    waterfall_buf: incoherent_waterfall_buffer
     cutout_buf: incoherent_cutout_buffer
     freq_id_base: 1536
     num_local_freq: 6656
