@@ -1,7 +1,8 @@
 # The N^2 lane projection on the GPU (design, phase 1)
 
-Status 2026-11-26: design and measurements only, no code. Branch `kv/gpu-projection` off
-kv/chord-gnss `b1d66d225`. The stage being moved is `GnssN2Project`
+Status 2026-11-27: built and tested on `kv/gpu-projection` (off kv/chord-gnss `b1d66d225`),
+not deployed; section 7 has what was built, what departs from the design below, the test results
+and the canary steps. Sections 1-6 are the design of 2026-11-26. The stage being moved is `GnssN2Project`
 (lib/stages/gnss/GnssN2Project.{hpp,cpp}); what a lane is and how lanes travel between nodes is
 in [CHORD_FLEET_LANES.md](CHORD_FLEET_LANES.md); what the projection does to the science data is
 in docs/chord/PROJECTION.md (branch kv/docs-1125).
@@ -408,8 +409,98 @@ tools/ci_select_jobs.py already sends lib/cuda changes to the GPU jobs.
 5. `rank_step` on the GPU now or later (0.8 ms of host per frame). Proposed: later.
 6. The canary node and GPU.
 
-## 6. Size
+## 6. Size (estimate before the build)
 
 About 1,600 lines: CUDA kernels ~250, the command ~400, the kernel check ~250, the stage ~150
 added and ~40 removed, the generator and its tests ~200, the CI config and checker ~250,
 stock_parity and docs ~100. Two to three working sessions to a tested branch, then the canary.
+
+## 7. As built (2026-11-27)
+
+KV's decisions (via coord): FP64; both paths apply the recorded complex<float> basis; the
+command copies the live blocks out itself and drops a frame when GnssN2Project has no empty one;
+the newest basis, never waited for; `rank_step` stays on the host; the canary layout is cx43
+GPU 0 on the GPU and GPU 1 on the CPU; the command lives in the stock `run_n2k`.
+
+**What was built.**
+- `lib/cuda/cudaGnssN2Project.{hpp,cpp}`, `lib/cuda/cudaGnssN2ProjectKernel.{hpp,cu}`: the command
+  and its kernels, as in 3.2-3.6 (`REGISTER_CUDA_COMMAND_WITH_STATE`; config `stations`,
+  `live_freq_ids`, `k_lanes_max`, `in_basis_buf`, `live_buf`, `gpu_mem_basis`,
+  `n2k_correlation_name`).
+- `GnssN2Project` `gpu: true` (GnssN2Project.hpp "GPU"); both paths round the basis to
+  complex<float> before applying it; the record's bytes 40-47 hold the source frame's seq on both
+  paths.
+- Generator `--n2-project-gpu GPUS`; `stock_parity.py` declares the `run_n2k` changes; the fleet
+  manifest leaves the flag off and names the canary beside cx43.
+- Tests: `cuda_gnss_n2_project_test`, two Boost cases in `test_gnss_n2project_math`, the GPU CI
+  config `gpu_batch/run_n2accum_gnssproject_gpu.yaml` with `scripts/gnss/n2proj_gpu_check.py`,
+  a generator test.
+
+**Departures from sections 3-4.**
+- The live-block header also carries the words per slot and the k applied per slot (padded to
+  64 bytes), so the stage knows which channels the GPU projected
+  (`gnssN2ProjectMath.hpp` `live_head_bytes`).
+- The bases go to the GPU in their own buffer, `gnss<g>_lane_basis`; `gnss<g>_proj_basis`
+  keeps its name and size and now carries the GPU's copy to N2Accumulate.
+- The gauges: the command's `kotekan_gnss_n2project_gpu_basis_lag_frames` and
+  `..._gpu_live_dropped_total` (labelled by the command), and the stage's
+  `..._basis_dropped_total` (a basis with no empty `gnss<g>_lane_basis` frame).
+- The GEMMs run over the frame's largest applied k, not `k_slot`, so the cost follows the lanes in
+  use.
+- Word-for-word equality needs real autos, which the correlator's are: with a nonzero imaginary
+  part on the diagonal the block is not Hermitian and the two paths' (equivalent for Hermitian V)
+  formulas differ by a count on a few percent of the words. testN2kGen's correlation types all
+  have one, so the GPU CI config runs the real correlator on random voltages and
+  `gpuSimulateN2kCorr` for the CPU path instead of testN2kGen through `cudaInputData` (4.2).
+- Test 4 (recorded lane dumps) was not run: no raw dump frames are on disk off the nodes.
+
+**Results.**
+- Kernel check (cf05 GPU 1, L40S): every word of every projected channel equals the CPU path,
+  k 0-40 with k_slot 40 and k 2-64 with k_slot 64 (shared memory above 48 KB), a station with no
+  lane component, the channels outside the slots, the other inputs' own products and the poisoned
+  upper halves untouched; the live blocks equal the raw and projected channels. 0.740 ms per
+  frame at 43 slots x 40 directions (gather, project, gather).
+- GPU CI check (cf05 GPU 0; 8 channels, 6 live, 119 stations, 6 lanes, 24 frames): 23 of 24
+  frames had the same basis on both paths and are equal word for word; the first, with none
+  applied, is the raw N^2; the other channels raw on both paths; the live blocks, records (seq,
+  source seq, lag 1) and gauges agree (lane_k and auto_raw_db equal, auto_proj_db within
+  8e-6 dB; null_db -4.87 against -4.71 dB, the GPU stage's EMA starting a frame later); no
+  frame dropped. `run_tests.sh` passes the config in 15 s.
+- The float basis on the CPU path against today's (same inputs): on synthetic frames with values
+  up to ~1e7, 7-8% of the projected words move by 1 count, none by more; on the four CPU CI
+  configs, 0.04-0.07% of N2Accumulate's visibilities differ, by at most 1.4e-3 (the mean
+  projector records are identical: they were float already).
+- In situ (cf05 GPU 0, the CI pipeline at production shape: 43 live channels of 48, 109
+  stations, 40 lanes from the test publisher, #229 ranking and the lane dump on, 2 workers on the
+  hyperthread pair 6+38; the voltage generator limits it to ~2.7 frames/s): `cudaGnssN2Project`
+  1.14 ms per frame on the GPU (the kernels plus the record's upload and the live blocks'
+  copy-out), `cudaCorrelator` 0.10 ms, the record's copy-out 0.06 ms; GnssN2Project's
+  `frame_ms` 10.1 ms (against 21-28 ms for the CPU path at 32 lanes on the bench and 26-28 ms on
+  the nodes at 26-29 lanes); lag 1, nothing dropped. The frames arrive ~0.4 s apart there, so
+  the stage starts each with cold caches; on a node expect less.
+- Generator: `config/test_gen_chord_gnss_config.py` and `scripts/gnss/test_gen_fleet.py` pass;
+  a cx43 config generated from the 11-27 cycle's recipe with `--n2-project-gpu 0` passes
+  `kotekan --dry-run` on cf05 after the offline conversion (`fixtures/gpu_budget/make_prof_config.py`:
+  DPDK input replaced, senders dropped; the telemetry senders dropped too and the DTV bundle read
+  from the repo, as cf05 has neither). A full offline run of that config is input-bound (4
+  frames in 35 s) and gives no timing.
+
+**Canary (KV and coord).**
+1. A fleet binary from `kv/gpu-projection` (CUDA 13.5, Release, DPDK, as
+   `builds/build_fleet_6a59985ee_cu135.sh`), staged under a new name; the python half (generator,
+   `stock_parity.py`) in the checkout the stack regenerates from.
+2. Fleet manifest: `cx43: {n2-project-gpu: "0"}`. `gen_fleet.py --node cx43 --preview-dir DIR`
+   first, then `--check`; the preview's `run_n2k.gpu_0` holds `cudaGnssN2Project`, its
+   `gnss_n2_project.proj_0` has `gpu: true` and `num_local_freq` 43.
+3. A node_up cycle of cx43 alone onto the binary.
+4. Judge in minutes on cx43 (`curl -s cx43:12048/metrics`): `NRestarts` 0 and no FATAL in the
+   log (record or slot mismatch, live-block header); `kotekan_gnss_n2project_gpu_basis_lag_frames`
+   1; `..._gpu_live_dropped_total` and `..._basis_dropped_total` flat;
+   `kotekan_N2accumulate_proj_mean_dropped_total` flat; proj_0's `frame_ms` well under proj_1's;
+   proj_0's `lane_k`, `auto_proj_db` and `null_db` per freq_id against proj_1's and the night
+   before; `GET /gpu_profile/run_n2k/gpu_0` for `cudaGnssN2Project` (~1-1.5 ms) and the
+   correlator's copy-out unchanged; the projmean record through `pmcheck_1125.py`.
+5. Then GPU 1 (`n2-project-gpu: "0,1"`), then the fleet in the common block, each at a cycle.
+6. Rollback: remove the key, regenerate, cycle: the stage's CPU path, as today but for the float
+   basis.
+

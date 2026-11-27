@@ -83,6 +83,10 @@ Generator `--fleet-lanes` (fleet yaml `fleet-lanes: true`): GnssN2Project gets `
 table is `fleet-lane-transfer` in the fleet yaml's common block, read by the relay only.
 The target channels must be in `n2-project-live-freq-ids`, as for the local transfers.
 
+With `--n2-project-gpu` (docs/CHORD_GPU_PROJECTION.md) the GPU applies the basis GnssN2Project
+builds from a frame to the next frames, so `lane_resteer` turns the lanes to the next frame's
+mid-time; the relay, the contract and the gauges do not change.
+
 `fleet-lane-transfer-bright` (same form) holds the targets for a close pass: a lane whose
 power is `fleet-lane-transfer-bright-db` (default 15) above the median of its chain's lanes in
 the same cycle also goes there, on every GPU including the one that measured it. Those targets

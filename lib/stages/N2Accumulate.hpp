@@ -166,8 +166,9 @@ void from_json(const nlohmann::json& j, N2VarianceMode& m);
  *                          num_dishes, 2]
  *         @buffer_metadata chordMetadata, with the correlation frames' coarse_freq
  * @buffer  in_proj_basis_buf  Optional, with out_proj_mean_buf: the directions GnssN2Project
- * projected each frame's live channels with (its basis_buf). Consumed 1:1 with the correlation
- * frames and checked against them by FPGA sequence number.
+ * projected each frame's live channels with (its basis_buf), or, with the projection on the GPU,
+ * cudaGnssN2Project's copy of the basis it applied. Consumed 1:1 with the correlation frames and
+ * checked against them by FPGA sequence number.
  *         @buffer_format   GnssN2Project's basis record (GnssN2Project.hpp), no metadata
  * @buffer  out_proj_mean_buf  Optional: per bin, the projected-out part averaged over the
  * frames accumulated into it, weighted as the visibilities are (by each frame's valid samples

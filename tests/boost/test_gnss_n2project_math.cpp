@@ -234,3 +234,47 @@ BOOST_AUTO_TEST_CASE(ranked_order_keeps_the_owner_lane) {
     BOOST_CHECK_GT(left_after(n, u.data(), {cont.data(), own.data()}), 0.07);  // power order
     BOOST_CHECK_LT(left_after(n, u.data(), {own.data(), cont.data()}), 0.011); // ranked
 }
+
+// The basis is applied rounded to complex<float>, the record's precision: the rounding is exact
+// and idempotent, and the projection it gives stays the projection to float precision.
+BOOST_AUTO_TEST_CASE(rounded_basis_is_the_record) {
+    const int n = 109, k = 27;
+    const std::vector<cd> V0 = hermitian(n);
+    gnss::ProjBasis B = basis(n, k);
+    std::vector<cd> q = B.q;
+    gnss_n2proj::round_to_float(q.data(), (size_t)k * n);
+    std::vector<cd> q2 = q;
+    gnss_n2proj::round_to_float(q2.data(), q2.size());
+    BOOST_CHECK(q2 == q);
+    double moved = 0.0;
+    for (size_t i = 0; i < (size_t)k * n; ++i) {
+        BOOST_CHECK(cd(std::complex<float>(q[i])) == q[i]);
+        moved = std::max(moved, std::abs(q[i] - B.q[i]));
+    }
+    BOOST_CHECK_GT(moved, 0.0);
+    BOOST_CHECK_LT(moved, 1e-7);
+    const std::vector<cd> R = reference(n, n, k, B.q, V0);
+    std::vector<cd> V = V0, W, M;
+    gnss_n2proj::project(n, k, q.data(), V.data(), W, M);
+    double err = 0.0, ref = 0.0;
+    for (size_t i = 0; i < V.size(); ++i) {
+        err += std::norm(V[i] - R[i]);
+        ref += std::norm(R[i]);
+    }
+    BOOST_CHECK_LT(std::sqrt(err / ref), 1e-6);
+}
+
+// The record and live-block layouts at production shape (109 stations, 40 directions, 43
+// channels): the sizes the generator renders.
+BOOST_AUTO_TEST_CASE(record_and_live_block_sizes) {
+    BOOST_CHECK_EQUAL(gnss_n2proj::basis_head_bytes(109), 500u);
+    BOOST_CHECK_EQUAL(gnss_n2proj::basis_slot_bytes(40, 109), 34896u);
+    BOOST_CHECK_EQUAL(
+        gnss_n2proj::basis_head_bytes(109) + 43 * gnss_n2proj::basis_slot_bytes(40, 109), 1501028u);
+    BOOST_CHECK_EQUAL(gnss_n2proj::live_head_bytes(0), 64u);
+    BOOST_CHECK_EQUAL(gnss_n2proj::live_head_bytes(16), 128u);
+    BOOST_CHECK_EQUAL(gnss_n2proj::live_head_bytes(43), 256u);
+    gnss_n2proj::Layout L;
+    BOOST_CHECK_EQUAL(gnss_n2proj::live_head_bytes(43) + 2 * 43 * L.per_freq() * sizeof(int32_t),
+                      6340864u);
+}
