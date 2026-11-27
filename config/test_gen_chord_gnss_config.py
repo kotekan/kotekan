@@ -2540,7 +2540,8 @@ def test_fdma_slots():
 
     check(parse_slots("1,2, 3") == ([1, 2, 3], None), "a CDMA list has no channels")
     check(parse_slots("1@1,10@-7") == ([1, 10], [1, -7]), "slot@k")
-    for bad in ("1@1,2", "1@7", "1@-8"):
+    check(parse_slots("25@8") == ([25], [8]), "k = 8, COSMOS 2433's channel")
+    for bad in ("1@1,2", "1@9", "1@-8"):
         try:
             parse_slots(bad)
             check(False, "%s refused" % bad)
@@ -2555,6 +2556,11 @@ def test_fdma_slots():
     check(
         set(one) < set(comb) and min(comb) == 6361 and max(comb) == 6396,
         "the union spans k = -7..+6: %d..%d" % (min(comb), max(comb)),
+    )
+    top = chain_covering_channels(chans, s, 5e3, [-7, 6, 8])
+    check(
+        min(top) == 6361 and max(top) == 6400,
+        "k = 8 widens it to %d..%d" % (min(top), max(top)),
     )
     check(
         chain_covering_channels(chans, s, 5e3) == one,

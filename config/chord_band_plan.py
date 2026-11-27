@@ -75,9 +75,10 @@ def covering_channels(chans, carrier_hz, chip_rate_hz, max_doppler_hz, **kw):
 
 
 # GLONASS L2OF's frequency channels (lib/stages/gnss/glonassCACode.hpp L2OF_CHANNEL_SPACING_HZ,
-# L2OF_K_MIN, L2OF_K_MAX; the ICD's): slot carrier = 1246.0 MHz + k * 437.5 kHz.
+# L2OF_K_MIN, L2OF_K_MAX): slot carrier = 1246.0 MHz + k * 437.5 kHz. The ICD's -7..+6, and up
+# to +8 for the spare COSMOS 2433, which transmits on k = 8.
 L2OF_CHANNEL_SPACING_HZ = 437.5e3
-L2OF_K_MIN, L2OF_K_MAX = -7, 6
+L2OF_K_MIN, L2OF_K_MAX = -7, 8
 
 
 def parse_slots(prn_s):

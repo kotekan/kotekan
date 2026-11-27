@@ -84,6 +84,11 @@ common:
     alt: 528.4
     mask-deg: 0
     interval: 2
+  # Satellites in no broadcast product, from decoded broadcast records: gx10's GLONASS decodes
+  # (gnss_oddsat_rinex.py, one RINEX file a day on the shared home), merged with BRDC per
+  # satellite, BRDC winning a same-toe tie. Today only slot 25, the spare COSMOS 2433 (k = 8),
+  # whose records carry health 1: tracked and projected, kept out of the shared estimates.
+    extra-nav: /home/gnss_tunnel/oddsats/gx10_nav/gx10_decoded_*.rnx
   # One publisher serves every chain (broker_multi.py takes the first publish-port); select a
   # chain with /<chain>/get_status or ?chain=<id>.
     publish-port: 12060

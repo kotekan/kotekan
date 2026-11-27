@@ -234,7 +234,7 @@ def glonass_freq_channels(paths=None):
                 i += 1
                 continue
             i += 4
-            if -7 <= k <= 6 and 1 <= slot <= 32:
+            if -7 <= k <= 8 and 1 <= slot <= 32:
                 out.setdefault(slot, k)  # first (best) source wins
     return out
 
