@@ -16,6 +16,7 @@ here knows about orbits. Code that needs best_eph or predict_all belongs in gnss
 Mutable module state lives here (LOG_HOOK, _src_dead, _HOURLY_STATIONS): read and write it
 through this module by name.
 """
+import glob
 import json
 import os
 import re
@@ -252,13 +253,14 @@ LOG_HOOK = None
 EXTRA_NAV = []
 
 
-def set_extra_nav(paths):
-    """Make fetch_brdc append these files (those that exist when it is called)."""
-    EXTRA_NAV[:] = [p for p in paths if p]
+def set_extra_nav(patterns):
+    """Make fetch_brdc append the files these paths or glob patterns name when it is called, so a
+    daily file is picked up on the day it appears."""
+    EXTRA_NAV[:] = [p for p in patterns if p]
 
 
 def _with_extra(paths):
-    return list(paths) + [p for p in EXTRA_NAV if os.path.exists(p)]
+    return list(paths) + [f for pat in EXTRA_NAV for f in sorted(glob.glob(pat))]
 
 
 def _log_hourly(msg):
