@@ -1453,6 +1453,15 @@ def build_parser(description):
         "Default %(default)s.",
     )
     ap.add_argument(
+        "--joint-clk-coast-bound",
+        action="store_true",
+        help="'clk' consumer without --joint-clk-primary: refuse a coast that would move this "
+        "chain's clock further than an adoption may (joint_clk_max_chips). After the legacy "
+        "clock steps (a declared re-pin once the capture re-based) the last adopted joint "
+        "clock is far from it, and coasting on it holds every seed on the clock from before "
+        "the step. Default off.",
+    )
+    ap.add_argument(
         "--joint-clk-coast-max-s",
         type=float,
         default=300.0,
@@ -2324,6 +2333,15 @@ def build_parser(description):
         "GPS-disciplined clock. bias: the solved clock-frequency bias, scaled to code "
         "(bias x chip rate / carrier), for a free-running oscillator, whose clock walks "
         "chips per second; until the bias is solved, as solve.",
+    )
+    ap.add_argument(
+        "--dr-drift-joint",
+        action="store_true",
+        help="a chain that takes both the joint clock and its rate (joint-consume clk,rate) "
+        "runs its clock at the joint rate (dr_joint_rate, under its gates) between adoptions "
+        "and through a refusal, instead of the measured drift or (l-a). A chain whose locked "
+        "satellites go unsearched (--hint-skip-dr) has no fresh solves to measure a drift "
+        "from, and a stale one walked 5 chips in 6 min. Default off.",
     )
     ap.add_argument(
         "--dr-nav-symbols",

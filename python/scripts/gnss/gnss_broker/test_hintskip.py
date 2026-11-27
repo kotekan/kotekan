@@ -168,11 +168,16 @@ def drift_checks():
                 "the carrier bias (--dr-drift-source bias)",
             ),
             ({"rate"}, 1.5 * CHIP_HZ / 1176.45e6, "rate alone leaves it"),
-            ({"clk", "rate"}, 0.001, "clk,rate: the joint rate"),
+            ({"clk", "rate"}, 1.5 * CHIP_HZ / 1176.45e6, "clk,rate, no --dr-drift-joint"),
         ):
             ctx.joint_consume = consume
             got = deadreckon.dr_drift(ctx)
             check(abs(got - want) < 1e-12, "%s (%.6f chips/s)" % (what, got))
+        ctx.args.dr_drift_joint = True
+        ctx.joint_consume = {"clk", "rate"}
+        got = deadreckon.dr_drift(ctx)
+        check(abs(got - 0.001) < 1e-12, "--dr-drift-joint: the joint rate (%.6f)" % got)
+        ctx.args.dr_drift_joint = False
         ctx.args.dr_drift_source = "solve"
         ctx.joint_consume = set()
         check(deadreckon.dr_drift(ctx) == 0.02, "the measured drift otherwise")

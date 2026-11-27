@@ -666,15 +666,27 @@ def test_trk_coast_refuses_a_stepped_clock():
         "jclk_last_rate": 0.001,
     }
     offs, clk_now, lines, _ = run_dr_seed(
-        make_rx("empty", search="thin"), "trk", bsat, ds=ds
+        make_rx("empty", search="thin"),
+        "trk",
+        bsat,
+        ds=dict(ds),
+        argkw={"joint_clk_coast_bound": True},
     )
     jc = _lines(lines, "JOINT-CLK")
     check(
         clk_now == LEGACY_CLK
         and not any("COAST" in m for m in jc)
         and all(offs[p] == _w(LEGACY_CLK + bsat[p]) for p in (3, 9)),
-        "an adoption 600 chips from the legacy clock: no coast, the legacy clock (%s)"
-        % (jc[:1],),
+        "--joint-clk-coast-bound, an adoption 600 chips from the legacy clock: no coast, "
+        "the legacy clock (%s)" % (jc[:1],),
+    )
+    _, clk_now, lines, _ = run_dr_seed(
+        make_rx("empty", search="thin"), "trk", bsat, ds=dict(ds)
+    )
+    jc = _lines(lines, "JOINT-CLK")
+    check(
+        clk_now != LEGACY_CLK and any("COAST" in m for m in jc),
+        "without it the refusal coasts on the last adoption (%s)" % (jc[:1],),
     )
 
 

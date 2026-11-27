@@ -1286,11 +1286,15 @@ def _joint_coast(ctx, ds, jrate, jlen):
         ctx.args.chip_rate_hz,
         ctx.code_len,
     )
-    # Nor may the coast move the clock further than an adoption may. Past that the legacy
-    # clock has stepped under it (a declared re-pin after the capture re-based), and the
-    # coast would hold every seed on the clock from before the step. Under
+    # --joint-clk-coast-bound: nor may the coast move the clock further than an adoption may.
+    # Past that the legacy clock has stepped under it (a declared re-pin after the capture
+    # re-based), and the coast would hold every seed on the clock from before the step. Under
     # --joint-clk-primary an adoption has no such bound either.
-    if not primary and abs(delta_j) > ctx.args.joint_clk_max_chips:
+    if (
+        not primary
+        and getattr(ctx.args, "joint_clk_coast_bound", False)
+        and abs(delta_j) > ctx.args.joint_clk_max_chips
+    ):
         return None
     return delta, ext, age, rate
 
@@ -1334,16 +1338,17 @@ def dr_joint_rate(ctx):
 def dr_drift(ctx):
     """The rate this chain runs its clock at, chips/s: the measured drift (dr_state), else
     the f_chip*(l-a) model, except that --dr-drift-source bias takes the carrier bias (a
-    free-running oscillator's frequency error), and a chain that takes both the joint clock
-    and its rate (joint-consume clk,rate) takes the joint rate. Between adoptions, and
-    through a refusal, the clock it falls back on must not walk away from the one the seeds
-    ride: a chain whose locked satellites go unsearched (--hint-skip-dr) has no fresh
-    solves to measure a drift from, and a stale one walked 5 chips in 6 min."""
+    free-running oscillator's frequency error), and under --dr-drift-joint a chain that takes
+    both the joint clock and its rate (joint-consume clk,rate) takes the joint rate."""
     drift = ctx.dr_state.get("drift")
     bias = getattr(ctx.args, "dr_drift_source", "solve") == "bias"
     if bias and ctx.cb.ema is not None:
         drift = ctx.cb.ema * ctx.args.chip_rate_hz / ctx.args.carrier_hz
-    if "clk" in ctx.joint_consume and "rate" in ctx.joint_consume:
+    if (
+        getattr(ctx.args, "dr_drift_joint", False)
+        and "clk" in ctx.joint_consume
+        and "rate" in ctx.joint_consume
+    ):
         jla = dr_joint_rate(ctx)
         if jla is not None:
             drift = ctx.args.chip_rate_hz * jla
