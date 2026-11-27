@@ -761,8 +761,8 @@ chains:
     # k is reassigned when a satellite is replaced. The tracker code tiles the 10 ms
     # Manchester halves of a 20 ms bit (GLO_L2OF_MC). The comb with Doppler, 1242.3-1249.1 MHz, is
     # 6361-6396 (exempt above), and each satellite's lobe about six of them, one per instance.
-    # Every assigned slot is pinned (25 of 32), so the chain needs no live PRN reconfig (FDMA
-    # refuses it); below-horizon slots serve as its noise probes. k from BRDC 2026-10-27.
+    # Every assigned slot is pinned (26 of 32), so the chain needs no live PRN reconfig (FDMA
+    # refuses it); below-horizon slots serve as its noise probes. k from BRDC 2026-11-27.
     # DLL spacing: L2C's geometry per satellite (511 kcps BPSK, each lobe about six channels,
     # one per instance, summed coherently by the fleet loop), so the six-channel 0.33; first
     # sky to confirm. Written, not derived as L2C's: a slot's channel count depends on its k
@@ -771,7 +771,7 @@ chains:
     - id: 13
       key: glo_l2of
       descriptor: GLO_L2OF_MC
-      prns: 1@1,2@-4,3@5,4@6,5@1,6@-4,7@5,8@6,9@-2,10@-7,11@0,12@-1,13@-2,14@-7,15@0,16@-1,17@4,18@-3,19@3,20@2,21@4,22@-3,23@3,24@2,27@-5
+      prns: 1@1,2@-4,3@5,4@6,5@1,6@-4,7@5,8@6,9@-2,10@-7,11@0,12@-1,13@-2,14@-7,15@0,16@-1,17@4,18@-3,19@3,20@2,21@4,22@-3,23@3,24@2,26@-6,27@-5
       dll-spacing-chips: 0.33
       telem-rows: 14
       proj-sys: R

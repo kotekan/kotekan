@@ -310,7 +310,7 @@ def check_prns(man, rise_deg=RISE_DEG, hours=24.0, step_min=10.0):
 
     eph = parse_rinex_nav(fetch_brdc(datetime.now(timezone.utc)))
     # Peak elevation over the sweep: a satellite that never rises here has no claim on a slot,
-    # however active it is.
+    # however active it is. The chains track an unhealthy satellite, so it counts.
     now = time.time()
     peak = {}
     for k in range(int(hours * 60 / step_min)):
@@ -322,6 +322,7 @@ def check_prns(man, rise_deg=RISE_DEG, hours=24.0, step_min=10.0):
             now + k * step_min * 60.0,
             mask_deg=-90.0,
             max_age=86400.0,
+            health_gate=False,
         )
         for key, v in pd.items():
             if v["el"] > peak.get(key, -90.0):
