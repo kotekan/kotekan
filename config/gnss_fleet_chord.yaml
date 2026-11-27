@@ -112,7 +112,7 @@ common:
     # (2026-10-30), at ~n^2 per lane.
     # qzss_l2c: the L2C main lobe only (1.023 Mcps either side of 1227.6 MHz); QZSS sends no
     # P(Y) or M-code.
-    fleet-lane-transfer: [gps_l2c:1207.1-1242.9, gal_e6:1263.4-1273.6, gal_e6:1283.9-1304.9,
+    fleet-lane-transfer: [gps_l2c:1207.1-1248.1, gal_e6:1248.3-1273.6, gal_e6:1283.9-1304.9,
                           glo_l2of:1237.9-1258.2, qzss_l2c:1226.6-1228.6]
     # Channels exempt from first-stage (SK) RFI excision, absolute freq_id ranges
     # (freq_id = MHz / 0.1953125): the GNSS main lobes, one chip rate either side of each
@@ -295,8 +295,8 @@ common:
     # in the L2 band (E21, E27, C40 survived there). Each entry names its chain by broker key
     # (gps_l5, gal_e6, ...); the generator refuses a chain it does not build.
     lane-transfer:
-        - gal_e6:1263.4-1273.6
-        - gps_l2c:1207.1-1242.9
+        - gal_e6:1248.3-1273.6
+        - gps_l2c:1207.1-1248.1
         - gal_e5b:1186.7-1196.9
         - bds_b2b:1186.7-1196.9
         - gps_l5:1186.7-1196.9
@@ -340,6 +340,14 @@ common:
     # 1204.688 MHz, on the upper sidelobe past the null, during the tracked passes (cx27 lane
     # dumps). Every GPU tracks gw_1202, so the relay needs no entry.
         - gw_1202:1196.0-1208.1
+    # 2026-11-28: GuoWang's second signal, 10.23 Mcps at 1268.52 MHz (main lobe 1258.3-1278.7),
+    # from the same satellites' gw_1202 lanes: it was the PRS lower lobe's residual, y 0.7-1.4e5
+    # projected all night while every BRDC satellite there was down to <= 0.003 per input
+    # (cx43, 11-27). With it, L2C's range to P(Y)'s second upper sidelobe (to 1248.1: G17 left
+    # 0.026 per input at 1244.9 MHz near boresight) and E6's down over the PRS outer lower
+    # sidelobes (from 1248.3: E05, E09, E16, E23, E31 and E33 held ~0.001 each at 1254.3 MHz);
+    # those two are extended in place above and in fleet-lane-transfer.
+        - gw_1202:1258.3-1278.7
     # 2026-11-08: L2C's range widened from P(Y)'s main lobe (1217.4-1237.8) to the M-code's two
     # main lobes (BOC(10,5): 1227.6 +-10.23 +-5.115 MHz). G13's upper M-code lobe at 1237.8 MHz
     # stayed 31-32 dB over quiet in the projected channels against 34 in control on 11-05..07,
