@@ -52,6 +52,7 @@ def make_ctx():
             mask_deg=10.0,
         ),
         pred={5: (-1200.0, 0.4, 45.0, 2.2e7, 1e-5)},
+        unhealthy=set(),
         up=None,
         capable=None,
         cb=_Obj(ema=None, stale=False, value=0.0),
@@ -112,6 +113,16 @@ def main():
     check(
         ctx.nho.offset[0] is not None,
         "a 5 s old detection sets the offset (offset %r)" % ctx.nho.offset[0],
+    )
+
+    # 3. The same detection from a satellite with a failing health word: not learned.
+    ctx = make_ctx()
+    ctx.unhealthy = {5}
+    lines = cycle(ctx, 300.0, True, 295.0)
+    check(not any("nh hint failed" in m for m in lines), "the hint computation ran")
+    check(
+        not ctx.nho.off_hist and ctx.nho.offset[0] is None,
+        "an unhealthy satellite's detection is not learned (%r)" % ctx.nho.off_hist,
     )
 
     print("-" * 70)

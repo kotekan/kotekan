@@ -35,11 +35,12 @@ def check(ok, what):
         _fails.append(what)
 
 
-def gate(rate_chips_s, n, code_ema=None, tol=0.0):
+def gate(rate_chips_s, n, code_ema=None, tol=0.0, unhealthy=()):
     """Drive stage_detections_to_seeds with n detections 10 s apart on a code phase moving at
     rate_chips_s; returns [(len(la_samples), len(la_rejected))] per cycle."""
     ctx = seeding_ctx(cp_rate_model_tol=tol)
     ctx.cb.code_ema = code_ema
+    ctx.unhealthy = set(unhealthy)
     out = []
     h0 = 20_000_000
     dets = [h0 + i * STEP for i in range(n)]
@@ -60,6 +61,11 @@ def main():
     check(
         g[5][0] == 1 and g[7][0] == 1,
         "a mature fit (6 points over 50 s) feeds one sample: %s" % g,
+    )
+    g = gate(0.0, 8, unhealthy={7})
+    check(
+        all(a == 0 and r == 0 for a, r in g),
+        "an unhealthy satellite's mature fit feeds nothing: %s" % g,
     )
     g = gate(2.0, 8, code_ema=0.0, tol=0.5)
     check(

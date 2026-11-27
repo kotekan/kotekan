@@ -718,7 +718,7 @@ def stage_detections_to_seeds(ctx):
             # and the pool is what every chain's seeds ride (10-26 05:38Z: a 3-point fit and one
             # other made a 2-sample median of +1.44 ppm, and the seeds walked at ~1 chip/s). A
             # mature fit refused only by the tol goes to la_rejected, the re-pin's evidence
-            # should the pool itself be what is wrong.
+            # should the pool itself be what is wrong. An unhealthy satellite gives no sample.
             _mature = (
                 len(h) >= 6
                 and (h[-1][0] - h[0][0]) / ctx.args.hops_per_sec
@@ -728,6 +728,7 @@ def stage_detections_to_seeds(ctx):
                 _mature
                 and snr >= ctx.args.acquire_snr
                 and abs(la) < ctx.args.code_bias_max * 1e-6
+                and prn not in ctx.unhealthy
             ):
                 if _rate_rejected:
                     ctx.la_rejected.append(la)
@@ -776,7 +777,11 @@ def stage_detections_to_seeds(ctx):
                 )
                 _ph_raw = ph  # the measured phase, before the debounce can move it:
                 # the vote, the referee and the apply-side snap read this, never the debounced ph
-                if _nhj_ok and snr >= ctx.args.nh_joint_min_snr:
+                if (
+                    _nhj_ok
+                    and snr >= ctx.args.nh_joint_min_snr
+                    and prn not in ctx.unhealthy
+                ):
                     _nh_joint_vote(ctx, prn, _ph_raw, ref_hop, snr, ctx.drp.now_w)
                 # Period continuity is a check, not an authority. The search measures the overlay
                 # period (AcquisitionResult::peak_tau_samples), so overriding it from history can

@@ -141,7 +141,7 @@ class FakeEphemeris(object):
     separation from the boresight is |x0 + v * (t - T0)| deg."""
 
     @staticmethod
-    def predict_all(eph, lat, lon, alt, t, mask_deg=0.0):
+    def predict_all(eph, lat, lon, alt, t, mask_deg=0.0, health_gate=True):
         out = {}
         for key, (t0, t1, x0, v) in eph.items():
             if t0 <= t <= t1:

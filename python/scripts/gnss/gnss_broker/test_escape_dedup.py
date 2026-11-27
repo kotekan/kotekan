@@ -107,6 +107,7 @@ def seeding_ctx(**args):
         dr_untrusted={},
         up=None,
         pred={},
+        unhealthy=set(),
         cb=NS(seed=0.0, available=True, code_ema=None),
         dls=NS(deep_gate_seen={}, trim={}, readback={}, last={}),
         seeds={},

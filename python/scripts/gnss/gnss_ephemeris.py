@@ -848,9 +848,9 @@ def gpst_of_utc(t_utc):
     return (t_utc - GPS_EPOCH).total_seconds() + GPS_UTC_LEAP
 
 
-# Satellites predict_all keeps through its health gate, keyed (sys, prn): they broadcast a
-# non-zero health word but transmit, and passing near boresight they need a lane (#190) like any
-# other. Each entry names the satellite and the evidence.
+# Satellites predict_all's health gate counts as healthy, keyed (sys, prn): they broadcast a
+# non-zero health word but transmit, and the chains track them and use their measurements like
+# any other's. Each entry names the satellite and the evidence.
 HEALTH_GATE_EXEMPT = {
     # Galileo GSAT0202, launched 2014 into an eccentric orbit. I/NAV health 130 (E1-B and E5b
     # "out of service"), F/NAV 16 (E5a), yet it passed 2.0 deg from boresight on 2026-10-31
@@ -996,10 +996,11 @@ def predict_all(
     `signal` (with `dcb`) refers sat_clk_s to that signal's code (group_delay_s; tgd_s is the
     correction applied). signal=None leaves the broadcast clock as it is.
 
-    health_gate=False keeps unhealthy records (BeiDou is never gated, see below), for geometry
-    only (sky.transit_sky): an unhealthy satellite still transmits and still captures the
-    array. Seeds never set it. The gate also keeps the HEALTH_GATE_EXEMPT satellites, so the
-    chains track and lane them.
+    health_gate=False keeps unhealthy records (BeiDou and SBAS are never gated, see below) and
+    marks their rows `unhealthy`: an unhealthy satellite still transmits and still captures the
+    array, so the chains' skies set it to track and lane the satellite, and keep a marked row
+    out of every shared estimate. The key is absent on a healthy row. Science callers keep the
+    gate. The HEALTH_GATE_EXEMPT satellites count as healthy.
 
     `sysc` predicts one constellation only, for a caller that reads no other: the rows are
     those of the full call. `memo` is a dict the caller owns and passes to several calls of one
@@ -1034,19 +1035,19 @@ def predict_all(
             health = int(health) & (
                 QZSS_HEALTH_L2 if "l2c" in str(signal or "").lower() else QZSS_HEALTH_L5
             )
-        if (
-            health_gate
-            and health not in (0, 0.0)
+        # SBAS is exempt too: the RINEX S health is MT17's status bitmask (ranging /
+        # corrections / integrity flags; WAAS reads 31 with the signal on the air),
+        # and a lane direction (#190) needs the transmission, not a ranging licence.
+        # BeiDou is exempt: SatH1 describes B1I, so a BDS-3 satellite can carry SatH1 = 1
+        # while the signal a chain tracks is fine, and the gate would drop it.
+        # TODO: try the strict gate for C on sky; if no healthy satellite is lost, remove
+        # the exemption.
+        unhealthy = (
+            health not in (0, 0.0)
             and key[0] not in "CS"
             and key not in HEALTH_GATE_EXEMPT
-        ):
-            # SBAS is exempt too: the RINEX S health is MT17's status bitmask (ranging /
-            # corrections / integrity flags; WAAS reads 31 with the signal on the air),
-            # and a lane direction (#190) needs the transmission, not a ranging licence.
-            # BeiDou is exempt: SatH1 describes B1I, so a BDS-3 satellite can carry SatH1 = 1
-            # while the signal a chain tracks is fine, and the gate would drop it.
-            # TODO: try the strict gate for C on sky; if no healthy satellite is lost, remove
-            # the exemption.
+        )
+        if unhealthy and health_gate:
             continue
         if memo is None:
             geo = _sat_geometry(e, rx, lat, lon, t, mask_deg)
@@ -1085,4 +1086,6 @@ def predict_all(
             # How well the table knows the clock (clk_s): a TLE record's library theta to
             # microseconds, the sender's own broadcast bias to tens of nanoseconds.
             out[key]["clk_sigma_s"] = float(e.get("clk_sigma_s", 0.0))
+        if unhealthy:
+            out[key]["unhealthy"] = True
     return out

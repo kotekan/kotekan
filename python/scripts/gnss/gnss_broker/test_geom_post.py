@@ -8,6 +8,7 @@
 fallback) do not, and the prediction pads element 5 with 0.0. This drives the stage on both
 paths with the predictions stubbed and `_post` captured, and checks that a BRDC sky is posted
 with its azimuths and a TLE sky is not posted at all, rather than every satellite at due north.
+A BRDC row with the health mark is posted like any other and named in ctx.unhealthy.
 
 @author Keith Vanderlinde
 """
@@ -34,7 +35,7 @@ class _Obj(object):
 
 def run(raw, brdc):
     """One stage call whose prediction returns `raw` (BRDC path when brdc, else the TLE path);
-    returns the list of (url, body) posts."""
+    returns the list of (url, body) posts and the stage's unhealthy set."""
     posts = []
     ctx = _Obj(
         args=_Obj(
@@ -84,14 +85,16 @@ def run(raw, brdc):
         else:
             sys.modules["gps_beamtrack"] = saved_bt
     check(5 in ctx.pred, "the stubbed prediction ran (PRN 5 predicted)")
-    return posts
+    return posts, ctx.unhealthy
 
 
 def main():
     print("\nthe satellite-geometry feed")
 
     # 1. BRDC rows (9 elements): PRN 5 posted with its azimuth, rates and epoch.
-    posts = run({5: (-1200.0, 0.4, 45.0, 2.1e7, 1e-5, 120.0, 0.01, -0.02, 1.7e9)}, True)
+    posts, _ = run(
+        {5: (-1200.0, 0.4, 45.0, 2.1e7, 1e-5, 120.0, 0.01, -0.02, 1.7e9)}, True
+    )
     body = posts[0][1] if posts else {}
     check(
         len(posts) == 1
@@ -104,9 +107,26 @@ def main():
     )
 
     # 2. TLE rows (4 elements, no azimuth): nothing posted.
-    posts = run({5: (-1200.0, 0.4, 45.0, 2.1e7)}, False)
+    posts, _ = run({5: (-1200.0, 0.4, 45.0, 2.1e7)}, False)
     check(
         not posts, "TLE sky: no geometry posted (got %r)" % [b for u, b in posts],
+    )
+
+    # 3. A BRDC row with the health mark (element 9): still posted, and named unhealthy.
+    posts, unhealthy = run(
+        {
+            5: (-1200.0, 0.4, 45.0, 2.1e7, 1e-5, 120.0, 0.01, -0.02, 1.7e9, False),
+            7: (800.0, -0.2, 30.0, 2.3e7, 2e-5, 200.0, 0.0, 0.01, 1.7e9, True),
+        },
+        True,
+    )
+    body = posts[0][1] if posts else {}
+    check(
+        body.get("7") == [200.0, 30.0, 0.0, 0.01, 1.7e9],
+        "unhealthy satellite: geometry posted (got %r)" % body.get("7"),
+    )
+    check(
+        unhealthy == {7}, "unhealthy satellite: in ctx.unhealthy (got %r)" % unhealthy
     )
 
     print("-" * 70)
