@@ -183,7 +183,9 @@ updatable_config:
 
   rfi_second_stage_thresholds:
       kotekan_update_endpoint: json
-      thresholds: []
+      thresholds:
+        - threshold: 3.0
+        - fraction: 0.13
       valid_at_time_ns: 0
 
 frb:
