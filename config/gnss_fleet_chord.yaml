@@ -55,9 +55,13 @@ aggregator:
         #                      since 10-18); drop it when that ends.
         #   GPS_L5_Q:131,...   gps_l5_search, the WAAS GEOs on the L5 Q code (10-20 SBAS test, KV's
         #                      call; sbas_l5 tracks SBAS_L5_I_MC from the model).
+        #   BDS_B2A_P          bds_b2a_search, a code test on BeiDou-3S M2-S (registry PRN C58, on
+        #                      no chain and not in BRDC), hinted from its TLE, the tracked PRNs as
+        #                      controls (11-27, KV's call); drop it when the test ends.
         aggregator-extra-search:
             - GAL_E5A_Q
             - "GPS_L5_Q:131,133,135"
+            - BDS_B2A_P
 
 common:
     # GnssN2Project's channel loop on two cpus per GPU, a hyperthread pair (#225): proj_0 15+47, proj_1 19+51,
