@@ -13,7 +13,7 @@
 
 #include "fmt.hpp" // for compile_string_to_view, join
 
-#include <algorithm>  // for max, copy, equal, min
+#include <algorithm>  // for max, copy, equal, min, stable_sort
 #include <assert.h>   // for assert
 #include <chrono>     // for system_clock, nanoseconds
 #include <cstdint>    // for int64_t, uint32_t, uint64_t, uint8_t
@@ -22,6 +22,7 @@
 #include <functional> // for bind, function
 #include <math.h>     // for fmod
 #include <memory>     // for shared_ptr, unique_ptr, make_shared, make_unique
+#include <numeric>    // for iota
 #include <stdexcept>  // for runtime_error
 #include <string.h>   // for memcpy, memset
 #include <sys/time.h> // for timeval, timeradd
@@ -101,6 +102,7 @@ void basebandReadout::main_thread() {
 
     std::vector<basebandReadoutManager*> mgrs;
     uint32_t freq_ids[_num_freq_per_stream];
+    std::vector<uint32_t> readout_order(_num_freq_per_stream);
     while (!stop_thread) {
 
         if (in_buf->wait_for_full_frame(unique_name, frame_id % in_buf->num_frames) == nullptr) {
@@ -131,9 +133,17 @@ void basebandReadout::main_thread() {
                     &basebandApiManager::instance().register_readout_stage(freq_id);
                 mgrs.push_back(mgr);
             }
+            // A dispersed signal arrives at the highest frequency first, and the ring buffer
+            // overwrites the earliest data first, so read the frequencies out in that order.
+            std::iota(readout_order.begin(), readout_order.end(), 0);
+            std::stable_sort(readout_order.begin(), readout_order.end(),
+                             [&](uint32_t a, uint32_t b) {
+                                 return tel.to_freq_MHz(freq_ids[a]) > tel.to_freq_MHz(freq_ids[b]);
+                             });
             INFO("Starting request-listening thread for freq_id: {}",
                  fmt::join(freq_ids, freq_ids + _num_freq_per_stream, ", "));
-            lt = std::make_unique<std::thread>([&] { this->readout_thread(freq_ids, mgrs); });
+            lt = std::make_unique<std::thread>(
+                [&] { this->readout_thread(freq_ids, mgrs, readout_order); });
         }
 
         int done_frame = add_replace_frame(frame_id);
@@ -153,42 +163,41 @@ void basebandReadout::main_thread() {
 }
 
 void basebandReadout::readout_thread(const uint32_t freq_ids[],
-                                     const std::vector<basebandReadoutManager*>& mgrs) {
+                                     const std::vector<basebandReadoutManager*>& mgrs,
+                                     const std::vector<uint32_t>& readout_order) {
     while (!stop_thread) {
         // Code that listens and waits for triggers and fills in trigger parameters.
         // Latency is *key* here. We want to call extract_data within 100ms
         // of L4 sending the trigger.
 
-        if (auto next_request = mgrs[0]->get_next_waiting_request()) {
-            for (uint32_t stream_freq_idx = 0; stream_freq_idx < _num_freq_per_stream;
-                 ++stream_freq_idx) {
-                uint32_t freq_id = freq_ids[stream_freq_idx];
+        // A trigger queues one request for each frequency.
+        for (uint32_t stream_freq_idx : readout_order) {
+            uint32_t freq_id = freq_ids[stream_freq_idx];
 
-                // the first frequency's request was retrieved as part of the
-                // top if-statement, but the rest still need to be done
-                if (stream_freq_idx) {
-                    next_request = mgrs[stream_freq_idx]->get_next_waiting_request();
-                }
-
-                // basebandDumpStatus& dump_status, std::mutex& request_mtx
-                auto [dump_status, request_mtx] = *next_request;
-
-                start_processing(dump_status, request_mtx);
-
-                readout_in_progress_metric.labels({std::to_string(freq_id)}).set(1);
-                const basebandRequest request = dump_status.request;
-                auto data =
-                    wait_for_data(request.event_id, freq_id, stream_freq_idx, request.start_fpga,
-                                  std::min((int64_t)request.length_fpga, _max_dump_samples));
-                basebandDumpData::Status status = data.status;
-
-                if (status == basebandDumpData::Status::Ok) {
-                    status = extract_data(data);
-                }
-                readout_in_progress_metric.labels({std::to_string(freq_id)}).set(0);
-
-                end_processing(status, freq_id, dump_status, request_mtx);
+            auto next_request = mgrs[stream_freq_idx]->get_next_waiting_request();
+            if (!next_request) {
+                // The wait was cancelled, kotekan is exiting.
+                return;
             }
+
+            // basebandDumpStatus& dump_status, std::mutex& request_mtx
+            auto [dump_status, request_mtx] = *next_request;
+
+            start_processing(dump_status, request_mtx);
+
+            readout_in_progress_metric.labels({std::to_string(freq_id)}).set(1);
+            const basebandRequest request = dump_status.request;
+            auto data =
+                wait_for_data(request.event_id, freq_id, stream_freq_idx, request.start_fpga,
+                              std::min((int64_t)request.length_fpga, _max_dump_samples));
+            basebandDumpData::Status status = data.status;
+
+            if (status == basebandDumpData::Status::Ok) {
+                status = extract_data(data);
+            }
+            readout_in_progress_metric.labels({std::to_string(freq_id)}).set(0);
+
+            end_processing(status, freq_id, dump_status, request_mtx);
         }
     }
 }
@@ -344,10 +353,10 @@ basebandDumpData basebandReadout::wait_for_data(const uint64_t event_id, const u
                 advance_info = true;
             }
             time_to_wait_seq += _samples_per_data_set;
-            double wait_time = time_to_wait_seq * fpga_period_s * 1e9;
+            double wait_time = time_to_wait_seq * fpga_period_s;
             wait_time = std::min(wait_time, max_wait_time);
             wait_time = std::max(wait_time, min_wait_time);
-            std::this_thread::sleep_for(std::chrono::nanoseconds((int)wait_time));
+            std::this_thread::sleep_for(std::chrono::duration<double>(wait_time));
         } else {
             // We have the data we need, break from the loop and copy it out.
             if (advance_info) {
@@ -397,13 +406,17 @@ basebandDumpData::Status basebandReadout::extract_data(basebandDumpData data) {
     // currently waits for it. Could be made to be more robust.
     int64_t data_end_fpga = data.trigger_start_fpga + data.trigger_length_fpga;
 
-    timeval tmp, delta;
-    delta.tv_sec = 0;
-    delta.tv_usec =
-        (data.trigger_start_fpga - first_meta->get_fpga_seq_num()) * fpga_period_s * 1e6;
-    timeval first_packet_recv_time = first_meta->get_first_packet_recv_time();
-    timeradd(&first_packet_recv_time, &delta, &tmp);
-    timespec packet_time0 = {tmp.tv_sec, tmp.tv_usec * 1000};
+    // Left at zero when the capture does not record packet arrival times.
+    timespec packet_time0 = {0, 0};
+    if (first_meta->has_first_packet_recv_time()) {
+        timeval tmp, delta;
+        delta.tv_sec = 0;
+        delta.tv_usec =
+            (data.trigger_start_fpga - first_meta->get_fpga_seq_num()) * fpga_period_s * 1e6;
+        timeval first_packet_recv_time = first_meta->get_first_packet_recv_time();
+        timeradd(&first_packet_recv_time, &delta, &tmp);
+        packet_time0 = {tmp.tv_sec, tmp.tv_usec * 1000};
+    }
 
     timespec time0 = tel.to_time(data_start_fpga);
     double ftime0 = ts_to_double(time0);

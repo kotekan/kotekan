@@ -455,6 +455,33 @@ endif()
 target_include_directories(test_bufferBadInputs PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
                                                         ${KOTEKAN_SOURCE_DIR}/lib/utils)
 
+# test_basebandReadout - tests for the basebandReadout stage and the baseband API
+add_executable(test_basebandReadout test_basebandReadout.cpp)
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    target_link_libraries(
+        test_basebandReadout
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,-all_load
+                kotekan_metadata)
+else()
+    target_link_libraries(
+        test_basebandReadout
+        PRIVATE libexternal
+                kotekan_stages
+                kotekan_libs
+                kotekan_utils
+                kotekan_core
+                -Wl,--whole-archive
+                kotekan_metadata
+                -Wl,--no-whole-archive)
+endif()
+target_include_directories(test_basebandReadout PRIVATE ${KOTEKAN_SOURCE_DIR}/lib/stages
+                                                        ${KOTEKAN_SOURCE_DIR}/lib/utils)
+
 # test_bufferRecv - tests for bufferRecv stage
 add_executable(test_bufferRecv test_bufferRecv.cpp)
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")

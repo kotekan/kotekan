@@ -1,6 +1,6 @@
 {#-
   pathfinder.j2
-  Basic N2 pipeline with F-engine packet capture
+  Basic N2 pipeline with F-engine packet capture and triggered baseband dumps
 -#}
 
 
@@ -30,6 +30,21 @@
 {% set rfi_second_downsampling_factor = 32 %}
 {% set rfi_num_times = samples_per_data_set // rfi_downsampling_factor %}  {# = 32 #}
 {% set rfi_num_times_bar = rfi_num_times //  rfi_second_downsampling_factor %}  {# = 1 #}
+
+# Baseband ring buffer depth (host_voltage_buffer_<n>): 1650 frames of ~42 ms hold ~69 s of data.
+{% set baseband_buffer_depth = baseband_buffer_depth | default(1650) %}
+{% set baseband_buffer_margin = 16 %}
+# Longest dump of one frequency (768 ms); a longer one is cut off at its end. The requested
+# duration grows with the DM error, by 0.32 s per pc cm^-3 at 150 MHz.
+{% set baseband_max_dump_samples = 150000 %}
+# Time samples per dump frame (~21 ms, 512 KiB); a frame holds one frequency.
+# Must match recv_baseband.j2.
+{% set baseband_samples_per_frame = samples_per_data_set // 2 %}
+# Dump frames buffered per half: two dumps of the longest length at every frequency (1.55 s,
+# 16.8 GiB of ordinary memory), so the readout can copy back-to-back dumps out of the ring
+# while the sends drain the earlier ones.
+{% set baseband_output_buffer_depth =
+    2 * num_local_freq * ((baseband_max_dump_samples - 1) // baseband_samples_per_frame + 1) %}
 
 # CUDA stream assignment. Every cudaProcess on a GPU takes its default streams by command
 # role, so with a shared base all their copy-ins land on one stream, all their copy-outs on
@@ -115,7 +130,11 @@ updatable_config:
 # Pools
 main_pool:
     kotekan_metadata_pool: chordMetadata
-    num_metadata_objects: 15 * buffer_depth
+    num_metadata_objects: 15 * buffer_depth + 2 * {{ baseband_buffer_depth }}
+
+baseband_pool:
+    kotekan_metadata_pool: BasebandMetadata
+    num_metadata_objects: 2 * {{ baseband_output_buffer_depth }}
 
 n2_pool:
     kotekan_metadata_pool: N2Metadata
@@ -196,16 +215,35 @@ network_input_buffers:
 # equals it) and takes num_local_freq from the config. These live outside the
 # network_input_buffers group: that group's frame_size is for the dpdk buffers, while
 # ndarray buffers derive their size from the descriptor.
+# This is also the baseband ring buffer (see baseband_buffer_depth): basebandReadout holds
+# its frames long after the GPU copy has released them.
 {% for n in numa_halves %}
 host_voltage_buffer_{{ n.id }}:
     kotekan_buffer: ndarray
     peek_hold: true
-    num_frames: host_side_buffer_depth
+    num_frames: {{ baseband_buffer_depth }}
     value_type: int4x2_swapped_withoffset
     extents: [samples_per_data_set, num_local_freq, 2, num_elements / 2]
     metadata_pool: main_pool
     use_hugepages: true
     numa_node: {{ n.id }}
+{% endfor %}
+
+# Baseband dump frames from basebandReadout, waiting to be sent to the baseband receiver:
+# int4x2_swapped_withoffset [1, baseband_samples_per_frame, 2, num_elements/2] {F, T, P, D},
+# one frequency per frame, named in the frame's BasebandMetadata. The last frame of a
+# frequency is zero padded past the metadata's valid_to.
+{% for n in numa_halves %}
+baseband_output_buffer{{ n.sfx }}:
+    kotekan_buffer: ndarray
+    num_frames: {{ baseband_output_buffer_depth }}
+    value_type: int4x2_swapped_withoffset
+    extents: [1, {{ baseband_samples_per_frame }}, 2, num_elements / 2]
+    dimnames: ["F", "T", "P", "D"]
+    metadata_pool: baseband_pool
+{%- if n.id %}
+    numa_node: {{ n.id }}
+{%- endif %}
 {% endfor %}
 
 # One receipt bitmap per capture worker (two per half), combined by that half's
@@ -663,6 +701,23 @@ transpose_voltage_{{ 2 * n.id + loop.index0 }}:
     out_buf: host_voltage_buffer_{{ n.id }}
     frame_mode: {{ parity }}
 {% endfor %}
+{% endfor %}
+
+## Triggered baseband dumps ##
+# POST /baseband queues a dump of every frequency of both halves, see basebandApiManager for
+# the request and GET /baseband for its progress. Each half reads its 464 frequencies out one
+# after the other, highest frequency first, into its own output buffer. A frame that finds
+# the output buffer full is dropped and ends that frequency's dump.
+baseband:
+    log_level: info
+    max_dump_samples: {{ baseband_max_dump_samples }}
+    num_frames_buffer: {{ baseband_buffer_depth - baseband_buffer_margin }}
+{% for n in numa_halves %}
+    readout_{{ n.id }}:
+        kotekan_stage: basebandReadout
+        cpu_affinity: {{ n.other_cpus }}
+        in_buf: host_voltage_buffer_{{ n.id }}
+        out_buf: baseband_output_buffer{{ n.sfx }}
 {% endfor %}
 
 # Downsample the PL mask to its "normal" form, which will be sent to the GPU.
@@ -1153,6 +1208,23 @@ buffer_send_bad_feed_mask{{ n.sfx }}:
     server_port: 11029
     reconnect_time: 10
     drop_frames: true
+{% endfor %}
+
+# Baseband dumps go to the baseband receiver (recv_baseband.j2), both halves to the same port.
+# Nothing is dropped here: the frames wait in the output buffer while the receiver is slow
+# or away, and basebandReadout drops what does not fit.
+{% for n in numa_halves %}
+buffer_send_baseband{{ n.sfx }}:
+    kotekan_stage: bufferSend
+    log_level: info
+    cpu_affinity: {{ n.other_cpus }}
+    use_frame_desc: true
+    buf: baseband_output_buffer{{ n.sfx }}
+    server_ip: 10.222.0.51
+    server_port: 11043
+    reconnect_time: 10
+    send_timeout: 600
+    drop_frames: false
 {% endfor %}
 
 # Buffer sends. use_frame_desc sends the frame descriptor once per connection, so the receiver

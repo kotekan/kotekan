@@ -1,0 +1,70 @@
+{#-
+  recv_baseband.j2
+  Baseband receiver config: writes the triggered baseband dumps of the X-engine nodes
+  (basebandReadout in pathfinder.j2) to raw files, one per event and frequency.
+-#}
+
+
+# num_dishes: the dump frames carry all num_elements = 2 * num_dishes inputs. Must match pathfinder.j2.
+{% set num_dishes = 64 %}
+
+# Time samples per dump frame; a frame holds one frequency. Must match pathfinder.j2.
+{% set baseband_samples_per_frame = 4096 %}
+
+---
+{% include "common.j2" %}
+
+# The cores recv.j2 leaves free (it uses 0-12), so both receivers can run on recv1.
+cpu_affinity: [13,14,15]
+
+{% include "telescope.j2" %}
+
+# Pools
+baseband_pool:
+    kotekan_metadata_pool: BasebandMetadata
+    num_metadata_objects: 8192
+
+# Dump frames from every X-engine half: int4x2_swapped_withoffset
+# [1, baseband_samples_per_frame, 2, num_elements/2] {F, T, P, D}, 512 KiB each. Shape must
+# match the X-engine's baseband_output_buffer_<n>. A full buffer holds the senders back
+# (drop_frames below), so the depth only smooths the writer.
+baseband_recv_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 8192
+    value_type: int4x2_swapped_withoffset
+    extents: [1, {{ baseband_samples_per_frame }}, 2, num_elements / 2]
+    dimnames: ["F", "T", "P", "D"]
+    metadata_pool: baseband_pool
+
+
+## Receive data
+
+# use_frame_desc checks the sender's frame descriptor against the buffer above at connection
+# time; must match the buffer_send_baseband stages in pathfinder.j2. A dump can sit in an
+# X-engine's output buffer for a while, so a full buffer or a quiet connection drops nothing.
+buffer_recv_baseband:
+    kotekan_stage: bufferRecv
+    log_level: info
+    use_frame_desc: true
+    buf: baseband_recv_buffer
+    listen_port: 11043
+    drop_frames: false
+    connection_timeout: 600
+    # REST port of the X-engine nodes, for the config tracker. Stated here so this instance
+    # can bind another port and share a node with the N2 receiver (recv.j2).
+    upstream_rest_port: 12048
+
+
+## Write out the baseband dumps
+
+# One file per event and frequency:
+# <root_path>/baseband_raw_<event_id>/baseband_<event_id>_<freq_id>.data, each frame as its
+# BasebandMetadata followed by the samples. root_path must exist. A file stays open until
+# it has been idle for dump_timeout (60 s), and an event has 7424 of them, so this instance
+# needs a file descriptor limit well above the default 1024 (LimitNOFILE in the service unit).
+write_baseband:
+    kotekan_stage: BasebandWriter
+    log_level: info
+    in_buf: baseband_recv_buffer
+    root_path: /mnt/cs00/data/baseband_raw
+    samples_per_data_set: {{ baseband_samples_per_frame }}
