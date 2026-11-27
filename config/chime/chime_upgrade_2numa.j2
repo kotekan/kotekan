@@ -1371,7 +1371,10 @@ numa_{{ numa }}:
           - host_frb1_phase_buffer{{ numa_sfx }}
         # these are only used to extract the list of coarse freuqencies at
         # startup, no data is read from them
-        in_buf: host_rfi_RFImask_buffer{{ numa_sfx }}
+        metadata_source:
+{%- for id in range(num_freq_gpu_buf) %}
+            - host_voltage_buffer{{ numa_sfx }}_{{ id }}
+{%- endfor %}
         updatable_config:
           frb_gain: /updatable_config/frb_gain
 

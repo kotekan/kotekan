@@ -36,7 +36,7 @@
  * is updated.
  *
  * @par Buffers
- * @buffer in_buf Arbitrary buffer used to collect metadata. Must contain _all_ local frequencies.
+ * @buffer metadata_source Arbitrary list of buffers used to collect metadata. Union must contain _all_ local frequencies.
  *     @buffer_format any
  *     @buffer_shape any
  *     @buffer_metadata chordMetadata
@@ -93,8 +93,9 @@ private:
 
     /// Gain buffer
     std::unordered_map<uint32_t, Buffer*> gain_buffers;
-    /// Metadata buffer, accessed once at startup
-    Buffer* metadata_buf;
+
+    /// Metadata buffers, accessed once at startup
+    std::vector<Buffer*> metadata_sources;
 
     /// Gain file name. Must contain a format identifier for
     /// a 4+ digit integer. Historically, this was "quick_gains_%04d_reordered.bin"
