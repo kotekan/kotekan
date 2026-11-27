@@ -1,10 +1,11 @@
 // Standalone GPU check of the cudaGnssN2Project kernels against GnssN2Project's CPU path
 // (gnssN2ProjectMath.hpp: extract, project, writeback, extract_cross, project_cross,
 // writeback_cross) on synthetic n2k frames:
-//  - every word of every projected channel equal (FP64, the record's complex<float> basis);
+//  - every projected word within a count of the CPU path (FP32 against FP64, the record's
+//    complex<float> basis), with the fraction that differs;
 //  - the channels outside the slots, a slot with k 0, the other inputs' own products and the
 //    upper halves of the diagonal blocks untouched;
-//  - a station with no lane component, k from 0 to k_slot, k_slot 40 and 64 (the update's
+//  - a station with no lane component, k from 0 to k_slot, k_slot 40 and 96 (the update's
 //    shared memory above 48 KB);
 // then the time of one frame at production shape, and, for reference, how far the CPU path
 // with the float basis lies from the same with the double basis it was rounded from.
@@ -56,7 +57,8 @@ struct Case {
 
 // A Hermitian frame: noise, three bright rank-1 sources and real autos (the correlator's are: a
 // nonzero imaginary part on the diagonal makes the block non-Hermitian, which both paths assume
-// it is not); poison in the upper halves of the diagonal blocks.
+// it is not), the brightest entries near the n2k limit (8192 products of 4-bit values, 2^20);
+// poison in the upper halves of the diagonal blocks.
 void make_frame(Case& c, std::mt19937& rng) {
     std::normal_distribution<double> g(0.0, 1.0);
     gnss_n2proj::Layout L;
@@ -70,14 +72,15 @@ void make_frame(Case& c, std::mt19937& rng) {
         for (int i = 0; i < N2P_INPUTS; ++i)
             for (int j = 0; j <= i; ++j) {
                 cd v =
-                    i == j ? cd(4.0e6 + 1.0e5 * g(rng), 0.0) : cd(3.0e3 * g(rng), 3.0e3 * g(rng));
+                    i == j ? cd(1.0e5 + 3.0e3 * g(rng), 0.0) : cd(200.0 * g(rng), 200.0 * g(rng));
                 for (int s = 0; s < 3; ++s)
-                    v += 1.0e6 * (s + 1) * a[s * N2P_INPUTS + i] * std::conj(a[s * N2P_INPUTS + j]);
+                    v += 1.5e4 * (s + 1) * a[s * N2P_INPUTS + i] * std::conj(a[s * N2P_INPUTS + j]);
                 if (i == j)
                     v.imag(0.0);
+                const double lim = 1 << 20;
                 const size_t w = L.idx(i, j);
-                fr[w] = (int32_t)std::lround(v.real());
-                fr[w + 1] = (int32_t)std::lround(v.imag());
+                fr[w] = (int32_t)std::lround(std::clamp(v.real(), -lim, lim));
+                fr[w + 1] = (int32_t)std::lround(std::clamp(v.imag(), -lim, lim));
             }
     }
 }
@@ -163,7 +166,7 @@ struct Dev {
     int32_t* frame = nullptr;
     int* chan = nullptr;
     uint8_t* rec = nullptr;
-    double2 *v = nullptr, *q = nullptr, *w = nullptr, *m = nullptr;
+    float2 *v = nullptr, *q = nullptr, *w = nullptr, *m = nullptr;
     int32_t* live = nullptr;
     cublasHandle_t blas = nullptr;
     cudaStream_t stream = nullptr;
@@ -174,10 +177,10 @@ void dev_alloc(Dev& d, const Case& c) {
     CK(cudaMalloc(&d.frame, c.frame.size() * 4));
     CK(cudaMalloc(&d.chan, S * sizeof(int)));
     CK(cudaMalloc(&d.rec, c.rec.size()));
-    CK(cudaMalloc(&d.v, (size_t)S * N2P_INPUTS * N2P_INPUTS * sizeof(double2)));
-    CK(cudaMalloc(&d.q, (size_t)S * N2P_INPUTS * c.k_slot * sizeof(double2)));
-    CK(cudaMalloc(&d.w, (size_t)S * N2P_INPUTS * c.k_slot * sizeof(double2)));
-    CK(cudaMalloc(&d.m, (size_t)S * c.k_slot * c.k_slot * sizeof(double2)));
+    CK(cudaMalloc(&d.v, (size_t)S * N2P_INPUTS * N2P_INPUTS * sizeof(float2)));
+    CK(cudaMalloc(&d.q, (size_t)S * N2P_INPUTS * c.k_slot * sizeof(float2)));
+    CK(cudaMalloc(&d.w, (size_t)S * N2P_INPUTS * c.k_slot * sizeof(float2)));
+    CK(cudaMalloc(&d.m, (size_t)S * c.k_slot * c.k_slot * sizeof(float2)));
     CK(cudaMalloc(&d.live, 2 * (size_t)S * N2P_WORDS * 4));
     CK(cudaMemcpy(d.chan, c.slots.data(), S * sizeof(int), cudaMemcpyHostToDevice));
     CK(cudaMemcpy(d.rec, c.rec.data(), c.rec.size(), cudaMemcpyHostToDevice));
@@ -234,28 +237,43 @@ void run_case(const char* name, Case& c, std::mt19937& rng) {
     CK(cudaMemcpy(live.data(), d.live, live.size() * 4, cudaMemcpyDeviceToHost));
     dev_free(d);
 
-    long diff = 0, maxd = 0, slot_words = 0, changed = 0;
+    // The words a projection writes: lower-triangle entries involving a station, on slots with
+    // k > 0. Every other word must be the input's.
+    gnss_n2proj::Layout L;
+    L.n_elem = N2P_INPUTS;
+    std::vector<char> proj(got.size(), 0);
+    for (int s = 0; s < S; ++s)
+        for (int i = 0; i < N2P_INPUTS && c.k[s] > 0; ++i)
+            for (int j = 0; j <= i; ++j)
+                if (std::binary_search(c.stations.begin(), c.stations.end(), i)
+                    || std::binary_search(c.stations.begin(), c.stations.end(), j)) {
+                    const size_t w = (size_t)c.slots[s] * N2P_WORDS + L.idx(i, j);
+                    proj[w] = proj[w + 1] = 1;
+                }
+    long n_proj = 0, diff = 0, maxd = 0, other_diff = 0;
     for (size_t x = 0; x < got.size(); ++x) {
+        if (!proj[x]) {
+            other_diff += got[x] != c.frame[x] || ref[x] != c.frame[x];
+            continue;
+        }
         const long dd = std::labs((long)got[x] - (long)ref[x]);
+        n_proj += 1;
         diff += dd != 0;
         maxd = std::max(maxd, dd);
     }
-    for (int s = 0; s < S; ++s)
-        for (int x = 0; x < N2P_WORDS; ++x) {
-            const size_t w = (size_t)c.slots[s] * N2P_WORDS + x;
-            slot_words += 1;
-            changed += got[w] != c.frame[w];
-        }
     char msg[256];
     snprintf(msg, sizeof msg,
-             "every word of the frame equals the CPU path (%ld of %zu differ, max |d| %ld; %ld of "
-             "the slots' %ld words projected)",
-             diff, got.size(), maxd, changed, slot_words);
-    check(diff == 0, msg);
+             "every projected word within a count of the CPU path (%ld of %ld differ, %.3f%%, "
+             "max |d| %ld)",
+             diff, n_proj, 100.0 * diff / n_proj, maxd);
+    check(maxd <= 1, msg);
+    snprintf(msg, sizeof msg, "every other word of the frame untouched (%ld of %zu differ)",
+             other_diff, got.size() - n_proj);
+    check(other_diff == 0, msg);
     bool raw_ok = true, proj_ok = true;
     for (int s = 0; s < S; ++s) {
         const int32_t* a = &c.frame[(size_t)c.slots[s] * N2P_WORDS];
-        const int32_t* b = &ref[(size_t)c.slots[s] * N2P_WORDS];
+        const int32_t* b = &got[(size_t)c.slots[s] * N2P_WORDS];
         raw_ok &= std::memcmp(&live[(size_t)s * N2P_WORDS], a, N2P_WORDS * 4) == 0;
         proj_ok &= std::memcmp(&live[(size_t)(S + s) * N2P_WORDS], b, N2P_WORDS * 4) == 0;
     }
@@ -273,8 +291,8 @@ void run_case(const char* name, Case& c, std::mt19937& rng) {
         fmax = std::max(fmax, dd);
     }
     printf("  CPU path, float basis against double: %ld of %ld projected words differ, max |d| "
-           "%ld (values up to ~1e7)\n",
-           fd, changed, fmax);
+           "%ld\n",
+           fd, n_proj, fmax);
 }
 
 Case base_case(int n_freq, int k_slot, const std::vector<int>& slots, const std::vector<int>& k) {
@@ -297,8 +315,8 @@ int main(int argc, char** argv) {
 
     Case a = base_case(24, 40, {1, 2, 5, 9, 14, 20, 23}, {27, 0, 40, 1, 33, 12, 40});
     run_case("k_slot 40, k 0..40", a, rng);
-    Case b = base_case(12, 64, {0, 3, 4, 11}, {64, 50, 2, 17});
-    run_case("k_slot 64", b, rng);
+    Case b = base_case(12, 96, {0, 3, 4, 11}, {96, 64, 2, 17});
+    run_case("k_slot 96", b, rng);
 
     // Production shape: 464 channels, 43 slots, 109 stations, 40 directions each.
     std::vector<int> slots, k;

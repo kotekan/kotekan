@@ -10,7 +10,7 @@
 # projected frames, the basis records, the raw N^2 and the live blocks go to /tmp/n2proj_gpu_ci;
 # kotekan exits once 24 frames of each 1:1 stream are written.
 # scripts/gnss/n2proj_gpu_check.py runs this config and checks the files and the gauges: where
-# the two paths applied the same basis, the frames are equal word for word.
+# the two paths applied the same basis, every word of the frames is within a count.
 #
 ##########################################
 type: config

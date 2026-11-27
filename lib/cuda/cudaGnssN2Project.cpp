@@ -137,11 +137,11 @@ void cudaGnssN2Project::resolve(const chordMetadata& meta) {
     const size_t nn = (size_t)gnss_cuda::N2P_INPUTS * gnss_cuda::N2P_INPUTS;
     const size_t nk = (size_t)gnss_cuda::N2P_INPUTS * k_slot;
     st.d_chan = (int*)device.get_gpu_memory(unique_name + "_chan", S * sizeof(int));
-    st.d_v = (double2*)device.get_gpu_memory(unique_name + "_v", S * nn * sizeof(double2));
-    st.d_q = (double2*)device.get_gpu_memory(unique_name + "_q", S * nk * sizeof(double2));
-    st.d_w = (double2*)device.get_gpu_memory(unique_name + "_w", S * nk * sizeof(double2));
-    st.d_m = (double2*)device.get_gpu_memory(unique_name + "_m",
-                                             S * (size_t)k_slot * k_slot * sizeof(double2));
+    st.d_v = (float2*)device.get_gpu_memory(unique_name + "_v", S * nn * sizeof(float2));
+    st.d_q = (float2*)device.get_gpu_memory(unique_name + "_q", S * nk * sizeof(float2));
+    st.d_w = (float2*)device.get_gpu_memory(unique_name + "_w", S * nk * sizeof(float2));
+    st.d_m = (float2*)device.get_gpu_memory(unique_name + "_m",
+                                            S * (size_t)k_slot * k_slot * sizeof(float2));
     CHECK_CUDA_ERROR(
         cudaMemcpy(st.d_chan, st.slot_chan.data(), S * sizeof(int), cudaMemcpyHostToDevice));
     const cublasStatus_t bs = cublasCreate(&st.blas);
@@ -150,7 +150,7 @@ void cudaGnssN2Project::resolve(const chordMetadata& meta) {
     st.newest.assign(rec_bytes, 0);
     st.resolved = true;
     INFO("cudaGnssN2Project: {:d} live channels (freq_ids {:d}..{:d}) of {:d}, {:d} stations, up "
-         "to {:d} directions, FP64; records from {:s}, live blocks to {:s} ({:.2f} MB/frame)",
+         "to {:d} directions, FP32; records from {:s}, live blocks to {:s} ({:.2f} MB/frame)",
          S, st.slot_fid.front(), st.slot_fid.back(), num_local_freq, n, k_slot,
          in_basis->buffer_name, live->buffer_name, live_need / 1e6);
 }

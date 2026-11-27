@@ -38,7 +38,7 @@ public:
     bool resolved = false;
     std::vector<int> slot_chan, slot_fid;
     int* d_chan = nullptr;
-    double2 *d_v = nullptr, *d_q = nullptr, *d_w = nullptr, *d_m = nullptr;
+    float2 *d_v = nullptr, *d_q = nullptr, *d_w = nullptr, *d_m = nullptr;
     cublasHandle_t blas = nullptr;
     kotekan::prometheus::Gauge& lag;
     kotekan::prometheus::Counter& dropped;
@@ -60,7 +60,7 @@ public:
  *     record, gpu_mem_basis, with its seq set to this frame's and its source frame's seq at
  *     byte 40 (gnssN2ProjectMath.hpp), for cudaOutputData to copy out to N2Accumulate: the
  *     record is the bytes the kernels used;
- *  2. the raw blocks of the live channels are gathered, the frame is projected in FP64
+ *  2. the raw blocks of the live channels are gathered, the frame is projected in FP32
  *     (cudaGnssN2ProjectKernel.hpp), and the projected blocks gathered after them;
  *  3. both go to live_buf if GnssN2Project has an empty frame, else the frame's are dropped
  *     (kotekan_gnss_n2project_gpu_live_dropped_total): the correlator never waits for the lane

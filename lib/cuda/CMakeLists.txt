@@ -209,8 +209,8 @@ add_executable(cuda_gnss_beam_dump_test cudaGnssBeamDumpTest.cpp)
 target_link_libraries(cuda_gnss_beam_dump_test PRIVATE kotekan_cuda)
 target_include_directories(cuda_gnss_beam_dump_test PRIVATE .)
 
-# The N^2 lane projection kernels vs GnssN2Project's CPU path, word for word, and their time at
-# production shape. Run: ./lib/cuda/cuda_gnss_n2_project_test [device]
+# The N^2 lane projection kernels vs GnssN2Project's CPU path, every word within a count, and
+# their time at production shape. Run: ./lib/cuda/cuda_gnss_n2_project_test [device]
 add_executable(cuda_gnss_n2_project_test cudaGnssN2ProjectTest.cpp)
 target_link_libraries(cuda_gnss_n2_project_test PRIVATE kotekan_cuda)
 target_include_directories(cuda_gnss_n2_project_test PRIVATE . ../stages/gnss)

@@ -10,7 +10,8 @@ checks:
   - both paths wrote every frame, in the same order, and each record's seq is its frame's;
   - the GPU's record of what it applied names an earlier source frame (lag >= 1), or none;
   - where the GPU applied the same basis as the CPU path (the lanes are constant once on the
-    board), the projected frames are equal word for word, every channel;
+    board), every word of the projected frames is within a count (the GPU projects in FP32, the
+    CPU path in FP64), with the fraction that differs;
   - where the GPU applied none, its frame is the raw N^2; outside the live channels both paths
     leave the raw N^2;
   - the live blocks: the raw half is the raw N^2, the projected half the GPU's frame, the k in
@@ -202,18 +203,24 @@ def check_files(outdir, cfg, n_want):
     )
     slot_ch = [fids.index(x) for x in gr[0][4]]
     other = [ch for ch in range(nf) if ch not in slot_ch]
-    same = exact = none = none_ok = 0
+    same = close = none = none_ok = 0
+    n_diff = n_words = max_d = 0
     for i in range(n):
         if gr[i][3] == cr[i][3]:
             same += 1
-            exact += np.array_equal(G[i], C[i])
+            d = np.abs(G[i].astype(np.int64) - C[i])
+            close += d.max() <= 1
+            n_diff += np.count_nonzero(d[slot_ch])
+            n_words += d[slot_ch].size
+            max_d = max(max_d, int(d.max()))
         if max(gr[i][2]) == 0:
             none += 1
             none_ok += np.array_equal(G[i], R[i])
     check(
-        same >= n // 2 and exact == same,
-        "%d of %d frames had the same basis on both paths; equal word for word on %d"
-        % (same, n, exact),
+        same >= n // 2 and close == same,
+        "%d of %d frames had the same basis on both paths; within a count on %d (%d of %d "
+        "live-channel words differ, %.3f%%, max |d| %d)"
+        % (same, n, close, n_diff, n_words, 100.0 * n_diff / max(n_words, 1), max_d),
     )
     check(
         none_ok == none,
