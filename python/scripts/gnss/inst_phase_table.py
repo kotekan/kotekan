@@ -41,6 +41,9 @@ CH_HZ = 195312.5
 KNOT_MHZ = 0.8  # at most one knot per this many MHz
 FRAME0 = "/home/kvand/gnss/builds/gw1202/frame0.json"
 DIR = "/home/kvand/gnss/fixtures/obs/inst_phase"  # the relay reads DIR/current.json
+# Past the projected range (1140.0-1304.9 MHz) by a few MHz: outside its knots a node holds the
+# edge knot's phase (gnssFleetLane.hpp InstPhaseTable::phase_at).
+LO_MHZ, HI_MHZ = 1135.0, 1310.0
 
 
 LAT = math.radians(
@@ -65,7 +68,7 @@ def start_of(frame0_file, t):
     return max(starts)
 
 
-def build(cal, frame0_file=FRAME0, lo_mhz=1150.0, hi_mhz=1300.0, source=""):
+def build(cal, frame0_file=FRAME0, lo_mhz=LO_MHZ, hi_mhz=HI_MHZ, source=""):
     """The table (a dict) from a calibration npz loaded as `cal`."""
     fid = np.asarray(cal["k"]) + 1536
     f = fid * CH_HZ
@@ -163,8 +166,8 @@ def main():
     b.add_argument("cal")
     b.add_argument("out")
     b.add_argument("--frame0", default=FRAME0)
-    b.add_argument("--lo", type=float, default=1150.0)
-    b.add_argument("--hi", type=float, default=1300.0)
+    b.add_argument("--lo", type=float, default=LO_MHZ)
+    b.add_argument("--hi", type=float, default=HI_MHZ)
     s = sub.add_parser("show")
     s.add_argument("table")
     s.add_argument("--steps", default=fengine_steps.TABLE)
