@@ -38,6 +38,15 @@
  *                          frames/s at which data is taken out of the input
  *                          buffer. Value of 0 or less disabled the throttling.
  *
+ * @conf   num_writers      Int (default 1). Number of BasebandWriter stages
+ *                          sharing `in_buf`. Each writes only the frequencies
+ *                          with `freq_id % num_writers == writer_index` and
+ *                          passes over the rest, so each file has one writer
+ *                          and the writes to disk run in parallel.
+ *
+ * @conf   writer_index     Int (default 0). This stage's share, in
+ *                          [0, num_writers).
+ *
  * @par Metrics
  * @metric kotekan_baseband_writeout_in_progress
  *         Set to 1 when a frequency is being written to, 0 otherwise.
@@ -78,6 +87,8 @@ private:
     std::string _root_path;
     double _dump_timeout;
     double _max_frames_per_second;
+    uint32_t _num_writers;
+    uint32_t _writer_index;
     uint32_t _frame_size;
 
     /// Input buffer to read from

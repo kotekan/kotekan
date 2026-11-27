@@ -42,6 +42,8 @@ BasebandWriter::BasebandWriter(Config& config, const std::string& unique_name,
     _root_path(config.get_default<std::string>(unique_name, "root_path", ".")),
     _dump_timeout(config.get_default<double>(unique_name, "dump_timeout", 60)),
     _max_frames_per_second(config.get_default<double>(unique_name, "max_frames_per_second", 0)),
+    _num_writers(config.get_default<uint32_t>(unique_name, "num_writers", 1)),
+    _writer_index(config.get_default<uint32_t>(unique_name, "writer_index", 0)),
     _frame_size(config.get<uint32_t>(unique_name, "samples_per_data_set")
                     * config.get<uint32_t>(unique_name, "num_elements")
                 + sizeof(BasebandMetadata)),
@@ -53,6 +55,11 @@ BasebandWriter::BasebandWriter(Config& config, const std::string& unique_name,
         Metrics::instance().add_gauge("kotekan_writer_write_time_seconds", unique_name)),
     bytes_written_metric(
         Metrics::instance().add_counter("kotekan_writer_bytes_total", unique_name)) {
+    if (_num_writers < 1 || _writer_index >= _num_writers) {
+        throw std::runtime_error(fmt::format("BasebandWriter {:s}: writer_index ({:d}) must be in "
+                                             "[0, num_writers ({:d}))",
+                                             unique_name, _writer_index, _num_writers));
+    }
     register_consumer(in_buf, unique_name.c_str());
 }
 
@@ -68,6 +75,14 @@ void BasebandWriter::main_thread() {
         // Wait for the buffer to be filled with data
         if (wait_for_full_frame(in_buf, unique_name.c_str(), frame_id) == nullptr) {
             break;
+        }
+
+        // With several writers on this buffer, pass over the other writers' frequencies
+        if (_num_writers > 1
+            && BasebandFrameView(in_buf, frame_id).metadata()->freq_id % _num_writers
+                   != _writer_index) {
+            mark_frame_empty(in_buf, unique_name.c_str(), frame_id++);
+            continue;
         }
 
         // Write the frame to its event+frequency destination file
@@ -132,7 +147,8 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
             DEBUG("Creating event directory: {:s}", event_directory_name);
             const int mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
             const int result = mkdir(event_directory_name.c_str(), mode);
-            if (result != 0) {
+            // Another writer stage (or an earlier run) may have created it already
+            if (result != 0 && errno != EEXIST) {
                 ERROR("Failed to create event directory: {:s}", event_directory_name);
                 const int errsv = errno;
                 switch (errsv) {
