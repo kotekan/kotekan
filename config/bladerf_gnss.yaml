@@ -238,8 +238,10 @@ b2a_search:
     kotekan_stage: GnssChannelizedSearch
     in_buf: search_buf
     signal: BDS_B2A_P
+    # 56-58: the BeiDou-3S experimental satellites (M2-S is C58 in the IGS registry), pointed
+    # from their TLEs (gnss_oddsat_pointing.py) until their own ephemerides decode.
     prns: &b2a_prns [6, 7, 8, 11, 12, 13, 14, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
-                     32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42]
+                     32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 56, 57, 58]
     f_offset: -48.55e6
     n_channels: 64
     channel_ids: [32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
@@ -373,24 +375,24 @@ b2a_epl_buf:
     kotekan_buffer: standard
     metadata_pool: gnss_pool
     num_frames: 8
-    frame_size: 436656
+    frame_size: 478896
 b2a_rec_buf:
     kotekan_buffer: standard
     metadata_pool: gnss_pool
     num_frames: 64
     # The records, then the comb block (chan_export): 8 channels of 9 floats per PRN.
-    frame_size: 31 * 44 * 4 + 31 * 8 * 9 * 4
+    frame_size: 34 * 44 * 4 + 34 * 8 * 9 * 4
 # B2a-D (B-CNAV2), despread at the B2a tracker's seeds, and its symbols.
 b2ad_epl_buf:
     kotekan_buffer: standard
     metadata_pool: gnss_pool
     num_frames: 8
-    frame_size: 436656
+    frame_size: 478896
 b2ad_rec_buf:
     kotekan_buffer: standard
     metadata_pool: gnss_pool
     num_frames: 64
-    frame_size: 31 * 44 * 4
+    frame_size: 34 * 44 * 4
 
 # The mid band, dead-reckoned on the L5 chain's clock as E5a. BeiDou B3I (1268.52 MHz, 43.52 MHz
 # above the LO): DFT bins 19 to 26, frame positions 51 to 58, the main lobe's centre as on L5.
@@ -480,12 +482,12 @@ b2b_epl_buf:
     kotekan_buffer: standard
     metadata_pool: gnss_pool
     num_frames: 8
-    frame_size: 436656
+    frame_size: 478896
 b2b_rec_buf:
     kotekan_buffer: standard
     metadata_pool: gnss_pool
     num_frames: 64
-    frame_size: 31 * 44 * 4 + 31 * 8 * 9 * 4
+    frame_size: 34 * 44 * 4 + 34 * 8 * 9 * 4
 
 # SBAS L5 (1176.45 MHz, on L5's channels): the WAAS GEOs, and as the presence gate's noise probes
 # three GEOs always deep below the horizon here (GAGAN 127, 128; MSAS 129): the EGNOS GEOs CHORD
@@ -803,14 +805,17 @@ gputrack:
           # replaced, so check it against BRDC when a slot will not lock. The 586 m chip is too
           # wide for epl_from_prompt.
           signal: GLO_L2OF_MC
+          # Slots 25 (k = 8) and 28 (k = 7): the spare COSMOS 2433 (R720), in no BRDC, which CHORD
+          # reads near k = 8, pointed from its TLE (gnss_oddsat_pointing.py) on both channels.
+          # They replace 26 and 27, unhealthy in BRDC.
           prns: &glo_prns [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
-                           21, 22, 23, 24, 26, 27]
+                           21, 22, 23, 24, 25, 28]
           prn_freq_offset_hz: &glo_offsets [
               437500.0, -1750000.0, 2187500.0, 2625000.0, 437500.0, -1750000.0,
               2187500.0, 2625000.0, -875000.0, -3062500.0, 0.0, -437500.0,
               -875000.0, -3062500.0, 0.0, -437500.0, 1750000.0, -1312500.0,
               1312500.0, 875000.0, 1750000.0, -1312500.0, 1312500.0, 875000.0,
-              -2625000.0, -2187500.0]
+              3500000.0, 3062500.0]
           f_offset_hz: 21.0e6
           n_channels: 5
           channel_ids: [9, 10, 11, 12, 13]
@@ -1010,7 +1015,7 @@ b2a_assemble:
 b2a_combine:
     kotekan_stage: GnssCoherentCombiner
     in_bufs: [b2a_rec_buf]
-    n_prn: 31
+    n_prn: 34
     integration_length: 200
     record_export: 64
 # B2a-D's B-CNAV2 symbols against B2a-P, for the broker's bcnav2-combiner.
@@ -1023,7 +1028,7 @@ b2ad_symbols:
     kotekan_stage: GnssNavSymbols
     pilot_buf: b2a_rec_buf
     data_buf: b2ad_rec_buf
-    n_prn: 31
+    n_prn: 34
     symbol_records: 5
     offset_deg: 90
     out_buf: b2ad_navsym_buf
@@ -1298,7 +1303,7 @@ b2b_assemble:
 b2b_combine:
     kotekan_stage: GnssCoherentCombiner
     in_bufs: [b2b_rec_buf]
-    n_prn: 31
+    n_prn: 34
     integration_length: 1500
     record_export: 64
     navwipe_bit_records: 1
@@ -1310,7 +1315,7 @@ b2b_combine:
 b2bi_symbols:
     kotekan_stage: GnssNavSymbols
     data_buf: b2b_rec_buf
-    n_prn: 31
+    n_prn: 34
     symbol_records: 1
     out_buf: b2bi_navsym_buf
 
@@ -1439,8 +1444,8 @@ telem_pack:
         b2a:
             in_buf: b2a_rec_buf
             chain: bds_b2a
-            n_prn: 31
-            max_prn: 31
+            n_prn: 34
+            max_prn: 34
             n_chan: 8
             channel_ids: [35, 36, 37, 38, 39, 40, 41, 42]
         gw:
@@ -1481,8 +1486,8 @@ telem_pack:
         b2b:
             in_buf: b2b_rec_buf
             chain: bds_b2b
-            n_prn: 31
-            max_prn: 31
+            n_prn: 34
+            max_prn: 34
             n_chan: 8
             channel_ids: [51, 52, 53, 54, 55, 56, 57, 58]
         sbas:
