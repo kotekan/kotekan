@@ -181,6 +181,11 @@ common:
     # against 0.5 at 1135-1140 and 2.3 at 1305-1310). ~53 channels per GPU against 43: needs the
     # GPU projection (n2-project-gpu) and an instrumental phase table built over 1135-1310 MHz.
     n2-project-live-freq-ids: "5837-6681"
+    # The projection itself on the GPU (cudaGnssN2Project in run_n2k, FP32;
+    # docs/CHORD_GPU_PROJECTION.md) on both GPUs of every projecting node since 2026-11-27: the CPU
+    # path took 26-28 of the 42 ms frame at 43 channels and cannot carry the range above. The
+    # stage keeps the lane work and builds the basis on the host.
+    n2-project-gpu: "0,1"
     n2-project-stations: "0-6,8-127"
     # The eigen path's channels; read only with n2-project-source lanes+residual.
     n2-project-eigen-channels: "5971-6076,6102-6338,6361-6401,6442-6573"
@@ -876,9 +881,6 @@ nodes:
     cx19: {n2-project: "off"}
     cx27: {}
     cx42: {}
-    # The GPU projection canary (docs/CHORD_GPU_PROJECTION.md) is cx43 with
-    # `n2-project-gpu: "0"`: GPU 0 projects on the GPU (cudaGnssN2Project in run_n2k), GPU 1
-    # stays on the CPU path beside it. Off: KV and coord set it at a node_up cycle.
     cx43: {}
     cx44: {}
     # #190 canary, second attempt (the first, 10-20 12:16-12:27Z, relaunched every ~3 min: the
