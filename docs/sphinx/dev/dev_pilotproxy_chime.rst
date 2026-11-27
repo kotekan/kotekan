@@ -21,7 +21,9 @@ routed through the detector.
 The detector drops the inputs flagged by ``bufferBadInputs``.
 It writes only the mask and ``dtv_stat`` unless ``dtv_calibration_mode`` is set, which also writes
 the powers, fine support, and fine powers (HDF5, about 2.3 MB/s per NUMA domain)
-for calibration and debugging.
+for calibration and debugging. A restart keeps the earlier files: the raw writers
+create ``dtv_output_dir`` if needed and number on from its last file, and the fine
+powers go to one ``acq_<start time>`` directory per run.
 
 ``DtvRfiMask`` accepts 8192- and 16384-sample blocks, and its RFImask has the
 shape ``[num_times/1024, F, 128]``. Both the visibility and count consumers

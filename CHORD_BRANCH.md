@@ -2,7 +2,7 @@
 
 This file exists only on the `chord` branch. It lists how `chord` differs from `develop`. See the "chord branch" section of AGENTS.md for the workflow.
 
-Base: `develop` at `015379c3d` (#1928).
+Base: `develop` at `b4a01af38` (#1926).
 
 ## Open PRs carried in chord
 
@@ -17,7 +17,6 @@ Base: `develop` at `015379c3d` (#1928).
 | #1849 | `jbm/n2-gains` | `8868a27f3` | 2026-11-05 | 2026-11-20 | bufferGains: buffer posted calibration gains; N2Accumulate records them |
 | #1851 | `jbm/async-start` | `944510918` | 2026-11-05 | 2026-11-06 | kotekan: start the pipeline on its own thread, report it in /status |
 | #1903 | `jbm/incoherent-search` | `a18c1a010` | 2026-11-17 | 2026-11-23 | Incoherent-beam pulse search: IncoherentBeamPower and IncoherentBeamSearch |
-| #1932 | `jbm/dtv-mask-test-link` | `3953a1ccf` | 2026-11-24 | 2026-11-24 | DTV: link test_dtv_mask_enabled, add the bundle pathfinder-run1-day1-ef14658c |
 
 The PR branches carry the site config they need, so config/chord in `chord` is `develop` plus these heads.
 

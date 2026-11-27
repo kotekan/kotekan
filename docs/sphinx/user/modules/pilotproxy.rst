@@ -243,7 +243,7 @@ stop. ``0``, or a time the node's system clock has passed, applies from the
 next whole 5 s at least 1 s ahead on that clock. The first stage to get the
 POST resolves the time and the other keeps it, so ``N2Accumulate``, downstream
 of ``DtvRfiMask``, records the switch at the frame where the data change. Both
-log the resolved time, and ``GET /config`` shows it. The configured value
+log the resolved time; ``GET /config`` shows the value as posted. The configured value
 applies from startup, whatever its ``valid_at_time_ns``. POST
 ``{"enabled": true}`` or ``{"enabled": false}`` to ``/dtv_write_enabled`` to
 start or stop sending; the change applies to whole frames. A restart returns

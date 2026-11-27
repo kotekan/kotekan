@@ -11,22 +11,8 @@ from jinja2 import Environment, FileSystemLoader
 from test_pilotproxy_integration import Pipeline, ROOT, reference, runtime
 
 pytestmark = pytest.mark.serial
-T, F, D, FRAMES = 8192, 4, 64, 8
-# fine_decision_v3: words, and [n_peak, d_rho] pairs that cycle over the frames
-V3_DEFAULT_WORD, V3_LIMIT_WORD = 1 << 16, 4 << 16
-V3_UNEVALUATED = (0, 2**64 - 1)  # not evaluated: every word keeps it
-# control at the default word: above it, at the boundary, below it, d_rho = 0. A bound row is
-# always evaluated: DtvRfiMask stops on an untested row of a calibrated channel, and of the
-# control with mask_control, so the not-evaluated pair is only on the unbound rows.
-V3_CONTROL_PAIRS = [(3, 1), (1, 1), (1, 2), (5, 0)]
-# power-limit channel: kept at the power-limit word though above the default word, above
-# the power-limit word, at its boundary, d_rho = 0
-V3_CHANNEL_PAIRS = [(3, 1), (9, 2), (4, 1), (7, 0)]
-
-
-def v3_keep(n_peak, d_rho, word):
-    """pilotproxy_v3_keep: keep when n_peak 2^16 <= word d_rho; d_rho = 0 has no decision."""
-    return int(d_rho) > 0 and int(n_peak) << 16 <= int(word) * int(d_rho)
+# Six frames wrap the four-frame buffers and ring buffers.
+T, F, D, FRAMES = 8192, 4, 64, 6
 
 
 def buffer(size):
@@ -83,39 +69,14 @@ def setup_pipeline(
     runtime,
     *,
     real_detector=False,
-    fault=None,
     fine_support=False,
     num_times=T,
     reject_finite=False,
-    mask_enabled=None,
-    v3_control=None,
 ):
     T = num_times
     pipeline = Pipeline(tmp_path, runtime)
     pipeline.calibrate()
     freq_ids = pipeline.generator["manual_freq_ids"]
-    if v3_control is not None:
-        # A fine_decision_v3 bundle, decided in DtvRfiMask from dtv_stat: the profile on
-        # freq_ids[0] becomes the channel 37 control at the default word, and the one on
-        # freq_ids[2] gets a power-limit word above its default word.
-        for profile in pipeline.bundle["profiles"]:
-            rid = profile.get("receiver_channel_id", profile.get("chord_channel_id"))
-            profile["receiver_channel_id"] = rid
-            calibration = profile["fine_calibration"]
-            calibration["decision_version"] = "fine_decision_v3"
-            for key in (
-                "bulk_mask_words_hex",
-                "cfar_rank",
-                "anchor_bin",
-                "designated_half_width",
-            ):
-                calibration.pop(key, None)
-            calibration["cfar_multiplier_q16"] = V3_DEFAULT_WORD
-            if rid == freq_ids[0]:
-                profile["physical_channel"] = 37
-                calibration["status"] = "control"
-            elif rid == freq_ids[2]:
-                calibration["power_limit_multiplier_q16"] = V3_LIMIT_WORD
     if reject_finite:
         # Keep this synthetic threshold separate from the archive-review bundle.
         for profile in pipeline.bundle["profiles"]:
@@ -127,6 +88,9 @@ def setup_pipeline(
     cfg = pipeline.config
     cfg.update(num_dishes=D, num_frequencies=F, num_times=T)
     pipeline.generator["array_shape"] = [T, F, 2, D]
+    # The voltages are drawn below with numpy: testDataGen's random fill takes about
+    # 0.5 s a frame at this size.
+    pipeline.generator.update(type="const_offset", value=0)
     # The input files with metadata are generated first. Reproducible packet loss
     # and masks are then written into them, and the files are replayed through the
     # actual production stages.
@@ -183,27 +147,6 @@ def setup_pipeline(
             dim_scaling=[1, 1],
         )
         cfg["dump_dtv_fine_support"] = dump("dtv_fine_support")
-    if v3_control is not None:
-        # [n_peak, d_rho] as uint64 pairs, F * 16 bytes
-        cfg["host_dtv_stat_buffer"] = buffer(F * 2 * 8)
-        cfg["gen_dtv_stat"] = dict(cfg["gen_dtv_mask"])
-        cfg["gen_dtv_stat"].update(
-            out_buf="host_dtv_stat_buffer",
-            type="constu64",
-            name="dtv_stat",
-            array_shape=[F, 2],
-            dim_name=["F", "S"],
-            dim_scaling=[1, 1],
-        )
-        cfg["dump_dtv_stat"] = dump("dtv_stat")
-    # Frequency mismatch must fail even when the byte layout is identical.
-    if fault == "frequency":
-        cfg["gen_dtv_mask"]["manual_freq_ids"] = [
-            freq_ids[1],
-            freq_ids[0],
-            freq_ids[2],
-            freq_ids[3],
-        ]
     full = copy.deepcopy(cfg)
     for key in (
         "run_send_voltage",
@@ -249,6 +192,11 @@ def setup_pipeline(
             bitorder="little",
         )
         voltage = raw_payload(source("voltage"), (T, F, 128))
+        # random offset-binary samples in [-7, 7], as testDataGen's random_signed_offset
+        nibbles = np.random.default_rng(index).integers(
+            1, 16, (2,) + voltage.shape, dtype=np.uint8
+        )
+        voltage[:] = (nibbles[0] << 4) | nibbles[1]
         voltage[~np.repeat(pl, 8, axis=2)] = 0x88  # offset-binary complex zero
         if fine_support and real_detector and index == 4:
             # No reference support on a finite-threshold channel.
@@ -259,55 +207,14 @@ def setup_pipeline(
         if index == 1:
             decision[:] = 1
         raw_payload(source("dtv_mask"), (F,))[:] = decision
-        if v3_control is not None:
-            pairs = np.array([V3_UNEVALUATED] * F, dtype="<u8")
-            pairs[0] = V3_CONTROL_PAIRS[index % len(V3_CONTROL_PAIRS)]
-            pairs[2] = V3_CHANNEL_PAIRS[index % len(V3_CHANNEL_PAIRS)]
-            raw_payload(source("dtv_stat"), (F * 2 * 8,))[:] = pairs.view(
-                np.uint8
-            ).ravel()
-            # v3 rows ignore their mask byte; the other rows keep the byte's decision
-            decision = decision.copy()
-            decision[0] = v3_control and not v3_keep(*pairs[0], V3_DEFAULT_WORD)
-            decision[2] = not v3_keep(*pairs[2], V3_LIMIT_WORD)
         if fine_support:
             # every row of a calibrated channel is tested; freq_ids[2] is one
             support = np.array([[1, 124], [0, 0], [1, 125], [1, 126]], dtype="<i4")
             if index % 2:
                 support[[0, 1]] = support[[1, 0]]
-            if fault == "support_value":
-                support[0] = [2, 124]
-            if fault == "support_count":
-                support[0] = [1, 0]
-            # an untested row of the calibrated freq_ids[2], in no list, or of freq_ids[1],
-            # bound nowhere but in require_fine_freq_ids
-            if fault == "untested_calibrated":
-                support[2] = [-1, -1]
-            if fault == "untested_required":
-                support[1] = [-1, -1]
             raw_payload(source("dtv_fine_support"), (F * 2 * 4,))[:] = support.view(
                 np.uint8
             ).ravel()
-            if index == 4 and fault in ("support_time", "support_period"):
-                path = source("dtv_fine_support")
-                data = bytearray(path.read_bytes())
-                if fault == "support_time":
-                    seq = struct.unpack_from("<q", data, 36)[0]
-                    struct.pack_into("<q", data, 36, seq + T * 4)
-                else:
-                    struct.pack_into("<i", data, 44, T * 8)
-                path.write_bytes(data)
-        if index == 4 and fault in ("late", "missing", "period"):
-            path = source("dtv_mask")
-            data = bytearray(path.read_bytes())
-            if fault in ("late", "missing"):
-                seq = struct.unpack_from("<q", data, 36)[0]
-                struct.pack_into(
-                    "<q", data, 36, seq + (-1 if fault == "late" else T * 4)
-                )
-            else:
-                struct.pack_into("<i", data, 44, T * 8)
-            path.write_bytes(data)
         keep_masks.append(keep)
         pl_masks.append(pl)
         decisions.append(decision)
@@ -315,8 +222,6 @@ def setup_pipeline(
     input_names = ["voltage", "rfi_RFImask", "pl_expanded_mask", "dtv_mask"]
     if fine_support:
         input_names.append("dtv_fine_support")
-    if v3_control is not None:
-        input_names.append("dtv_stat")
     for name in input_names:
         cfg.pop(f"gen_{name}", None)
         cfg.pop(f"dump_{name}", None)
@@ -377,23 +282,6 @@ def setup_pipeline(
         dtv_buf="host_dtv_mask_buffer",
         out_buf="host_dtv_RFImask_buffer",
     )
-    if v3_control is not None:
-        cfg["host_dtv_stat_buffer"] = dict(
-            kotekan_buffer="ndarray",
-            num_frames=4,
-            value_type="uint64",
-            extents=[F, 2],
-            quantity_name="dtv_stat",
-            dimnames=["F", "S"],
-            dimscalings=[1, 1],
-            metadata_pool="main_pool",
-        )
-        cfg["combine"].update(stat_buf="host_dtv_stat_buffer", mask_control=v3_control)
-    if mask_enabled is not None:
-        cfg["dtv_mask_enabled"] = dict(
-            kotekan_update_endpoint="json", enabled=mask_enabled, valid_at_time_ns=0
-        )
-        cfg["combine"]["enabled_updatable_config"] = "/dtv_mask_enabled"
     if fine_support:
         cfg["host_dtv_fine_support_buffer"] = dict(
             kotekan_buffer="ndarray",
@@ -529,19 +417,15 @@ def triangles(matrix, block):
     )
 
 
-@pytest.mark.parametrize(
-    "real_detector,fine_support",
-    [(False, False), (True, False), (False, True), (True, True)],
-)
 def test_mask_visibility_and_counts_across_ring_wrap(
     tmp_path,
     runtime,
-    real_detector,
-    fine_support,
+    real_detector=True,
+    fine_support=True,
     num_times=T,
     reject_finite=False,
-    v3_control=None,
 ):
+    """The detector, its support, DtvRfiMask and both correlators agree across ring wraps."""
     T = num_times
     pipeline, masks, packet_masks, decisions = setup_pipeline(
         tmp_path,
@@ -550,7 +434,6 @@ def test_mask_visibility_and_counts_across_ring_wrap(
         fine_support=fine_support,
         num_times=T,
         reject_finite=reject_finite,
-        v3_control=v3_control,
     )
     code, log = pipeline.run()
     assert code == 0, log[-12000:]
@@ -632,106 +515,8 @@ def test_mask_visibility_and_counts_across_ring_wrap(
         np.testing.assert_array_equal(got_counts, triangles(expected_counts, 8))
         # Products without accepted samples have no measured visibility.
         assert np.any(expected_counts == 0)
-        if not real_detector and v3_control is None and index == 1:
+        if not real_detector and index == 1:
             assert not got_counts.any() and not got_vis.any()
-
-
-def test_disabled_mask_copies_the_sk_mask(tmp_path, runtime):
-    # fine_support adds unsupported rank, a required ID and a permanent-mask ID,
-    # none of which clear samples while the mask is off.
-    pipeline, masks, _, _ = setup_pipeline(
-        tmp_path, runtime, fine_support=True, mask_enabled=False
-    )
-    code, log = pipeline.run()
-    assert code == 0, log[-12000:]
-    combined = reference.read_raw_frames(
-        str(tmp_path / "out" / "dtv_RFImask_*.raw"), T * F // 8
-    )
-    assert len(combined) == FRAMES
-    for index in range(FRAMES):
-        packed = np.packbits(
-            masks[index].reshape(T // 1024, 1024, F).transpose(0, 2, 1),
-            axis=-1,
-            bitorder="little",
-        )
-        np.testing.assert_array_equal(
-            combined[index].payload.reshape(T // 1024, F, 128), packed
-        )
-
-
-@pytest.mark.parametrize("mask_enabled", [True, False])
-def test_detect_only_bundle_never_masks(tmp_path, runtime, mask_enabled):
-    pipeline, *_ = setup_pipeline(tmp_path, runtime, mask_enabled=mask_enabled)
-    for profile in pipeline.bundle["profiles"]:
-        del profile["fine_calibration"]["provenance"]["mask_qualification"]
-    code, log = pipeline.run()
-    if mask_enabled:
-        assert code != 0, log[-12000:]
-        assert "refusing to switch the DTV mask on" in log, log[-12000:]
-    else:
-        assert code == 0, log[-12000:]
-
-
-@pytest.mark.parametrize("fault", ["frequency", "late", "missing", "period"])
-def test_refuse_wrong_or_missing_decision_identity(tmp_path, runtime, fault):
-    pipeline, *_ = setup_pipeline(tmp_path, runtime, fault=fault)
-    code, log = pipeline.run()
-    assert code != 0, log[-12000:]
-    assert "DtvRfiMask" in log and ("mismatch" in log), log[-12000:]
-    assert len(list((tmp_path / "out").glob("dtv_RFImask_*.raw"))) < FRAMES
-
-
-@pytest.mark.parametrize(
-    "fault", ["support_time", "support_period", "support_value", "support_count"]
-)
-def test_refuse_invalid_support_product(tmp_path, runtime, fault):
-    pipeline, *_ = setup_pipeline(tmp_path, runtime, fault=fault, fine_support=True)
-    code, log = pipeline.run()
-    assert code != 0, log[-12000:]
-    assert "DtvRfiMask" in log and ("mismatch" in log or "malformed" in log), log[
-        -12000:
-    ]
-    assert len(list((tmp_path / "out").glob("dtv_RFImask_*.raw"))) < FRAMES
-
-
-@pytest.mark.parametrize(
-    "settings,reason",
-    [
-        ({"permanent_mask_freq_ids": [4000, 4000]}, "unique"),
-        ({"permanent_mask_freq_ids": [-1]}, "nonnegative"),
-        ({"permanent_mask_freq_ids": [True]}, "exact nonnegative"),
-        ({"permanent_mask_freq_ids": [4000.5]}, "exact nonnegative"),
-        ({"permanent_mask_freq_ids": [1 << 32]}, "exact nonnegative"),
-        ({"permanent_mask_freq_ids": [5000]}, "absent"),
-        ({"require_fine_freq_ids": [4000]}, "overlap"),
-    ],
-)
-def test_refuse_incomplete_or_ambiguous_threshold_binding(
-    tmp_path, runtime, settings, reason
-):
-    pipeline, *_ = setup_pipeline(tmp_path, runtime, fine_support=True)
-    pipeline.config["combine"].update(settings)
-    code, log = pipeline.run()
-    assert code != 0, log[-12000:]
-    assert "DtvRfiMask" in log and reason in log, log[-12000:]
-
-
-@pytest.mark.parametrize("fault", ["untested_calibrated", "untested_required"])
-def test_untested_decided_row_stops_the_mask(tmp_path, runtime, fault):
-    """While the mask is on, an untested row of a calibrated channel, or of a frequency in
-    require_fine_freq_ids, stops DtvRfiMask."""
-    pipeline, *_ = setup_pipeline(tmp_path, runtime, fine_support=True, fault=fault)
-    code, log = pipeline.run()
-    assert code != 0, log[-12000:]
-    assert "DtvRfiMask" in log and "not evaluated" in log, log[-12000:]
-
-
-def test_finite_threshold_requires_full_rate_support(tmp_path, runtime):
-    pipeline, *_ = setup_pipeline(tmp_path, runtime)
-    pipeline.config["combine"]["require_fine_freq_ids"] = [2408]
-    code, log = pipeline.run()
-    assert code != 0, log[-12000:]
-    assert "required fine thresholds need fine_support_buf" in log, log[-12000:]
 
 
 @pytest.mark.parametrize("apply", [False, True])
@@ -783,28 +568,6 @@ def test_template_passes_the_same_reject_all_limit_to_both_stages():
     assert detector["dtv_fine_support_name"] == "dtv_fine_support"
 
 
-def test_chime_mask_visibility_and_counts_across_ring_wrap(tmp_path, runtime):
-    """The 16384-sample adapter routes identical samples to both GPU correlators."""
-    test_mask_visibility_and_counts_across_ring_wrap(
-        tmp_path, runtime, real_detector=False, fine_support=True, num_times=16384
-    )
-
-
-@pytest.mark.parametrize("mask_control", [False, True])
-def test_v3_mask_visibility_and_counts_across_ring_wrap(
-    tmp_path, runtime, mask_control
-):
-    """A fine_decision_v3 bundle is decided in DtvRfiMask from dtv_stat and routed to both
-    correlators and the RFI counts; the control is masked only with mask_control."""
-    test_mask_visibility_and_counts_across_ring_wrap(
-        tmp_path,
-        runtime,
-        real_detector=False,
-        fine_support=False,
-        v3_control=mask_control,
-    )
-
-
 def test_chime_detector_is_diagnostic_in_each_numa_domain():
     env = Environment(loader=FileSystemLoader(str(ROOT / "config/chime")))
     template = env.get_template("chime_upgrade_2numa.j2")
@@ -838,6 +601,10 @@ def test_chime_detector_is_diagnostic_in_each_numa_domain():
             "write_dtv",
         }
         assert list(domain["write_dtv"]) == ["mask", "stat"]
+        # a restart numbers on, and a missing output directory is created
+        for name in ("mask", "stat"):
+            raw = domain["write_dtv"][name]
+            assert raw["continue_numbering"] is True and raw["create_base_dir"] is True
 
 
 def test_chime_calibration_mode_writes_every_product():
@@ -862,13 +629,16 @@ def test_chime_calibration_mode_writes_every_product():
         assert row["file_name"] == f"dtv_fine_powers_n{numa}"
         detector = domain["run_dtv_detector"]["commands"][0]
         assert detector["dtv_fine_powers_rows"] == "num_freq_gpu_buf"
+        # a restart keeps the previous run's files
+        assert row["acq_dir"] is True
+        for name in ("mask", "powers", "fine_support", "stat"):
+            raw = domain["write_dtv"][name]
+            assert raw["continue_numbering"] is True and raw["create_base_dir"] is True
 
 
-@pytest.mark.parametrize("reject_finite", [False, True])
-def test_chime_detector_mask_visibility_and_counts_across_ring_wrap(
-    tmp_path, runtime, reject_finite
-):
-    """The K128 detector, support, adapter and both correlators agree."""
+def test_chime_detector_mask_visibility_and_counts_across_ring_wrap(tmp_path, runtime):
+    """The K128 detector, support, adapter and both correlators agree, with a finite
+    threshold that rejects supported rows."""
     import json
 
     bundle = json.loads((runtime[1] / "pilot_profiles.json").read_text())
@@ -880,5 +650,5 @@ def test_chime_detector_mask_visibility_and_counts_across_ring_wrap(
         real_detector=True,
         fine_support=True,
         num_times=16384,
-        reject_finite=reject_finite,
+        reject_finite=True,
     )

@@ -61,7 +61,8 @@ struct MaskPipeline {
     std::unique_ptr<kotekan::Stage> stage;
 
     MaskPipeline(int samples, bool fine = true, bool time_axis = false, bool declared = true,
-                 bool qualified = true, const std::map<int, int>& ids = {}) :
+                 bool qualified = true, const std::map<int, int>& ids = {},
+                 const nlohmann::json& settings = nlohmann::json::object()) :
         samples(samples), has_fine(fine),
         pool(metadataPool::create(32, sizeof(chordMetadata), "pool", "chordMetadata")),
         rfi(2, samples / 8 * F, pool, "rfi", "standard", 0, false, false, std::vector<int>{}, true),
@@ -86,6 +87,7 @@ struct MaskPipeline {
               {"require_fine_freq_ids", fine ? nlohmann::json{13} : nlohmann::json::array()}}}};
         if (fine)
             cfg["mask"]["fine_support_buf"] = "support";
+        cfg["mask"].update(settings);
         config.update_config(cfg);
         auto mask_desc =
             kotekan::GenericNDArray::describe(kotekan::uint1x8, "RFImask", {samples / 1024, F, 128},
@@ -231,6 +233,57 @@ BOOST_AUTO_TEST_CASE(reject_malformed_input) {
             }
             BOOST_CHECK_THROW(p.stage->main_thread(), FatalError);
         }
+}
+
+BOOST_AUTO_TEST_CASE(reject_decision_period_and_support_time_or_count) {
+    for (int fault = 0; fault < 3; ++fault) {
+        MaskPipeline p(8192);
+        p.fill(0);
+        switch (fault) {
+            case 0:
+                get_chord_metadata(&p.dtv, 0)->set_time_downsampling_fpga(1);
+                break;
+            case 1:
+                get_chord_metadata(&p.support, 0)->set_fpga_seq_num(1);
+                break;
+            case 2:
+                // a tested row with no samples
+                reinterpret_cast<int32_t*>(p.support.frames[0])[3] = 0;
+                break;
+        }
+        BOOST_CHECK_THROW(p.stage->main_thread(), FatalError);
+    }
+}
+
+/// The message of the FatalError a mask pipeline with these settings stops with, at
+/// construction or at its first frame.
+static std::string refusal(const nlohmann::json& settings, bool fine = true) {
+    try {
+        MaskPipeline p(8192, fine, false, true, true, {}, settings);
+        p.fill(0);
+        p.stage->main_thread();
+    } catch (const FatalError& e) {
+        return e.what();
+    }
+    return "";
+}
+
+BOOST_AUTO_TEST_CASE(refuse_incomplete_or_ambiguous_threshold_binding) {
+    using nlohmann::json;
+    const std::vector<std::pair<json, std::string>> cases = {
+        {{{"permanent_mask_freq_ids", json::array({12, 12})}}, "unique"},
+        {{{"permanent_mask_freq_ids", json::array({-1})}}, "nonnegative"},
+        {{{"permanent_mask_freq_ids", json::array({true})}}, "exact nonnegative"},
+        {{{"permanent_mask_freq_ids", json::array({12.5})}}, "exact nonnegative"},
+        {{{"permanent_mask_freq_ids", json::array({int64_t(1) << 32})}}, "exact nonnegative"},
+        {{{"permanent_mask_freq_ids", json::array({50})}}, "absent"},
+        {{{"require_fine_freq_ids", json::array({12})}}, "overlap"}};
+    for (const auto& [settings, reason] : cases)
+        BOOST_CHECK_MESSAGE(refusal(settings).find(reason) != std::string::npos, settings.dump());
+    // a required finite threshold is decided from the support product
+    BOOST_CHECK(
+        refusal({{"require_fine_freq_ids", json::array({13})}}, false).find("need fine_support_buf")
+        != std::string::npos);
 }
 
 BOOST_AUTO_TEST_CASE(reject_overflowing_time_metadata) {

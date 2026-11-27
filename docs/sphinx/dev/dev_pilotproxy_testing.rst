@@ -9,19 +9,19 @@ stage and its configuration on the telescope are described in
 :ref:`pilotproxy`.
 
 The tests need Kotekan built with ``USE_CUDA=ON`` and ``WITH_TESTS=ON``, and a
-CUDA device that supports the vendored detector core. The CI harness creates a
-temporary virtual environment with pinned dependencies, exports both receiver
-bundles, and removes its generated files on exit:
+CUDA device that supports the vendored detector core. The tests use the current
+Python environment, which needs the PilotProxy package at the commit in
+``external/pilotproxy/VENDOR.json``; the CI image installs it. The CI harness
+checks that commit, exports both receiver bundles, and removes its generated
+files on exit:
 
 .. code-block:: sh
 
     bash tests/ci-scripts/pilotproxy/run_pilotproxy_tests.sh "$PWD/build"
 
-Individual tests need their own Python environment with the dependencies in
-``tests/ci-scripts/pilotproxy/requirements.txt``. A runtime bundle is also
-needed, and it is exported with the PilotProxy tools. From the repository root,
-the matching PilotProxy package is installed, the CHORD bundle is exported, and
-the tests are run:
+Individual tests also need a runtime bundle, exported with the PilotProxy tools.
+From the repository root, the matching PilotProxy package is installed, the
+CHORD bundle is exported, and the tests are run:
 
 .. code-block:: sh
 

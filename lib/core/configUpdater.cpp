@@ -195,7 +195,8 @@ void configUpdater::rest_callback(connectionInstance& con, nlohmann::json& json)
         }
     }
 
-    // Call subscriber callbacks
+    // Call subscriber callbacks, on a copy shared between them: the config keeps the POST
+    nlohmann::json update = json;
     auto search = _callbacks.equal_range(uri);
     if (search.first == _callbacks.end()) {
         INFO_NON_OO("configUpdater: Received a POST command to endpoint {:s}, but "
@@ -213,7 +214,7 @@ void configUpdater::rest_callback(connectionInstance& con, nlohmann::json& json)
     }
     while (search.first != search.second) {
         // subscriber callback
-        if (!search.first->second(json)) {
+        if (!search.first->second(update)) {
             std::string msg = fmt::format(fmt("configUpdater: Failed updating {:s} with new "
                                               "values: {:s}."),
                                           uri, json.dump());
