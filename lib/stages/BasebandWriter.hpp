@@ -14,11 +14,14 @@
 #include "prometheusMetrics.hpp" // for Gauge, Counter
 #include "visUtil.hpp"           // for movingAverage
 
+#include <atomic>             // for atomic_int
 #include <condition_variable> // for condition_variable
 #include <cstdint>            // for uint32_t, uint64_t
+#include <memory>             // for unique_ptr
 #include <mutex>              // for mutex
 #include <string>             // for string
 #include <unordered_map>      // for unordered_map
+#include <vector>             // for vector
 
 /**
  * @class BasebandWriter
@@ -36,16 +39,16 @@
  *
  * @conf   max_frames_per_second Double (default 0) Maximum throughput in
  *                          frames/s at which data is taken out of the input
- *                          buffer. Value of 0 or less disabled the throttling.
+ *                          buffer, for the stage as a whole. Value of 0 or less
+ *                          disabled the throttling.
  *
- * @conf   num_writers      Int (default 1). Number of BasebandWriter stages
- *                          sharing `in_buf`. Each writes only the frequencies
- *                          with `freq_id % num_writers == writer_index` and
- *                          passes over the rest, so each file has one writer
- *                          and the writes to disk run in parallel.
- *
- * @conf   writer_index     Int (default 0). This stage's share, in
- *                          [0, num_writers).
+ * @conf   num_threads      Int (default 1). Number of writer threads. Each
+ *                          thread writes the frequencies with
+ *                          `freq_id % num_threads` equal to its index and passes
+ *                          over the rest, so each file has one writer and the
+ *                          writes to disk run in parallel. With more than one
+ *                          thread, each registers as its own consumer of `in_buf`
+ *                          (`<stage name>/thread_<i>`).
  *
  * @par Metrics
  * @metric kotekan_baseband_writeout_in_progress
@@ -70,13 +73,40 @@ public:
     void main_thread() override;
 
 private:
+    // Convenience class just so we can have a pair of raw file and time with a single "string"
+    // constructor that can be used from `map::emplace`
+    class BasebandWriterDestination {
+    public:
+        BasebandWriterDestination(const std::string&, const uint32_t&);
+        BasebandFileRaw file;
+        double last_updated;
+    };
+
+    /// One writer thread: its consumer name on `in_buf` and the files it owns.
+    struct WriterThread {
+        uint32_t index;
+        std::string consumer_name;
+
+        /// The thread's open dump files, keyed by event id, then frequency id
+        std::unordered_map<uint64_t, std::unordered_map<uint32_t, BasebandWriterDestination>>
+            baseband_events;
+
+        /// synchronizes access to `baseband_events` (this thread and the file-closing thread)
+        std::mutex mtx;
+    };
+
+    /**
+     * @brief take frames from `in_buf` and write this thread's share of them
+     */
+    void writer_loop(WriterThread& writer);
+
     /**
      * @brief write a frame of data into a baseband dump file
      *
-     * @param in_buf   The buffer the frame is in.
+     * @param writer   The writer thread whose files to use.
      * @param frame_id The id of the frame to write.
      */
-    void write_data(Buffer* in_buf, int frame_id);
+    void write_data(WriterThread& writer, int frame_id);
 
     /**
      * @brief runs the loop to periodically close stale dump files
@@ -87,34 +117,30 @@ private:
     std::string _root_path;
     double _dump_timeout;
     double _max_frames_per_second;
-    uint32_t _num_writers;
-    uint32_t _writer_index;
+    uint32_t _num_threads;
     uint32_t _frame_size;
 
     /// Input buffer to read from
     Buffer* in_buf;
 
-    // Convenience class just so we can have a pair of raw file and time with a single "string"
-    // constructor that can be used from `map::emplace`
-    class BasebandWriterDestination {
-    public:
-        BasebandWriterDestination(const std::string&, const uint32_t&);
-        BasebandFileRaw file;
-        double last_updated;
-    };
-    /// The set of active baseband dump files, keyed by their event id to
-    /// frequency map
-    std::unordered_map<uint64_t, std::unordered_map<uint32_t, BasebandWriterDestination>>
-        baseband_events;
+    /// The writer threads' state
+    std::vector<std::unique_ptr<WriterThread>> writers;
 
-    /// synchronizes access to the event map
-    std::mutex mtx;
-
-    /// notifies the file-closing thread (i.e., running `close_old_events`)
+    /// notifies the file-closing thread (i.e., running `close_old_events`) to exit
+    std::mutex closing_mtx;
     std::condition_variable stop_closing;
+    bool closing_stop = false;
 
-    /// Keep track of the average write time
+    /// Keep track of the average write time; guarded by `stats_mtx`
     movingAverage write_time;
+    std::mutex stats_mtx;
+
+    /// Number of writer threads with files open for each event; guarded by `stats_mtx`.
+    /// Lock order: a writer's `mtx` first, then `stats_mtx`.
+    std::unordered_map<uint64_t, int> active_events;
+
+    /// Number of threads writing a frame right now
+    std::atomic<int> writes_in_progress{0};
 
     // Prometheus metric to indicate when a per-frequency writeout is in progress
     kotekan::prometheus::Gauge& write_in_progress_metric;
