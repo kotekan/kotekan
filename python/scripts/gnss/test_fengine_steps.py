@@ -39,8 +39,8 @@ def table():
     t = {"adc_sample_ns": TS_NS, "n_inputs": 8, "rows": []}
     for frame0 in (100, 200, 300):
         fs.add_start(t, frame0, "utc%d" % frame0)
-    t["rows"][1].update(steps=[0, 1, None, -2, 0, 0, 4, 0], half_step=0)
-    t["rows"][2].update(steps=[0, 0, 3, 1, 0, -1, 0, 0], half_step=2)
+    t["rows"][1].update(steps=[0, 1, None, -2, 0, 0, 4, 0], pol_step=0)
+    t["rows"][2].update(steps=[0, 0, 3, 1, 0, -1, 0, 0], pol_step=2)
     return t
 
 
@@ -58,9 +58,9 @@ class TestStepsBetween(unittest.TestCase):
     def test_the_same_start_is_no_step(self):
         self.assertEqual(fs.steps_between(table(), 200, 200), [0] * 8)
 
-    def test_half_step_is_added_to_the_second_half(self):
+    def test_pol_step_is_added_to_the_second_half(self):
         self.assertEqual(
-            fs.steps_between(table(), 200, 300, half_step=True),
+            fs.steps_between(table(), 200, 300, pol_step=True),
             [0, 0, 3, 1, 2, 1, 2, 2],
         )
 
@@ -71,11 +71,11 @@ class TestStepsBetween(unittest.TestCase):
             fs.steps_between(t, 100, 300)
         self.assertIn("steps of start 200", str(e.exception))
         t = table()
-        t["rows"][2]["half_step"] = None
+        t["rows"][2]["pol_step"] = None
         fs.steps_between(t, 100, 300)
         with self.assertRaises(ValueError) as e:
-            fs.steps_between(t, 100, 300, half_step=True)
-        self.assertIn("half_step of start 300", str(e.exception))
+            fs.steps_between(t, 100, 300, pol_step=True)
+        self.assertIn("pol_step of start 300", str(e.exception))
 
     def test_a_start_without_a_row_is_refused(self):
         t = table()
@@ -100,6 +100,14 @@ class TestTable(unittest.TestCase):
         self.assertEqual(fs.load(self.path), table())
         self.assertEqual(os.listdir(self.d), ["steps.json"])
 
+    def test_a_row_that_names_it_half_step_is_read(self):
+        t = table()
+        for row in t["rows"]:
+            row["half_step"] = row.pop("pol_step")
+        with open(self.path, "w") as fh:
+            json.dump(t, fh)
+        self.assertEqual(fs.load(self.path), table())
+
     def test_a_new_start_follows_the_last_row(self):
         t = table()
         fs.add_start(t, 400, "utc400")
@@ -110,11 +118,11 @@ class TestTable(unittest.TestCase):
                 "start_utc": "utc400",
                 "prev_frame0_int": 300,
                 "steps": None,
-                "half_step": None,
+                "pol_step": None,
             },
         )
 
-    def test_set_steps_and_half_step(self):
+    def test_set_steps_and_pol_step(self):
         steps = [0, 0, None, 2, 0, 0, 0, -1]
         src = os.path.join(self.d, "measured.json")
         with open(src, "w") as fh:
@@ -122,10 +130,10 @@ class TestTable(unittest.TestCase):
         fs.set_steps(
             argparse.Namespace(table=self.path, frame0=200, file=src, source="by hand")
         )
-        fs.set_half_step(argparse.Namespace(table=self.path, frame0=200, n=-1))
+        fs.set_pol_step(argparse.Namespace(table=self.path, frame0=200, n=-1))
         row = fs.load(self.path)["rows"][1]
         self.assertEqual(
-            (row["steps"], row["half_step"], row["source"]), (steps, -1, "by hand")
+            (row["steps"], row["pol_step"], row["source"]), (steps, -1, "by hand")
         )
         with open(src, "w") as fh:
             json.dump(steps[:4], fh)

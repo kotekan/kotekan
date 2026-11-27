@@ -18,7 +18,7 @@ is carried by phi(f) - phi(f_src).
 
 The calibration is valid under the F-engine start it was made under (made_frame0). For data
 under another start every input's phase turns by 2 pi f n Ts, n its whole-sample steps since
-(fengine_steps.steps_between with half_step: the table combines both pol halves); turned()
+(fengine_steps.steps_between with pol_step: the table combines both pol halves); turned()
 refuses while a start in between is unmeasured, and the relay then sends no table.
 
   build CAL.npz OUT.json [--frame0 FILE] [--lo MHZ] [--hi MHZ]
@@ -110,9 +110,9 @@ def build(cal, frame0_file=FRAME0, lo_mhz=LO_MHZ, hi_mhz=HI_MHZ, source=""):
 def turned(table, steps_table, data_frame0):
     """The table's knots turned to data under `data_frame0` by the steps since its start: a copy
     with made_frame0 replaced by data_frame0. An input a row in between did not read becomes
-    None. Raises ValueError when the steps (or a half_step) between are not measured."""
+    None. Raises ValueError when the steps (or a pol_step) between are not measured."""
     steps = fengine_steps.steps_between(
-        steps_table, table["made_frame0"], data_frame0, half_step=True
+        steps_table, table["made_frame0"], data_frame0, pol_step=True
     )
     ts = table["adc_sample_ns"] * 1e-9
     out = dict(table, made_frame0=data_frame0, turned_from=table["made_frame0"])

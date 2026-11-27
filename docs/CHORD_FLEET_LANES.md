@@ -178,7 +178,7 @@ Tau A taken off, in the frame of the science N^2's eigenvectors (the lane's fram
 turned by the 11-25 start's step row matches the cal_1126 one to 2.8 deg rms (99.5 unturned).
 
 **Relay.** With `--inst-phase FILE` the relay turns the table to the newest start in the frame0
-file by the step table (`fengine_steps.steps_between`, with half_step) and adds it to `set_lanes`
+file by the step table (`fengine_steps.steps_between`, with pol_step) and adds it to `set_lanes`
 when it changes and every 300 s. While a start in between is unmeasured it sends an empty one.
 
 **Contract** (`set_lanes`, optional):

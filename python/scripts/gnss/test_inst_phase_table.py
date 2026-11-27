@@ -83,9 +83,9 @@ class TestTable(unittest.TestCase):
         with self.assertRaises(ValueError):
             ipt.turned(self.tab, table, 1795700000)
         table["rows"][-1]["steps"] = steps
-        with self.assertRaises(ValueError):  # the half_step is needed too
+        with self.assertRaises(ValueError):  # the pol_step is needed too
             ipt.turned(self.tab, table, 1795700000)
-        table["rows"][-1]["half_step"] = 2
+        table["rows"][-1]["pol_step"] = 2
         out = ipt.turned(self.tab, table, 1795700000)
         self.assertEqual(
             (out["made_frame0"], out["turned_from"]), (1795700000, 1795500000)

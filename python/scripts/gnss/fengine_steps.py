@@ -17,11 +17,12 @@ beamforming weights, an element reference) can be used on data from another:
                       than under the start before, within its pol half (inputs 0-63, 64-127)
                       against the largest group of inputs that moved together. That zero is a
                       convention (two groups can be near equal: 2026-11-26 pol 0, 23 and 22-24
-                      inputs); half_step is measured against the row as written. null for an
+                      inputs); pol_step is measured against the row as written. null for an
                       input no measurement read; null in place of the list for a start that
                       was not measured.
-    half_step         the same for inputs 64-127 as a whole against inputs 0-63; null if not
-                      measured. A product that combines both halves needs it.
+    pol_step          the same for inputs 64-127 as a whole against inputs 0-63; null if not
+                      measured. A product that combines both halves needs it. A row that
+                      names it half_step is read as well.
     measured_utc, source   when and from what the steps were measured
 
 A step of n samples turns an input's phase at sky frequency f by 2 pi f n Ts. Measured on the
@@ -35,7 +36,7 @@ the models have settled after it.
   show [TABLE]                           the rows, steps as input ranges
   set-steps FRAME0 FILE SOURCE [TABLE]   set a row's steps from FILE, a JSON list with one
                                          entry per input (null = not read), measured otherwise
-  half-step FRAME0 N [TABLE]             set a row's half_step
+  pol-step FRAME0 N [TABLE]              set a row's pol_step
 """
 import argparse
 import collections
@@ -68,7 +69,11 @@ MIN_FIT = 0.75
 
 def load(path=TABLE):
     with open(path) as f:
-        return json.load(f)
+        table = json.load(f)
+    for row in table["rows"]:
+        if "half_step" in row:
+            row.setdefault("pol_step", row.pop("half_step"))
+    return table
 
 
 def save(table, path=TABLE):
@@ -87,16 +92,16 @@ def add_start(table, frame0_int, start_utc):
             "start_utc": start_utc,
             "prev_frame0_int": rows[-1]["frame0_int"] if rows else None,
             "steps": None,
-            "half_step": None,
+            "pol_step": None,
         }
     )
 
 
-def steps_between(table, made, data, half_step=False):
+def steps_between(table, made, data, pol_step=False):
     """Per input, the samples it arrives later under the start `data` than under the start
     `made` (both frame0_int): what a product made under `made` is turned by to be used on data
     taken under `data`. None for an input one of the rows in between did not read; zeros when
-    the two are the same start. With half_step the rows' half_step is added to the second half
+    the two are the same start. With pol_step the rows' pol_step is added to the second half
     of the inputs, for a product that combines both pol halves.
 
     Raises ValueError when the rows do not lead from one start to the other without a gap, or
@@ -111,11 +116,11 @@ def steps_between(table, made, data, half_step=False):
                 "the row of start %d follows start %s, not %d: a start in between has no row"
                 % (row["frame0_int"], row["prev_frame0_int"], at)
             )
-        if row["steps"] is None or (half_step and row["half_step"] is None):
+        if row["steps"] is None or (pol_step and row["pol_step"] is None):
             raise ValueError(
                 "the %s of start %d (%s) were not measured"
                 % (
-                    "steps" if row["steps"] is None else "half_step",
+                    "steps" if row["steps"] is None else "pol_step",
                     row["frame0_int"],
                     row["start_utc"],
                 )
@@ -125,7 +130,7 @@ def steps_between(table, made, data, half_step=False):
             if s is None or total[i] is None:
                 total[i] = None
             else:
-                total[i] += s + (row["half_step"] if half_step and i >= half else 0)
+                total[i] += s + (row["pol_step"] if pol_step and i >= half else 0)
         at = row["frame0_int"]
     if at != hi:
         raise ValueError("start %d has no row after start %d" % (hi, at))
@@ -251,8 +256,8 @@ def show(a):
             continue
         print("  steps: %s" % ranges(row["steps"]))
         print(
-            "  half_step (inputs 64-127 against 0-63): %s"
-            % ("not measured" if row["half_step"] is None else "%+d" % row["half_step"])
+            "  pol_step (inputs 64-127 against 0-63): %s"
+            % ("not measured" if row["pol_step"] is None else "%+d" % row["pol_step"])
         )
         print("  measured %s, %s" % (row.get("measured_utc"), row.get("source")))
 
@@ -279,9 +284,9 @@ def set_steps(a):
     save(table, a.table)
 
 
-def set_half_step(a):
+def set_pol_step(a):
     table = load(a.table)
-    row_of(table, a.frame0)["half_step"] = a.n
+    row_of(table, a.frame0)["pol_step"] = a.n
     save(table, a.table)
 
 
@@ -297,12 +302,12 @@ def main():
     t.add_argument("file")
     t.add_argument("source")
     t.add_argument("table", nargs="?", default=TABLE)
-    h = sub.add_parser("half-step")
+    h = sub.add_parser("pol-step")
     h.add_argument("frame0", type=int)
     h.add_argument("n", type=int)
     h.add_argument("table", nargs="?", default=TABLE)
     a = ap.parse_args()
-    {"show": show, "set-steps": set_steps, "half-step": set_half_step}[a.cmd](a)
+    {"show": show, "set-steps": set_steps, "pol-step": set_pol_step}[a.cmd](a)
 
 
 if __name__ == "__main__":

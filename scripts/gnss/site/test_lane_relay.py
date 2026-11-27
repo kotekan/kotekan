@@ -315,7 +315,7 @@ def test_inst_phase():
         "an unmeasured start clears the table (%s)" % r.phase_why,
     )
     steps["rows"][-1]["steps"] = [0, 4, 0, -1]
-    steps["rows"][-1]["half_step"] = 0
+    steps["rows"][-1]["pol_step"] = 0
     fengine_steps.save(steps, paths["steps"])
     r.phase = r.read_phase()
     check(
