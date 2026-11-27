@@ -1325,11 +1325,18 @@ def main(argv=None, rx=None, publisher=None):
             from gps_nav_decode import sv_position_lnav as _svp_lnav
             from beidou_bcnav1 import sv_position_bcnav1 as _svp_bc1
             from beidou_bcnav2 import sv_position_bcnav2 as _svp_bc2
-            from guowang_csk import sv_position_relay as _svp_relay
             from glonass_nav_predictor import sv_position_glo as _svp_glo
         except Exception as e:
             _log("decoded-eph fallback DISABLED (import: %s)" % e)
             _decfb = None
+    # GuoWang's relay propagator comes with guowang_csk, which needs scipy: a broker without it
+    # skips the relay's ephemerides rather than the whole fallback.
+    _svp_relay = None
+    if _decfb:
+        try:
+            from guowang_csk import sv_position_relay as _svp_relay
+        except Exception as e:
+            _log("decoded-eph fallback: no GuoWang relay ephemerides (import: %s)" % e)
     _dec_reg = (
         [
             ("GPS_L1_LNAV", "G", _svp_lnav, "toe", lambda: _nav.navbits)
