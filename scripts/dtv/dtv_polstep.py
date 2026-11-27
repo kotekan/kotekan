@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Measure an F-engine start's half_step from cudaDtvSubtract saves made either side of it.
+"""Measure an F-engine start's pol_step from cudaDtvSubtract saves made either side of it.
 
-    dtv_halfstep.py FRAME0_INT [--before DIR] [--after DIR] [--until UTC]
+    dtv_polstep.py FRAME0_INT [--before DIR] [--after DIR] [--until UTC]
 
-The step table (dtv_fold.STEPS) gives each input's whole-sample step within its pol half; half_step, the step of
+The step table (dtv_fold.STEPS) gives each input's whole-sample step within its pol half; pol_step, the step of
 inputs 64-127 as a whole against inputs 0-63, is DTV's to measure. Across the start, with w unchanged, the rolling
 fit turns g: g_after / g_before = exp(+i 2 pi f n_i Ts) / c, c one constant per channel and source. With the inputs'
 steps taken out, the two halves differ by 2 pi f h Ts. Each ATSC channel's first source (the station; static,
@@ -17,7 +17,7 @@ A GPU is left out when taking the steps out makes its inputs less coherent: its 
 did not turn. When no input moved this cannot be told, and a frozen GPU reads 0.
 
 Prints h, its score and the runner-up, and exits 0 only when the fit is clear (MIN_SCORE, MIN_MARGIN). It does not
-write the table: fengine_steps.py half-step FRAME0_INT N.
+write the table: fengine_steps.py pol-step FRAME0_INT N.
 """
 import argparse
 import calendar
@@ -173,7 +173,7 @@ def main():
     second = max((s, k) for k, s in score.items() if k != h)
     clear = score[h] >= MIN_SCORE and score[h] - second[0] >= MIN_MARGIN
     print(
-        "half_step %+d: score %.3f, next %+d at %.3f; residual %+.0f deg, rms %.0f deg; %d channels; "
+        "pol_step %+d: score %.3f, next %+d at %.3f; residual %+.0f deg, rms %.0f deg; %d channels; "
         "coherence within the halves %.3f / %.3f (median); %s"
         % (
             h,

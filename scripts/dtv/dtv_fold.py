@@ -54,7 +54,8 @@ def load_steps(path=STEPS):
 
 def steps_between(rows, e, d, halves=True):
     """Sample step of each input from the F-engine start e to d (both frame0_int; NaN = not read), or ValueError.
-    halves: the product combines inputs 0-63 and 64-127, so it needs the rows' step between them ("half_step")."""
+    halves: the product combines inputs 0-63 and 64-127, so it needs the rows' step between them ("pol_step"; rows
+    written before the rename call it "half_step")."""
     if e == d:
         return np.zeros(NI)
     lo, hi, sign = (e, d, 1) if e < d else (d, e, -1)
@@ -70,9 +71,9 @@ def steps_between(rows, e, d, halves=True):
     for r in span:
         if r.get("steps") is None:
             raise ValueError("the start %d was not measured" % r["frame0_int"])
-        h = r.get("half_step")
+        h = r.get("pol_step", r.get("half_step"))
         if halves and h is None:
-            raise ValueError("the start %d: no half_step" % r["frame0_int"])
+            raise ValueError("the start %d: no pol_step" % r["frame0_int"])
         n += np.array([np.nan if v is None else v for v in r["steps"]], float)
         n[64:] += h or 0
     return sign * n
