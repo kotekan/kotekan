@@ -91,7 +91,7 @@ class TestRinex(unittest.TestCase):
             ox.write_changed(self.outbox, ox.day_files(later, self.sats, self.now)), []
         )
         newer = dict(EPH, toe_gpst=EPH["toe_gpst"] + 1800.0)
-        recs = dict(later, **{("R", 25, newer["toe_gpst"]): newer})
+        recs = {**later, ("R", 25, newer["toe_gpst"]): newer}
         self.assertEqual(
             ox.write_changed(self.outbox, ox.day_files(recs, self.sats, self.now)),
             ["gx10_decoded_2026331.rnx"],
