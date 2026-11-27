@@ -131,6 +131,8 @@ def stage_almanac_predict(ctx):
 
             ctx.pred = {p: _row(v) for p, v in raw.items()}
             ctx.pred_dark = {p: _row(v) for p, v in raw_dark.items()}
+            # BRDC rows end with predict_all's health mark (element 9).
+            ctx.unhealthy = {p for p, v in raw.items() if len(v) > 9 and v[9]}
             # --probe-dark-prns: PRNs signal-free here at any time. Codes no satellite of this
             # chain transmits (GuoWang: G2' phases no satellite in the library carries) have no
             # orbit, so their rows are zero Doppler at el -90; a probe's Doppler is arbitrary.
@@ -231,6 +233,7 @@ def stage_almanac_predict(ctx):
             ctx.best[p][1] - ctx.pred[p][0]
             for p in ctx.best
             if p in ctx.pred
+            and p not in ctx.unhealthy
             and now_utc_s(ctx) - ctx.det_fresh.get(p, (None, 0.0))[1]
             < ctx.args.bias_det_fresh_s
             and ctx.best[p][0] >= ctx.args.bias_min_snr

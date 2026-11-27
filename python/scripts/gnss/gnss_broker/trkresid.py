@@ -167,12 +167,13 @@ def tracker_residuals(ctx, n_win=2):
     # Only satellites the fleet is on. A replica that is off its signal still has a code phase,
     # and the residual made from it is wrong with a small formal error (a replica parked on
     # noise sits still: chips off, sd ~0). Presence is the fleet DLL's verdict; the
-    # below-horizon noise probes are excluded by name.
-    probes = ctx.probe_set or set()
+    # below-horizon noise probes are excluded by name, and so are the unhealthy satellites,
+    # whose model the residual would be measured against.
+    skip = (ctx.probe_set or set()) | ctx.unhealthy
     fleet = {
         p: v
         for p, v in (ctx.dllp.fleet or {}).items()
-        if v.get("present") and p not in probes
+        if v.get("present") and p not in skip
     }
     recs = {}
     if ctx.telem_client is not None and ctx.telem_chain:

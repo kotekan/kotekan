@@ -1,4 +1,5 @@
-"""The coarse rate feed admits cohering satellites and never a noise probe.
+"""The coarse rate feed admits cohering satellites and never a noise probe or an unhealthy
+satellite.
 
     python3 -m gnss_broker.test_coarse_feed     (from python/scripts/gnss)
 
@@ -6,7 +7,9 @@ The coarse feed's rows are receiver-wide: each satellite's deep-rate residual la
 joint rrate row, which every chain's carrier command reads. A noise probe's residual is noise,
 and a probe that happens to clear the coherence test (coh_frac >= 0.3 on a noise fold) would
 feed it into that row. Dark probes have no prediction on the chain, below-horizon probes do;
-both are excluded. Checked on ratefeed.coarse_feed_rows and on the broker's call to it.
+both are excluded, and so is a satellite with a failing health word (ctx.unhealthy), which the
+broker passes with the probes. Checked on ratefeed.coarse_feed_rows and on the broker's call
+to it.
 
 @author Keith Vanderlinde
 """
@@ -53,7 +56,8 @@ def test_rows():
 
 
 def test_call_site():
-    """The broker filters resid2 through coarse_feed_rows with the cycle's probe_set."""
+    """The broker filters resid2 through coarse_feed_rows with the cycle's probe_set and
+    unhealthy set."""
     with open(BROKER) as f:
         tree = ast.parse(f.read(), BROKER)
     calls = [
@@ -63,7 +67,11 @@ def test_call_site():
         and ast.unparse(n.func) == "ratefeed.coarse_feed_rows"
     ]
     check(
-        calls == ["ratefeed.coarse_feed_rows(_rf.resid2, _ctx.status, _ctx.probe_set)"],
+        calls
+        == [
+            "ratefeed.coarse_feed_rows(_rf.resid2, _ctx.status, "
+            "_ctx.probe_set | _ctx.unhealthy)"
+        ],
         "the broker's coarse feed filter is coarse_feed_rows (%s)" % calls,
     )
 

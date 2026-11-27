@@ -26,14 +26,15 @@ def brdc_predict(
 ):
     """BRDC analogue of gps_beamtrack.predict_dopplers for one constellation:
     {prn: (doppler_hz, doppler_rate_hz_s, elevation_deg, range_m, sat_clk_s, az_deg,
-    az_rate_deg_s, el_rate_deg_s, t_unix)}.
+    az_rate_deg_s, el_rate_deg_s, t_unix, unhealthy)}.
 
     The first four elements have the TLE path's layout and sign convention (+Doppler =
     approaching); the rest are BRDC-only. sat_clk_s is the broadcast satellite clock, for the
     nh time-assist convention t_sv = t_gpst - range/c + clk. All elevations are returned
     (down to -90): the noise probes pick the deepest below-horizon satellites. The rates are
     differenced over a 4 s epoch pair (t_utc, t_utc + 4 s). fdma_df: {prn: carrier offset, Hz}
-    for an FDMA chain, each satellite's Doppler at its own carrier.
+    for an FDMA chain, each satellite's Doppler at its own carrier. Unhealthy satellites are
+    kept, since they transmit and the chain tracks them; `unhealthy` is predict_all's mark.
 
     For sysc W the store is a gw_store: the GuoWang table, reloaded when its file changes,
     whose sky is never bridged.
@@ -80,9 +81,18 @@ def brdc_predict(
     eph = state["eph"]
     dt = 4.0
     # Only sysc's rows are read below, so only sysc is predicted.
-    pa = ge.predict_all(eph, lat, lon, alt_m, t_utc, mask_deg=-90.0, sysc=sysc)
+    pa = ge.predict_all(
+        eph, lat, lon, alt_m, t_utc, mask_deg=-90.0, health_gate=False, sysc=sysc
+    )
     pb = ge.predict_all(
-        eph, lat, lon, alt_m, t_utc + timedelta(seconds=dt), mask_deg=-90.0, sysc=sysc,
+        eph,
+        lat,
+        lon,
+        alt_m,
+        t_utc + timedelta(seconds=dt),
+        mask_deg=-90.0,
+        health_gate=False,
+        sysc=sysc,
     )
     C = C_LIGHT
     out = {}
@@ -122,6 +132,7 @@ def brdc_predict(
             _az_rate,
             _el_rate,
             t_utc.timestamp(),
+            bool(v.get("unhealthy")),
         )
     if sysc == "W":
         # A GuoWang satellite is in the table only during its pass (load_gw_table), so an

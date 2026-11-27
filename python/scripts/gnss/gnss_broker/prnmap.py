@@ -786,7 +786,9 @@ def sep_ahead(ctx, incap):
     sep = {}
     for k in range(n + 1):
         t = t_now + min(k * RANK_STEP_S, a.prn_rank_lookahead_s)
-        pa = alm["mod"].predict_all(recs, a.lat, a.lon, a.alt, t, mask_deg=-90.0)
+        pa = alm["mod"].predict_all(
+            recs, a.lat, a.lon, a.alt, t, mask_deg=-90.0, health_gate=False
+        )
         for (_s, p), v in pa.items():
             d = sky.boresight_sep_deg(v["el"], v["az"], el0, az0)
             if d < sep.get(p, 181.0):

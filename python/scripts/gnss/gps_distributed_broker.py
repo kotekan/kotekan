@@ -1558,6 +1558,7 @@ def main(argv=None, rx=None, publisher=None):
         _ctx.pred_dark = (
             {}
         )  # the same rows for the signal-free PRNs (--probe-dark, --probe-dark-prns)
+        _ctx.unhealthy = set()  # PRNs of pred with a failing broadcast health word
         # Stale-bias rescue (bias_stale_s): a solved bias unmeasured that long widens the search
         # margins until re-solved. If it latched away from truth, the narrow hints it centres
         # would prevent the measurements that fix it. The held value still centres the wide
@@ -2027,9 +2028,10 @@ def main(argv=None, rx=None, publisher=None):
         else:
             _rf.resid2 = {}
         if args.rrate_state and _rf.resid2:
-            # Feed only cohering satellites, never a noise probe (ratefeed.coarse_feed_rows).
+            # Feed only cohering satellites, never a noise probe or an unhealthy satellite
+            # (ratefeed.coarse_feed_rows).
             _rf.resid2 = ratefeed.coarse_feed_rows(
-                _rf.resid2, _ctx.status, _ctx.probe_set
+                _rf.resid2, _ctx.status, _ctx.probe_set | _ctx.unhealthy
             )
         # KCOH rate feed (--rrate-kcoh-feed): the KCOH fold's remaining rate into the rrate
         # rows. Runs before the coarse feed so a fresh acceptance here deweights this cycle's
@@ -2055,6 +2057,7 @@ def main(argv=None, rx=None, publisher=None):
                 for _p, _kv in sorted(_kco.items()):
                     if (
                         _kv.get("probe")
+                        or _p in _ctx.unhealthy
                         or (_kv.get("sig") or 0.0) < args.rrate_kcoh_min_sig
                         or (_kv.get("rate_pairs") or 0) < 8
                     ):

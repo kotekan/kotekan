@@ -11,9 +11,11 @@ kept here, as they were, and every comparison is `is` or `==`, never a tolerance
     edges of the validity window) and on every satellite of the BRDC fixtures, at and either
     side of every record boundary and every window edge.
   * predict_all over a sweep of epochs through the fixtures, for the options each broker caller
-    passes: the almanac sky, the dead-reckon sky (signal, atmosphere), the transit sky (no
-    health gate, a day of validity), `sysc` against the full call's rows of that constellation,
-    and `memo` shared between the dead-reckon and transit calls of one epoch.
+    passes: the almanac sky, the dead-reckon sky (signal, atmosphere), the transit sky (a day of
+    validity), none of them health-gated, `sysc` against the full call's rows of that
+    constellation, and `memo` shared between the dead-reckon and transit calls of one epoch.
+    The scan never marked a row `unhealthy`, so the mark is left out of the comparison
+    (test_health_gate checks it).
 
 The fixtures are the two BRDC files in scripts/gnss/fixtures, and a full mixed-constellation
 BRDC set when one is on this host: the directory in GNSS_BRDC_FIXTURE_DIR, else the sidecar of
@@ -288,6 +290,9 @@ class TestPredictAll(unittest.TestCase):
 
     def _same(self, got, want, what):
         self.assertEqual(list(got), list(want), what)  # the same satellites, in order
+        got = {
+            k: {f: x for f, x in v.items() if f != "unhealthy"} for k, v in got.items()
+        }
         self.assertEqual(got, want, what)
 
     def test_rows_are_the_scans_rows(self):
@@ -297,14 +302,19 @@ class TestPredictAll(unittest.TestCase):
             sig = {"G": "gps_l5", "E": "gal_e5a", "C": "bds_b3i", "R": "glo_l3oc"}
             for t in self._epochs(eph, 24 if len(eph) > 20 else 12):
                 # the almanac sky (sky.brdc_predict)
-                alm = old_predict_all(eph, *DRAO, t, mask_deg=-90.0)
-                self._same(ge.predict_all(eph, *DRAO, t, mask_deg=-90.0), alm, name)
+                alm_kw = dict(mask_deg=-90.0, health_gate=False)
+                alm = old_predict_all(eph, *DRAO, t, **alm_kw)
+                self._same(ge.predict_all(eph, *DRAO, t, **alm_kw), alm, name)
                 self._same(
                     ge.predict_all(eph, *DRAO, t), old_predict_all(eph, *DRAO, t), name
                 )
                 # the dead-reckon sky and the transit sky of one pass, sharing a memo
                 dr_kw = dict(
-                    mask_deg=-90.0, signal=sig.get(syss[0]), tropo=True, iono=self.IONO,
+                    mask_deg=-90.0,
+                    signal=sig.get(syss[0]),
+                    tropo=True,
+                    iono=self.IONO,
+                    health_gate=False,
                 )
                 tr_kw = dict(mask_deg=-90.0, max_age=86400.0, health_gate=False)
                 dr = old_predict_all(eph, *DRAO, t, **dr_kw)
@@ -323,7 +333,7 @@ class TestPredictAll(unittest.TestCase):
                 )
                 # one constellation: the full call's rows of it, in the full call's order
                 for s in syss + ["Q"]:
-                    for kw, full in (({"mask_deg": -90.0}, alm), (dr_kw, dr)):
+                    for kw, full in ((alm_kw, alm), (dr_kw, dr)):
                         self._same(
                             ge.predict_all(eph, *DRAO, t, sysc=s, **kw),
                             {k: v for k, v in full.items() if k[0] == s},

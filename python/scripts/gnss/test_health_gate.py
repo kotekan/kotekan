@@ -7,6 +7,8 @@ the gate dropped it from the chains' sky; the exemption must keep it (and the fi
 where the array saw it, or the exemption is about another satellite); and the gate must still drop
 an unhealthy satellite that is not on the list. E09 carried the same health words on 2026-11-25 and
 the array saw it at 61 deg elevation at 10:30Z: its record of that epoch must pass the gate there.
+The chains' skies run with the gate off to track such a satellite, and read the `unhealthy` mark
+to keep it out of every shared estimate, so the mark must be on the kept row and on no other.
 """
 import copy
 import math
@@ -74,6 +76,21 @@ class TestHealthGate(unittest.TestCase):
         self.assertIn(("E", 14), pa)
         pa = ge.predict_all(eph, *DRAO, T_PASS, mask_deg=-90.0, health_gate=False)
         self.assertIn(("E", 15), pa)
+
+    def test_a_kept_unhealthy_row_is_marked(self):
+        eph = copy.deepcopy(self.eph)
+        for e in eph[("E", 15)]:
+            e["health"] = 130.0
+        pa = ge.predict_all(eph, *DRAO, T_PASS, mask_deg=-90.0, health_gate=False)
+        self.assertIs(pa[("E", 15)].get("unhealthy"), True)
+        self.assertNotIn("unhealthy", pa[("E", 14)])  # exempt: counted healthy
+        healthy = ge.predict_all(
+            self.eph, *DRAO, T_PASS, mask_deg=-90.0, health_gate=False
+        )
+        self.assertNotIn("unhealthy", healthy[("E", 15)])
+        self.assertEqual(
+            healthy, ge.predict_all(self.eph, *DRAO, T_PASS, mask_deg=-90.0)
+        )
 
     def test_e09_passes_the_gate(self):
         eph = ge.parse_rinex_nav([FIX_E09])

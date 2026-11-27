@@ -9,9 +9,9 @@ between the broker loop and its stages is named in one place: `__slots__`. It ha
               per cycle, this context silently goes stale.
 
   Per-cycle   rebound on every pass: `t0` and `best` through `begin_cycle()`, and `status`,
-              `pred`, `up` and `probe_set` by direct assignment where they are computed. A
-              stage that reads one off the context reads this cycle's value; a stage that
-              captured it at construction would read the first cycle's forever.
+              `pred`, `unhealthy`, `up` and `probe_set` by direct assignment where they are
+              computed. A stage that reads one off the context reads this cycle's value; a
+              stage that captured it at construction would read the first cycle's forever.
 
 `t0` is the frozen cycle clock: wall time sampled once per pass (transport._Transcript.tick), so
 every gate, age and EMA in a pass evaluates at one instant rather than across the pass's own
@@ -152,6 +152,10 @@ class ChainContext(object):
         # from `pred` (with ephemeris, but unable to broadcast this signal), filled only under
         # --probe-dark, and the --probe-dark-prns; for the probe selector and the PRN map.
         "pred_dark",
+        # PRNs of `pred` whose broadcast health word fails predict_all's gate: tracked and
+        # projected like any other, and kept out of every estimate the satellites share (the
+        # clock and frequency-bias solves, the joint state's rows, the fleet code medians).
+        "unhealthy",
         "up",
         "probe_set",
         "utc0_sample0",
@@ -180,6 +184,7 @@ class ChainContext(object):
     DEFAULTS = {
         "utc0_sample0": float,
         "status": dict,
+        "unhealthy": set,
         "birth_steps": dict,
         "fleet_hop_hist": dict,
     }
