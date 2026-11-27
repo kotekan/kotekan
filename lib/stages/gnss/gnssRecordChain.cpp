@@ -130,6 +130,7 @@ RecordChain::RecordChain(Config& config, const std::string& cfg_path, const std:
                         _name, mode);
             return;
         }
+        _fleet_reseed_s = config.get_default<double>(cfg_path, "elem_sum_shared_reseed_s", 600.0);
         if (_fleet_mode != 0)
             INFO("GnssGpuRecordAssemble[{:s}]: fleet reference {:s} ({:s}), slew {:.2f} deg/s, "
                  "min sim {:.2f}",
@@ -1903,24 +1904,27 @@ void RecordChain::shared_reseed_idle(double now_s) {
     for (int pol = 0; pol * h < n && pol < 2; ++pol) {
         const int e0 = pol * h, e1 = std::min(n, e0 + h);
         const auto o = gnss::ref_offset(_g_fleet_ref.data(), _g_shared.data(), e0, e1);
-        if (!gnss::reseed_due(_fleet_reseed[pol], o.ok, o.sim, _fleet_min_sim, true, now_s,
-                              _fleet_reseed_s))
-            continue;
-        // Scaled as the update scales a half (sum |G| = 1); the own pin follows, as for any half
-        // F moved.
         double sum = 0.0;
         for (int e = e0; e < e1; ++e)
             sum += std::abs(_g_fleet_ref[(size_t)e]);
-        if (!(sum > 0.0))
-            continue;
-        for (int e = e0; e < e1; ++e)
-            _g_shared[(size_t)e] = _g_fleet_ref[(size_t)e] / sum;
-        if (_g_pin_ref.size() == (size_t)n)
+        if (sum > 0.0
+            && gnss::reseed_due(_fleet_reseed[pol], o.ok, o.sim, _fleet_min_sim, true, now_s,
+                                _fleet_reseed_s)) {
+            // Scaled as the update scales a half (sum |G| = 1); the own pin follows, as for any
+            // half F moved.
             for (int e = e0; e < e1; ++e)
-                _g_pin_ref[(size_t)e] = _g_shared[(size_t)e];
-        INFO("elem_sum_shared: pol-{:d} model re-seeded from the fleet reference with no PRN held "
-             "(shape similarity {:.2f} below {:.2f}; re-seed {:d})",
-             pol, o.sim, _fleet_min_sim, _fleet_reseed[pol].n);
+                _g_shared[(size_t)e] = _g_fleet_ref[(size_t)e] / sum;
+            if (_g_pin_ref.size() == (size_t)n)
+                for (int e = e0; e < e1; ++e)
+                    _g_pin_ref[(size_t)e] = _g_shared[(size_t)e];
+            INFO("elem_sum_shared: pol-{:d} model re-seeded from the fleet reference with no PRN "
+                 "held (shape similarity {:.2f} below {:.2f}; re-seed {:d})",
+                 pol, o.sim, _fleet_min_sim, _fleet_reseed[pol].n);
+        }
+        // The gauges as the update keeps them, the model being held.
+        const auto now_o = gnss::ref_offset(_g_fleet_ref.data(), _g_shared.data(), e0, e1);
+        _fleet_err_deg[pol] = now_o.ok ? now_o.err_rad * 180.0 / M_PI : 0.0;
+        _fleet_sim[pol] = now_o.ok ? now_o.sim : 0.0;
     }
 }
 
@@ -1986,8 +1990,10 @@ void RecordChain::shared_consensus(double now_s) {
             q_best = q;
         }
     }
-    if (live_best <= 1)
+    if (live_best <= 1) {
+        shared_reseed_idle(now_s);
         return;
+    }
     for (size_t q = 0; q < _cal_shadow.size(); ++q) {
         const auto& sh = _cal_shadow[q];
         if (!sh.warm() || !shadow_held(q) || (!_g_shared_warm && q != q_best))

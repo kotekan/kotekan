@@ -140,6 +140,12 @@ struct Scenario {
     /// 0.5 it is too weak per record and channel for a coherent lane, but its sum over the
     /// channels warms the slot's shadow cal, as a noise probe's does on the band's sky.
     double probe_amp = 0.0;
+    /// >= 0: the planted signals stop from this frame on (their slots keep running on noise).
+    int sky_off_frame = -1;
+    /// The shared_ref_frame POST carries a reference of another shape than the sky's gains.
+    bool ref_scramble = false;
+    /// > 0: the assemblers' elem_sum_shared_reseed_s.
+    double reseed_s = 0.0;
 };
 
 /// Record index of frame 0's first record: a multiple of every window length the chains use
@@ -371,7 +377,8 @@ inline void write_tiles(int32_t* t, size_t n_i32, const ChainSpec& s, const Sky&
     const int64_t rec0 = REC_BASE + (int64_t)s.n_rec * frame;
     for (int p = 0; p < s.n_prn; ++p) {
         const int prn = prn_at(s, sc, frame, p);
-        const bool planted = sky.planted.count(prn) > 0 && sky.amp > 0.0;
+        const bool planted = sky.planted.count(prn) > 0 && sky.amp > 0.0
+                             && !(sc.sky_off_frame >= 0 && frame >= sc.sky_off_frame);
         const bool probe = !planted && sc.probe_amp > 0.0;
         std::vector<gnss::ElemSteer::cf> D;
         if (planted)

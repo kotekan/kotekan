@@ -463,6 +463,8 @@ json build_config(const std::vector<ChainSpec>& cs, const Scenario& sc,
             as["elem_sum_shared_learn_coh_min"] = sc.learn_coh_min;
         if (sc.ref_frame0 > 0)
             as["elem_sum_shared_ref_frame0"] = sc.ref_frame0;
+        if (sc.reseed_s > 0.0)
+            as["elem_sum_shared_reseed_s"] = sc.reseed_s;
         ad["ctl_buf"] = buf_name(s, "n2ctl_buf");
         ad["tiles_buf"] = buf_name(s, "n2tiles_buf");
         ad["out_buf"] = buf_name(s, "n2epl_buf");
@@ -1117,7 +1119,8 @@ void fire_posts(ChainRun& R, const Sky& sky, unsigned short port, const std::str
     if (k == sc.shared_ref_frame) {
         json ref = json::array();
         for (int e = 0; e < s.n_live; ++e) {
-            const std::complex<double> g = sky.gain_e[(size_t)e] * std::polar(1.0, 0.3);
+            const double ph = sc.ref_scramble ? 2.0 * M_PI * std::fmod(0.37 * e * e, 1.0) : 0.3;
+            const std::complex<double> g = sky.gain_e[(size_t)e] * std::polar(1.0, ph);
             ref.push_back({g.real(), g.imag()});
         }
         json body = {{"ref", ref}, {"mode", "live"}, {"slew_deg_s", 5.0}};
@@ -1186,8 +1189,10 @@ void take_get(ChainRun& R, unsigned short port, const std::string& u, const std:
             held.push_back({r["prn"], r["shadow_warm"], r.value("held", true)});
         L["held" + cp] = held;
         L["shared" + cp] = json::array({j["shared_warm"], j["shared_n"]});
-        if (j.contains("fleet_ref"))
+        if (j.contains("fleet_ref")) {
             L["frame0_current" + cp] = j["fleet_ref"].value("frame0_current", false);
+            L["fleet" + cp] = json::array({j["fleet_ref"]["reseeds"], j["fleet_ref"]["sim"]});
+        }
         if (j.contains("proj"))
             L["proj" + cp] = json::array({j["proj"]["mode"], j["proj"]["k"]});
     } else if (verb == "get_status" && j.is_array()) {
@@ -3712,6 +3717,44 @@ BOOST_AUTO_TEST_CASE(shared_model_learns_from_held_prns_only) {
                             A.pre << ": without the gate no model formed from the probe source");
     }
     BOOST_CHECK_MESSAGE(n_learning > 0, "no chain's shadows hold a shared model");
+}
+
+BOOST_AUTO_TEST_CASE(a_model_with_no_prn_held_reseeds_from_a_current_reference) {
+    // The model forms from the planted satellites; at frame 60 their signals stop and a
+    // reference of another shape arrives. Once no PRN is held the model gets no update, and a
+    // reference of the records' own F-engine start re-seeds it after elem_sum_shared_reseed_s.
+    // Posted without its start, the same reference leaves the model alone (both pols off F).
+    Scenario cur = base_scenario(), unk;
+    cur.n_frames = 240;
+    cur.checkpoints = {29, 59, 119, 179, 239};
+    cur.learn_coh_min = 0.3;
+    cur.shared_ref_frame = cur.sky_off_frame = 60;
+    cur.ref_scramble = true;
+    cur.reseed_s = 2.0;
+    cur.ref_elem_frame = cur.n_frames; // B keeps its reference element: a move resets the model
+    unk = cur;
+    cur.ref_frame0 = (int64_t)std::floor(UTC0);
+    const Digests dc = run_scenario(chains(), cur), du = run_scenario(chains(), unk);
+    const std::string cp59 = "@59", cp = "@" + std::to_string(cur.checkpoints.back());
+    int n_formed = 0;
+    for (const ChainSpec& A : chains()) {
+        const json &C = dc.live.at(A.pre), &U = du.live.at(A.pre);
+        if (!C.at("shared" + cp59)[0].get<bool>())
+            continue; // no model before the sky went dark
+        ++n_formed;
+        for (const auto& h : C.at("held" + cp))
+            BOOST_CHECK_MESSAGE(!h[2].get<bool>(),
+                                A.pre << ": PRN " << h[0] << " still held on a dark sky");
+        const json &fc = C.at("fleet" + cp), &fu = U.at("fleet" + cp);
+        BOOST_CHECK_MESSAGE(fc[0][0].get<int>() + fc[0][1].get<int>() > 0,
+                            A.pre << ": no re-seed with no PRN held: " << fc);
+        for (int pol = 0; pol < 2; ++pol)
+            BOOST_CHECK_MESSAGE(fc[1][pol].get<double>() > 0.9,
+                                A.pre << ": the re-seeded model is not F: " << fc);
+        BOOST_CHECK_MESSAGE(fu[0][0].get<int>() + fu[0][1].get<int>() == 0,
+                            A.pre << ": re-seeded from a reference of unknown start: " << fu);
+    }
+    BOOST_CHECK_MESSAGE(n_formed > 0, "no chain formed a model before the sky went dark");
 }
 
 BOOST_AUTO_TEST_CASE(current_behaviour_pins) {
