@@ -867,7 +867,7 @@ chains:
     # satellite's model Doppler (signals.prn_carrier_hz). The tracker code tiles the 10 ms
     # Manchester halves of a 20 ms bit (GLO_L2OF_MC); the clock is kept mod 20 ms, as gps_l2c's.
         signal: glo_l2of
-    # The node pins every assigned slot (25 of 32) and refuses a live swap on an FDMA bank (the
+    # The node pins every assigned slot (26 of 32) and refuses a live swap on an FDMA bank (the
     # satellite is in its carrier, which /set_prns does not carry), so the map is read, never
     # applied. Below-horizon slots are the noise probes.
         prn-reconfig: read
