@@ -36,6 +36,8 @@ add_library(
     cudaGnssN2Gather.cu
     cudaGnssBeamDump.cpp
     cudaGnssBeamDumpKernel.cu
+    cudaGnssN2Project.cpp
+    cudaGnssN2ProjectKernel.cu
     cudaDtvSubtract.cpp
     cudaDtvSubtractKernel.cu
     chordMVPSetup.cpp
@@ -183,7 +185,8 @@ set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --forward-unknown-to-host-compiler")
 
 target_include_directories(kotekan_cuda INTERFACE ${CUDAToolkit_INCLUDE_DIRS})
 target_include_directories(kotekan_cuda PUBLIC .)
-# cudaGnssBeamDump reads the chains' lane directions (header-only, lib/stages/gnss).
+# cudaGnssBeamDump reads the chains' lane directions and cudaGnssN2Project GnssN2Project's
+# layouts (header-only, lib/stages/gnss).
 target_include_directories(kotekan_cuda PRIVATE ../stages/gnss)
 
 # Per-architecture gencode flags are derived from CMAKE_CUDA_ARCHITECTURES; keep -lineinfo for
@@ -205,6 +208,12 @@ target_include_directories(cuda_gnss_despread_test PRIVATE . ../stages ../stages
 add_executable(cuda_gnss_beam_dump_test cudaGnssBeamDumpTest.cpp)
 target_link_libraries(cuda_gnss_beam_dump_test PRIVATE kotekan_cuda)
 target_include_directories(cuda_gnss_beam_dump_test PRIVATE .)
+
+# The N^2 lane projection kernels vs GnssN2Project's CPU path, every word within a count, and
+# their time at production shape. Run: ./lib/cuda/cuda_gnss_n2_project_test [device]
+add_executable(cuda_gnss_n2_project_test cudaGnssN2ProjectTest.cpp)
+target_link_libraries(cuda_gnss_n2_project_test PRIVATE kotekan_cuda)
+target_include_directories(cuda_gnss_n2_project_test PRIVATE . ../stages/gnss)
 
 # DTV subtraction kernels (decode, beams, the fused correlation and subtraction pass,
 # re-quantisation, eigen start) vs a CPU reference on a synthetic 4+4b frame with a known impulse

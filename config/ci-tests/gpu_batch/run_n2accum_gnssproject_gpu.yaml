@@ -1,0 +1,303 @@
+##########################################
+#
+# run_n2accum_gnssproject_gpu.yaml
+#
+# The N^2 lane projection on the GPU against the CPU path on the same input
+# (docs/CHORD_GPU_PROJECTION.md). Random 4+4b voltages go through the ring to cudaCorrelator,
+# then cudaGnssN2Project projects the live channels in place with the bases GnssN2Project (gpu)
+# builds from the live blocks; gpuSimulateN2kCorr computes the same N^2 on the CPU for
+# GnssN2Project's CPU path. Both read the same constant lanes from GnssProjBoardTestPub. The
+# projected frames, the basis records, the raw N^2 and the live blocks go to /tmp/n2proj_gpu_ci;
+# kotekan exits once 24 frames of each 1:1 stream are written.
+# scripts/gnss/n2proj_gpu_check.py runs this config and checks the files and the gauges: where
+# the two paths applied the same basis, every word of the frames is within a count.
+#
+##########################################
+type: config
+log_level: INFO
+
+buffer_depth: 4
+cpu_affinity: [2, 3, 4, 5, 8, 9, 10, 11]
+frame_arrival_period: 5.12e-6 * samples_per_data_set
+
+samples_per_data_set: 2048
+sub_integration_ntime: samples_per_data_set
+num_times: samples_per_data_set
+num_polarizations: 2
+num_dishes: 64
+num_elements: num_polarizations * num_dishes
+num_local_freq: 8
+frames_to_generate: 24
+
+vis_blocksize: 16
+vis_num_blocks_lin: num_elements / vis_blocksize
+vis_num_blocks: vis_num_blocks_lin * (vis_num_blocks_lin + 1) / 2
+
+telescope:
+    name: CHORDTelescope
+    origin_itrs_lat_deg: 50.0
+    origin_itrs_lon_deg: -120.0
+    dish_coelev_deg: 90.0
+    grid_x_axis: [1.0, 0.0, 0.0]
+    grid_y_axis: [0.0, 1.0, 0.0]
+    dish_elev_axis: [1.0, 0.0, 0.0]
+    dish_vert_axis: [0.0, 0.0, 1.0]
+    require_gps: false
+    eop_updatable_config: /earth_rotation_data
+    dish_grid_size_x: 22
+    dish_grid_size_y: 24
+    dish_inputs: []
+gps_time:
+    frame0_nano: 1760000000000000000
+earth_rotation_data:
+    kotekan_update_endpoint: json
+    earth_orientation_parameter_table:
+        - t_inst_ns: 1750000000000000000
+          delta_UT1_inst: 0.5
+          xp_as: 0.1
+          yp_as: 0.2
+        - t_inst_ns: 1770000000000000000
+          delta_UT1_inst: -0.5
+          xp_as: 0.3
+          yp_as: 0.4
+
+main_pool:
+    kotekan_metadata_pool: chordMetadata
+    num_metadata_objects: 30 * buffer_depth
+
+host_voltage_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: int4x2_swapped_withoffset
+    extents: [samples_per_data_set, num_local_freq, num_polarizations, num_dishes]
+    metadata_pool: main_pool
+
+host_rfi_RFImask_buffer:
+    kotekan_buffer: ndarray
+    num_frames: buffer_depth
+    value_type: uint1x8
+    extents: [samples_per_data_set / 1024, num_local_freq, 128]
+    metadata_pool: main_pool
+
+host_voltage_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * samples_per_data_set * num_local_freq * num_elements
+    metadata_pool: main_pool
+
+host_rfi_RFImask_ringbuffer:
+    kotekan_buffer: ring
+    ring_buffer_size: buffer_depth * samples_per_data_set * num_local_freq / 8
+    metadata_pool: main_pool
+
+# The GPU path: the projected frame, the record of the basis applied, the live blocks and the
+# bases GnssN2Project builds for the GPU.
+gpu_proj_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 2 * buffer_depth
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, vis_num_blocks, vis_blocksize, vis_blocksize, 2]
+    metadata_pool: main_pool
+gpu_basis_buffer:
+    kotekan_buffer: standard
+    num_frames: 2 * buffer_depth
+    frame_size: 46332
+n2live_buffer:
+    kotekan_buffer: standard
+    num_frames: 2 * buffer_depth
+    frame_size: 884864
+    metadata_pool: main_pool
+lane_basis_buffer:
+    kotekan_buffer: standard
+    num_frames: buffer_depth
+    frame_size: 46332
+
+# The CPU path
+simulated_correlation_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 2 * buffer_depth
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, vis_num_blocks, vis_blocksize, vis_blocksize, 2]
+    metadata_pool: main_pool
+cpu_proj_buffer:
+    kotekan_buffer: ndarray
+    num_frames: 2 * buffer_depth
+    value_type: int32
+    extents: [samples_per_data_set / sub_integration_ntime, num_local_freq, vis_num_blocks, vis_blocksize, vis_blocksize, 2]
+    metadata_pool: main_pool
+cpu_basis_buffer:
+    kotekan_buffer: standard
+    num_frames: 2 * buffer_depth
+    frame_size: 46332
+
+gen_data_voltage:
+    type: random_signed_offset
+    value: 120
+    kotekan_stage: testDataGen
+    out_buf: host_voltage_buffer
+    name: "E"
+    array_shape: [2048, 8, 2, 64]
+    dim_name: ["T", "F", "P", "D"]
+    dim_scaling: [1, 1, 1, 1]
+    manual_freq_ids: [100, 101, 102, 103, 104, 105, 106, 107]
+    num_frames: frames_to_generate
+
+gen_data_rfi_RFImask:
+    type: random1x8
+    value: 255
+    kotekan_stage: testDataGen
+    out_buf: host_rfi_RFImask_buffer
+    name: "RFImask"
+    array_shape: [2, 8, 128]
+    dim_name: ["T8hi128", "F", "T8lo128"]
+    dim_scaling: [1024, 1, 8]
+    manual_freq_ids: [100, 101, 102, 103, 104, 105, 106, 107]
+    num_frames: frames_to_generate
+    meta_time_downsample_factor: 1024
+
+gnss_board_pub:
+    kotekan_stage: GnssProjBoardTestPub
+    board_group: /testboard
+    n_elem: 128
+    n_dirs: 6
+    period_ms: 20
+    freq_ids: [100, 101, 102, 104, 105, 107]
+
+run_send_voltage:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_voltage_buffer_in: host_voltage_buffer
+        out_buffers:
+            host_voltage_ringbuffer_out: host_voltage_ringbuffer
+        commands:
+            - name: cudaCopyToRingbuffer
+              input_size: samples_per_data_set * num_local_freq * num_elements
+              ring_buffer_size: buffer_depth * input_size
+              in_buf: host_voltage_buffer_in
+              signal_buf: host_voltage_ringbuffer_out
+              gpu_mem_output: voltage_buffer
+
+run_send_rfi_RFImask:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_rfi_RFImask_buffer_in: host_rfi_RFImask_buffer
+        out_buffers:
+            host_rfi_RFImask_ringbuffer_out: host_rfi_RFImask_ringbuffer
+        commands:
+            - name: cudaCopyToRingbuffer
+              input_size: samples_per_data_set * num_local_freq / 8
+              ring_buffer_size: buffer_depth * samples_per_data_set * num_local_freq / 8
+              in_buf: host_rfi_RFImask_buffer_in
+              signal_buf: host_rfi_RFImask_ringbuffer_out
+              gpu_mem_output: rfi_RFImask_buffer
+
+# The science correlator's pipeline as the generator renders it with --n2-project-gpu.
+run_n2k:
+    gpu_0:
+        kotekan_stage: cudaProcess
+        gpu_id: 0
+        in_buffers:
+            host_voltage_ringbuffer: host_voltage_ringbuffer
+            host_rfi_RFImask_ringbuffer: host_rfi_RFImask_ringbuffer
+            host_lane_basis: lane_basis_buffer
+        out_buffers:
+            host_correlation: gpu_proj_buffer
+            host_n2live: n2live_buffer
+            host_proj_basis: gpu_basis_buffer
+        commands:
+            - name: cudaCorrelator
+              n2k_correlation_name: correlation
+              voltage_name: voltage
+              rfi_RFImask_name: rfi_RFImask
+            - name: cudaGnssN2Project
+              n2k_correlation_name: correlation
+              stations: [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119]
+              live_freq_ids: [100, 101, 102, 104, 105, 107]
+              k_lanes_max: 8
+              in_basis_buf: host_lane_basis
+              live_buf: host_n2live
+              gpu_mem_basis: gnss_n2proj_basis
+            - name: cudaSyncOutput
+            - name: cudaOutputData
+              gpu_mem: correlation_buffer
+              out_buf: host_correlation
+            - name: cudaOutputData
+              gpu_mem: gnss_n2proj_basis
+              out_buf: host_proj_basis
+
+cpu_correlator:
+    kotekan_stage: gpuSimulateN2kCorr
+    network_in_buf: host_voltage_buffer
+    rfimask_in_buf: host_rfi_RFImask_buffer
+    corr_out_buf: simulated_correlation_buffer
+
+gnss_n2_project:
+    proj_gpu:
+        kotekan_stage: GnssN2Project
+        gpu: true
+        num_local_freq: 6
+        in_buf: n2live_buffer
+        basis_buf: lane_basis_buffer
+        source: lanes
+        board_group: /testboard
+        stations: [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119]
+        tracker_stations: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127]
+        live_freq_ids: [100, 101, 102, 104, 105, 107]
+        eigen_channels: list
+        eigen_freq_ids: [100, 102, 105]
+        k_lanes_max: 8
+        solve_every: 2
+        metric_period_s: 0.05
+    proj_cpu:
+        kotekan_stage: GnssN2Project
+        in_buf: simulated_correlation_buffer
+        out_buf: cpu_proj_buffer
+        basis_buf: cpu_basis_buffer
+        source: lanes
+        board_group: /testboard
+        stations: [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119]
+        tracker_stations: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127]
+        live_freq_ids: [100, 101, 102, 104, 105, 107]
+        eigen_channels: list
+        eigen_freq_ids: [100, 102, 105]
+        k_lanes_max: 8
+        solve_every: 2
+        metric_period_s: 0.05
+
+writers:
+    base_dir: /tmp/n2proj_gpu_ci
+    create_base_dir: true
+    prefix_hostname: false
+    file_ext: raw
+    num_frames_per_file: frames_to_generate
+    exit_after_n_files: 1
+    allow_ndarray: true
+    gpu_frames:
+        kotekan_stage: rawFileWrite
+        in_buf: gpu_proj_buffer
+        file_name: gpu_frames
+    gpu_records:
+        kotekan_stage: rawFileWrite
+        in_buf: gpu_basis_buffer
+        file_name: gpu_records
+    cpu_frames:
+        kotekan_stage: rawFileWrite
+        in_buf: cpu_proj_buffer
+        file_name: cpu_frames
+    cpu_records:
+        kotekan_stage: rawFileWrite
+        in_buf: cpu_basis_buffer
+        file_name: cpu_records
+    raw_frames:
+        kotekan_stage: rawFileWrite
+        in_buf: simulated_correlation_buffer
+        file_name: raw_frames
+    live_frames:
+        kotekan_stage: rawFileWrite
+        in_buf: n2live_buffer
+        file_name: live_frames
+        exit_after_n_files: 0
+

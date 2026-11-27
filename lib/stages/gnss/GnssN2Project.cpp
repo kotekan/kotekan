@@ -61,7 +61,8 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
     lane_rank_min_rel(config.get_default<double>(unique_name, "lane_rank_min_rel", 0.0)),
     lane_inst_phase(config.get_default<bool>(unique_name, "lane_inst_phase", false)),
     lane_inst_phase_max_age_s(
-        config.get_default<double>(unique_name, "lane_inst_phase_max_age_s", 900.0)) {
+        config.get_default<double>(unique_name, "lane_inst_phase_max_age_s", 900.0)),
+    gpu(config.get_default<bool>(unique_name, "gpu", false)) {
     if (source != "eigen" && source != "lanes" && source != "lanes+residual")
         FATAL_ERROR("GnssN2Project: source '{:s}' must be eigen, lanes or lanes+residual", source);
     eigen_channels = config.get_default<std::string>(unique_name, "eigen_channels", "all");
@@ -96,14 +97,31 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
 
     in_buf = get_buffer("in_buf");
     in_buf->register_consumer(unique_name);
-    out_buf = get_buffer("out_buf");
-    out_buf->register_producer(unique_name);
-    const auto desc = kotekan::GenericNDArray::describe(
-        kotekan::int32, "n2k_correlation",
-        {n_integrations, num_local_freq, layout.num_blocks(), layout.bs, layout.bs, 2},
-        {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"}, {sub_integration_ntime, 1, 16, 1, 1, 1});
-    in_buf->require_frame_desc(desc);
-    out_buf->require_frame_desc(desc);
+    if (gpu) {
+        // cudaGnssN2Project projects the frame in place and hands this stage the live blocks.
+        if (config.exists(unique_name, "out_buf"))
+            FATAL_ERROR("GnssN2Project: with gpu the GPU projects the frame in place; out_buf "
+                        "is not used");
+        if (source != "lanes" || n_integrations != 1 || !config.exists(unique_name, "basis_buf"))
+            FATAL_ERROR("GnssN2Project: gpu needs source lanes ({:s}), one integration per "
+                        "frame ({:d}) and basis_buf",
+                        source, n_integrations);
+        const size_t need = gnss_n2proj::live_head_bytes(num_local_freq)
+                            + 2 * layout.per_freq() * num_local_freq * sizeof(int32_t);
+        if ((size_t)in_buf->frame_size < need)
+            FATAL_ERROR("GnssN2Project: {:s} frames hold {:d} bytes; the live blocks of {:d} "
+                        "channels need {:d}",
+                        in_buf->buffer_name, (int)in_buf->frame_size, num_local_freq, (int)need);
+    } else {
+        out_buf = get_buffer("out_buf");
+        out_buf->register_producer(unique_name);
+        const auto desc = kotekan::GenericNDArray::describe(
+            kotekan::int32, "n2k_correlation",
+            {n_integrations, num_local_freq, layout.num_blocks(), layout.bs, layout.bs, 2},
+            {"Tc", "F", "DPhi", "DPlo1", "DPlo2", "C"}, {sub_integration_ntime, 1, 16, 1, 1, 1});
+        in_buf->require_frame_desc(desc);
+        out_buf->require_frame_desc(desc);
+    }
 
     const int n = (int)stations.size();
     sub = gnss::ProjSubspace(n, num_local_freq, tau_s, k_max);
@@ -243,8 +261,8 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
         basis_buf = get_buffer("basis_buf");
         basis_buf->register_producer(unique_name);
         basis_k = use_lanes ? k_lanes_max : k_max;
-        basis_head_bytes = 64 + 4 * (size_t)n;
-        basis_slot_bytes = 16 + 8 * (size_t)basis_k * n;
+        basis_head_bytes = gnss_n2proj::basis_head_bytes(n);
+        basis_slot_bytes = gnss_n2proj::basis_slot_bytes(basis_k, n);
     }
     work.resize((size_t)num_workers);
     for (Scratch& w : work)
@@ -254,7 +272,7 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
          "frac0 >= {:.2f}, lambda0 >= {:.1f} x mean auto, spread >= {:.1f} inputs, solve every "
          "{:d} frames, {:d} workers -> {:s}",
          mode, n, num_elements, k_max, tau_s, frac_first_min, lambda_min_rel, pr_min, solve_every,
-         num_workers, out_buf->buffer_name);
+         num_workers, gpu ? basis_buf->buffer_name + " (the GPU projects)" : out_buf->buffer_name);
 }
 
 int GnssN2Project::build_lanes(Scratch& w, int f, int freq_id, const cd* V, double now_s,
@@ -745,7 +763,7 @@ void GnssN2Project::set_lanes_callback(kotekan::connectionInstance& conn, nlohma
 
 void GnssN2Project::main_thread() {
     frameID in_id(in_buf);
-    frameID out_id(out_buf);
+    frameID out_id(gpu ? in_buf : out_buf); // no output with gpu
     const int n = (int)stations.size();
     const size_t per_freq = layout.per_freq();
     const size_t per_int = per_freq * (size_t)num_local_freq; // words per integration
@@ -811,6 +829,10 @@ void GnssN2Project::main_thread() {
         "kotekan_gnss_n2project_lane_dump_dropped_total", unique_name);
     auto& g_frame_ms =
         Metrics::instance().add_gauge("kotekan_gnss_n2project_frame_ms", unique_name);
+    auto& c_basis_drop =
+        Metrics::instance().add_counter("kotekan_gnss_n2project_basis_dropped_total", unique_name);
+    if (gpu)
+        c_basis_drop.inc(0); // served from the start
 
     const double tick_s = Telescope::instance().seq_length_nsec() * 1e-9;
     int64_t prev_seq = -1;
@@ -831,13 +853,33 @@ void GnssN2Project::main_thread() {
         const int32_t* in = (const int32_t*)in_buf->wait_for_full_frame(unique_name, in_id);
         if (in == nullptr)
             break;
-        int32_t* out = (int32_t*)out_buf->wait_for_empty_frame(unique_name, out_id);
-        if (out == nullptr)
-            break;
+        int32_t* out = nullptr;
+        // With gpu, the live-block frame: the raw channels (in), the projected ones (proj) and
+        // the k each was projected with (k_app).
+        const int32_t* proj = nullptr;
+        const int32_t* k_app = nullptr;
+        if (gpu) {
+            const uint8_t* h = (const uint8_t*)in;
+            int32_t hh[4];
+            std::memcpy(hh, h + 16, sizeof(hh));
+            if (hh[0] != gnss_n2proj::LIVE_VERSION || hh[1] != num_local_freq
+                || hh[2] != (int32_t)per_freq || hh[3] != gnss_n2proj::LIVE_MAGIC)
+                FATAL_ERROR("GnssN2Project: {:s} holds a live-block frame of version {:d}, {:d} "
+                            "channels of {:d} words; expected version {:d}, {:d} of {:d}",
+                            in_buf->buffer_name, hh[0], hh[1], hh[2], gnss_n2proj::LIVE_VERSION,
+                            num_local_freq, (int)per_freq);
+            k_app = (const int32_t*)(h + 64);
+            in = (const int32_t*)(h + gnss_n2proj::live_head_bytes(num_local_freq));
+            proj = in + per_int;
+        } else {
+            out = (int32_t*)out_buf->wait_for_empty_frame(unique_name, out_id);
+            if (out == nullptr)
+                break;
+        }
         const auto t_start = std::chrono::steady_clock::now();
         // The workers copy the channels below; this is whatever follows them in the frame.
         const size_t body = (size_t)n_integrations * per_int * sizeof(int32_t);
-        if ((size_t)in_buf->frame_size > body)
+        if (!gpu && (size_t)in_buf->frame_size > body)
             std::memcpy((uint8_t*)out + body, (const uint8_t*)in + body, in_buf->frame_size - body);
         // Frame spacing from the sequence numbers, so a dropped frame lengthens dt; freq_id
         // labels from the first frame that carries them.
@@ -958,17 +1000,28 @@ void GnssN2Project::main_thread() {
             } else
                 c_dump_drop.inc();
         }
+        // With gpu the record goes to cudaGnssN2Project, which never waits for it: neither does
+        // this stage, and a record with no empty frame is dropped.
         uint8_t* basis = nullptr;
-        if (basis_buf) {
+        if (basis_buf && gpu && !basis_buf->is_frame_empty(basis_id))
+            c_basis_drop.inc();
+        else if (basis_buf) {
             basis = basis_buf->wait_for_empty_frame(unique_name, basis_id);
             if (basis == nullptr)
                 break;
+            // The frame the basis was built from; on the CPU path also the one it is applied to.
             const int64_t seq = meta ? meta->get_fpga_seq_num() : -1;
-            const int32_t head[7] = {
-                1, n, n_integrations, live_slots, basis_k, (int32_t)basis_slot_bytes, 0x53414250};
+            const int32_t head[7] = {gnss_n2proj::BASIS_VERSION,
+                                     n,
+                                     n_integrations,
+                                     live_slots,
+                                     basis_k,
+                                     (int32_t)basis_slot_bytes,
+                                     gnss_n2proj::BASIS_MAGIC};
             std::memset(basis, 0, 64);
             std::memcpy(basis, &seq, sizeof(seq));
             std::memcpy(basis + 8, head, sizeof(head));
+            std::memcpy(basis + gnss_n2proj::BASIS_SRC_SEQ, &seq, sizeof(seq));
             std::memcpy(basis + 64, stations.data(), 4 * (size_t)n);
         }
 
@@ -983,7 +1036,8 @@ void GnssN2Project::main_thread() {
 #endif
             for (int t = 0; t < n_integrations; ++t) {
                 const size_t off = (size_t)t * per_int + (size_t)f * per_freq;
-                std::memcpy(out + off, in + off, per_freq * sizeof(int32_t));
+                if (!gpu)
+                    std::memcpy(out + off, in + off, per_freq * sizeof(int32_t));
                 // A channel neither written nor on the eigen path costs nothing.
                 if (!live_ch[f] && !eigen_ch[f])
                     continue;
@@ -1002,13 +1056,18 @@ void GnssN2Project::main_thread() {
                             n, LANE_RANK_MODES, w.V.data(), &rank_uk[un * f], &rank_un[un * f],
                             &rank_s[(size_t)LANE_RANK_MODES * LANE_RANK_MODES * f], w.rank_y);
                     }
-                    const double t_int = t_frame > 0.0 ? t_frame + (t + 0.5) * dt_int : 0.0;
+                    // With gpu the basis is applied from the next frame on: turned to its time.
+                    const double t_int = t_frame <= 0.0 ? 0.0
+                                         : gpu ? t_frame + 1.5 * samples_per_data_set * tick_s
+                                               : t_frame + (t + 0.5) * dt_int;
                     kl =
                         build_lanes(w, f, freq_ids[f], w.V.data(), now_s, t_int, solve_now, dump_f);
+                    // The record's precision, so the record is the basis applied, on either path.
+                    gnss_n2proj::round_to_float(w.lanes.q.data(), (size_t)kl * n);
                     if (dump_f)
                         dump_channel(dump + 64 + (size_t)live_slot[f] * dump_slot_bytes, w, f,
                                      w.V.data());
-                    if (kl > 0)
+                    if (kl > 0 && !gpu)
                         gnss_n2proj::project(n, kl, w.lanes.q.data(), w.V.data(), w.W, w.M);
                 }
                 lane_k[f] = kl;
@@ -1063,6 +1122,7 @@ void GnssN2Project::main_thread() {
                     for (int j = 0; j < k; ++j)
                         std::copy(sub.q(f, use[j]), sub.q(f, use[j]) + n,
                                   w.q.begin() + (size_t)j * n);
+                    gnss_n2proj::round_to_float(w.q.data(), (size_t)k * n);
                     gnss_n2proj::project(n, k, w.q.data(), w.V.data(), w.W, w.M);
                 }
                 // At most one of kl and k is nonzero: lanes+residual has no basis record.
@@ -1071,9 +1131,12 @@ void GnssN2Project::main_thread() {
                         basis + basis_head_bytes
                             + ((size_t)t * live_slots + live_slot[f]) * basis_slot_bytes,
                         freq_ids[f], kl > 0 ? kl : k, kl > 0 ? w.lanes.q.data() : w.q.data());
-                auto_proj[f] =
-                    (k > 0 || kl > 0) ? gnss_n2proj::mean_auto(n, w.V.data()) : auto_raw[f];
-                if (k > 0 || kl > 0) {
+                // With gpu, the GPU's projected block, projected with the basis it applied.
+                const bool projected = gpu ? k_app[f] > 0 : (k > 0 || kl > 0);
+                if (gpu && projected)
+                    gnss_n2proj::extract(layout, proj + off, stations, w.V.data());
+                auto_proj[f] = projected ? gnss_n2proj::mean_auto(n, w.V.data()) : auto_raw[f];
+                if (projected) {
                     if (eigen_ch[f])
                         nul.push_cov(f, w.V.data(), dt_int);
                     if (eigen_ch[f] && solve_now) {
@@ -1100,7 +1163,7 @@ void GnssN2Project::main_thread() {
                         null_db[f] =
                             (l0 > 0.0) ? 10.0 * std::log10(std::max(l1, 1e-12 * l0) / l0) : 0.0;
                     }
-                    if (live_ch[f]) {
+                    if (live_ch[f] && !gpu) {
                         int32_t* fout = out + off;
                         gnss_n2proj::writeback(layout, fout, stations, w.V.data());
                         if (n_o > 0) {
@@ -1178,9 +1241,11 @@ void GnssN2Project::main_thread() {
                 g_inst_age.set(inst_phase.empty() ? -1.0 : now_s - inst_phase_t_rx);
             }
         }
-        out_buf->allocate_new_metadata_object(out_id);
-        in_buf->copy_metadata(in_id, out_buf, out_id);
-        out_buf->mark_frame_full(unique_name, out_id++);
+        if (!gpu) {
+            out_buf->allocate_new_metadata_object(out_id);
+            in_buf->copy_metadata(in_id, out_buf, out_id);
+            out_buf->mark_frame_full(unique_name, out_id++);
+        }
         in_buf->mark_frame_empty(unique_name, in_id++);
     }
     if (use_lanes)
