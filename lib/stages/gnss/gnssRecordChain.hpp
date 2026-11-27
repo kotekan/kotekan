@@ -196,7 +196,7 @@ private:
     bool _fleet_applied[2] = {false, false};
     bool _fleet_slewing[2] = {false, false}; ///< one WARN per slew episode, one when done
     /// A warm half below _fleet_min_sim for this long takes the reference's shape (live mode
-    /// only). Once per episode, at most once per interval.
+    /// only; config elem_sum_shared_reseed_s). Once per episode, at most once per interval.
     double _fleet_reseed_s = 600.0;
     /// ... and only while the sibling pol matches F at this similarity or better: both pols off
     /// F at once means F is the stale one.
