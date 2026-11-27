@@ -1481,6 +1481,14 @@ def build_parser(description):
         "default.",
     )
     ap.add_argument(
+        "--extra-nav",
+        default="",
+        help="comma-separated RINEX nav files the broker reads after the BRDC sources "
+        "(gnss_brdc_supply.EXTRA_NAV), for satellites no broadcast product carries: "
+        "gnss_oddsat_pointing.py's TLE-derived records. Process-wide: give it in the common "
+        "section. Broadcast records win any same-toe tie. Empty = none.",
+    )
+    ap.add_argument(
         "--joint-no-feed",
         action="store_true",
         help="run this chain's --joint-consume consumers without its detections feeding the "

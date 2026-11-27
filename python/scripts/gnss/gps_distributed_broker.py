@@ -153,6 +153,10 @@ def main(argv=None, rx=None, publisher=None):
             return
     ap = build_parser(__doc__)
     args = ap.parse_args(argv)
+    if args.extra_nav:
+        import gnss_brdc_supply
+
+        gnss_brdc_supply.set_extra_nav(args.extra_nav.split(","))
     # Frozen tuning (cli._FROZEN): constants, set as args attributes so use sites read them
     # like flags; no command line can change them.
     for _k, _v in _FROZEN.items():

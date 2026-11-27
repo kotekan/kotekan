@@ -142,8 +142,13 @@ def stage_joint_trk(ctx):
         if near is not None and near[0] < a.dr_clock_transit_freeze_deg:
             why = "transit (%s %d at %.1f deg)" % (near[1][0], near[1][1], near[0])
     k = JOINT_REF_RATE_HZ / a.chip_rate_hz
+    pd = ctx.drp.pd or {}
     rows, failed, hops = feed_rows(
-        ctx.dllp.trk or {},
+        {
+            p: v
+            for p, v in (ctx.dllp.trk or {}).items()
+            if (pd.get((ctx.drp.tag, p)) or {}).get("clk_sigma_s", 0.0) * a.chip_rate_hz <= 0.5
+        },
         ctx.dllp.fleet or {},
         ctx.dllp.spec_fit or {},
         ctx.track_ok,
