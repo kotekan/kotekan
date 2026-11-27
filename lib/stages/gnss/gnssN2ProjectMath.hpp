@@ -44,6 +44,29 @@ struct Layout {
     }
 };
 
+/// GnssN2Project's basis record (GnssN2Project.hpp), version 1: a 64-byte header (int64 seq;
+/// int32 version, n, n_integrations, n_slots, k_slot, slot_bytes, magic; int64 the source
+/// frame's seq at byte 40), int32 stations[n], then the slots.
+constexpr int32_t BASIS_VERSION = 1;
+constexpr int32_t BASIS_MAGIC = 0x53414250; // "PBAS"
+constexpr size_t BASIS_SRC_SEQ = 40;
+inline size_t basis_head_bytes(int n) {
+    return 64 + 4 * (size_t)n;
+}
+inline size_t basis_slot_bytes(int k_slot, int n) {
+    return 16 + 8 * (size_t)k_slot * n;
+}
+
+/// cudaGnssN2Project's live-block frame, version 1: a 64-byte header (int64 seq, the applied
+/// record's source seq (-1 none); int32 version, n_slots, words per slot, magic), int32 k[n_slots]
+/// (the applied basis per slot) padded to 64 bytes, then the raw and the projected blocks, each
+/// int32 [n_slots][words] in the n2k layout.
+constexpr int32_t LIVE_VERSION = 1;
+constexpr int32_t LIVE_MAGIC = 0x4556494c; // "LIVE"
+inline size_t live_head_bytes(int n_slots) {
+    return 64 + (4 * (size_t)n_slots + 63) / 64 * 64;
+}
+
 /// Hermitian live block V[a][b] (n x n, row-major) of the stations @p st (ascending).
 inline void extract(const Layout& L, const int32_t* f, const std::vector<int>& st, cd* V) {
     const int n = (int)st.size();
@@ -210,6 +233,13 @@ inline void project(int n, int k, const cd* q, cd* V, std::vector<cd>& W, std::v
         for (int c = 0; c < i; ++c)
             V[(size_t)c * n + i] = std::conj(V[(size_t)i * n + c]);
     }
+}
+
+/// Round each of @p len entries to complex<float>, the basis record's precision, so that the
+/// record holds exactly the basis applied.
+inline void round_to_float(cd* q, size_t len) {
+    for (size_t i = 0; i < len; ++i)
+        q[i] = cd(std::complex<float>(q[i]));
 }
 
 /// The products between the stations @p st and the inputs @p ot outside them, as X[a][o] =

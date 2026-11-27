@@ -61,8 +61,9 @@
  * projection relative to the first projected one (a second ProjSubspace tracks the projected
  * matrix).
  *
- * @buffer in_buf   int32 n2k_correlation [Tc][F][blocks][16][16][2] (host_correlation_buffer)
- * @buffer out_buf  same shape: the projected copy for N2Accumulate
+ * @buffer in_buf   int32 n2k_correlation [Tc][F][blocks][16][16][2] (host_correlation_buffer);
+ *                  with gpu, cudaGnssN2Project's live-block frames
+ * @buffer out_buf  same shape: the projected copy for N2Accumulate; not with gpu
  *
  * @conf num_elements, num_local_freq, samples_per_data_set, sub_integration_ntime  as the N^2
  * @conf stations         Int list. Live station indices (correlator order).
@@ -210,17 +211,35 @@
  * Basis record. With basis_buf, every frame also carries the directions each live channel was
  * projected with, so N2Accumulate can average the projector over its bins (in_proj_basis_buf).
  * The output's live block is (I - Q Q^H) V (I - Q Q^H), Q the slot's k orthonormal columns
- * given row-wise (gnss_n2proj::project's layout).
+ * given row-wise (gnss_n2proj::project's layout). The basis is rounded to complex<float>
+ * before it is applied, so the record is exactly the basis used.
  * Source lanes+residual is refused: it projects twice in turn, which one basis cannot describe.
  * Layout, little-endian, version 1:
  *  - header, 64 bytes: int64 seq; int32 version, n (stations), n_integrations, n_slots (the
  *    live channels, in local channel order), k_slot (k_lanes_max with lanes, else k_max),
- *    slot_bytes, magic 0x53414250 ("PBAS");
+ *    slot_bytes, magic 0x53414250 ("PBAS"); int64 at byte 40, the frame the basis was built
+ *    from (seq here; cudaGnssN2Project's copy keeps it and sets seq to the frame it applied
+ *    the basis to);
  *  - int32 stations[n];
  *  - n_integrations x n_slots slots of slot_bytes = 16 + 8 k_slot n: int32 freq_id, k, two
  *    int32 unused; complex<float> q[k_slot][n] on the stations axis, the first k rows set.
  *
  * @buffer basis_buf  Optional. The basis record, one frame per input frame, no metadata.
+ *
+ * GPU (docs/CHORD_GPU_PROJECTION.md). With gpu, cudaGnssN2Project projects the correlation
+ * frame in place on the GPU, before it is copied out, and N2Accumulate reads that frame and the
+ * GPU's copy of the record it applied. This stage then reads, per frame, the live channels'
+ * raw and projected blocks (in_buf: the live-block frame, gnssN2ProjectMath.hpp; num_local_freq
+ * is the live channel count and every channel is live), builds each basis from the raw block as
+ * above, turned to the next frame's time, and writes it to basis_buf for the GPU, which applies
+ * the newest it has from the next frame on. Neither side waits for the other: a frame the GPU
+ * has no empty live-block frame for is not seen here, and a record with no empty basis_buf frame
+ * is dropped (kotekan_gnss_n2project_basis_dropped_total). auto_proj_db and null_db come from
+ * the GPU's projected blocks, so they describe the basis it applied; the lane gauges and the
+ * lane dump describe the basis built from the frame. Needs source lanes and one integration
+ * per frame; there is no output copy.
+ *
+ * @conf gpu  Bool. The GPU projects (false).
  */
 class GnssN2Project : public kotekan::Stage {
 public:
@@ -233,7 +252,7 @@ private:
     using cd = std::complex<double>;
 
     Buffer* in_buf;
-    Buffer* out_buf;
+    Buffer* out_buf = nullptr;
 
     const int num_elements;
     const int num_local_freq;
@@ -369,6 +388,8 @@ private:
     // The instrumental phase table (#246)
     const bool lane_inst_phase;
     const double lane_inst_phase_max_age_s;
+    /// cudaGnssN2Project projects the frame; this stage builds the bases from its live blocks.
+    const bool gpu;
     gnss::InstPhaseTable inst_phase; ///< main_thread's; empty = none
     gnss::InstPhaseTable inst_phase_pending;
     bool inst_phase_pending_set = false;
