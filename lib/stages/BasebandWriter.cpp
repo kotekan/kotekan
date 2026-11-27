@@ -147,19 +147,24 @@ void BasebandWriter::write_data(Buffer* in_buf, int frame_id) {
             DEBUG("Creating event directory: {:s}", event_directory_name);
             const int mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
             const int result = mkdir(event_directory_name.c_str(), mode);
-            // Another writer stage (or an earlier run) may have created it already
-            if (result != 0 && errno != EEXIST) {
+            const int errsv = errno;
+            // Another writer stage (or an earlier run) may have created it already. That is
+            // fine as long as it is a directory.
+            struct stat st;
+            const bool existing_dir = result != 0 && errsv == EEXIST
+                                      && stat(event_directory_name.c_str(), &st) == 0
+                                      && S_ISDIR(st.st_mode);
+            if (result != 0 && !existing_dir) {
                 ERROR("Failed to create event directory: {:s}", event_directory_name);
-                const int errsv = errno;
                 switch (errsv) {
                     case EACCES:
                         ERROR("Permission denied: {:s}", std::strerror(errsv));
                         throw std::runtime_error(std::string("Permission denied: ")
                                                  + std::strerror(errsv));
                     case EEXIST:
-                        ERROR("Directory already exists: {:s}", std::strerror(errsv));
-                        throw std::runtime_error(std::string("Directory already exists: ")
-                                                 + std::strerror(errsv));
+                        ERROR("Path exists but is not a directory: {:s}", event_directory_name);
+                        throw std::runtime_error(std::string("Path exists but is not a directory: ")
+                                                 + event_directory_name);
                     case EINVAL:
                         ERROR("Invalid argument: {:s}", std::strerror(errsv));
                         throw std::runtime_error(std::string("Invalid argument: ")
