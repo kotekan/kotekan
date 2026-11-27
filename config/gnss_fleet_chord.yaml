@@ -378,6 +378,13 @@ common:
     # out to elem-proj-deg the projection keeps the other satellites' rows clean, and inside
     # 2 deg a satellite in the bright one's beam is lost anyway.
     elem-freeze-deg: 2
+    # Only PRNs the fleet holds feed the shared model: a PRN's shadow counts while its lane is at
+    # least this coherent on one channel. Every warm shadow used to count with equal weight, and
+    # a shadow learns whatever its rows hold: on cx43 (2026-11-26) a third to two thirds of each
+    # chain's shadows were noise (unheld PRNs, the QZSS noise probes), and qzss_l2c, one
+    # satellite against three probes, learned noise and lost QZS-1R after the 23:03Z cycle.
+    # Held lanes read coherence 0.3-0.98, unheld 0.08-0.25 (probes publish none).
+    elem-shared-learn-coh-min: 0.3
     # Fleet reference for the shared model's phase pin: one vector per band, a snapshot of the
     # fleet consensus (python/scripts/gnss/elem_shared_ref.py snapshot), refused unless taken
     # against the epoch the positions came from. Without it each instance pins to its own first

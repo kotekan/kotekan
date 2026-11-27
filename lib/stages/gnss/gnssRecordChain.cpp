@@ -68,6 +68,8 @@ RecordChain::RecordChain(Config& config, const std::string& cfg_path, const std:
     // PRN. Shared implies held: a learner that also combined would defeat the point.
     _elem_shared = config.get_default<bool>(cfg_path, "elem_sum_shared", false);
     _elem_shared_tau_s = config.get_default<double>(cfg_path, "elem_sum_shared_tau_s", 300.0);
+    _elem_shared_learn_coh_min =
+        config.get_default<double>(cfg_path, "elem_sum_shared_learn_coh_min", 0.0);
     _elem_pol_tau_s = config.get_default<double>(cfg_path, "elem_sum_pol_tau_s", 3.0);
     _elem_shared_freeze_deg =
         config.get_default<double>(cfg_path, "elem_sum_shared_freeze_deg", 6.0);
@@ -111,6 +113,8 @@ RecordChain::RecordChain(Config& config, const std::string& cfg_path, const std:
                 _g_fleet_ref[(size_t)e] =
                     std::complex<double>(flat[(size_t)2 * e], flat[(size_t)2 * e + 1]);
             _fleet_ref_present = true;
+            _fleet_ref_frame0 =
+                config.get_default<int64_t>(cfg_path, "elem_sum_shared_ref_frame0", 0);
         }
         const std::string mode =
             config.get_default<std::string>(cfg_path, "elem_sum_shared_ref_mode", "off");
@@ -828,6 +832,7 @@ int RecordChain::begin_frame(const uint8_t* in) {
                     hdr.utc0);
         return 0;
     }
+    _frame0_utc.store(hdr.utc0);
     return hdr.n_rec;
 }
 
@@ -1887,6 +1892,49 @@ void RecordChain::shared_reset_prn(size_t p) {
     _pol_c[p] = std::complex<double>(0.0, 0.0);
 }
 
+void RecordChain::shared_reseed_idle(double now_s) {
+    // No PRN held, so no update: with F of the current F-engine start, a warm half F does not
+    // describe for _fleet_reseed_s still takes F's shape, as it would with an update.
+    if (!_g_shared_warm || _fleet_mode.load() < 1 || _g_fleet_ref.empty() || _fleet_ref_frame0 <= 0
+        || _fleet_ref_frame0 != (int64_t)std::floor(_frame0_utc.load()))
+        return;
+    const int n = _n_elements;
+    const int h = (n % 2 == 0) ? n / 2 : n;
+    for (int pol = 0; pol * h < n && pol < 2; ++pol) {
+        const int e0 = pol * h, e1 = std::min(n, e0 + h);
+        const auto o = gnss::ref_offset(_g_fleet_ref.data(), _g_shared.data(), e0, e1);
+        if (!gnss::reseed_due(_fleet_reseed[pol], o.ok, o.sim, _fleet_min_sim, true, now_s,
+                              _fleet_reseed_s))
+            continue;
+        // Scaled as the update scales a half (sum |G| = 1); the own pin follows, as for any half
+        // F moved.
+        double sum = 0.0;
+        for (int e = e0; e < e1; ++e)
+            sum += std::abs(_g_fleet_ref[(size_t)e]);
+        if (!(sum > 0.0))
+            continue;
+        for (int e = e0; e < e1; ++e)
+            _g_shared[(size_t)e] = _g_fleet_ref[(size_t)e] / sum;
+        if (_g_pin_ref.size() == (size_t)n)
+            for (int e = e0; e < e1; ++e)
+                _g_pin_ref[(size_t)e] = _g_shared[(size_t)e];
+        INFO("elem_sum_shared: pol-{:d} model re-seeded from the fleet reference with no PRN held "
+             "(shape similarity {:.2f} below {:.2f}; re-seed {:d})",
+             pol, o.sim, _fleet_min_sim, _fleet_reseed[pol].n);
+    }
+}
+
+bool RecordChain::shadow_held(size_t q) const {
+    if (!(_elem_shared_learn_coh_min > 0.0) || !_lane_on)
+        return true;
+    if ((int)q >= _lane.n_slot())
+        return false;
+    for (int ch = 0; ch < _lane.n_chan(); ++ch)
+        if (_lane.warm((int)q, ch) && _lane.coherence((int)q, ch) >= _elem_shared_learn_coh_min)
+            return true;
+    return false;
+}
+
 void RecordChain::shared_consensus(double now_s) {
     // One instrument per pol from the warm shadow cals. Each PRN's per-pol weight vector is
     // normalised to sum|w| = 1 (its overall scale is the satellite's strength, not the
@@ -1928,7 +1976,7 @@ void RecordChain::shared_consensus(double now_s) {
     size_t q_best = 0;
     int live_best = -1;
     for (size_t q = 0; q < _cal_shadow.size(); ++q) {
-        if (!_cal_shadow[q].warm())
+        if (!_cal_shadow[q].warm() || !shadow_held(q))
             continue;
         int live = 0;
         for (const auto& w : _cal_shadow[q].weights())
@@ -1942,7 +1990,7 @@ void RecordChain::shared_consensus(double now_s) {
         return;
     for (size_t q = 0; q < _cal_shadow.size(); ++q) {
         const auto& sh = _cal_shadow[q];
-        if (!sh.warm() || (!_g_shared_warm && q != q_best))
+        if (!sh.warm() || !shadow_held(q) || (!_g_shared_warm && q != q_best))
             continue;
         const auto& w = sh.weights();
         bool any = false;
@@ -1982,8 +2030,10 @@ void RecordChain::shared_consensus(double now_s) {
             ++cnt;
         }
     }
-    if (cnt == 0 || A <= 0.0)
+    if (cnt == 0 || A <= 0.0) {
+        shared_reseed_idle(now_s);
         return;
+    }
     const double beta =
         _g_shared_warm ? std::min(0.25, 1.0 - std::exp(-std::max(dt, 0.0) / _elem_shared_tau_s))
                        : 1.0;
@@ -1998,6 +2048,8 @@ void RecordChain::shared_consensus(double now_s) {
         for (int pol = 0; pol < n_pol && pol < 2; ++pol)
             offs[pol] = gnss::ref_offset(_g_fleet_ref.data(), _g_shared.data(), pol * h,
                                          std::min(n, pol * h + h));
+    const bool f_current =
+        _fleet_ref_frame0 > 0 && _fleet_ref_frame0 == (int64_t)std::floor(_frame0_utc.load());
     for (int pol = 0; pol < n_pol; ++pol) {
         const int e0 = pol * h, e1 = std::min(n, e0 + h);
         const int anchor = std::min(e1 - 1, e0 + _reference_element);
@@ -2015,7 +2067,8 @@ void RecordChain::shared_consensus(double now_s) {
             const double low_s =
                 _fleet_reseed[pol].low_since < 0.0 ? 0.0 : now_s - _fleet_reseed[pol].low_since;
             const gnss::RefOffset& sib = offs[1 - pol];
-            const bool sib_ok = n_pol == 2 && sib.ok && sib.sim >= _fleet_reseed_sib_sim;
+            const bool sib_ok =
+                f_current || (n_pol == 2 && sib.ok && sib.sim >= _fleet_reseed_sib_sim);
             if (_g_shared_warm
                 && gnss::reseed_due(_fleet_reseed[pol], o.ok, o.sim, _fleet_min_sim, sib_ok, now_s,
                                     _fleet_reseed_s)) {
@@ -2115,6 +2168,7 @@ void RecordChain::fleet_ref_apply_pending() {
     bool ref_set = false;
     int mode = -1;
     double slew = -1.0;
+    int64_t frame0 = -1;
     {
         std::lock_guard<std::mutex> lk(_gain_mtx);
         if (_pending_fleet_ref_set) {
@@ -2126,14 +2180,18 @@ void RecordChain::fleet_ref_apply_pending() {
         _pending_fleet_mode = -1;
         slew = _pending_fleet_slew_deg_s;
         _pending_fleet_slew_deg_s = -1.0;
+        frame0 = _pending_fleet_ref_frame0;
+        _pending_fleet_ref_frame0 = -1;
     }
-    if (!ref_set && mode < 0 && slew < 0.0)
+    if (!ref_set && mode < 0 && slew < 0.0 && frame0 < 0)
         return;
     const int was = _fleet_mode.load();
     if (ref_set) {
         _g_fleet_ref.swap(ref);
         _fleet_ref_present = !_g_fleet_ref.empty();
-    }
+        _fleet_ref_frame0 = std::max<int64_t>(frame0, 0); // a reference posted without one: unknown
+    } else if (frame0 >= 0)
+        _fleet_ref_frame0 = frame0;
     if (mode >= 0)
         _fleet_mode = mode;
     if (slew >= 0.0)
@@ -2156,12 +2214,14 @@ void RecordChain::fleet_ref_apply_pending() {
 void RecordChain::set_elem_sum_shared_ref_callback(kotekan::connectionInstance& conn,
                                                    nlohmann::json& request) {
     // {"ref": [[re, im], ...] (n_elements pairs; [] clears), "mode": "off|live|shape",
-    //  "slew_deg_s": x}, every field optional. Staged; applied at the next consensus update
+    //  "slew_deg_s": x, "frame0": the F-engine start the reference was made under}, every field
+    //  optional. Staged; applied at the next consensus update
     // (~1 s, while elem_sum_shared is on). Posted by python/scripts/gnss/elem_shared_ref.py.
     std::vector<std::complex<double>> ref;
     bool ref_set = false;
     int mode = -1;
     double slew = -1.0;
+    int64_t frame0 = -1;
     try {
         if (request.contains("ref")) {
             auto& arr = request.at("ref");
@@ -2188,6 +2248,12 @@ void RecordChain::set_elem_sum_shared_ref_callback(kotekan::connectionInstance& 
             if (!(slew >= 0.0) || slew > 180.0)
                 throw std::runtime_error("'slew_deg_s' must be in [0, 180]");
         }
+        if (request.contains("frame0")) {
+            if (!request.at("frame0").is_number_integer()
+                || request.at("frame0").get<int64_t>() < 0)
+                throw std::runtime_error("'frame0' must be a non-negative integer");
+            frame0 = request.at("frame0").get<int64_t>();
+        }
     } catch (const std::exception& ex) {
         conn.send_error(std::string("set_elem_sum_shared_ref: ") + ex.what(),
                         kotekan::HTTP_RESPONSE::BAD_REQUEST);
@@ -2203,12 +2269,17 @@ void RecordChain::set_elem_sum_shared_ref_callback(kotekan::connectionInstance& 
             _pending_fleet_mode = mode;
         if (slew >= 0.0)
             _pending_fleet_slew_deg_s = slew;
+        if (frame0 >= 0)
+            _pending_fleet_ref_frame0 = frame0;
     }
-    conn.send_json_reply(nlohmann::json{
-        {"mode", fleet_mode_name(_fleet_mode.load())},
-        {"present", _fleet_ref_present.load()},
-        {"staged", {{"ref", ref_set}, {"mode", mode >= 0}, {"slew_deg_s", slew >= 0.0}}},
-        {"applies", "next consensus update"}});
+    conn.send_json_reply(nlohmann::json{{"mode", fleet_mode_name(_fleet_mode.load())},
+                                        {"present", _fleet_ref_present.load()},
+                                        {"staged",
+                                         {{"ref", ref_set},
+                                          {"mode", mode >= 0},
+                                          {"slew_deg_s", slew >= 0.0},
+                                          {"frame0", frame0 >= 0}}},
+                                        {"applies", "next consensus update"}});
 }
 
 bool RecordChain::shared_frozen(double now_s) {
@@ -2327,17 +2398,22 @@ nlohmann::json RecordChain::get_elem_cal() {
                             {"miss", _chan_norm_miss.load()},
                             {"w", _chan_w_pub}};
     }
-    out["fleet_ref"] = {{"mode", fleet_mode_name(_fleet_mode.load())},
-                        {"present", _fleet_ref_present.load()},
-                        {"slew_deg_s", _fleet_slew_rad_s * 180.0 / M_PI},
-                        {"min_sim", _fleet_min_sim},
-                        {"err_deg", {_fleet_err_deg[0], _fleet_err_deg[1]}},
-                        {"sim", {_fleet_sim[0], _fleet_sim[1]}},
-                        {"applied", {_fleet_applied[0], _fleet_applied[1]}},
-                        {"reseed_s", _fleet_reseed_s},
-                        {"reseed_sib_sim", _fleet_reseed_sib_sim},
-                        {"reseeds", {_fleet_reseed[0].n, _fleet_reseed[1].n}},
-                        {"shape_mix", _shape_mix}};
+    out["fleet_ref"] = {
+        {"mode", fleet_mode_name(_fleet_mode.load())},
+        {"present", _fleet_ref_present.load()},
+        {"slew_deg_s", _fleet_slew_rad_s * 180.0 / M_PI},
+        {"min_sim", _fleet_min_sim},
+        {"err_deg", {_fleet_err_deg[0], _fleet_err_deg[1]}},
+        {"sim", {_fleet_sim[0], _fleet_sim[1]}},
+        {"applied", {_fleet_applied[0], _fleet_applied[1]}},
+        {"reseed_s", _fleet_reseed_s},
+        {"reseed_sib_sim", _fleet_reseed_sib_sim},
+        {"reseeds", {_fleet_reseed[0].n, _fleet_reseed[1].n}},
+        {"shape_mix", _shape_mix},
+        {"frame0", _fleet_ref_frame0},
+        {"frame0_current",
+         _fleet_ref_frame0 > 0 && _fleet_ref_frame0 == (int64_t)std::floor(_frame0_utc.load())}};
+    out["shared_learn_coh_min"] = _elem_shared_learn_coh_min;
     nlohmann::json gs = nlohmann::json::array();
     for (const auto& g : _g_shared)
         gs.push_back({g.real(), g.imag()});
@@ -2348,6 +2424,7 @@ nlohmann::json RecordChain::get_elem_cal() {
                               {"warm", _cal[p].warm()},
                               {"anchor_moved", _cal[p].anchor_moved()},
                               {"shadow_warm", _cal_shadow[p].warm()},
+                              {"held", shadow_held(p)},
                               {"sim", _cal_sim[p]},
                               {"pol_c", {_pol_c[p].real(), _pol_c[p].imag()}},
                               {"pol_warm", p < _pol_warmth.size() && _pol_warmth[p] > 0.95}};
