@@ -1127,6 +1127,89 @@ def n2_project_live_ids(args):
     return freq_id_ranges(spec)
 
 
+def n2_project_gpus(args):
+    """--n2-project-gpu: the GPUs whose projection runs on the GPU (cudaGnssN2Project)."""
+    spec = (args.n2_project_gpu or "").strip()
+    if not spec:
+        return set()
+    try:
+        gpus = {int(x) for x in spec.split(",")}
+    except ValueError:
+        raise SystemExit(
+            "--n2-project-gpu: GPU indices like '0' or '0,1', not %r" % spec
+        )
+    if not gpus <= {0, 1}:
+        raise SystemExit("--n2-project-gpu: GPUs 0 and 1 only, not %r" % spec)
+    return gpus
+
+
+def n2_project_on_gpu(out, gpu, stage, corr, n_live, proj_mean):
+    """--n2-project-gpu for one GPU (docs/CHORD_GPU_PROJECTION.md): cudaGnssN2Project in the
+    stock run_n2k after cudaCorrelator projects the live channels in place, so N2Accumulate keeps
+    reading the stock host_correlation_buffer; GnssN2Project (gpu: true, one channel per live
+    channel) reads the live blocks the command copies out and writes the bases it builds to
+    gnss<gpu>_lane_basis, which the command takes. With --proj-mean the command's copy of the
+    basis it applied goes to N2Accumulate in place of the stage's (same name and size)."""
+    run = out["run_n2k"]["gpu_%d" % gpu]
+    cmds = run["commands"]
+    corr_cmd = [i for i, c in enumerate(cmds) if c.get("name") == "cudaCorrelator"]
+    if len(corr_cmd) != 1:
+        raise SystemExit(
+            "--n2-project-gpu: run_n2k.gpu_%d has no single cudaCorrelator" % gpu
+        )
+    n = len(stage["stations"])
+    k = int(stage["k_lanes_max"])
+    rec_bytes = 64 + 4 * n + n_live * (16 + 8 * k * n)
+    live_bytes = 64 + (4 * n_live + 63) // 64 * 64 + 2 * n_live * 36 * 16 * 16 * 2 * 4
+    numa = {"numa_node": out[corr]["numa_node"]} if "numa_node" in out[corr] else {}
+    lane, live = "gnss%d_lane_basis" % gpu, "gnss%d_n2live" % gpu
+    out[lane] = dict(
+        kotekan_buffer="standard", frame_size=rec_bytes, num_frames=4, **numa
+    )
+    out[live] = dict(
+        kotekan_buffer="standard",
+        frame_size=live_bytes,
+        num_frames=out[corr]["num_frames"],
+        metadata_pool=out[corr]["metadata_pool"],
+        **numa,
+    )
+    cmds.insert(
+        corr_cmd[0] + 1,
+        {
+            "name": "cudaGnssN2Project",
+            "n2k_correlation_name": cmds[corr_cmd[0]]["n2k_correlation_name"],
+            "stations": list(stage["stations"]),
+            "live_freq_ids": list(stage["live_freq_ids"]),
+            "k_lanes_max": k,
+            "in_basis_buf": "host_lane_basis",
+            "live_buf": "host_n2live",
+            "gpu_mem_basis": "gnss_n2proj_basis",
+        },
+    )
+    run["in_buffers"]["host_lane_basis"] = lane
+    run["out_buffers"]["host_n2live"] = live
+    if proj_mean:
+        pb = stage["basis_buf"]  # the record N2Accumulate reads
+        if out[pb]["frame_size"] != rec_bytes:
+            raise SystemExit("--n2-project-gpu: %s is not one record" % pb)
+        cmds.append(
+            {
+                "name": "cudaOutputData",
+                "gpu_mem": "gnss_n2proj_basis",
+                "out_buf": "host_proj_basis",
+            }
+        )
+        run["out_buffers"]["host_proj_basis"] = pb
+    stage["gpu"] = True
+    stage["num_local_freq"] = n_live
+    stage["in_buf"] = live
+    stage["basis_buf"] = lane
+    sys.stderr.write(
+        "  gpu%d: the projection runs on the GPU (%d live channels, live blocks %.2f MB/frame, "
+        "records %.2f MB)\n" % (gpu, n_live, live_bytes / 1e6, rec_bytes / 1e6)
+    )
+
+
 def lane_transfer_keys(cfg, node, gpu, chain, freq_ids, args):
     """--lane-transfer CHAIN:LO-HI (MHz, repeatable): the chain CHAIN (its broker key, gal_e6,
     gps_l2c, ...) also publishes its lane directions on this GPU's channels centred in [LO, HI]
@@ -4197,6 +4280,16 @@ def main():
         "the lanes on 127 stations want one",
     )
     ap.add_argument(
+        "--n2-project-gpu",
+        type=str,
+        default="",
+        help="the GPUs ('0', '1' or '0,1') whose lane projection runs on the GPU "
+        "(docs/CHORD_GPU_PROJECTION.md): cudaGnssN2Project in run_n2k projects the frame in "
+        "place after cudaCorrelator, N2Accumulate reads host_correlation_buffer, and "
+        "GnssN2Project (gpu: true) builds the bases from the live blocks the command copies "
+        "out. Default none: GnssN2Project projects on the CPU. Needs --n2-project-source lanes",
+    )
+    ap.add_argument(
         "--lane-transfer",
         action="append",
         default=[],
@@ -5046,9 +5139,13 @@ def main():
         _pool0 = gnss_cores(cfg["runtime"], 0)
         _pool1 = gnss_cores(cfg["runtime"], 1)
         out["gnss_n2_project"] = {}
+        _gpus_on = n2_project_gpus(args)
+        if _gpus_on and args.n2_project_source != "lanes":
+            raise SystemExit("--n2-project-gpu needs --n2-project-source lanes")
         for _gpu, _pool in ((0, _pool0), (1, _pool1)):
             _corr = "host_correlation_buffer_%d" % _gpu
             _suf = "" if _gpu == 0 else "_1"
+            _on_gpu = _gpu in _gpus_on
             if _corr not in out:
                 raise SystemExit("--n2-project: %s is not in the base" % _corr)
             # The telemetry packer's core (see gnss_chain_vars) by default: a light host stage
@@ -5152,6 +5249,10 @@ def main():
             # seq like the beam dump and written under <record_dir>/lanedump.
             _off = cfg["nodes"][args.node]["gpu_offsets_mod16"][_gpu]
             _nch = len([f for f in _lids if f % 16 == _off])
+            if _on_gpu and not _nch:
+                raise SystemExit(
+                    "--n2-project-gpu: gpu%d holds none of the live channels" % _gpu
+                )
             if args.lane_dump_period_s > 0 and _nch:
                 if args.n2_project_source == "eigen":
                     raise SystemExit(
@@ -5220,6 +5321,8 @@ def main():
                     "num_frames": out[_corr]["num_frames"],
                     "frame_size": 64 + 4 * _n + _nint * _nch * (16 + 8 * _k * _n),
                 }
+                if "numa_node" in out[_corr]:
+                    out[_pb]["numa_node"] = out[_corr]["numa_node"]
                 out[_pm] = {
                     "kotekan_buffer": "standard",
                     "num_frames": 4,
@@ -5250,16 +5353,30 @@ def main():
                         out[_pm]["frame_size"] / 1e6,
                     )
                 )
-            _buf = copy.deepcopy(out[_corr])  # no YAML aliases
-            out["gnss_n2_proj_buffer" + _suf] = _buf
-            _stage["out_buf"] = "gnss_n2_proj_buffer" + _suf
-            out["n2_accumulate"]["accum_%d" % _gpu]["in_buf"] = (
-                "gnss_n2_proj_buffer" + _suf
-            )
+            if _on_gpu:
+                n2_project_on_gpu(out, _gpu, _stage, _corr, _nch, args.proj_mean)
+            else:
+                _buf = copy.deepcopy(out[_corr])  # no YAML aliases
+                out["gnss_n2_proj_buffer" + _suf] = _buf
+                _stage["out_buf"] = "gnss_n2_proj_buffer" + _suf
+                out["n2_accumulate"]["accum_%d" % _gpu]["in_buf"] = (
+                    "gnss_n2_proj_buffer" + _suf
+                )
             out["gnss_n2_project"]["proj_%d" % _gpu] = _stage
         sys.stderr.write(
-            "  GnssN2Project %s on both GPUs (%d stations, k_max %d, source %s)\n"
-            % (args.n2_project, len(_st), int(N2_PROJECT_K_MAX), args.n2_project_source)
+            "  GnssN2Project %s on both GPUs (%d stations, k_max %d, source %s)%s\n"
+            % (
+                args.n2_project,
+                len(_st),
+                int(N2_PROJECT_K_MAX),
+                args.n2_project_source,
+                (
+                    ", projecting on gpu %s"
+                    % ",".join(str(g_) for g_ in sorted(_gpus_on))
+                    if _gpus_on
+                    else ""
+                ),
+            )
         )
 
     # --- metadata pool for the GNSS chain -----------------------------------------------------

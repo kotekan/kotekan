@@ -855,6 +855,9 @@ nodes:
     cx19: {n2-project: "off"}
     cx27: {}
     cx42: {}
+    # The GPU projection canary (docs/CHORD_GPU_PROJECTION.md) is cx43 with
+    # `n2-project-gpu: "0"`: GPU 0 projects on the GPU (cudaGnssN2Project in run_n2k), GPU 1
+    # stays on the CPU path beside it. Off: KV and coord set it at a node_up cycle.
     cx43: {}
     cx44: {}
     # #190 canary, second attempt (the first, 10-20 12:16-12:27Z, relaunched every ~3 min: the
