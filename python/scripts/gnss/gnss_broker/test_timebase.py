@@ -140,6 +140,7 @@ class TimeBaseTests(unittest.TestCase):
                     det_fresh={i: (None, 1000.0) for i in range(8)},
                     t0=1000.0,
                     chain_id="c",
+                    unhealthy=set(),
                 )
                 for _ in range(5):
                     timebase.observe(ctx, lambda *a, **k: None)

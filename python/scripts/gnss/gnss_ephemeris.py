@@ -1100,8 +1100,8 @@ def predict_all(
         # How well the record knows the clock: a GuoWang TLE record's library theta to
         # microseconds, the sender's own broadcast bias to tens of nanoseconds, a pointing
         # record (POINTING_MARK) not at all.
-        if "clk_sigma_s" in e:
-            out[key]["clk_sigma_s"] = float(e["clk_sigma_s"])
+        if e["sys"] == "W" or "clk_sigma_s" in e:
+            out[key]["clk_sigma_s"] = float(e.get("clk_sigma_s", 0.0))
         if unhealthy:
             out[key]["unhealthy"] = True
     return out
