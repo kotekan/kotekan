@@ -94,6 +94,10 @@ common:
     # Fleet lanes (docs/CHORD_FLEET_LANES.md): GnssN2Project takes lanes the relay carries from the
     # other nodes; fleet-lane-transfer is the relay's table (site-only, not a generator flag).
     fleet-lanes: true
+    # GPS L1 C/A's lanes served by GnssN2Project from its L1 channel (not projected: L1 is not
+    # science data), for the relay to carry to L2: the Block IIR satellites G02, G16, G19 and
+    # G22 send P(Y) there and no L2C, so no L2-band chain has a lane of them.
+    lane-serve: [gps_l1ca]
     # #246: GnssN2Project carries every transferred lane by the instrumental phase table the
     # relay posts (lane_relay.py --inst-phase), and the assemblers apply no delays of their own.
     lane-inst-phase: true
@@ -112,8 +116,12 @@ common:
     # (2026-10-30), at ~n^2 per lane.
     # qzss_l2c: the L2C main lobe only (1.023 Mcps either side of 1227.6 MHz); QZSS sends no
     # P(Y) or M-code.
+    # gps_l1ca: L1 C/A's lanes (lane-serve above) over L2 P(Y), for the satellites with no L2C
+    # lane (the relay sends a satellite's lane from the chain measured nearest the targets);
+    # carried 350 MHz by the phase table's L1 knots (inst_phase_table.py models).
     fleet-lane-transfer: [gps_l2c:1207.1-1248.1, gal_e6:1248.3-1273.6, gal_e6:1283.9-1304.9,
-                          glo_l2of:1237.9-1258.2, qzss_l2c:1226.6-1228.6]
+                          glo_l2of:1237.9-1258.2, qzss_l2c:1226.6-1228.6,
+                          gps_l1ca:1207.1-1248.1]
     # Channels exempt from first-stage (SK) RFI excision, absolute freq_id ranges
     # (freq_id = MHz / 0.1953125): the GNSS main lobes, one chip rate either side of each
     # carrier (10.23 MHz; E6-C's 5.115 MHz at the top), at 1176.45 (L5/E5a/B2a), 1202.025

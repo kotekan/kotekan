@@ -7,7 +7,9 @@
        the copy of best coherence of each (chain, PRN), take the target channels from the
        fleet file's fleet-lane-transfer table (by broker chain: gal_e6, gps_l2c, ...), and
        POST .../set_lanes to every receiving GPU the lanes whose targets meet its live
-       channels, less the ones it measured itself.
+       channels, less the ones it measured itself on a channel it projects (a lane it only
+       serves, L1 C/A's, goes back to it too). Of two chains of one satellite whose targets
+       overlap, only the lane measured nearer them goes out (L2C's, not L1 C/A's, at L2).
        A lane whose power is fleet-lane-transfer-bright-db (15) above its chain's median also
        goes to the fleet-lane-transfer-bright targets (a close pass's sidelobes), on every
        GPU including its own.
@@ -237,9 +239,11 @@ class Relay:
     def __init__(self, a):
         self.a = a
         self.rl = RateLimited()
-        chains = gnss_fleet.Fleet(
+        fleet = gnss_fleet.Fleet(
             os.path.join(a.root, FLEET), os.path.join(a.root, NODES)
-        ).tracker_signals()
+        )
+        chains = fleet.tracker_signals()
+        self.sys = {r.key: r.proj_sys for r in fleet.chains}
         self.table = transfer_table(os.path.join(a.root, FLEET), chains)
         self.bright = transfer_table(
             os.path.join(a.root, FLEET), chains, "fleet-lane-transfer-bright"
@@ -373,11 +377,35 @@ class Relay:
             return None
         return self.phase
 
-    def body_for(self, u, best, inst, bright=(), phase=None):
+    def nearest(self, best):
+        """The keys of best whose lanes go to the table's targets: of two chains of one
+        satellite whose targets overlap, the one measured nearer the overlap."""
+        keep = set(best)
+        for (tag, prn), (L, _src) in best.items():
+            for (tag2, prn2), (L2, _src2) in best.items():
+                if (
+                    prn2 != prn
+                    or tag2 == tag
+                    or self.sys.get(tag2) != self.sys.get(tag)
+                ):
+                    continue
+                for lo, hi in self.table.get(tag, []):
+                    for lo2, hi2 in self.table.get(tag2, []):
+                        if max(lo, lo2) > min(hi, hi2):
+                            continue
+                        mid = 0.5 * (max(lo, lo2) + min(hi, hi2))
+                        if abs(L2["freq_id"] - mid) < abs(L["freq_id"] - mid):
+                            keep.discard((tag, prn))
+        return keep
+
+    def body_for(self, u, best, inst, bright=(), phase=None, keep=None):
         lanes = []
         for (tag, prn), (L, src) in sorted(best.items()):
             fids = []
-            if tag in self.table and src is not u:
+            # A GPU's own lane reaches its targets through its own lane-transfer, unless it
+            # was measured on a channel the GPU only serves.
+            own = src is u and int(L["freq_id"]) in u.live
+            if tag in self.table and not own and (keep is None or (tag, prn) in keep):
                 fids += self.table[tag]
             if (tag, prn) in bright:
                 fids += self.bright[tag]
@@ -436,8 +464,9 @@ class Relay:
                     )
         rx_status = {}
         if post:
+            keep = self.nearest(best)
             jobs = [
-                (u, self.body_for(u, best, inst, bright, self.phase_due(u)))
+                (u, self.body_for(u, best, inst, bright, self.phase_due(u), keep))
                 for u in self.units
                 if u.receiver
             ]
@@ -549,7 +578,7 @@ class Relay:
         for u in self.units:
             if not u.receiver:
                 continue
-            body = self.body_for(u, best, None, bright)
+            body = self.body_for(u, best, None, bright, keep=self.nearest(best))
             print(
                 "  %-8s %2d lane(s): %s"
                 % (

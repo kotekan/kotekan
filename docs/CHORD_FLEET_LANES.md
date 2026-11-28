@@ -32,7 +32,10 @@ Three pieces:
 1. **Node, source side.** Every lane entry on the ProjBoard carries the line of sight and its
    rate at the instant the steering table described (`ElemSteer::track`), and whether it is a
    transfer (`xfer`). `GET gnss_n2_project/proj_<g>/get_lanes` returns, per owner, the measured
-   entry of best coherence on this GPU's board. The gps_l5 assembler (on every GPU, with
+   entry of best coherence on this GPU's board, from the channels it projects and from
+   `lane_serve_freq_ids`: channels it does not project whose lanes the relay carries into the
+   projected band (the generator's `--lane-serve gps_l1ca`: L1 C/A's lanes, for the L2 P(Y) of
+   the Block IIR satellites, which send no L2C). The gps_l5 assembler (on every GPU, with
    transfers) serves its InstDelay estimate at `GET .../get_lane_inst`.
 
 2. **Relay** (`scripts/gnss/site/lane_relay.py`, `gnss-lanerelay.service` on the gnss VM).
@@ -174,7 +177,12 @@ input is left, cause not known.
 knots (its solved channels, at most one per 0.8 MHz, 1150-1300 MHz), with the geometry toward
 Tau A taken off, in the frame of the science N^2's eigenvectors (the lane's frame after
 `lane_conj`), and the F-engine start it was made under (`made_frame0`). Built after a transit:
-`inst_phase_table.py build CAL.npz fixtures/obs/inst_phase/current.json`. The cal_1125b table
+`inst_phase_table.py build CAL.npz fixtures/obs/inst_phase/current.json`, then given its L1
+C/A knots (8061 and 8071) from the element models the watch keeps:
+`inst_phase_table.py models TABLE OUT l1ca:8061-8071`. The models are the table's phase
+negated plus one constant per band where both exist (7-11 deg rms on l3oc, b2b, l2c, l2of
+and b3i, 2026-11-27), so an L1 C/A lane served by GnssN2Project (`--lane-serve gps_l1ca`)
+is carried to L2 by them. The cal_1125b table
 turned by the 11-25 start's step row matches the cal_1126 one to 2.8 deg rms (99.5 unturned).
 
 **Relay.** With `--inst-phase FILE` the relay turns the table to the newest start in the frame0

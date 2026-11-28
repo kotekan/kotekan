@@ -22,6 +22,13 @@ under another start every input's phase turns by 2 pi f n Ts, n its whole-sample
 refuses while a start in between is unmeasured, and the relay then sends no table.
 
   build CAL.npz OUT.json [--frame0 FILE] [--lo MHZ] [--hi MHZ]
+  models TABLE.json OUT.json BAND:LO-HI [--models DIR] [--passes N] [--frame0 FILE]
+        The table with knots at freq_ids LO and HI for BAND (l1ca), outside the calibration's
+        range, from the element models the watch keeps (elem_shared_ref.py, DIR/models): per
+        input the negative of the model's phase, which is the table's phase plus one constant per
+        band inside its range (8-14 deg rms on l3oc, b2b, l2c, l2of, b3i, 2026-11-27). Refused
+        when those bands disagree with the table by more than MODEL_RMS_MAX_DEG, or when the
+        table was made under another F-engine start than the models.
   show TABLE.json [--steps STEPS.json] [--data-frame0 N]
 """
 import argparse
@@ -44,6 +51,16 @@ DIR = "/home/kvand/gnss/fixtures/obs/inst_phase"  # the relay reads DIR/current.
 # Past the projected range (1140.0-1304.9 MHz) by a few MHz: outside its knots a node holds the
 # edge knot's phase (gnssFleetLane.hpp InstPhaseTable::phase_at).
 LO_MHZ, HI_MHZ = 1135.0, 1310.0
+MODELS = "/home/kvand/gnss/fixtures/obs/elem_ref/models"
+# The bands whose models check the table: inside its range, by their carriers (MHz).
+MODEL_CHECK_MHZ = {
+    "l3oc": 1202.025,
+    "b2b": 1207.14,
+    "l2c": 1227.6,
+    "l2of": 1246.0,
+    "b3i": 1268.52,
+}
+MODEL_RMS_MAX_DEG = 25.0
 
 
 LAT = math.radians(
@@ -157,6 +174,46 @@ def carry(table, v, fid_src, fid):
     return np.asarray(v) * np.where(np.isfinite(d), np.exp(1j * np.nan_to_num(d)), 1.0)
 
 
+def model_phase(passes, band):
+    """Per input, the band's element model over the watch's passes (each turned onto the
+    first in global phase), as a complex array; NaN where an input has none."""
+    acc = None
+    for m in passes:
+        z = np.array(
+            [complex(*x) if x else np.nan for x in m["bands"][band]], dtype=complex
+        )
+        if acc is None:
+            acc = z
+            continue
+        ok = np.isfinite(z) & np.isfinite(acc)
+        acc = acc + z * np.exp(-1j * np.angle(np.sum(z[ok] * np.conj(acc[ok]))))
+    return acc
+
+
+def from_models(table, passes, band, lo_fid, hi_fid):
+    """The table with knots lo_fid and hi_fid for band from the models in passes, and the rms
+    (deg) of each MODEL_CHECK_MHZ band against the table."""
+    rms = {}
+    for b, mhz in MODEL_CHECK_MHZ.items():
+        d = -np.angle(model_phase(passes, b)) - phase_at(table, mhz * 1e6 / CH_HZ)
+        ok = np.isfinite(d)
+        r = np.angle(np.exp(1j * (d[ok] - np.angle(np.sum(np.exp(1j * d[ok]))))))
+        rms[b] = round(math.degrees(math.sqrt(np.mean(r ** 2))), 1)
+    held = np.isfinite(phase_at(table, table["fids"][0]))
+    ph = -np.angle(model_phase(passes, band))
+    row = [
+        round(math.degrees(x), 2) if h and np.isfinite(x) else None
+        for x, h in zip(ph, held)
+    ]
+    out = dict(table)
+    knots = sorted(
+        list(zip(table["fids"], table["phase_deg"])) + [(lo_fid, row), (hi_fid, row)]
+    )
+    out["fids"] = [f for f, _ in knots]
+    out["phase_deg"] = [r for _, r in knots]
+    return out, rms
+
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -168,6 +225,13 @@ def main():
     b.add_argument("--frame0", default=FRAME0)
     b.add_argument("--lo", type=float, default=LO_MHZ)
     b.add_argument("--hi", type=float, default=HI_MHZ)
+    m = sub.add_parser("models")
+    m.add_argument("table")
+    m.add_argument("out")
+    m.add_argument("band", help="BAND:LO-HI, the knots' freq_ids (l1ca:8061-8071)")
+    m.add_argument("--models", default=MODELS)
+    m.add_argument("--passes", type=int, default=12)
+    m.add_argument("--frame0", default=FRAME0)
     s = sub.add_parser("show")
     s.add_argument("table")
     s.add_argument("--steps", default=fengine_steps.TABLE)
@@ -192,6 +256,32 @@ def main():
         return
     with open(a.table) as f:
         tab = json.load(f)
+    if a.cmd == "models":
+        band, _, rng = a.band.partition(":")
+        lo, _, hi = rng.partition("-")
+        files = sorted(os.listdir(a.models))[-a.passes :]
+        passes = [json.load(open(os.path.join(a.models, f))) for f in files]
+        t_last = float(files[-1].split(".")[0])
+        if start_of(a.frame0, t_last) != tab["made_frame0"]:
+            raise SystemExit(
+                "the table was made under start %d, the models under %d: build it again"
+                % (tab["made_frame0"], start_of(a.frame0, t_last))
+            )
+        out, rms = from_models(tab, passes, band, int(lo), int(hi))
+        print("models %s .. %s: rms against the table %s" % (files[0], files[-1], rms))
+        if max(rms.values()) > MODEL_RMS_MAX_DEG:
+            raise SystemExit("the models do not follow the table: nothing written")
+        out["models"] = {
+            "band": band,
+            "from": files[0],
+            "to": files[-1],
+            "rms_deg": rms,
+        }
+        with open(a.out + ".tmp", "w") as f:
+            json.dump(out, f)
+        os.replace(a.out + ".tmp", a.out)
+        print("%s: %d knots, %s at %s-%s" % (a.out, len(out["fids"]), band, lo, hi))
+        return
     n_none = sum(p is None for row in tab["phase_deg"] for p in row)
     print(
         "%d knots, made under start %d (Tau A %s), %d of %d entries empty"

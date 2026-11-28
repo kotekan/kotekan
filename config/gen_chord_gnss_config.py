@@ -4307,6 +4307,15 @@ def main():
         "PRS lobe). A CHAIN the config does not build is refused",
     )
     ap.add_argument(
+        "--lane-serve",
+        action="append",
+        default=[],
+        help="CHAIN (its broker key), repeatable: GnssN2Project's get_lanes also serves CHAIN's "
+        "lanes from its channels on this GPU outside the projected ones, for the relay to "
+        "carry into the projected band (gps_l1ca, for L2 P(Y)). Nothing is projected there. "
+        "Needs --fleet-lanes",
+    )
+    ap.add_argument(
         "--fleet-lanes",
         action="store_true",
         help="GnssN2Project accepts lane directions the relay carries from the other nodes "
@@ -5261,6 +5270,8 @@ def main():
                     "--rfi-excision-exempt-freq-ids): GnssN2Project requires live_freq_ids"
                 )
             _stage["live_freq_ids"] = sorted(_lids)
+            if args.lane_serve and not args.fleet_lanes:
+                raise SystemExit("--lane-serve needs --fleet-lanes")
             # The lane dump (GnssN2Project.hpp): a slot per live channel on this GPU, gated by
             # seq like the beam dump and written under <record_dir>/lanedump.
             _off = cfg["nodes"][args.node]["gpu_offsets_mod16"][_gpu]
@@ -5462,6 +5473,19 @@ def main():
             out.get("samples_per_data_set", 8192),
         )
         out.update(blocks)
+    # --lane-serve: the named chains' channels on each GPU, from its records block (built
+    # after the projection stages), less the ones the stage projects.
+    for _gpu in (0, 1):
+        _stage = out.get("gnss_n2_project", {}).get("proj_%d" % _gpu)
+        if not args.lane_serve or _stage is None:
+            continue
+        _rec = out.get("gnss%d_records" % _gpu, {}).get("chains", {})
+        _serve = set()
+        for _c in args.lane_serve:
+            _row = _rec.get("gnss%d_%s" % (_gpu, _c), {})
+            _serve |= set(_row.get("channel_ids", [])) - set(_stage["live_freq_ids"])
+        if _serve:
+            _stage["lane_serve_freq_ids"] = sorted(_serve)
     add_dtv_subtract(out, cfg, args, args.node, out.get("samples_per_data_set", 8192))
     add_data_lag(out, cfg, args, out.get("samples_per_data_set", 8192))
 

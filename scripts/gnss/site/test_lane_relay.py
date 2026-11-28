@@ -246,7 +246,8 @@ def test_bright_transfer():
     relay = lane_relay.Relay.__new__(lane_relay.Relay)
     relay.table = {"glo_l2of": [[6339, 6440]]}
     relay.bright = {"bds_b3i": [[6234, 6450]], "glo_l2of": [[6234, 6338]]}
-    src, other = _Unit("cx51/1", [6237, 6301]), _Unit("cx27/0", [6240, 6400])
+    src = _Unit("cx51/1", [6237, 6301, 6390, 6494])
+    other = _Unit("cx27/0", [6240, 6400])
     lane = {
         "freq_id": 6494,
         "t_utc": 0.0,
@@ -277,6 +278,49 @@ def test_bright_transfer():
     body = relay.body_for(src, best2, None, {("glo_l2of", 4)})
     check(
         body["lanes"][0]["fids"] == [[6234, 6338]], "its own GPU only the bright ones"
+    )
+
+
+def test_served_lane():
+    """A lane its GPU only serves (L1 C/A) goes back to that GPU too; of one satellite's
+    L1 C/A and L2C lanes only L2C's goes to the shared L2 targets."""
+    relay = lane_relay.Relay.__new__(lane_relay.Relay)
+    relay.table = {"gps_l1ca": [[6181, 6390]], "gps_l2c": [[6181, 6390]]}
+    relay.bright = {}
+    relay.sys = {"gps_l1ca": "G", "gps_l2c": "G"}
+    src, other = _Unit("cx43/0", [6237, 6301]), _Unit("cx43/1", [6285, 6301])
+    l1 = {
+        "freq_id": 8070,
+        "t_utc": 0.0,
+        "los": [0, 0, 1],
+        "los_rate": [0, 0, 0],
+        "coh": 0.9,
+        "power": 40.0,
+        "owner": "/gnss0_gps_l1ca_n2assemble/lane/19",
+        "q": [[1, 0]],
+    }
+    best = {("gps_l1ca", 19): (l1, src)}
+    body = relay.body_for(src, best, None, set(), keep=relay.nearest(best))
+    check(
+        len(body["lanes"]) == 1 and body["lanes"][0]["fids"] == [[6181, 6390]],
+        "a lane measured on a channel its GPU does not project goes back to it",
+    )
+    l1b = dict(l1, owner="/gnss0_gps_l1ca_n2assemble/lane/5")
+    l2 = dict(l1, owner="/gnss1_gps_l2c_n2assemble/lane/5", freq_id=6285)
+    best = {
+        ("gps_l1ca", 19): (l1, src),
+        ("gps_l1ca", 5): (l1b, src),
+        ("gps_l2c", 5): (l2, other),
+    }
+    keep = relay.nearest(best)
+    check(
+        keep == {("gps_l1ca", 19), ("gps_l2c", 5)},
+        "L1 C/A's lane only for the satellite with no L2C lane (%s)" % sorted(keep),
+    )
+    body = relay.body_for(other, best, None, set(), keep=keep)
+    check(
+        sorted(L["id"].rsplit("/", 1)[1] for L in body["lanes"]) == ["19"],
+        "L2C's own GPU gets L1 C/A's lane of the other satellite only",
     )
 
 

@@ -142,6 +142,10 @@
  * element; {} clears it, absent keeps it); inst_phase_knots (0 = none) and inst_phase_age_s
  * report it.
  *
+ * @conf lane_serve_freq_ids   Int list. Channels outside live_freq_ids whose board lanes
+ *                             get_lanes also serves, for the relay to carry into the
+ *                             projected band (L1 C/A to L2). Nothing is written on them
+ *                             (empty).
  * @conf fleet_lanes           Bool. Accept posted lanes (false).
  * @conf elem_positions_enu    Double list, [n][3]. The tracker elements' positions, metres
  *                             ENU (the assemblers' value). Required with fleet_lanes.
@@ -290,6 +294,7 @@ private:
     std::vector<int> tracker_stations;
     const int k_lanes_max;
     const double lane_max_age_s;
+    const std::vector<int> lane_serve_freq_ids;
     const double lane_coh_min;
     const double lane_min_new_frac;
     const bool lane_conj;

@@ -49,6 +49,8 @@ GnssN2Project::GnssN2Project(Config& config, const std::string& unique_name,
     tracker_stations(config.get_default<std::vector<int>>(unique_name, "tracker_stations", {})),
     k_lanes_max(config.get_default<int>(unique_name, "k_lanes_max", 8)),
     lane_max_age_s(config.get_default<double>(unique_name, "lane_max_age_s", 1.0)),
+    lane_serve_freq_ids(
+        config.get_default<std::vector<int>>(unique_name, "lane_serve_freq_ids", {})),
     lane_coh_min(config.get_default<double>(unique_name, "lane_coh_min", 0.08)),
     lane_min_new_frac(config.get_default<double>(unique_name, "lane_min_new_frac", 0.1)),
     lane_conj(config.get_default<bool>(unique_name, "lane_conj", true)),
@@ -598,8 +600,9 @@ void GnssN2Project::build_fleet(double t_utc) {
 }
 
 void GnssN2Project::get_lanes_callback(kotekan::connectionInstance& conn) {
-    // Per owner, the measured entry of best coherence on this GPU's board, with its track;
-    // the transfers are left out. freq_ids and live_ch are read only once labelled_pub is set.
+    // Per owner, the measured entry of best coherence on this GPU's board (its live channels
+    // and lane_serve_freq_ids), with its track; the transfers are left out. freq_ids and
+    // live_ch are read only once labelled_pub is set.
     nlohmann::json out;
     const bool ready = labelled_pub.load();
     out["ready"] = ready;
@@ -610,10 +613,11 @@ void GnssN2Project::get_lanes_callback(kotekan::connectionInstance& conn) {
             std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch())
                 .count();
         std::map<std::string, std::pair<int, gnss::ProjEntry>> best;
-        for (int f = 0; f < num_local_freq; ++f) {
-            if (!live_ch[f])
-                continue;
-            const int fid = freq_ids[f];
+        std::vector<int> fids = lane_serve_freq_ids;
+        for (int f = 0; f < num_local_freq; ++f)
+            if (live_ch[f])
+                fids.push_back(freq_ids[f]);
+        for (const int fid : fids) {
             gnss::ProjBoard::instance().for_each(
                 board_group, fid, unique_name, now_s, lane_max_age_s,
                 [&](const gnss::ProjEntry& e) {
