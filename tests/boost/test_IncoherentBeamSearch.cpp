@@ -52,11 +52,13 @@ static std::vector<double> trial_dms() {
 struct SearchPipeline {
     static constexpr int halves = 4, T = 32, F = 16, min_freq_id = 2048, period = 256;
     static constexpr int frames = 8, sum_samples = 256, snr_passes = 32, cutout_samples = 256;
+    // The image of recent samples: 4 passes of 8 rows, 8 channels to a column.
+    static constexpr int waterfall_rows = 32, waterfall_time_bin = 32, waterfall_columns = 8;
     const std::string path, dm_path, cutout_dir;
     const std::vector<double> dms = trial_dms();
     kotekan::Config config;
     std::shared_ptr<metadataPool> pool;
-    Buffer input, sums, snr, cutout, power;
+    Buffer input, sums, snr, cutout, power, waterfall;
     kotekan::bufferContainer buffers;
     std::unique_ptr<kotekan::Stage> stage;
     std::unique_ptr<kotekan::Stage> writer; // hdf5FileWrite of the cutouts, when kotekan has it
@@ -90,7 +92,9 @@ struct SearchPipeline {
         cutout(4, halves * F * cutout_samples, pool, "cutout", "standard", 0, false, false,
                std::vector<int>{}, true),
         power(2, sum_samples * halves * F * sizeof(uint16_t), pool, "power", "standard", 0, false,
-              false, std::vector<int>{}, true) {
+              false, std::vector<int>{}, true),
+        waterfall(4, waterfall_rows * waterfall_columns, pool, "waterfall", "standard", 0, false,
+                  false, std::vector<int>{}, true) {
         // Force metadata registration from the static library.
         chordMetadata metadata;
         std::remove(path.c_str());
@@ -102,6 +106,7 @@ struct SearchPipeline {
                                 {"snr_buf", "snr"},
                                 {"cutout_buf", "cutout"},
                                 {"power_buf", "power"},
+                                {"waterfall_buf", "waterfall"},
                                 {"freq_id_base", min_freq_id},
                                 {"num_local_freq", halves * F},
                                 {"num_feeds", 128},
@@ -143,12 +148,14 @@ struct SearchPipeline {
         buffers.add_buffer("snr", &snr);
         buffers.add_buffer("cutout", &cutout);
         buffers.add_buffer("power", &power);
+        buffers.add_buffer("waterfall", &waterfall);
         input.register_producer("test");
         sums.register_consumer("test");
         cutout.register_consumer("test");
         power.register_consumer("test");
         // As on the telescope, nothing consumes the image of recent passes: it is peeked.
         snr.enable_peek_hold();
+        waterfall.enable_peek_hold();
         auto makers = kotekan::StageFactoryRegistry::get_registered_stages();
         stage.reset(makers.at("IncoherentBeamSearch")->create(config, "/" + name, buffers));
         if (makers.count("hdf5FileWrite")) {
@@ -419,6 +426,28 @@ BOOST_AUTO_TEST_CASE(finds_a_pulse_and_restarts_after_a_jump) {
     // The row whose pass searched the pulse ends within two passes after its arrival.
     BOOST_CHECK_GT(row_end, found);
     BOOST_CHECK_LE(row_end, found + 3 * pass);
+
+    // The image of recent samples: rows of 32 samples counted from the search's first sample,
+    // 64 channels in 8 columns, every bin in use and at about 1 sigma (16 in the image).
+    std::vector<uint8_t> waterfall_bytes;
+    std::shared_ptr<metadataObject> waterfall_meta;
+    BOOST_REQUIRE_GE(p.waterfall.peek_newest_full_frame(waterfall_bytes, SIZE_MAX, waterfall_meta),
+                     0);
+    BOOST_REQUIRE_EQUAL(waterfall_bytes.size(),
+                        SearchPipeline::waterfall_rows * SearchPipeline::waterfall_columns);
+    const int64_t row_step = SearchPipeline::waterfall_time_bin * SearchPipeline::period;
+    const auto waterfall_chord = std::static_pointer_cast<chordMetadata>(waterfall_meta);
+    BOOST_CHECK_GT(waterfall_chord->get_fpga_seq_num(), seq0);
+    BOOST_CHECK_EQUAL((waterfall_chord->get_fpga_seq_num() - seq0) % row_step, 0);
+    BOOST_CHECK_EQUAL(waterfall_chord->get_time_downsampling_fpga(), row_step);
+    double waterfall_square = 0;
+    for (uint8_t byte : waterfall_bytes) {
+        BOOST_CHECK_NE((int8_t)byte, -128);
+        waterfall_square += (double)(int8_t)byte * (int8_t)byte;
+    }
+    const double waterfall_rms = std::sqrt(waterfall_square / waterfall_bytes.size()) / 16;
+    BOOST_CHECK_GT(waterfall_rms, 0.7);
+    BOOST_CHECK_LT(waterfall_rms, 1.2);
 
     // One round of frames 200 s ahead (a sender with a wrong time) is dropped, and the stream
     // goes on.

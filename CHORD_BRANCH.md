@@ -16,7 +16,7 @@ Base: `develop` at `b4a01af38` (#1926).
 | #1848 | `jbm/n2-switch-per-freq` | `9d6821aeb` | 2026-11-05 | 2026-11-05 | hdf5N2Write: record fringestop and second-stage RFI switches per frequency |
 | #1849 | `jbm/n2-gains` | `8868a27f3` | 2026-11-05 | 2026-11-20 | bufferGains: buffer posted calibration gains; N2Accumulate records them |
 | #1851 | `jbm/async-start` | `944510918` | 2026-11-05 | 2026-11-06 | kotekan: start the pipeline on its own thread, report it in /status |
-| #1903 | `jbm/incoherent-search` | `a18c1a010` | 2026-11-17 | 2026-11-23 | Incoherent-beam pulse search: IncoherentBeamPower and IncoherentBeamSearch |
+| #1903 | `jbm/incoherent-search` | `6f7d62826` | 2026-11-17 | 2026-11-28 | Incoherent-beam pulse search: IncoherentBeamPower and IncoherentBeamSearch |
 
 The PR branches carry the site config they need, so config/chord in `chord` is `develop` plus these heads.
 

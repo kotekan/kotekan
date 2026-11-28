@@ -120,6 +120,10 @@ public:
     static constexpr int cutout_samples = 256;
     /// A stored sample is in units of 1 / sample_scale sigma of its channel: int8 reaches 4 sigma
     static constexpr double sample_scale = 32.0;
+    /// A waterfall value is in units of 1 / waterfall_scale sigma of its bin: up to 7.9 sigma
+    static constexpr double waterfall_scale = 16.0;
+    /// The waterfall value of a bin without a sample in use
+    static constexpr int8_t waterfall_no_data = -128;
 
     explicit IncoherentSearch(const IncoherentSearchParams& params);
 
@@ -146,6 +150,22 @@ public:
      *              the candidate's DM delays to it.
      */
     void cutout(const IncoherentCandidate& cand, int8_t* out) const;
+
+    /**
+     * @brief Bins the stored samples in time and frequency, for a display.
+     *
+     * A value is the sum of the bin's samples (see cutout()) over the square root of the number
+     * that are not 0, in units of 1 / waterfall_scale sigma: thermal noise gives about 1 sigma
+     * in every bin, whatever part of it is masked. waterfall_no_data where every sample of the
+     * bin is 0 (masked or missing) or the bin is not held.
+     *
+     * @param first     First sample of the first row.
+     * @param rows      Number of rows.
+     * @param time_bin  Samples per row.
+     * @param freq_bin  Channels per column; the last column takes what is left.
+     * @param out       [rows][columns], with (channels + freq_bin - 1) / freq_bin columns.
+     */
+    void waterfall(int64_t first, int rows, int time_bin, int freq_bin, int8_t* out) const;
 
     /// Highest S/N of any DM and width since the last call, after the hold-off.
     double take_max_snr();

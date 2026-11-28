@@ -290,6 +290,46 @@ BOOST_AUTO_TEST_CASE(masked_band_is_not_searched) {
     BOOST_CHECK(run(p, {{4, 100, 6000, 96}}).empty());
 }
 
+BOOST_AUTO_TEST_CASE(waterfall_bins_the_samples_and_marks_what_is_masked) {
+    // Channels 0-96 are at 400-550 MHz: columns 0-11 of 8 channels are masked whole.
+    IncoherentSearchParams p = test_params();
+    p.mask_bands_mhz = {{400, 550}};
+    IncoherentSearch search(p);
+    std::mt19937 rng(1);
+    std::normal_distribution<float> gauss(0, 1);
+    std::vector<float> power(p.num_freq);
+    for (int t = 0; t < 8000; ++t) {
+        for (int c = 0; c < p.num_freq; ++c)
+            power[c] = (float)(1000 * (1 + p.thermal * gauss(rng)));
+        search.add_sample(power.data());
+    }
+    const int rows = 16, columns = 32;
+    std::vector<int8_t> image((size_t)rows * columns);
+    search.waterfall(7000, rows, 32, 8, image.data());
+    double square = 0;
+    int used = 0;
+    for (int r = 0; r < rows; ++r)
+        for (int b = 0; b < columns; ++b) {
+            const int8_t v = image[(size_t)r * columns + b];
+            if (b < 12) {
+                BOOST_CHECK_EQUAL(v, IncoherentSearch::waterfall_no_data);
+            } else if (b > 12) {
+                BOOST_CHECK_NE(v, IncoherentSearch::waterfall_no_data);
+                square += (double)v * v;
+                ++used;
+            }
+        }
+    // Thermal noise is about 1 sigma in a bin.
+    const double rms = std::sqrt(square / used) / IncoherentSearch::waterfall_scale;
+    BOOST_CHECK_GT(rms, 0.8);
+    BOOST_CHECK_LT(rms, 1.1);
+
+    // Rows past the newest sample have no data.
+    search.waterfall(8000 - 32, 2, 32, 8, image.data());
+    BOOST_CHECK_NE(image[columns - 1], IncoherentSearch::waterfall_no_data);
+    BOOST_CHECK_EQUAL(image[2 * columns - 1], IncoherentSearch::waterfall_no_data);
+}
+
 BOOST_AUTO_TEST_CASE(faint_pulse_is_found_beside_a_bright_one_at_another_dm) {
     // 2.5 sigma per channel is about 35 sigma in the sum, and 0.5 is 8. The faint pulse lies
     // within the sweep between the two DMs, where the bright pulse has no residue this strong.

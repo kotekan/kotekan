@@ -660,6 +660,32 @@ void IncoherentSearch::cutout(const IncoherentCandidate& cand, int8_t* out) cons
     }
 }
 
+void IncoherentSearch::waterfall(int64_t first, int rows, int time_bin, int freq_bin,
+                                 int8_t* out) const {
+    const int columns = (F + freq_bin - 1) / freq_bin;
+    std::vector<int32_t> sum(columns), used(columns);
+    for (int r = 0; r < rows; ++r) {
+        const int64_t s = first + (int64_t)r * time_bin;
+        std::fill(sum.begin(), sum.end(), 0);
+        std::fill(used.begin(), used.end(), 0);
+        if (s >= base && s + time_bin <= ns)
+            for (int c = 0; c < F; ++c) {
+                const int8_t* const v = row(c, s);
+                for (int k = 0; k < time_bin; ++k) {
+                    sum[c / freq_bin] += v[k];
+                    used[c / freq_bin] += v[k] != 0;
+                }
+            }
+        for (int b = 0; b < columns; ++b) {
+            const double value =
+                used[b] ? waterfall_scale * sum[b] / (sample_scale * std::sqrt((double)used[b]))
+                        : 0.0;
+            out[(size_t)r * columns + b] =
+                used[b] ? (int8_t)std::lround(std::clamp(value, -127.0, 127.0)) : waterfall_no_data;
+        }
+    }
+}
+
 std::vector<IncoherentCandidate> IncoherentSearch::take_candidates() {
     std::vector<IncoherentCandidate> out;
     out.swap(candidates);

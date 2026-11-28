@@ -92,6 +92,15 @@ using kotekan::prometheus::Metrics;
  * The search does not wait for power_buf: when it is full the frame is left out, which leaves a
  * gap in the stream.
  *
+ * With waterfall_buf, every search pass also writes an image for a live display: the samples
+ * as the search saw them (IncoherentSearch::waterfall), added up in bins of waterfall_time_bin
+ * samples by waterfall_freq_bin channels, one row per time bin over the last seconds, the newest
+ * last. A value is in units of 1/16 sigma of its bin and -128 marks a bin with nothing in use.
+ * The newest row ends one pass before the newest sample: a channel's mask also takes the samples
+ * shortly before it, so the last pass can still change. The frame's fpga_seq_num is its first
+ * row, so a reader that asks more often than the image is long can put the frames together
+ * without a gap. The buffer is meant to be peeked (peek_hold), not consumed.
+ *
  * The search runs in this stage's thread and its OpenMP threads, between frames. in_buf must
  * hold the frames that arrive during one search pass (0.3 s).
  *
@@ -114,6 +123,11 @@ using kotekan::prometheus::Metrics;
  * @buffer power_buf  Optional. The power of every time sample, one frame per 256 samples.
  *     @buffer_format   NDArray uint16 [Trfi, F]: 256 time samples by the channels searched;
  *                      0 marks a missing value.
+ *     @buffer_metadata chordMetadata
+ * @buffer waterfall_buf  Optional. The samples of the last seconds, binned for a display.
+ *     @buffer_format   NDArray int8 [Trfi, F]: any number of passes, 256 / waterfall_time_bin
+ *                      rows each, by the channels searched over waterfall_freq_bin, rounded up;
+ *                      -128 where there is no value.
  *     @buffer_metadata chordMetadata
  *
  * @conf freq_id_base     Int. FPGA frequency id of the lowest channel searched.
@@ -142,6 +156,8 @@ using kotekan::prometheus::Metrics;
  *                         with its DM in the range and the Earth rotation angle of its arrival
  *                         (degrees, with UT1 taken as UTC) in the range, which may pass through
  *                         360: a known pulsar in the beam. Needs GPS time. Default none.
+ * @conf waterfall_time_bin  Int. Time samples per row of waterfall_buf; divides 256. Default 32.
+ * @conf waterfall_freq_bin  Int. Channels per column of waterfall_buf. Default 8.
  * @conf holdoff_s         Double. No candidates for this long after a (re)start. Default 120.
  * @conf tau_s             Double. Time constant of the running statistics. Default 5.
  * @conf num_threads       Int. OpenMP threads of the search. Default 4.
@@ -171,6 +187,10 @@ public:
         snr_buf(config.exists(unique_name, "snr_buf") ? get_buffer("snr_buf") : nullptr),
         cutout_buf(config.exists(unique_name, "cutout_buf") ? get_buffer("cutout_buf") : nullptr),
         power_buf(config.exists(unique_name, "power_buf") ? get_buffer("power_buf") : nullptr),
+        waterfall_buf(config.exists(unique_name, "waterfall_buf") ? get_buffer("waterfall_buf")
+                                                                  : nullptr),
+        waterfall_time_bin(config.get_default<int>(unique_name, "waterfall_time_bin", 32)),
+        waterfall_freq_bin(config.get_default<int>(unique_name, "waterfall_freq_bin", 8)),
         freq_id_base(config.get<int>(unique_name, "freq_id_base")),
         candidates_counter(Metrics::instance().add_counter(
             "kotekan_incoherent_beam_search_candidates_total", unique_name)),
@@ -265,6 +285,30 @@ public:
                 {IncoherentSearch::chunk, params.num_freq}, {"Trfi", "F"}, {period, 1}));
             power_desc = power_buf->get_frame_desc<kotekan::GenericNDArray>();
             power_frame.assign((size_t)IncoherentSearch::chunk * params.num_freq, 0);
+        }
+        if (waterfall_buf != nullptr) {
+            if (waterfall_time_bin < 1 || IncoherentSearch::chunk % waterfall_time_bin != 0
+                || waterfall_freq_bin < 1)
+                FATAL_ERROR("IncoherentBeamSearch: waterfall_time_bin must divide {:d} and "
+                            "waterfall_freq_bin must be at least 1",
+                            IncoherentSearch::chunk);
+            // The frame holds as many passes as it has room for.
+            waterfall_columns = (params.num_freq + waterfall_freq_bin - 1) / waterfall_freq_bin;
+            const size_t pass_bytes =
+                (size_t)(IncoherentSearch::chunk / waterfall_time_bin) * waterfall_columns;
+            if (waterfall_buf->frame_size == 0 || waterfall_buf->frame_size % pass_bytes != 0)
+                FATAL_ERROR("IncoherentBeamSearch: waterfall_buf {:s} must hold whole passes of "
+                            "{:d} rows by {:d} int8",
+                            waterfall_buf->buffer_name,
+                            IncoherentSearch::chunk / waterfall_time_bin, waterfall_columns);
+            waterfall_buf->register_producer(unique_name);
+            waterfall_buf->ensure_frame_desc(kotekan::GenericNDArray::describe(
+                kotekan::int8, "incoherent_waterfall",
+                {(std::ptrdiff_t)(waterfall_buf->frame_size / waterfall_columns),
+                 (std::ptrdiff_t)waterfall_columns},
+                {"Trfi", "F"}, {waterfall_time_bin * period, waterfall_freq_bin}));
+            waterfall_desc = waterfall_buf->get_frame_desc<kotekan::GenericNDArray>();
+            waterfall_image.assign(waterfall_buf->frame_size, IncoherentSearch::waterfall_no_data);
         }
         params.mask_bands_mhz = config.get_default<std::vector<std::pair<double, double>>>(
             unique_name, "mask_bands_mhz", {});
@@ -411,6 +455,8 @@ private:
         std::fill(ring.begin(), ring.end(), 0);
         std::fill(recent_max.begin(), recent_max.end(), 0.0);
         std::fill(snr_image.begin(), snr_image.end(), 0.0f);
+        std::fill(waterfall_image.begin(), waterfall_image.end(),
+                  IncoherentSearch::waterfall_no_data);
     }
 
     void search_next_sample() {
@@ -498,6 +544,35 @@ private:
         snr_id = (snr_id + 1) % snr_buf->num_frames;
     }
 
+    // Appends the pass before the one that just ran to the image of recent samples and writes
+    // the image to waterfall_buf.
+    void write_waterfall() {
+        const int64_t end = search->num_samples() - IncoherentSearch::chunk;
+        if (end < IncoherentSearch::chunk)
+            return;
+        const int rows = IncoherentSearch::chunk / waterfall_time_bin;
+        const size_t pass_bytes = (size_t)rows * waterfall_columns;
+        std::copy(waterfall_image.begin() + pass_bytes, waterfall_image.end(),
+                  waterfall_image.begin());
+        search->waterfall(end - IncoherentSearch::chunk, rows, waterfall_time_bin,
+                          waterfall_freq_bin,
+                          &waterfall_image[waterfall_image.size() - pass_bytes]);
+
+        uint8_t* const frame = waterfall_buf->wait_for_empty_frame(unique_name, waterfall_id);
+        if (frame == nullptr)
+            return;
+        std::copy(waterfall_image.begin(), waterfall_image.end(), (int8_t*)frame);
+        waterfall_buf->allocate_new_metadata_object(waterfall_id);
+        const auto meta = get_chord_metadata(waterfall_buf, waterfall_id);
+        meta->set_from_frame_desc(waterfall_desc);
+        const int64_t image_rows = waterfall_image.size() / waterfall_columns;
+        const int64_t first = origin + end - image_rows * waterfall_time_bin;
+        meta->set_fpga_seq_num(first * period + phase);
+        meta->set_time_downsampling_fpga(waterfall_time_bin * period);
+        waterfall_buf->mark_frame_full(unique_name, waterfall_id);
+        waterfall_id = (waterfall_id + 1) % waterfall_buf->num_frames;
+    }
+
     // True when an entry of cutout_exclude holds the DM and the Earth rotation angle of the
     // arrival at FPGA sequence number seq.
     bool cutout_excluded(double dm, int64_t seq) const {
@@ -546,6 +621,8 @@ private:
             write_sums();
         if (snr_buf != nullptr)
             write_snr();
+        if (waterfall_buf != nullptr)
+            write_waterfall();
         recent_max[num_reports++ % recent_max.size()] = search->take_max_snr();
         max_snr_gauge.set(*std::max_element(recent_max.begin(), recent_max.end()));
         channels_used_gauge.set(search->channels_used());
@@ -614,6 +691,13 @@ private:
     std::vector<uint16_t> power_frame; // [time][channel]: the samples since the last frame
     int power_rows = 0;
     int power_id = 0;
+    Buffer* const waterfall_buf; // nullptr when the image of recent samples is not written
+    const int waterfall_time_bin;
+    const int waterfall_freq_bin;
+    int waterfall_columns = 0;
+    std::shared_ptr<const kotekan::GenericNDArray> waterfall_desc;
+    std::vector<int8_t> waterfall_image; // [time bin][column], the newest row last
+    int waterfall_id = 0;
     const int freq_id_base;
     std::shared_ptr<const kotekan::GenericNDArray> in_desc;
     std::shared_ptr<const kotekan::GenericNDArray> out_desc;
