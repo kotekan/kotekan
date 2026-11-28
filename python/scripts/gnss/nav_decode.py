@@ -448,12 +448,20 @@ def load_brdc(store, block):
         log("BRDC unavailable for the cross-check (%s)" % e)
 
 
-def report(srcs, store, dhw, eph_out, cache=None, alm_cache=None):
+def parse_sats(text):
+    """Satellites as (sys, prn) pairs from a list like C58,R25."""
+    return frozenset(
+        (t.strip()[0].upper(), int(t.strip()[1:])) for t in text.split(",") if t.strip()
+    )
+
+
+def report(srcs, store, dhw, eph_out, cache=None, alm_cache=None, exclude=frozenset()):
     """Log each satellite's decode state and BRDC cross-check, feed the decode-health export, and
     write the decoded ephemerides: those within EPH_FRESH_S of the host clock to eph_out, and
     every one to the cache (eph_cache.Writer), placed in the week the sky's own time marks give
     (gnss_skytime.week_ref) where they give one, else the host clock's. The almanacs read since
-    the last report go to alm_cache (nav_almanac.py)."""
+    the last report go to alm_cache (nav_almanac.py). Satellites in exclude, (sys, prn) pairs,
+    are logged and exported to decode health but written nowhere."""
     out, cached = [], []
     now = time.time()
     brdc = store if store.get("eph") else None
@@ -468,7 +476,8 @@ def report(srcs, store, dhw, eph_out, cache=None, alm_cache=None):
                 if not h:
                     continue
                 eph = dec.ephemeris(prn)
-                if cache is not None and eph is not None and toef in eph:
+                keep = (sysc, prn) not in exclude
+                if keep and cache is not None and eph is not None and toef in eph:
                     cached.append(
                         {
                             "sys": sysc,
@@ -493,7 +502,7 @@ def report(srcs, store, dhw, eph_out, cache=None, alm_cache=None):
                     else ""
                 )
                 log(
-                    "%s PRN %d: %s, eph %s%s"
+                    "%s PRN %d: %s, eph %s%s%s"
                     % (
                         s["signal"],
                         prn,
@@ -502,6 +511,7 @@ def report(srcs, store, dhw, eph_out, cache=None, alm_cache=None):
                         ),
                         "YES" if eph is not None else "no",
                         xc,
+                        "" if keep else " (excluded: not written)",
                     )
                 )
                 cnt = decoded_count(h)
@@ -518,7 +528,7 @@ def report(srcs, store, dhw, eph_out, cache=None, alm_cache=None):
                         eph=eph is not None,
                         dpos_m=sky._dh_dpos(xc),
                     )
-                if eph is not None and toef in eph:
+                if keep and eph is not None and toef in eph:
                     out.append(
                         {
                             "signal": s["signal"],
@@ -541,7 +551,13 @@ def report(srcs, store, dhw, eph_out, cache=None, alm_cache=None):
         except (OSError, ValueError) as e:
             log("ephemeris cache %s not written (%s)" % (cache.path, e))
     if alm_cache is not None:
-        alm = [e for s in srcs if s["alm"] is not None for e in s["alm"].take(g_ref)]
+        alm = [
+            e
+            for s in srcs
+            if s["alm"] is not None
+            for e in s["alm"].take(g_ref)
+            if (e["sys"], e["prn"]) not in exclude
+        ]
         try:
             new = alm_cache.put(alm, now) if alm else 0
             if new:
@@ -614,6 +630,14 @@ def main():
         "--no-brdc",
         action="store_true",
         help="no BRDC cross-check (and no fetch for it)",
+    )
+    ap.add_argument(
+        "--exclude-sats",
+        type=parse_sats,
+        default=frozenset(),
+        help="satellites, as C58,R25, whose decoded navigation is logged but never written to "
+        "--eph-out, the cache or the almanacs: BeiDou-3S M2-S (C58) broadcasts an orbit in "
+        "another plane",
     )
     args = ap.parse_args()
 
@@ -710,7 +734,7 @@ def main():
             load_brdc(store, block=False)
         if time.time() - t_report >= args.report_every:
             t_report = time.time()
-            report(srcs, store, dhw, args.eph_out, cache, alm_cache)
+            report(srcs, store, dhw, args.eph_out, cache, alm_cache, args.exclude_sats)
             span = time.time() - t_cpu
             log(
                 "cpu over %.0f s: %s"
