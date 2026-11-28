@@ -50,6 +50,9 @@ hops_per_record: 1920
 spectrum_window_samples: 122880000
 n_elements: 1
 buffer_depth: 4
+# PRNs on their BeiDou-3S codes (beidou3sCode.hpp) in every BeiDou replica: C58 is M2-S, whose
+# B2a, B2b and B3I codes are not the ICD's.
+bds3s_prns: [58]
 
 # UTC of sample 0, here 2026-11-20 00:00:00: bladeRFInput counts samples from it by the system
 # clock, the tracker stamps its records with it, and the broker reads it at telescope/time0_ns.
@@ -401,12 +404,12 @@ b3i_epl_buf:
     kotekan_buffer: standard
     metadata_pool: gnss_pool
     num_frames: 8
-    frame_size: 436656
+    frame_size: 450736
 b3i_rec_buf:
     kotekan_buffer: standard
     metadata_pool: gnss_pool
     num_frames: 64
-    frame_size: 31 * 44 * 4 + 31 * 8 * 9 * 4
+    frame_size: 32 * 44 * 4 + 32 * 8 * 9 * 4
 # Galileo E6-C (1278.75 MHz, 53.75 MHz above the LO): DFT bins 25 to 30, frame positions 57 to
 # 62, the 5.115 Mcps main lobe. gnss_gpu::frame_bytes(32 PRNs, 6 channels, 4 rows, 1 element).
 e6_epl_buf:
@@ -681,7 +684,7 @@ gputrack:
           # The NH20 tiled in: one 204600-chip, 20 ms code, as on CHORD. CHORD's PRN slots.
           signal: BDS_B3I_NH
           prns: &b3i_prns [6, 7, 8, 11, 12, 13, 14, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
-                           31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42]
+                           31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 58]
           f_offset_hz: 43.52e6
           n_channels: 8
           channel_ids: [19, 20, 21, 22, 23, 24, 25, 26]
@@ -1106,7 +1109,7 @@ b3i_assemble:
 b3i_combine:
     kotekan_stage: GnssCoherentCombiner
     in_bufs: [b3i_rec_buf]
-    n_prn: 31
+    n_prn: 32
     integration_length: 200
     record_export: 64
 # B3I's D1 bits (50 bps; the NH20 is in the tracker code) for nav_decode's BDS_B3I_D1: a 2 s
@@ -1115,7 +1118,7 @@ b3i_combine:
 b3i_bits:
     kotekan_stage: GnssCoherentCombiner
     in_bufs: [b3i_rec_buf]
-    n_prn: 31
+    n_prn: 32
     integration_length: 2000
     navwipe_bit_records: 20
     bit_export: true
@@ -1458,8 +1461,8 @@ telem_pack:
         b3i:
             in_buf: b3i_rec_buf
             chain: bds_b3i
-            n_prn: 31
-            max_prn: 31
+            n_prn: 32
+            max_prn: 32
             n_chan: 8
             channel_ids: [19, 20, 21, 22, 23, 24, 25, 26]
         e6:
