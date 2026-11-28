@@ -89,7 +89,8 @@ GnssCskDespread::GnssCskDespread(Config& config, const std::string& unique_name,
             iq,
             config.get_default<bool>(unique_name, "pfb_time_order", false)};
         _bank = std::make_unique<gnss::ChannelizedReplicaBank>(
-            *sig, chz, config.get<double>(unique_name, "f_offset"), prns);
+            *sig, chz, config.get<double>(unique_name, "f_offset"), prns,
+            config.get_default<std::vector<int>>(unique_name, "bds3s_prns", {}));
     } catch (const std::exception& e) {
         FATAL_ERROR("GnssCskDespread[{:s}]: {:s}", unique_name, e.what());
         return;

@@ -27,8 +27,9 @@ namespace beidou {
 constexpr int B3I_CODE_LENGTH = 10230;
 constexpr int B3I_NH_LENGTH = 20;
 
-/// B3I ranging code (PRN 1..63) as +-1 chips.
-std::array<int8_t, B3I_CODE_LENGTH> generate_b3i_code(int prn);
+/// B3I ranging code (PRN 1..63) as +-1 chips. With @p g1_reset false, G1 runs free (period
+/// 8191) instead of truncating at 8190, as the BeiDou-3S satellite M2-S (C58) transmits it.
+std::array<int8_t, B3I_CODE_LENGTH> generate_b3i_code(int prn, bool g1_reset = true);
 
 /// The 20-chip D1 NH secondary, identical to B1I_NH20 (00000100110101001110); a separate symbol
 /// so each signal's overlay registry row names its own sequence.

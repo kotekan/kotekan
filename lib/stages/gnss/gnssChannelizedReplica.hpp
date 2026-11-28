@@ -76,8 +76,10 @@ public:
     /// @param f_offset carrier frequency at the channelizer's input, Hz: for I/Q input the
     ///                 carrier minus the tuned frequency, which may be negative.
     /// @param prns     PRN list; @c channels()/@c code_chip() index into it.
+    /// @param bds3s_prns PRNs that take the BeiDou-3S code (beidou3sCode.hpp) on the signals that
+    ///                 have one; the stages pass the inherited config key @c bds3s_prns.
     ChannelizedReplicaBank(const SignalDescriptor& sig, const Channelization& chz, double f_offset,
-                           const std::vector<int>& prns);
+                           const std::vector<int>& prns, const std::vector<int>& bds3s_prns = {});
     /// As above for real input and a newest-first fold.
     /// @param sig            signal descriptor (chip rate, code length/period).
     /// @param sample_rate    full (pre-channelization) sample rate, Hz.
@@ -86,9 +88,10 @@ public:
     /// @param num_taps       PFB taps (must match the F-engine).
     /// @param window         PFB prototype window (must match the F-engine).
     /// @param prns           PRN list; @c channels()/@c code_chip() index into it.
+    /// @param bds3s_prns     as above.
     ChannelizedReplicaBank(const SignalDescriptor& sig, double sample_rate, double f_offset,
                            int spectrum_length, int num_taps, dsp::Window window,
-                           const std::vector<int>& prns);
+                           const std::vector<int>& prns, const std::vector<int>& bds3s_prns = {});
     ~ChannelizedReplicaBank();
     ChannelizedReplicaBank(const ChannelizedReplicaBank&) = delete;
     ChannelizedReplicaBank& operator=(const ChannelizedReplicaBank&) = delete;
@@ -386,7 +389,8 @@ private:
     double _eff_chip_rate; ///< _sig.chip_rate_hz * _comb_mult (combined chipping rate)
     long _eff_code_length; ///< _sig.code_length * _comb_mult (combined-stream length)
     std::vector<float> _proto;
-    std::vector<int> _prns; ///< PRN per slot; mutable via @ref set_prn
+    std::vector<int> _prns;       ///< PRN per slot; mutable via @ref set_prn
+    std::vector<int> _bds3s_prns; ///< PRNs on their BeiDou-3S code
     std::vector<std::vector<int8_t>> _full_code;
     std::vector<int8_t> _secondary; ///< +-1 Neuman-Hofman overlay (NH10/NH20); empty if none
     int _secondary_length = 0;      ///< overlay period in primary periods; 0 = no overlay

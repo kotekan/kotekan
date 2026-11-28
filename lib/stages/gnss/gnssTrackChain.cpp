@@ -131,7 +131,9 @@ TrackChain::TrackChain(Config& config, const std::string& cfg_path) {
     if (psi_synth && (chz.complex_input || chz.time_order_fold))
         FATAL_ERROR("cudaGnssChordTrack: psi_synth supports neither I/Q input nor "
                     "pfb_time_order");
-    replica = std::make_unique<gnss::ChannelizedReplicaBank>(*sig, chz, f_offset_hz, prns);
+    replica = std::make_unique<gnss::ChannelizedReplicaBank>(
+        *sig, chz, f_offset_hz, prns,
+        config.get_default<std::vector<int>>(cfg_path, "bds3s_prns", {}));
     // FDMA (GLONASS L2OF): each slot's carrier offset from the descriptor's, before the despread
     // reads the bank. Empty for a CDMA signal.
     replica->set_prn_freq_offsets(

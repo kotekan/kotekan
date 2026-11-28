@@ -161,7 +161,9 @@ GnssChannelizedSearch::GnssChannelizedSearch(Config& config, const std::string& 
             _sample_rate, _N,
             num_taps,     dsp::window_from_string(win),
             iq,           config.get_default<bool>(unique_name, "pfb_time_order", false)};
-        _replica = std::make_unique<gnss::ChannelizedReplicaBank>(*sig, chz, f_offset, _prns);
+        _replica = std::make_unique<gnss::ChannelizedReplicaBank>(
+            *sig, chz, f_offset, _prns,
+            config.get_default<std::vector<int>>(unique_name, "bds3s_prns", {}));
     } catch (const std::exception& e) {
         FATAL_ERROR("GnssChannelizedSearch: {:s}", e.what());
         return;

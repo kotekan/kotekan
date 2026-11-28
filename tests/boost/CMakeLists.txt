@@ -176,6 +176,7 @@ if(FFTW_FOUND)
         ../../lib/stages/gnss/galileoE5bCode.cpp
         ../../lib/stages/gnss/galileoE6Code.cpp
         ../../lib/stages/gnss/beidouB1ICode.cpp
+        ../../lib/stages/gnss/beidou3sCode.cpp
         ../../lib/stages/gnss/beidouB2bCode.cpp
         ../../lib/stages/gnss/beidouB3ICode.cpp
         ../../lib/stages/gnss/glonassL3OCCode.cpp
@@ -212,6 +213,7 @@ if(FFTW_FOUND)
         ../../lib/stages/gnss/galileoE5bCode.cpp
         ../../lib/stages/gnss/galileoE6Code.cpp
         ../../lib/stages/gnss/beidouB1ICode.cpp
+        ../../lib/stages/gnss/beidou3sCode.cpp
         ../../lib/stages/gnss/beidouB2bCode.cpp
         ../../lib/stages/gnss/beidouB3ICode.cpp
         ../../lib/stages/gnss/glonassL3OCCode.cpp
@@ -222,6 +224,15 @@ if(FFTW_FOUND)
                                                                      ../../lib/utils)
     target_include_directories(test_gnss_channelized_replica SYSTEM PRIVATE ${FFTW_INCLUDES})
     target_link_libraries(test_gnss_channelized_replica PRIVATE ${FFTW_LIBRARY} ${FFTWF_LIBRARY})
+
+    # BeiDou-3S (M2-S) codes against the chips recovered from the sky, and the bank's per-PRN
+    # selection of them.
+    add_executable(test_gnss_bds3s test_gnss_bds3s.cpp)
+    target_link_libraries(test_gnss_bds3s PRIVATE libexternal kotekan_stages kotekan_libs
+                                                  kotekan_utils kotekan_core kotekan_metadata)
+    target_include_directories(test_gnss_bds3s PRIVATE ../../lib/stages ../../lib/stages/gnss)
+    target_compile_definitions(test_gnss_bds3s
+                               PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/testdata")
 
     # The host stages of three GNSS chains replayed from synthetic control blocks and tiles,
     # digested for determinism, liveness and mutation controls. GnssN2RecordAssemble and

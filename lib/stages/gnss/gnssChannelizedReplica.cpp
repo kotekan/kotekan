@@ -1,5 +1,6 @@
 #include "gnssChannelizedReplica.hpp"
 
+#include "beidou3sCode.hpp"
 #include "beidouB1CCode.hpp"
 #include "beidouB1ICode.hpp"
 #include "beidouB2aCode.hpp"
@@ -46,11 +47,45 @@ std::vector<int8_t> bake_secondary(const Prim& a, const Sec& s) {
     return tiled;
 }
 
+// The BeiDou-3S code for a signal it has one on, with the ICD overlays (beidou3sCode.hpp);
+// empty for the other signals, which keep their own codes.
+std::vector<int8_t> bds3s_code(const std::string& name, int prn) {
+    if (name == "BDS_B2A_P") {
+        auto a = beidou::generate_b2ap_3s_code(prn);
+        return std::vector<int8_t>(a.begin(), a.end());
+    }
+    if (name == "BDS_B2A_P_CS")
+        return bake_secondary(beidou::generate_b2ap_3s_code(prn), beidou::b2ap_secondary(prn));
+    if (name == "BDS_B2A_D") {
+        auto a = beidou::generate_b2ad_3s_code(prn);
+        return std::vector<int8_t>(a.begin(), a.end());
+    }
+    if (name == "BDS_B2A_D_CS")
+        return bake_secondary(beidou::generate_b2ad_3s_code(prn), beidou::b2ad_secondary());
+    if (name == "BDS_B2B_I") {
+        auto a = beidou::generate_b2bp_3s_code(prn);
+        return std::vector<int8_t>(a.begin(), a.end());
+    }
+    if (name == "BDS_B3I") {
+        auto a = beidou::generate_b3i_code(prn, false);
+        return std::vector<int8_t>(a.begin(), a.end());
+    }
+    if (name == "BDS_B3I_NH")
+        return bake_secondary(beidou::generate_b3i_code(prn, false), beidou::B3I_NH20);
+    return {};
+}
+
 // The primary spreading code for a signal name, at its component chip rate (L2C CM is 10230
 // chips at 511.5 kcps). The constructor expands it onto the combined stream for TDM and BOC
 // signals. Shared secondary overlays are applied per period by overlay_sign(); the *_NH and
-// *_CS signals return the code with the overlay already tiled in.
-std::vector<int8_t> signal_code(const std::string& name, int prn) {
+// *_CS signals return the code with the overlay already tiled in. @p bds3s selects the
+// BeiDou-3S code where the signal has one.
+std::vector<int8_t> signal_code(const std::string& name, int prn, bool bds3s) {
+    if (bds3s) {
+        auto c = bds3s_code(name, prn);
+        if (!c.empty())
+            return c;
+    }
     if (name == "GPS_L1C_P") {
         auto a = gps::generate_l1cp_code(prn);
         return std::vector<int8_t>(a.begin(), a.end());
@@ -281,13 +316,15 @@ std::vector<int8_t> prn_secondary(const std::string& name, int prn) {
 
 ChannelizedReplicaBank::ChannelizedReplicaBank(const SignalDescriptor& sig, double sample_rate,
                                                double f_offset, int spectrum_length, int num_taps,
-                                               dsp::Window window, const std::vector<int>& prns) :
+                                               dsp::Window window, const std::vector<int>& prns,
+                                               const std::vector<int>& bds3s_prns) :
     ChannelizedReplicaBank(sig, Channelization{sample_rate, spectrum_length, num_taps, window},
-                           f_offset, prns) {}
+                           f_offset, prns, bds3s_prns) {}
 
 ChannelizedReplicaBank::ChannelizedReplicaBank(const SignalDescriptor& sig,
                                                const Channelization& chz, double f_offset,
-                                               const std::vector<int>& prns) :
+                                               const std::vector<int>& prns,
+                                               const std::vector<int>& bds3s_prns) :
     _sig(sig), _chz(chz), _sample_rate(chz.sample_rate), _f_offset(f_offset),
     _N(chz.spectrum_length), _fft_len(chz.fft_len()), _num_taps(chz.num_taps), _fold(nullptr),
     _spec(nullptr), _p_fwd(nullptr) {
@@ -316,6 +353,7 @@ ChannelizedReplicaBank::ChannelizedReplicaBank(const SignalDescriptor& sig,
     _eff_chip_rate = _sig.chip_rate_hz * _comb_mult;
     _eff_code_length = _sig.code_length * _comb_mult;
     _prns = prns;
+    _bds3s_prns = bds3s_prns;
     _full_code.resize(prns.size());
     for (size_t p = 0; p < prns.size(); ++p)
         _full_code[p] = build_full_code(prns[p]);
@@ -364,7 +402,8 @@ ChannelizedReplicaBank::ChannelizedReplicaBank(const SignalDescriptor& sig,
 }
 
 std::vector<int8_t> ChannelizedReplicaBank::build_full_code(int prn) const {
-    auto comp = signal_code(_sig.name, prn); // bare component code (+-1), code_length
+    const bool bds3s = std::find(_bds3s_prns.begin(), _bds3s_prns.end(), prn) != _bds3s_prns.end();
+    auto comp = signal_code(_sig.name, prn, bds3s); // bare component code, code_length
     if (_comb_mult == 1)
         return comp;
     if (_sig.time_multiplexed) {

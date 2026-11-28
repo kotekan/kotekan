@@ -27,7 +27,7 @@ constexpr const char* B3I_G2_INIT[63] = {
 
 } // namespace
 
-std::array<int8_t, B3I_CODE_LENGTH> generate_b3i_code(int prn) {
+std::array<int8_t, B3I_CODE_LENGTH> generate_b3i_code(int prn, bool g1_reset) {
     if (prn < 1 || prn > 63)
         throw std::out_of_range("generate_b3i_code: PRN must be 1..63, got " + std::to_string(prn));
     int g1[13], g2[13];
@@ -46,7 +46,7 @@ std::array<int8_t, B3I_CODE_LENGTH> generate_b3i_code(int prn) {
         // end). That phase is the 8190th and last chip of the truncated cycle, so it is tested
         // after the chip is taken and before the shift. Testing after the shift, as gnss-sdr
         // does, drops the chip and makes the cycle 8189 (#178).
-        bool at_reset = (g1[0] == 0 && g1[1] == 0);
+        bool at_reset = g1_reset && g1[0] == 0 && g1[1] == 0;
         for (int i = 2; i < 13 && at_reset; ++i)
             at_reset = (g1[i] == 1);
         if (at_reset) {

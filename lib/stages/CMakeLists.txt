@@ -51,6 +51,7 @@ add_library(
     gnss/gpsL2CCode.cpp
     gnss/gpsL5Code.cpp
     gnss/beidouB2aCode.cpp
+    gnss/beidou3sCode.cpp
     gnss/beidouB2bCode.cpp
     gnss/galileoE5bCode.cpp
     gnss/galileoE6Code.cpp
