@@ -38,6 +38,7 @@ import os
 import statistics
 import time
 from datetime import datetime, timezone
+from fractions import Fraction
 
 from gnss_broker.transport import _now, _log, _log_rl, axis_now
 from gnss_broker.clockhealth import dr_solve_healthy
@@ -52,6 +53,8 @@ from gnss_broker.fits import (
 )
 from gnss_broker.receiver import JOINT_REF_RATE_HZ, JOINT_STATE, TRK_STATE, joint_which
 from gnss_broker import sky as _sky
+from gnss_broker import signals as _signals
+from gnss_broker import trkresid as _trkresid
 from gnss_broker.signals import prn_carrier_hz
 from gnss_broker.sky import nearest_boresight, transit_sky
 from gnss_broker.gdvmap import GdvMap
@@ -1819,12 +1822,14 @@ def joint_read(ctx):
 def seeds_are_model_owned(ctx, prn):
     """Does the model own this PRN's seed, so a locked seed is slewed toward the model rather
     than left to the DLL? True without detectors, under --detectors-monitor (the search is
-    read, never seeded from: #209), for a PRN the map has flipped to this chain, and for one
-    the search no longer hints (dr_owns_unhinted). A chain whose search seeds leaves locked
-    seeds to the DLL."""
+    read, never seeded from: #209), for a PRN outside --detectors-prns, for a PRN the map has
+    flipped to this chain, and for one the search no longer hints (dr_owns_unhinted). A chain
+    whose search seeds leaves locked seeds to the DLL."""
+    only = getattr(ctx.args, "detectors_prns", None)
     return (
         not ctx.detectors
         or bool(getattr(ctx.args, "detectors_monitor", False))
+        or (bool(only) and prn not in only)
         or prn in ctx.mp_flipped
         or dr_owns_unhinted(ctx, prn)
     )
@@ -2135,6 +2140,53 @@ def dr_clock_long_chips(ctx):
     return k * ctx.code_len
 
 
+def xband_source(ctx, prn):
+    """--seed-from-chain: PRN's code phase and Doppler on another chain of this process, from that
+    chain's tracker records, while its fleet holds the PRN present; else None.
+
+    For a satellite this chain cannot dead-reckon (no orbit and clock to half a chip, as
+    BeiDou-3S M2-S, C58, with only a TLE) but another band tracks: same satellite, same transmit
+    time and chip rate, so the physical code phase carries across mod each chain's long code,
+    and the Doppler scales with the carrier. Each record's phase (trkresid.phys_chips) is
+    carried to the newest record's hop at its own Doppler and the phases averaged: one record
+    holds ~0.2 chips of float32 noise. Returns {"phys" (source chips at "t"), "t", "dop" (source
+    Hz), "src" (its SignalDef)}."""
+    src = ctx.args.seed_from_chain
+    present = ctx.rx.trk(src, t_now=ctx.t0)
+    if not present or prn not in present or ctx.telem_client is None:
+        return None
+    recs = _trkresid.telem_records(ctx.telem_client, src, [prn]).get(prn)
+    if not recs:
+        return None
+    sd = _signals.get(src)
+    L = sd.code_length * sd.long_code_segments
+    hps = Fraction(ctx.args.hops_per_sec).limit_denominator(10 ** 6)
+    sgn = ctx.args.code_doppler_sign
+    h_ref = max(r[0] for r in recs)
+    t_ref = h_ref / float(hps)
+    phases = []
+    for hop, cp, dop in recs:
+        ph = _trkresid.phys_chips(
+            cp, dop, hop, hps, sd.chip_rate_hz, sd.carrier_hz, L, sgn
+        )
+        dt = t_ref - hop / float(hps)
+        phases.append(ph + dt * sd.chip_rate_hz * (1.0 + sgn * dop / sd.carrier_hz))
+    ref = phases[0]
+    phys = (ref + statistics.fmean(_trkresid.wrap(p - ref, L) for p in phases)) % L
+    dop = statistics.fmean(r[2] for r in recs if r[0] == h_ref)
+    return {"phys": phys, "t": t_ref, "dop": dop, "src": sd}
+
+
+def xband_phys(ctx, xs, t, drate):
+    """xband_source's phase carried to capture time t (this chain's Doppler rate drate) and taken
+    mod this chain's long code."""
+    sd, sgn = xs["src"], ctx.args.code_doppler_sign
+    dt = t - xs["t"]
+    adv = dt * sd.chip_rate_hz * (1.0 + sgn * xs["dop"] / sd.carrier_hz)
+    acc = 0.5 * sgn * sd.chip_rate_hz * drate / ctx.args.carrier_hz * dt * dt
+    return (xs["phys"] + adv + acc) % ctx.drp.mod
+
+
 def dr_seed(ctx):
     """Birth, re-pin or slew the seed of every visible satellite this chain dead-reckons, and drop
     model-owned seeds that have set or whose satellite lacks the signal. Computes ctx.drp.clk_now.
@@ -2207,6 +2259,7 @@ def dr_seed(ctx):
                         " ".join("PRN%d %+.2f(s%.2f)" % c for c in _cmp[:6]),
                     )
                 )
+        xb_prns = getattr(ctx.args, "seed_from_prns", None) or ()
         for (ctag, prn), v in sorted(ctx.drp.pd.items()):
             # Signal capability first (--dr-min-prn, --signal-capability): the model predicts a code
             # phase for a signal the satellite does not broadcast, and seeding it would despread
@@ -2247,14 +2300,29 @@ def dr_seed(ctx):
                 or (prn in ctx.best and prn not in ctx.mp_flipped)
                 or prn in ctx.probe_set
                 or prn in ctx.cp_held
-                or (prn in ctx.dr_untrusted and prn not in ctx.mp_flipped)
+                or (
+                    prn in ctx.dr_untrusted
+                    and prn not in ctx.mp_flipped
+                    and prn not in xb_prns
+                )
                 # a clock known only to more than half a chip (a GuoWang TLE record's library
-                # theta, clk_sigma_s): the search seeds it, or nothing does
-                or v.get("clk_sigma_s", 0.0) * ctx.args.chip_rate_hz > 0.5
+                # theta, clk_sigma_s): the search seeds it, or nothing does, unless another
+                # chain's track does (--seed-from-chain)
+                or (
+                    v.get("clk_sigma_s", 0.0) * ctx.args.chip_rate_hz > 0.5
+                    and prn not in xb_prns
+                )
             ):  # not this chain's to dead-reckon
                 continue
             if prn in ctx.seeds and prn not in ctx.dr_state["seeded"]:
                 continue  # search-anchored seed: not ours to touch
+            # --seed-from-chain: the phase and Doppler come from the other chain's track instead
+            # of the model; while that chain does not hold the PRN, its seed coasts untouched.
+            _xs = None
+            if prn in xb_prns:
+                _xs = xband_source(ctx, prn)
+                if _xs is None:
+                    continue
             # A locked dead-reckoned satellite on a chain with no search, or a model-primary PRN,
             # gets a slewed refresh rather than a hold or a re-pin. Held, its prompt drifts out of
             # the +-1-chip window in minutes, since the model's residual code rate is not in the
@@ -2344,6 +2412,9 @@ def dr_seed(ctx):
                     * f_sat
                 )
             dop_seed += drate * (ctx.drp.t_fc_abs - ctx.drp.t_now_abs)
+            if _xs is not None:
+                f_ratio = ctx.args.carrier_hz / _xs["src"].carrier_hz
+                dop_seed = _xs["dop"] * f_ratio + drate * (ctx.drp.t_fc_abs - _xs["t"])
             # cp0, the seed currency: the model's physical code phase plus _off at the forecast
             # epoch, back-referenced to sample 0 (removing the nominal advance and the code-Doppler
             # drift: the inverse of cp_loc in stage_dead_reckon).
@@ -2444,8 +2515,12 @@ def dr_seed(ctx):
                 )
                 if "slew" in ctx.joint_consume and _ok3:
                     _off = _base3 + _d3
+            if _xs is not None:
+                _phys_fc = xband_phys(ctx, _xs, ctx.drp.t_fc_abs, drate)
+            else:
+                _phys_fc = ctx.cp_predicted(v, ctx.drp.t_fc_abs) + _off
             cp0 = (
-                (ctx.cp_predicted(v, ctx.drp.t_fc_abs) + _off)
+                _phys_fc
                 - ctx.drp.t_fc_abs
                 * ctx.args.chip_rate_hz
                 * (1.0 + ctx.args.code_doppler_sign * dop_seed / ctx.args.carrier_hz)
@@ -2475,7 +2550,10 @@ def dr_seed(ctx):
                     ctx.drp.mod,
                 )
                 # _off as computed above, so this target and the birth phase cannot disagree.
-                _model = (ctx.cp_predicted(v, t_h) + _off) % ctx.drp.mod
+                if _xs is not None:
+                    _model = xband_phys(ctx, _xs, t_h, drate)
+                else:
+                    _model = (ctx.cp_predicted(v, t_h) + _off) % ctx.drp.mod
                 _dcp = (
                     (_model - _held + ctx.drp.mod / 2.0) % ctx.drp.mod
                 ) - ctx.drp.mod / 2.0
@@ -2546,7 +2624,15 @@ def dr_seed(ctx):
             if prn not in ctx.seeds:
                 _log(
                     "dead-reckon SEED PRN %d (elev %.0f, cp0 %.1f, dop %+.0f,"
-                    " rate %+.2f)" % (prn, v["el"], cp0, dop_seed, drate)
+                    " rate %+.2f)%s"
+                    % (
+                        prn,
+                        v["el"],
+                        cp0,
+                        dop_seed,
+                        drate,
+                        " from %s's track" % ctx.args.seed_from_chain if _xs else "",
+                    )
                 )
             ctx.dls.trim.pop(prn, None)  # that trim was built against the old anchor
             ctx.dls.last.pop(prn, None)
@@ -2579,12 +2665,16 @@ def dr_seed(ctx):
             # the phase at its label (the same hazard as t_h in the slew arm). cp0 does not need
             # this: it is back-referenced through the t it was built at.
             if ctx.args.seed_phase_transport:
+                _t_birth = _rh_birth / ctx.args.hops_per_sec
+                if _xs is not None:
+                    _phys_birth = xband_phys(ctx, _xs, _t_birth, drate)
+                else:
+                    _phys_birth = (ctx.cp_predicted(v, _t_birth) + _off) % ctx.drp.mod
                 ctx.seeds[prn].put(
                     "phase_xport",
                     epoch=_rh_birth,
                     code_phase_at_ref_chips=seed_phase_at_ref(
-                        (ctx.cp_predicted(v, _rh_birth / ctx.args.hops_per_sec) + _off)
-                        % ctx.drp.mod,
+                        _phys_birth,
                         dop_seed,
                         ctx.args.chip_rate_hz,
                         ctx.args.hops_per_sec,

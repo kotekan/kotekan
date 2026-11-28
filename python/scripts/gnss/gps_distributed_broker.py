@@ -1640,6 +1640,8 @@ def main(argv=None, rx=None, publisher=None):
                 prn, snr = int(d["prn"]), float(d["snr"])
                 if snr < args.acquire_snr:
                     continue
+                if args.detectors_prns and prn not in args.detectors_prns:
+                    continue  # --detectors-prns: the model owns every other PRN
                 if prn not in best or snr > best[prn][0]:
                     cp_long = float(d.get("code_phase_long_chips", -1.0))
                     cp_at_ref = float(d.get("code_phase_at_ref_chips", -1.0))

@@ -71,11 +71,13 @@ def stage_narrow_search(ctx):
             if ctx.cb.ema is not None and not ctx.cb.stale
             else ctx.args.search_margin_wide_hz
         )
+        only = getattr(ctx.args, "detectors_prns", None)
         hints = [
             dict(prn=p, doppler_hz=ctx.pred[p][0] + ctx.cb.value, margin_hz=margin)
             for p in sorted(ctx.pred)
             if (ctx.up is None or p in ctx.up)
             and (ctx.capable is None or p in ctx.capable)
+            and (not only or p in only)
         ]
         # --hint-skip-dr: the search is for satellites that are not locked or that the model
         # cannot seed. The dead-reckon stage takes over the seed of one left unhinted.

@@ -698,6 +698,16 @@ def build_parser(description):
         "primed (--dr-clock-chips).",
     )
     ap.add_argument(
+        "--detectors-prns",
+        type=lambda s: [int(x) for x in s.split(",") if x.strip()],
+        default=[],
+        help="comma-separated PRNs the --detectors seed; detections of every other PRN are "
+        "dropped, the search is hinted only these, and the other PRNs' seeds are the "
+        "model's as on a chain with no detectors (slewed while locked). For a model-primary "
+        "chain that needs the search for one satellite the model cannot seed (BeiDou-3S "
+        "M2-S, C58). Default: all.",
+    )
+    ap.add_argument(
         "--detectors-monitor",
         action="store_true",
         help="poll --detectors for the record only. Each detection that passes "
@@ -2053,6 +2063,24 @@ def build_parser(description):
         "rather than holding stale ones. Logged as FLEET-TRIM READBACK. 0 (default) = "
         "off, for transcript replay: a replay must make the GETs its recording made, "
         "and a recording made without the flag has no get_dll entries.",
+    )
+    ap.add_argument(
+        "--seed-from-chain",
+        default=None,
+        metavar="CHAIN",
+        help="seed the --seed-from-prns satellites from CHAIN's track instead of the model: "
+        "another chain of this process on the same satellites at another signal, for a "
+        "satellite with no orbit and clock good to half a chip (BeiDou-3S M2-S, C58, on "
+        "bds_b3i and bds_b2b from bds_b2a). The physical code phase carries across mod "
+        "this chain's long code and the Doppler scales with the carrier; the seed is born, "
+        "slewed and dropped as a dead-reckoned one, and coasts while CHAIN does not hold "
+        "the satellite present.",
+    )
+    ap.add_argument(
+        "--seed-from-prns",
+        type=lambda s: [int(x) for x in s.split(",") if x.strip()],
+        default=[],
+        help="comma-separated PRNs for --seed-from-chain",
     )
     ap.add_argument(
         "--xband-referee",
