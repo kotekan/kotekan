@@ -1165,6 +1165,34 @@ def test_cache_falls_back_to_the_newest_daily():
     check(sup._cached_sources(when, "/nonexistent/cache") == [], "no cache directory")
 
 
+def test_cache_keeps_the_previous_day_after_midnight():
+    """In the first 4 h of a UTC day the previous day's dailies stay among the cached sources,
+    after this day's: the new day's file starts with only the satellites that broadcast since
+    midnight (2026-11-28 00:31Z: eight Galileo satellites missing). Later, this day's alone."""
+    import gnss_brdc_supply as sup
+    from datetime import datetime, timezone
+
+    print("\n_cached_sources: the day roll")
+    names = (
+        "BRDC00WRD_S_20263310000_01D_MN.rnx.gz",
+        "BRDC00WRD_R_20263310000_01D_MN.rnx.gz",
+        "BRDC00WRD_S_20263320000_01D_MN.rnx.gz",
+        "hourly_MN.rnx.gz",
+    )
+    with tempfile.TemporaryDirectory() as d:
+        for n in names:
+            open(os.path.join(d, n), "wb").close()
+        early = datetime(2026, 11, 28, 0, 34, tzinfo=timezone.utc)
+        got = [os.path.basename(x) for x in sup._cached_sources(early, d)]
+        check(
+            got == [names[2], names[0], names[1], names[3]],
+            "00:34Z: this day's, then the previous day's, then the hourly (%s)" % got,
+        )
+        late = datetime(2026, 11, 28, 4, 1, tzinfo=timezone.utc)
+        got = [os.path.basename(x) for x in sup._cached_sources(late, d)]
+        check(got == [names[2], names[3]], "04:01Z: this day's alone (%s)" % got)
+
+
 def test_decoded_orbits_before_stale_brdc():
     """The hint sky takes, per satellite, a fresh BRDC record (within 4 h), else the source
     nearest its reference time of the receiver's decoded issues, its almanacs and the stale
@@ -1358,6 +1386,7 @@ def main():
     test_fetch_brdc_off_the_loop()
     test_hint_sky_outlives_the_seed_window()
     test_cache_falls_back_to_the_newest_daily()
+    test_cache_keeps_the_previous_day_after_midnight()
     test_decoded_orbits_before_stale_brdc()
     test_warm_search_only_while_unlisted()
     test_fdma_channels_from_the_almanacs()

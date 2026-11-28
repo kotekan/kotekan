@@ -581,6 +581,16 @@ def _fetch_station_hourly(when, cache_dir, token):
 # new file) stays under the cap. A previous-day daily is final; _fetch_brdc_merged reuses it
 # at any age.
 _DAILY_TTL_S = 3600.0
+# The previous UTC day's dailies stay among the sources this long into the day: best_eph's 4 h
+# window still reaches their last records, and the new day's file holds only the satellites
+# that have broadcast since midnight.
+_PREV_DAY_S = 14400.0
+
+
+def _keep_prev_day(when):
+    """Whether the previous UTC day's dailies are still sources at `when` (_PREV_DAY_S)."""
+    midnight = when.replace(hour=0, minute=0, second=0, microsecond=0)
+    return (when - midnight).total_seconds() < _PREV_DAY_S
 
 
 def _try_refresh_daily(kind, year, doy, cache_dir, tok):
@@ -726,8 +736,8 @@ _REFRESH = {"thread": None, "lock": threading.Lock()}
 
 def _cached_sources(when, cache_dir):
     """The cached files fetch_brdc hands out without touching the network: the daily variants
-    on disk for `when`'s day (the previous day's only when this day has none, as in
-    _fetch_brdc_merged), then the station-hourly merge. With neither, the newest daily of any
+    on disk for `when`'s day, then the previous day's (in its first _PREV_DAY_S, or when this
+    day has none, as in _fetch_brdc_merged), then the station-hourly merge. With neither, the newest daily of any
     day: after days offline it still predicts the sky the search hints from
     (sky.HINT_MAX_AGE_S). [] when nothing is cached.
     parse_rinex_nav merges per PRN by toe, so the order only breaks identical-toe ties."""
@@ -742,7 +752,7 @@ def _cached_sources(when, cache_dir):
             )
             if os.path.exists(p):
                 out.append(p)
-        if out:
+        if out and not _keep_prev_day(when):
             break
     hourly = os.path.join(cache_dir, "hourly_MN.rnx.gz")
     if os.path.exists(hourly):
@@ -884,6 +894,16 @@ def _fetch_brdc_now(when=None, cache_dir=CACHE):
         p = _try_refresh_daily(kind, when.year, doy, cache_dir, tok)
         if p and p not in srcs:
             srcs.append(p)
+    if _keep_prev_day(when):
+        y = when - timedelta(days=1)
+        for kind in ("S", "R"):
+            p = os.path.join(
+                cache_dir,
+                "BRDC00WRD_%s_%04d%03d0000_01D_MN.rnx.gz"
+                % (kind, y.year, y.timetuple().tm_yday),
+            )
+            if os.path.exists(p) and p not in srcs:
+                srcs.append(p)
     hourly = _fetch_station_hourly(when, cache_dir, tok)
     if hourly and hourly not in srcs:
         srcs.append(hourly)
